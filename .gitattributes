@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Бинарники
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
+*.woff* binary
