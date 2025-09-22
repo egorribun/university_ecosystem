@@ -1,0 +1,25 @@
+{
+    "name": "@types/zxcvbn",
+    "version": "4.4.5",
+    "description": "TypeScript definitions for zxcvbn",
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/zxcvbn",
+    "license": "MIT",
+    "contributors": [
+        {
+            "name": "Matt Traynham",
+            "githubUsername": "mtraynham",
+            "url": "https://github.com/mtraynham"
+        }
+    ],
+    "main": "",
+    "types": "index.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "directory": "types/zxcvbn"
+    },
+    "scripts": {},
+    "dependencies": {},
+    "typesPublisherContentHash": "6b0fda81319ce4687a6b0b924687b7e13f6020c8a6bd998efbb747e4477463f1",
+    "typeScriptVersion": "4.8"
+}
