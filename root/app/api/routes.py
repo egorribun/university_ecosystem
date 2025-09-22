@@ -166,15 +166,15 @@ async def create_user(data: schemas.UserCreate, db: AsyncSession = Depends(get_d
     if data.role in ["teacher", "admin"]:
         if not data.invite_code:
             raise HTTPException(status_code=400, detail="Необходим уникальный код для регистрации преподавателя/админа")
-        q = select(models.InviteCode).where(models.InviteCode.code == data.invite_code, models.InviteCode.role == data.role, models.InviteCode.is_active == True)
+        q = select(models.InviteCode).where(
+            models.InviteCode.code == data.invite_code,
+            models.InviteCode.role == data.role,
+            models.InviteCode.is_active == True,
+        )
         code_obj = (await db.execute(q)).scalar_one_or_none()
         if not code_obj:
             raise HTTPException(status_code=400, detail="Неверный или неактивный код")
-        code_obj.is_active = False
     user = await crud.create_user(db, data)
-    if data.role in ["teacher", "admin"] and code_obj:
-        code_obj.used_by_user_id = user.id
-        await db.commit()
     return user
 
 @router.get("/users", response_model=List[schemas.UserOut])
