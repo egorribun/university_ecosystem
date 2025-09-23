@@ -1,33 +1,74 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   node:
-    if: ${{ hashFiles('**/package.json') != '' }}
+    name: Node.js (frontend)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: root/frontend
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect frontend
+        id: probe
+        run: |
+          if [ -f package.json ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
+
       - uses: actions/setup-node@v5
+        if: steps.probe.outputs.has == 'true'
         with:
           node-version: '20'
-          cache: 'npm'
-      - run: |
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+
+      - name: Install
+        if: steps.probe.outputs.has == 'true'
+        run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
-      - run: npm run build --if-present
-      - run: npm test --if-present
+
+      - name: Build
+        if: steps.probe.outputs.has == 'true'
+        run: npm run build --if-present
+
+      - name: Test
+        if: steps.probe.outputs.has == 'true'
+        run: npm test --if-present
 
   python:
-    if: ${{ hashFiles('**/requirements.txt') != '' || hashFiles('**/pyproject.toml') != '' }}
+    name: Python (backend)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: root
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect backend
+        id: probe
+        run: |
+          if [ -f requirements.txt ] || [ -f pyproject.toml ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
+
       - uses: actions/setup-python@v5
+        if: steps.probe.outputs.has == 'true'
         with:
           python-version: '3.11'
-          cache: 'pip'
-      - run: |
-          python -m pip install --upgrade pip
+          cache: pip
+          cache-dependency-path: root/requirements.txt
+
+      - name: Install
+        if: steps.probe.outputs.has == 'true'
+        run: |
+          python -m pip install -U pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f pyproject.toml ]; then pip install .; fi
-      - run: |
-          if compgen -G "tests/**" > /dev/null; then pytest -q; else echo "No tests/"; fi
+
+      - name: Test
+        if: steps.probe.outputs.has == 'true'
+        run: |
+          if compgen -G "tests/**" > /dev/null; then pytest -q; else echo "No tests"; fi
