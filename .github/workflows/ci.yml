@@ -13,7 +13,7 @@ jobs:
 
       - name: Detect frontend
         run: |
-          if [ -f package.json ]; then
+          if [ -f root/frontend/package.json ]; then
             echo "HAS_FRONTEND=true" >> "$GITHUB_ENV"
           else
             echo "HAS_FRONTEND=false" >> "$GITHUB_ENV"
@@ -50,7 +50,7 @@ jobs:
 
       - name: Detect backend
         run: |
-          if [ -f requirements.txt ] || [ -f pyproject.toml ]; then
+          if [ -f root/requirements.txt ] || [ -f root/pyproject.toml ]; then
             echo "HAS_BACKEND=true" >> "$GITHUB_ENV"
           else
             echo "HAS_BACKEND=false" >> "$GITHUB_ENV"
@@ -81,12 +81,9 @@ jobs:
     needs: [node, python]
     if: ${{ always() }}
     steps:
-      - name: Dump needs (debug)
-        run: echo '${{ toJSON(needs) }}'
-      - name: Fail if any dependency failed or cancelled
+      - name: Summarize and fail if needed
         run: |
-          NODE='${{ needs.node.result }}'
-          PY='${{ needs.python.result }}'
-          echo "node=$NODE  python=$PY"
-          if [ "$NODE" != "success" ] && [ "$NODE" != "skipped" ]; then exit 1; fi
-          if [ "$PY" != "success" ] && [ "$PY" != "skipped" ]; then exit 1; fi
+          echo "node=${{ needs.node.result }}  python=${{ needs.python.result }}"
+          for r in "${{ needs.node.result }}" "${{ needs.python.result }}"; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then exit 1; fi
+          done
