@@ -11,3 +11,5 @@ email-validator>=2.0
 httpx>=0.27
 python-multipart>=0.0.7
 aiofiles>=23.0
+pywebpush>=1.9
+psycopg[binary]>=3.1

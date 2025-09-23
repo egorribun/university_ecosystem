@@ -77,7 +77,9 @@ app.add_middleware(
 )
 
 if ProxyHeadersMiddleware:
-    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    trusted_hosts = settings.trusted_hosts_list
+    if trusted_hosts:
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_hosts)
 
 if not os.path.isdir(settings.static_dir):
     os.makedirs(settings.static_dir, exist_ok=True)
