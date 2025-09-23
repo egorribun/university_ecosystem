@@ -3,31 +3,90 @@ on: [push, pull_request]
 
 jobs:
   node:
-    if: ${{ hashFiles('**/package.json') != '' }}
+    name: Node.js (frontend)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: root/frontend
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect frontend
+        run: |
+          if [ -f package.json ]; then
+            echo "HAS_FRONTEND=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_FRONTEND=false" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-node@v5
+        if: env.HAS_FRONTEND == 'true'
         with:
           node-version: '20'
-          cache: 'npm'
-      - run: |
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+
+      - name: Install deps
+        if: env.HAS_FRONTEND == 'true'
+        run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
-      - run: npm run build --if-present
-      - run: npm test --if-present
+
+      - name: Build
+        if: env.HAS_FRONTEND == 'true'
+        run: npm run build --if-present
+
+      - name: Test
+        if: env.HAS_FRONTEND == 'true'
+        run: npm test --if-present
 
   python:
-    if: ${{ hashFiles('**/requirements.txt') != '' || hashFiles('**/pyproject.toml') != '' }}
+    name: Python (backend)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: root
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect backend
+        run: |
+          if [ -f requirements.txt ] || [ -f pyproject.toml ]; then
+            echo "HAS_BACKEND=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_BACKEND=false" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-python@v5
+        if: env.HAS_BACKEND == 'true'
         with:
           python-version: '3.11'
-          cache: 'pip'
-      - run: |
-          python -m pip install --upgrade pip
+          cache: pip
+          cache-dependency-path: root/requirements.txt
+
+      - name: Install deps
+        if: env.HAS_BACKEND == 'true'
+        run: |
+          python -m pip install -U pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f pyproject.toml ]; then pip install .; fi
-      - run: |
+
+      - name: Test
+        if: env.HAS_BACKEND == 'true'
+        run: |
           if compgen -G "tests/**" > /dev/null; then pytest -q; else echo "No tests/"; fi
+
+  all:
+    name: All checks passed
+    runs-on: ubuntu-latest
+    needs: [node, python]
+    if: ${{ always() }}
+    steps:
+      - name: Dump needs (debug)
+        run: echo '${{ toJSON(needs) }}'
+      - name: Fail if any dependency failed or cancelled
+        run: |
+          NODE='${{ needs.node.result }}'
+          PY='${{ needs.python.result }}'
+          echo "node=$NODE  python=$PY"
+          if [ "$NODE" != "success" ] && [ "$NODE" != "skipped" ]; then exit 1; fi
+          if [ "$PY" != "success" ] && [ "$PY" != "skipped" ]; then exit 1; fi
