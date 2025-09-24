@@ -29,7 +29,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import EmailIcon from "@mui/icons-material/Email";
@@ -38,10 +38,39 @@ import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { resolveMediaUrl } from "@/utils/media";
-import { jsPDF } from "jspdf";
-import QRCode from "qrcode";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
+
+type QRCodeModule = {
+  toDataURL: (
+    text: string,
+    options?: { width?: number; errorCorrectionLevel?: string; margin?: number }
+  ) => Promise<string>;
+};
+
+let qrModulePromise: Promise<QRCodeModule> | null = null;
+const loadQrModule = async (): Promise<QRCodeModule> => {
+  if (!qrModulePromise) {
+    qrModulePromise = import("qrcode")
+      .then((mod) => (mod as { default?: QRCodeModule }).default ?? (mod as QRCodeModule))
+      .catch((error) => {
+        qrModulePromise = null;
+        throw error;
+      });
+  }
+  return qrModulePromise;
+};
+
+let jsPdfModulePromise: Promise<typeof import("jspdf")> | null = null;
+const loadJsPdfModule = async () => {
+  if (!jsPdfModulePromise) {
+    jsPdfModulePromise = import("jspdf").catch((error) => {
+      jsPdfModulePromise = null;
+      throw error;
+    });
+  }
+  return jsPdfModulePromise;
+};
 
 type NowPlaying = {
   is_playing: boolean;
@@ -80,7 +109,9 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
     };
   }, [data.is_playing, data.duration_ms, data.track_id]);
 
-  const pct = data.duration_ms ? Math.max(0, Math.min(100, (progress / data.duration_ms) * 100)) : 0;
+  const pct = data.duration_ms
+    ? Math.max(0, Math.min(100, (progress / data.duration_ms) * 100))
+    : 0;
   const fmt = (ms?: number) => {
     if (ms == null) return "0:00";
     const s = Math.max(0, Math.floor(ms / 1000));
@@ -113,7 +144,10 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
 export default function Profile() {
   const { user, loading, setUser } = useAuth();
 
-  const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
+  const [snack, setSnack] = useState<{
+    text: string;
+    sev?: "success" | "info" | "warning" | "error";
+  } | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -124,7 +158,13 @@ export default function Profile() {
 
   const [qrOpen, setQrOpen] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [achOpen, setAchOpen] = useState<{ name: string; issuer?: string; date?: string; url?: string } | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [achOpen, setAchOpen] = useState<{
+    name: string;
+    issuer?: string;
+    date?: string;
+    url?: string;
+  } | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
@@ -196,7 +236,10 @@ export default function Profile() {
     const s = sp.get("spotify");
     if (s !== null) {
       if (s !== "error") {
-        api.get("/users/me").then(r => setUser(r.data)).catch(() => {});
+        api
+          .get("/users/me")
+          .then((r) => setUser(r.data))
+          .catch(() => {});
         setSnack({ text: "Spotify подключён", sev: "success" });
       } else {
         setSnack({ text: "Ошибка подключения Spotify", sev: "error" });
@@ -219,9 +262,15 @@ export default function Profile() {
       }
       if (r.data?.is_playing && r.data.duration_ms && r.data.progress_ms != null) {
         const remain = Math.max(0, r.data.duration_ms - r.data.progress_ms);
-        endTimerRef.current = window.setTimeout(() => { fetchNowPlaying(); }, Math.min(remain + 400, 20000));
+        endTimerRef.current = window.setTimeout(
+          () => {
+            fetchNowPlaying();
+          },
+          Math.min(remain + 400, 20000)
+        );
       }
-    } catch {} finally {
+    } catch {
+    } finally {
       fetchingRef.current = false;
     }
   }, [spotifyConnected]);
@@ -295,247 +344,364 @@ export default function Profile() {
     };
   }, [ensureConfettiSize]);
 
-  const burstConfetti = useCallback((x?: number, y?: number) => {
-    const canvas = confettiRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const { dpr, w, h } = ensureConfettiSize();
-    const cx = x != null ? x * dpr : (w * dpr) / 2;
-    const cy = y != null ? y * dpr : (h * dpr) / 5;
-    const count = 140;
-    const parts = Array.from({ length: count }).map((_, i) => {
-      const angle = Math.random() * Math.PI - Math.PI / 2;
-      const speed = 3 + Math.random() * 6;
-      const hue = Math.floor((i / count) * 360);
-      return { x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2, life: 60 + Math.random() * 40, size: 2 + Math.random() * 3, color: `hsl(${hue} 90% 55%)` };
-    });
-    let raf = 0;
-    const step = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      parts.forEach(p => { p.vy += 0.12 * dpr; p.x += p.vx * dpr; p.y += p.vy * dpr; p.life -= 1; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2); ctx.fill(); });
-      for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1);
-      if (parts.length > 0) raf = requestAnimationFrame(step); else cancelAnimationFrame(raf);
-    };
-    step();
-  }, [ensureConfettiSize]);
+  const burstConfetti = useCallback(
+    (x?: number, y?: number) => {
+      const canvas = confettiRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const { dpr, w, h } = ensureConfettiSize();
+      const cx = x != null ? x * dpr : (w * dpr) / 2;
+      const cy = y != null ? y * dpr : (h * dpr) / 5;
+      const count = 140;
+      const parts = Array.from({ length: count }).map((_, i) => {
+        const angle = Math.random() * Math.PI - Math.PI / 2;
+        const speed = 3 + Math.random() * 6;
+        const hue = Math.floor((i / count) * 360);
+        return {
+          x: cx,
+          y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 2,
+          life: 60 + Math.random() * 40,
+          size: 2 + Math.random() * 3,
+          color: `hsl(${hue} 90% 55%)`,
+        };
+      });
+      let raf = 0;
+      const step = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        parts.forEach((p) => {
+          p.vy += 0.12 * dpr;
+          p.x += p.vx * dpr;
+          p.y += p.vy * dpr;
+          p.life -= 1;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1);
+        if (parts.length > 0) raf = requestAnimationFrame(step);
+        else cancelAnimationFrame(raf);
+      };
+      step();
+    },
+    [ensureConfettiSize]
+  );
 
   useEffect(() => {
     if (snack && snack.sev === "success" && snack.text !== "Скопировано") burstConfetti();
   }, [snack, burstConfetti]);
 
   const copy = async (text: string, evt?: { clientX: number; clientY: number }) => {
-    try { await navigator.clipboard?.writeText(text); }
-    finally { setSnack({ text: "Скопировано", sev: "success" }); if (evt) burstConfetti(evt.clientX, evt.clientY); }
+    try {
+      await navigator.clipboard?.writeText(text);
+    } finally {
+      setSnack({ text: "Скопировано", sev: "success" });
+      if (evt) burstConfetti(evt.clientX, evt.clientY);
+    }
   };
 
-  const buildVCard = () => {
+  const buildVCard = useCallback(() => {
     const u = user!;
     const lines = [
       "BEGIN:VCARD",
       "VERSION:4.0",
       `FN:${u.full_name || ""}`,
       u.email ? `EMAIL:${u.email}` : "",
-      (u.institute || u.department) ? `ORG:${u.institute || u.department}` : "",
-      (u.position || u.status) ? `TITLE:${u.position || u.status}` : "",
-      (typeof window !== "undefined" ? `URL:${window.location.href}` : "")
+      u.institute || u.department ? `ORG:${u.institute || u.department}` : "",
+      u.position || u.status ? `TITLE:${u.position || u.status}` : "",
+      typeof window !== "undefined" ? `URL:${window.location.href}` : "",
     ].filter(Boolean);
     lines.push("END:VCARD");
     return lines.join("\n");
-  };
-
-  const openQrModal = useCallback(async () => {
-    try {
-      const dataUrl = await QRCode.toDataURL(buildVCard(), { width: 280, errorCorrectionLevel: "M" });
-      setQrUrl(dataUrl);
-    } catch {
-      setQrUrl(null);
-    } finally {
-      setQrOpen(true);
-    }
   }, [user]);
 
-  const downloadPdfCard = () => {
-    const u = user!;
-    const makeCanvas = (w: number, h: number) => { const c = document.createElement("canvas"); c.width = w; c.height = h; const ctx = c.getContext("2d")!; return { c, ctx }; };
-    const roundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
-      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-      ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h);
-      ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
-    };
-
-    const loadImg = (src: string) =>
-      new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = src;
-      });
-
-    const fetchAsDataUrl = async (url: string) => {
-      try {
-        const r = await api.get(url, { responseType: "blob", withCredentials: true } as any);
-        const blob: Blob = r.data;
-        return await new Promise<string>((res) => {
-          const fr = new FileReader();
-          fr.onload = () => res(fr.result as string);
-          fr.readAsDataURL(blob);
-        });
-      } catch {
-        const r = await fetch(url, { credentials: "include", cache: "no-store" });
-        const blob = await r.blob();
-        return await new Promise<string>((res) => {
-          const fr = new FileReader();
-          fr.onload = () => res(fr.result as string);
-          fr.readAsDataURL(blob);
-        });
-      }
-    };
-
-    const cardPt = { w: 360, h: 210 };
-    const scale = 4;
-    const pxPerPt = 96 / 72;
-    const W = Math.round(cardPt.w * scale * pxPerPt);
-    const H = Math.round(cardPt.h * scale * pxPerPt);
-
-    const { c, ctx } = makeCanvas(W, H) as { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
-    (ctx as any).imageSmoothingEnabled = true;
-    (ctx as any).imageSmoothingQuality = "high";
-    const g = (ctx as CanvasRenderingContext2D).createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, "#ffffff"); g.addColorStop(1, "#f2f6ff");
-    (ctx as any).fillStyle = g; (ctx as any).fillRect(0, 0, W, H);
-
-    (ctx as any).save(); (ctx as any).shadowColor = "rgba(0,0,0,.12)"; (ctx as any).shadowBlur = 28; (ctx as any).shadowOffsetY = 10; (ctx as any).fillStyle = "#ffffff";
-    roundedRect(ctx as any, 22 * scale, 22 * scale, W - 44 * scale, H - 44 * scale, 22 * scale); (ctx as any).fill(); (ctx as any).restore();
-
-    const padX = Math.round(42 * scale);
-    const padY = Math.round(38 * scale);
-    const contentW = W - padX * 2;
-    const leftW = Math.round(contentW * 0.62);
-    const rightX = padX + leftW;
-    const family = "Inter, Manrope, Arial, sans-serif";
-
-    const fitText = (text: string, maxWidth: number, weight: number, baseSize: number) => {
-      let size = baseSize;
-      while (size > 10) { (ctx as any).font = `${weight} ${size}px ${family}`; if ((ctx as any).measureText(text).width <= maxWidth) break; size -= 1; }
-      return size;
-    };
-
-    const isStudent = user!.role === "student";
-    const instituteLine = isStudent ? (user!.institute || "") : (user!.department || "");
-    const programOrTitleLine = isStudent ? (user!.program || user!.track || user!.status || "Студент") : (user!.position || user!.status || "");
-    const emailText = (user!.email || "");
-    const tg = (user!.telegram || "");
-
-    const avatarReserve = Math.round(72 * scale);
-    const nameTop = padY + avatarReserve + Math.round(14 * scale);
-
-    let nameSize = fitText(user!.full_name || "", leftW, 700, Math.round(34 * scale));
-    (ctx as any).font = `700 ${nameSize}px ${family}`;
-    (ctx as any).fillStyle = "#111";
-    (ctx as any).textBaseline = "top";
-    (ctx as any).fillText(user!.full_name || "", padX, nameTop);
-
-    let y = nameTop + nameSize + Math.round(8 * scale);
-    const lineHeight = Math.round(18 * scale);
-    const blockGap = Math.round(8 * scale);
-
-    if (isStudent) {
-      (ctx as any).font = `400 ${Math.round(14 * scale)}px ${family}`;
-      if (instituteLine) { (ctx as any).fillStyle = "#666"; (ctx as any).fillText(String(instituteLine), padX, y); y += lineHeight + blockGap; }
-      const progSize = fitText(String(programOrTitleLine || ""), leftW, 400, Math.round(16 * scale));
-      (ctx as any).font = `400 ${progSize}px ${family}`;
-      if (programOrTitleLine) { (ctx as any).fillStyle = "#444"; (ctx as any).fillText(String(programOrTitleLine), padX, y); y += Math.round(progSize + 6) + blockGap; }
-    } else {
-      const titleSize = fitText(String(programOrTitleLine || ""), leftW, 400, Math.round(16 * scale));
-      (ctx as any).font = `400 ${titleSize}px ${family}`;
-      if (programOrTitleLine) { (ctx as any).fillStyle = "#444"; (ctx as any).fillText(String(programOrTitleLine), padX, y); y += Math.round(titleSize + 6) + blockGap; }
-      (ctx as any).font = `400 ${Math.round(14 * scale)}px ${family}`;
-      if (instituteLine) { (ctx as any).fillStyle = "#666"; (ctx as any).fillText(String(instituteLine), padX, y); y += lineHeight + blockGap; }
+  const openQrModal = useCallback(async () => {
+    setQrError(null);
+    setQrUrl(null);
+    setQrOpen(true);
+    try {
+      const qr = await loadQrModule();
+      const dataUrl = await qr.toDataURL(buildVCard(), { width: 280, errorCorrectionLevel: "M" });
+      setQrUrl(dataUrl);
+    } catch {
+      setQrError("Не удалось сгенерировать QR-код. Попробуйте позже.");
     }
+  }, [buildVCard]);
 
-    (ctx as any).fillStyle = "#333";
-    if (emailText) { (ctx as any).fillText(String(emailText), padX, y); y += lineHeight + blockGap; }
-    if (tg) { (ctx as any).fillText(String(tg), padX, y); y += lineHeight + blockGap; }
+  const closeQrModal = useCallback(() => {
+    setQrOpen(false);
+    setQrError(null);
+    setQrUrl(null);
+  }, []);
 
-    const qrSide = Math.round(118 * scale);
-    const qrX = rightX + Math.round((contentW - leftW - qrSide) / 2);
-    const qrY = padY + Math.round(10 * scale);
+  const downloadPdfCard = async () => {
+    if (!user) return;
+    try {
+      const [jsPdfModule, qrMaybe] = await Promise.all([
+        loadJsPdfModule(),
+        loadQrModule().catch(() => null),
+      ]);
+      const { jsPDF } = jsPdfModule;
+      const makeCanvas = (w: number, h: number) => {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d")!;
+        return { c, ctx };
+      };
+      const roundedRect = (
+        ctx: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        r: number
+      ) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      };
 
-    const drawAndSave = () => {
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [cardPt.w, cardPt.h] });
-      const data = (c as HTMLCanvasElement).toDataURL("image/jpeg", 0.95);
-      const pageW = (doc as any).internal.pageSize.getWidth();
-      const pageH = (doc as any).internal.pageSize.getHeight();
-      doc.addImage(data, "JPEG", 0, 0, pageW, pageH);
-      const fname = (user!.full_name || "contact").replace(/\s+/g, "_") + ".pdf";
-      doc.save(fname);
-    };
+      const loadImg = (src: string) =>
+        new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = src;
+        });
 
-    QRCode.toDataURL(buildVCard(), { width: qrSide, margin: 1 })
-      .then((qrData: string) => loadImg(qrData))
-      .then(qrImg => { (ctx as CanvasRenderingContext2D).drawImage(qrImg, qrX, qrY, qrSide, qrSide); })
-      .catch(() => { setSnack({ text: "Не удалось сгенерировать QR — сохраняю без QR", sev: "warning" }); })
-      .then(async () => {
-        const src = getAvatarSrc();
-        if (!src) return null;
+      const fetchAsDataUrl = async (url: string) => {
         try {
-          const dataUrl = await fetchAsDataUrl(src);
-          return await loadImg(dataUrl);
+          const r = await api.get(url, { responseType: "blob", withCredentials: true } as any);
+          const blob: Blob = r.data;
+          return await new Promise<string>((res) => {
+            const fr = new FileReader();
+            fr.onload = () => res(fr.result as string);
+            fr.readAsDataURL(blob);
+          });
         } catch {
-          return null;
+          const r = await fetch(url, { credentials: "include", cache: "no-store" });
+          const blob = await r.blob();
+          return await new Promise<string>((res) => {
+            const fr = new FileReader();
+            fr.onload = () => res(fr.result as string);
+            fr.readAsDataURL(blob);
+          });
         }
-      })
-      .then(img => {
-        const size = avatarReserve;
-        const ax = padX;
-        const ay = padY;
+      };
 
-        if (img) {
-          (ctx as CanvasRenderingContext2D).save();
-          (ctx as CanvasRenderingContext2D).beginPath();
-          (ctx as CanvasRenderingContext2D).arc(ax + size / 2, ay + size / 2, size / 2, 0, Math.PI * 2);
-          (ctx as CanvasRenderingContext2D).closePath();
-          (ctx as CanvasRenderingContext2D).clip();
-          (ctx as CanvasRenderingContext2D).drawImage(img as HTMLImageElement, ax, ay, size, size);
-          (ctx as CanvasRenderingContext2D).restore();
-        } else {
-          (ctx as CanvasRenderingContext2D).save();
-          (ctx as any).fillStyle = "#e5e7eb";
-          (ctx as any).beginPath();
-          (ctx as any).arc(ax + size / 2, ay + size / 2, size / 2, 0, Math.PI * 2);
-          (ctx as any).fill();
-          (ctx as any).fillStyle = "#111827";
-          (ctx as any).font = `700 ${Math.round(size * 0.42)}px Inter, Arial, sans-serif`;
-          (ctx as any).textAlign = "center";
-          (ctx as any).textBaseline = "middle";
-          (ctx as any).fillText((user?.full_name?.[0] || "").toUpperCase(), ax + size / 2, ay + size / 2 + 2);
-          (ctx as CanvasRenderingContext2D).restore();
-        }
+      const cardPt = { w: 360, h: 210 };
+      const scale = 4;
+      const pxPerPt = 96 / 72;
+      const W = Math.round(cardPt.w * scale * pxPerPt);
+      const H = Math.round(cardPt.h * scale * pxPerPt);
 
-        return loadImg((guuLogo as unknown as string)).catch(() => null);
-      })
-      .then(logoImg => {
-        if (logoImg) {
-          const imgEl = logoImg as HTMLImageElement;
-          const natW = imgEl.naturalWidth || imgEl.width || 1;
-          const natH = imgEl.naturalHeight || imgEl.height || 1;
-          const maxW = Math.round((contentW - leftW) * 0.95);
-          const maxH = Math.round(80 * scale);
-          const k = Math.min(maxW / natW, maxH / natH);
-          const lw = Math.max(1, Math.round(natW * k));
-          const lh = Math.max(1, Math.round(natH * k));
-          const safeMargin = Math.round(12 * scale);
-          const lx = rightX + Math.round((contentW - leftW - lw) / 2);
-          const lyTop = padY + Math.round(160 * scale);
-          const ly = Math.min(lyTop, (H - 22 * scale) - lh - safeMargin);
-          (ctx as CanvasRenderingContext2D).drawImage(imgEl, lx, ly, lw, lh);
+      const { c, ctx } = makeCanvas(W, H) as {
+        c: HTMLCanvasElement;
+        ctx: CanvasRenderingContext2D;
+      };
+      (ctx as any).imageSmoothingEnabled = true;
+      (ctx as any).imageSmoothingQuality = "high";
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(1, "#f2f6ff");
+      ctx.fillStyle = g as CanvasGradient;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,.12)";
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 10;
+      ctx.fillStyle = "#ffffff";
+      roundedRect(ctx, 22 * scale, 22 * scale, W - 44 * scale, H - 44 * scale, 22 * scale);
+      ctx.fill();
+      ctx.restore();
+
+      const padX = Math.round(42 * scale);
+      const padY = Math.round(38 * scale);
+      const contentW = W - padX * 2;
+      const leftW = Math.round(contentW * 0.62);
+      const rightX = padX + leftW;
+      const family = "Inter, Manrope, Arial, sans-serif";
+
+      const fitText = (text: string, maxWidth: number, weight: number, baseSize: number) => {
+        let size = baseSize;
+        while (size > 10) {
+          ctx.font = `${weight} ${size}px ${family}`;
+          if (ctx.measureText(text).width <= maxWidth) break;
+          size -= 1;
         }
-      })
-      .finally(() => {
-        try { drawAndSave(); } catch { setSnack({ text: "Ошибка при сохранении PDF", sev: "error" }); }
-      });
+        return size;
+      };
+
+      const isStudent = user.role === "student";
+      const instituteLine = isStudent ? user.institute || "" : user.department || "";
+      const programOrTitleLine = isStudent
+        ? user.program || user.track || user.status || "Студент"
+        : user.position || user.status || "";
+      const emailText = user.email || "";
+      const tg = user.telegram || "";
+
+      const avatarReserve = Math.round(72 * scale);
+      const nameTop = padY + avatarReserve + Math.round(14 * scale);
+
+      const nameSize = fitText(user.full_name || "", leftW, 700, Math.round(34 * scale));
+      ctx.font = `700 ${nameSize}px ${family}`;
+      ctx.fillStyle = "#111";
+      ctx.textBaseline = "top";
+      ctx.fillText(user.full_name || "", padX, nameTop);
+
+      let y = nameTop + nameSize + Math.round(8 * scale);
+      const lineHeight = Math.round(18 * scale);
+      const blockGap = Math.round(8 * scale);
+
+      if (isStudent) {
+        ctx.font = `400 ${Math.round(14 * scale)}px ${family}`;
+        if (instituteLine) {
+          ctx.fillStyle = "#666";
+          ctx.fillText(String(instituteLine), padX, y);
+          y += lineHeight + blockGap;
+        }
+        const progSize = fitText(
+          String(programOrTitleLine || ""),
+          leftW,
+          400,
+          Math.round(16 * scale)
+        );
+        ctx.font = `400 ${progSize}px ${family}`;
+        if (programOrTitleLine) {
+          ctx.fillStyle = "#444";
+          ctx.fillText(String(programOrTitleLine), padX, y);
+          y += Math.round(progSize + 6) + blockGap;
+        }
+      } else {
+        const titleSize = fitText(
+          String(programOrTitleLine || ""),
+          leftW,
+          400,
+          Math.round(16 * scale)
+        );
+        ctx.font = `400 ${titleSize}px ${family}`;
+        if (programOrTitleLine) {
+          ctx.fillStyle = "#444";
+          ctx.fillText(String(programOrTitleLine), padX, y);
+          y += Math.round(titleSize + 6) + blockGap;
+        }
+        ctx.font = `400 ${Math.round(14 * scale)}px ${family}`;
+        if (instituteLine) {
+          ctx.fillStyle = "#666";
+          ctx.fillText(String(instituteLine), padX, y);
+          y += lineHeight + blockGap;
+        }
+      }
+
+      ctx.fillStyle = "#333";
+      if (emailText) {
+        ctx.fillText(String(emailText), padX, y);
+        y += lineHeight + blockGap;
+      }
+      if (tg) {
+        ctx.fillText(String(tg), padX, y);
+        y += lineHeight + blockGap;
+      }
+
+      const qrSide = Math.round(118 * scale);
+      const qrX = rightX + Math.round((contentW - leftW - qrSide) / 2);
+      const qrY = padY + Math.round(10 * scale);
+
+      let qrImg: HTMLImageElement | null = null;
+      if (qrMaybe) {
+        try {
+          const qrData = await qrMaybe.toDataURL(buildVCard(), { width: qrSide, margin: 1 });
+          qrImg = await loadImg(qrData);
+        } catch {
+          setSnack({ text: "Не удалось сгенерировать QR — сохраняю без QR", sev: "warning" });
+        }
+      } else {
+        setSnack({ text: "Не удалось сгенерировать QR — сохраняю без QR", sev: "warning" });
+      }
+
+      if (qrImg) {
+        ctx.drawImage(qrImg, qrX, qrY, qrSide, qrSide);
+      }
+
+      const avatarResolved = resolveMediaUrl(user.avatar_url || "", BACKEND_ORIGIN);
+      const avatarSrc = avatarResolved ? `${avatarResolved}?v=${avatarVersion}` : null;
+      let avatarImg: HTMLImageElement | null = null;
+      if (avatarSrc) {
+        try {
+          const dataUrl = await fetchAsDataUrl(avatarSrc);
+          avatarImg = await loadImg(dataUrl);
+        } catch {
+          avatarImg = null;
+        }
+      }
+
+      const size = avatarReserve;
+      const ax = padX;
+      const ay = padY;
+
+      if (avatarImg) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ax + size / 2, ay + size / 2, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatarImg, ax, ay, size, size);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.fillStyle = "#e5e7eb";
+        ctx.beginPath();
+        ctx.arc(ax + size / 2, ay + size / 2, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#111827";
+        ctx.font = `700 ${Math.round(size * 0.42)}px Inter, Arial, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText((user.full_name?.[0] || "").toUpperCase(), ax + size / 2, ay + size / 2 + 2);
+        ctx.restore();
+      }
+
+      const logoImg = await loadImg(guuLogo as unknown as string).catch(() => null);
+      if (logoImg) {
+        const imgEl = logoImg as HTMLImageElement;
+        const natW = imgEl.naturalWidth || imgEl.width || 1;
+        const natH = imgEl.naturalHeight || imgEl.height || 1;
+        const maxW = Math.round((contentW - leftW) * 0.95);
+        const maxH = Math.round(80 * scale);
+        const k = Math.min(maxW / natW, maxH / natH);
+        const lw = Math.max(1, Math.round(natW * k));
+        const lh = Math.max(1, Math.round(natH * k));
+        const safeMargin = Math.round(12 * scale);
+        const lx = rightX + Math.round((contentW - leftW - lw) / 2);
+        const lyTop = padY + Math.round(160 * scale);
+        const ly = Math.min(lyTop, H - 22 * scale - lh - safeMargin);
+        ctx.drawImage(imgEl, lx, ly, lw, lh);
+      }
+
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [cardPt.w, cardPt.h] });
+      const data = c.toDataURL("image/jpeg", 0.95);
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.addImage(data, "JPEG", 0, 0, pageW, pageH);
+      const fname = (user.full_name || "contact").replace(/\s+/g, "_") + ".pdf";
+      doc.save(fname);
+    } catch (error) {
+      setSnack({ text: "Не удалось подготовить PDF визитку", sev: "error" });
+    }
   };
 
   const telegramHref = useMemo(() => {
@@ -564,7 +730,7 @@ export default function Profile() {
         telegram,
         achievements,
         department,
-        position
+        position,
       });
       setUser(res.data);
       setEdit(false);
@@ -576,7 +742,8 @@ export default function Profile() {
       let message = "Ошибка";
       if (e?.response?.data?.detail) {
         if (typeof e.response.data.detail === "string") message = e.response.data.detail;
-        else if (Array.isArray(e.response.data.detail)) message = e.response.data.detail.map((err: any) => err.msg).join("; ");
+        else if (Array.isArray(e.response.data.detail))
+          message = e.response.data.detail.map((err: any) => err.msg).join("; ");
       }
       setSnack({ text: message, sev: "error" });
     } finally {
@@ -594,13 +761,28 @@ export default function Profile() {
     return isTwoCol ? 168 : 156;
   }, [isMobile, isTwoCol]);
   const avatarSize = `${avatarPx}px`;
-  const avatarBottom = isTwoCol ? `-${Math.round(avatarPx * 0.32)}px` : `-${Math.round(avatarPx * 0.5)}px`;
+  const avatarBottom = isTwoCol
+    ? `-${Math.round(avatarPx * 0.32)}px`
+    : `-${Math.round(avatarPx * 0.5)}px`;
   const mtStacked = `${Math.round(avatarPx * 0.36)}px`;
   const mtRow = `${Math.max(24, Math.round(avatarPx * 0.3))}px`;
 
   return (
     <>
-      <Box sx={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", zIndex: -1, backgroundImage: `linear-gradient(120deg, var(--hero-grad-start), var(--hero-grad-end)), url(${profileBg})`, backgroundRepeat: "no-repeat, repeat", backgroundSize: "cover, 480px", backgroundAttachment: "fixed, fixed" }} />
+      <Box
+        sx={{
+          position: "fixed",
+          left: 0,
+          top: 0,
+          width: "100vw",
+          height: "100vh",
+          zIndex: -1,
+          backgroundImage: `linear-gradient(120deg, var(--hero-grad-start), var(--hero-grad-end)), url(${profileBg})`,
+          backgroundRepeat: "no-repeat, repeat",
+          backgroundSize: "cover, 480px",
+          backgroundAttachment: "fixed, fixed",
+        }}
+      />
       <Box maxWidth="100vw" mx="auto" mt={0} width="100vw" minHeight="100svh" px={0}>
         <Paper
           ref={containerRef}
@@ -615,7 +797,7 @@ export default function Profile() {
             alignItems: { xs: "stretch", md: isTwoCol ? "flex-start" : "stretch" },
             rowGap: { xs: 2, md: 2 },
             columnGap: { xs: 2, sm: 2, md: 3, lg: 3, xl: 3 },
-            position: "relative"
+            position: "relative",
           }}
         >
           <Box
@@ -635,18 +817,38 @@ export default function Profile() {
                   borderRadius: { xs: 2, sm: 2.3, md: 3 },
                   mb: 0,
                   boxShadow: "var(--shadow-2)",
-                  overflow: "visible"
+                  overflow: "visible",
                 }}
               >
-                <Box sx={{ position: "absolute", inset: 0, background: `url(${getCoverSrc()}?v=${coverVersion}) center/cover no-repeat`, transform: `translateY(${coverParallax}px) scale(${coverScale})`, transition: reduceMotion ? "none" : "transform var(--anim-med)", borderRadius: { xs: 2, sm: 2.3, md: 3 } }} />
-                <Box sx={{ position: "absolute", inset: 0, borderRadius: { xs: 2, sm: 2.3, md: 3 }, background: "linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.28) 100%)", pointerEvents: "none" }} />
+                <Box
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    background: `url(${getCoverSrc()}?v=${coverVersion}) center/cover no-repeat`,
+                    transform: `translateY(${coverParallax}px) scale(${coverScale})`,
+                    transition: reduceMotion ? "none" : "transform var(--anim-med)",
+                    borderRadius: { xs: 2, sm: 2.3, md: 3 },
+                  }}
+                />
+                <Box
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: { xs: 2, sm: 2.3, md: 3 },
+                    background: "linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.28) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
               </Box>
 
               <Box
                 sx={{
                   position: "absolute",
                   left: { xs: "50%", md: isTwoCol ? 28 : "50%" },
-                  transform: { xs: "translateX(-50%)", md: isTwoCol ? "none" : "translateX(-50%)" } as any,
+                  transform: {
+                    xs: "translateX(-50%)",
+                    md: isTwoCol ? "none" : "translateX(-50%)",
+                  } as any,
                   bottom: avatarBottom,
                   width: avatarSize,
                   height: avatarSize,
@@ -654,12 +856,24 @@ export default function Profile() {
                   p: 0,
                   background: "transparent",
                   boxShadow: "0 12px 36px rgba(0,0,0,.22)",
-                  zIndex: 2
+                  zIndex: 2,
                 }}
               >
-                <Box sx={{ width: "100%", height: "100%", borderRadius: "50%", p: "6px", background: "var(--card-bg)" }}>
+                <Box
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "50%",
+                    p: "6px",
+                    background: "var(--card-bg)",
+                  }}
+                >
                   <Box>
-                    <Avatar src={getAvatarSrc()} alt={user?.full_name} sx={{ width: "100%", height: "100%", fontSize: "clamp(28px, 6vw, 62px)" }}>
+                    <Avatar
+                      src={getAvatarSrc()}
+                      alt={user?.full_name}
+                      sx={{ width: "100%", height: "100%", fontSize: "clamp(28px, 6vw, 62px)" }}
+                    >
                       {user?.full_name?.[0]}
                     </Avatar>
                   </Box>
@@ -675,38 +889,138 @@ export default function Profile() {
             flexDirection="column"
             justifyContent="flex-start"
             mt={{ xs: mtStacked, md: 0 }}
-            sx={{ maxWidth: 1200, mx: { xs: "auto", md: 0 }, width: "100%", position: "relative", zIndex: 1, ml: { xl: -10 }, alignSelf: { md: "flex-start" } }}
+            sx={{
+              maxWidth: 1200,
+              mx: { xs: "auto", md: 0 },
+              width: "100%",
+              position: "relative",
+              zIndex: 1,
+              ml: { xl: -10 },
+              alignSelf: { md: "flex-start" },
+            }}
           >
             {edit ? (
               <Box sx={{ maxWidth: 760, mx: "auto", width: "100%" }} className="profile-edit">
                 <Stack spacing={2}>
-                  <TextField label="Имя" value={fullName} onChange={e => setFullName(e.target.value)} fullWidth inputProps={{ maxLength: 120 }} />
-                  <TextField label="Email" value={email} onChange={e => setEmail(e.target.value)} fullWidth type="email" />
-                  <TextField label="Telegram" value={telegram} onChange={e => setTelegram(e.target.value)} fullWidth helperText="Можно ввести @username или ссылку" />
+                  <TextField
+                    label="Имя"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    fullWidth
+                    inputProps={{ maxLength: 120 }}
+                  />
+                  <TextField
+                    label="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    fullWidth
+                    type="email"
+                  />
+                  <TextField
+                    label="Telegram"
+                    value={telegram}
+                    onChange={(e) => setTelegram(e.target.value)}
+                    fullWidth
+                    helperText="Можно ввести @username или ссылку"
+                  />
                   {user!.role === "teacher" && (
                     <>
-                      <TextField label="Кафедра/отдел" value={department} onChange={e => setDepartment(e.target.value)} fullWidth />
-                      <TextField label="Должность" value={position} onChange={e => setPosition(e.target.value)} fullWidth />
+                      <TextField
+                        label="Кафедра/отдел"
+                        value={department}
+                        onChange={(e) => setDepartment(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Должность"
+                        value={position}
+                        onChange={(e) => setPosition(e.target.value)}
+                        fullWidth
+                      />
                     </>
                   )}
                   {user!.role === "student" && (
                     <>
-                      <TextField label="О себе" value={about} onChange={e => setAbout(e.target.value)} fullWidth multiline minRows={3} />
-                      <TextField label="Номер зачётной книжки" value={recordBookNumber} onChange={e => setRecordBookNumber(e.target.value)} fullWidth />
-                      <TextField label="Статус" value={status} onChange={e => setStatus(e.target.value)} fullWidth />
-                      <TextField label="Институт" value={institute} onChange={e => setInstitute(e.target.value)} fullWidth />
-                      <TextField label="Курс" value={course} onChange={e => setCourse(e.target.value)} fullWidth />
-                      <TextField label="Уровень образования" value={educationLevel} onChange={e => setEducationLevel(e.target.value)} fullWidth />
-                      <TextField label="Направление" value={track} onChange={e => setTrack(e.target.value)} fullWidth />
-                      <TextField label="Образовательная программа" value={program} onChange={e => setProgram(e.target.value)} fullWidth />
-                      <TextField label="Достижения" value={achievements} onChange={e => setAchievements(e.target.value)} fullWidth multiline minRows={2} />
+                      <TextField
+                        label="О себе"
+                        value={about}
+                        onChange={(e) => setAbout(e.target.value)}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                      />
+                      <TextField
+                        label="Номер зачётной книжки"
+                        value={recordBookNumber}
+                        onChange={(e) => setRecordBookNumber(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Статус"
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Институт"
+                        value={institute}
+                        onChange={(e) => setInstitute(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Курс"
+                        value={course}
+                        onChange={(e) => setCourse(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Уровень образования"
+                        value={educationLevel}
+                        onChange={(e) => setEducationLevel(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Направление"
+                        value={track}
+                        onChange={(e) => setTrack(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Образовательная программа"
+                        value={program}
+                        onChange={(e) => setProgram(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Достижения"
+                        value={achievements}
+                        onChange={(e) => setAchievements(e.target.value)}
+                        fullWidth
+                        multiline
+                        minRows={2}
+                      />
                     </>
                   )}
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ alignItems: { xs: "stretch", sm: "center" } }}>
-                    <Button onClick={handleSave} variant="contained" disabled={saving} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={2}
+                    sx={{ alignItems: { xs: "stretch", sm: "center" } }}
+                  >
+                    <Button
+                      onClick={handleSave}
+                      variant="contained"
+                      disabled={saving}
+                      sx={{ width: { xs: "100%", sm: "auto" } }}
+                    >
                       {saving ? "СОХРАНЯЕМ..." : "СОХРАНИТЬ"}
                     </Button>
-                    <Button onClick={handleCancel} variant="outlined" sx={{ width: { xs: "100%", sm: "auto" } }}>ОТМЕНА</Button>
+                    <Button
+                      onClick={handleCancel}
+                      variant="outlined"
+                      sx={{ width: { xs: "100%", sm: "auto" } }}
+                    >
+                      ОТМЕНА
+                    </Button>
                   </Stack>
                 </Stack>
               </Box>
@@ -729,10 +1043,10 @@ export default function Profile() {
                          "chips chips"
                          "np    acts"
                          "links links"
-                         "info  info"`
+                         "info  info"`,
                   },
                   columnGap: { xs: 1, md: 1.2 },
-                  rowGap: { xs: 1, md: 1.1 }
+                  rowGap: { xs: 1, md: 1.1 },
                 }}
               >
                 <Typography
@@ -740,7 +1054,13 @@ export default function Profile() {
                   fontWeight={800}
                   fontSize="clamp(1.28rem, 3vw, 2.5rem)"
                   className="profile-name"
-                  sx={{ gridArea: "name", textAlign: { xs: "center", md: "left" }, lineHeight: 1.15, mt: { xs: 0.25, md: 0 }, mb: 0.3 }}
+                  sx={{
+                    gridArea: "name",
+                    textAlign: { xs: "center", md: "left" },
+                    lineHeight: 1.15,
+                    mt: { xs: 0.25, md: 0 },
+                    mb: 0.3,
+                  }}
                 >
                   {user!.full_name}
                 </Typography>
@@ -750,11 +1070,29 @@ export default function Profile() {
                   spacing={1}
                   useFlexGap
                   flexWrap="wrap"
-                  sx={{ gridArea: "chips", mb: 1.1, justifyContent: { xs: "center", md: "flex-start" } }}
+                  sx={{
+                    gridArea: "chips",
+                    mb: 1.1,
+                    justifyContent: { xs: "center", md: "flex-start" },
+                  }}
                 >
-                  <Chip size="small" className="glass--chip" label={user!.role === "teacher" ? "Преподаватель" : user!.role === "student" ? "Студент" : "Администратор"} />
-                  {!!user!.course && user!.role === "student" && <Chip size="small" className="glass--chip" label={`Курс ${user!.course}`} />}
-                  {!!user!.institute && <Chip size="small" className="glass--chip" label={user!.institute} />}
+                  <Chip
+                    size="small"
+                    className="glass--chip"
+                    label={
+                      user!.role === "teacher"
+                        ? "Преподаватель"
+                        : user!.role === "student"
+                          ? "Студент"
+                          : "Администратор"
+                    }
+                  />
+                  {!!user!.course && user!.role === "student" && (
+                    <Chip size="small" className="glass--chip" label={`Курс ${user!.course}`} />
+                  )}
+                  {!!user!.institute && (
+                    <Chip size="small" className="glass--chip" label={user!.institute} />
+                  )}
                 </Stack>
 
                 <Box sx={{ gridArea: "np" }}>
@@ -768,17 +1106,32 @@ export default function Profile() {
                   alignItems={{ xs: "stretch", md: "stretch" }}
                   justifyContent={{ xs: "center", md: "flex-start" }}
                 >
-                  <Button size="small" variant="outlined" onClick={openQrModal} sx={{ width: { xs: "50%", sm: "auto" } }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={openQrModal}
+                    sx={{ width: { xs: "50%", sm: "auto" } }}
+                  >
                     Показать QR
                   </Button>
-                  <Button size="small" variant="outlined" onClick={downloadPdfCard} sx={{ width: { xs: "50%", sm: "auto" } }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={downloadPdfCard}
+                    sx={{ width: { xs: "50%", sm: "auto" } }}
+                  >
                     PDF визитка
                   </Button>
                 </Stack>
 
                 <Stack
                   className="contact-links"
-                  sx={{ gridArea: "links", textAlign: { xs: "center", md: "left" }, mt: 0.3, mb: 1.8 }}
+                  sx={{
+                    gridArea: "links",
+                    textAlign: { xs: "center", md: "left" },
+                    mt: 0.3,
+                    mb: 1.8,
+                  }}
                   direction={{ xs: "column", md: "row" }}
                   alignItems={{ xs: "center", md: "center" }}
                   spacing={2}
@@ -789,7 +1142,11 @@ export default function Profile() {
                       <a href={`mailto:${user!.email}`}>{user!.email}</a>
                     </Typography>
                     <Tooltip title="Скопировать email">
-                      <IconButton size="small" onClick={(e) => copy(user!.email, e)} aria-label="Скопировать email">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => copy(user!.email, e)}
+                        aria-label="Скопировать email"
+                      >
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -799,10 +1156,16 @@ export default function Profile() {
                     <Stack direction="row" alignItems="center" spacing={1.2}>
                       <TelegramIcon color="primary" aria-hidden />
                       <Typography sx={{ fontWeight: 600 }}>
-                        <a href={telegramHref} target="_blank" rel="noreferrer">{user!.telegram}</a>
+                        <a href={telegramHref} target="_blank" rel="noreferrer">
+                          {user!.telegram}
+                        </a>
                       </Typography>
                       <Tooltip title="Скопировать ник">
-                        <IconButton size="small" onClick={(e) => copy(user!.telegram!, e)} aria-label="Скопировать ник в Telegram">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => copy(user!.telegram!, e)}
+                          aria-label="Скопировать ник в Telegram"
+                        >
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -812,38 +1175,203 @@ export default function Profile() {
 
                 <Accordion
                   disableGutters
-                  sx={{ gridArea: "info", background: "var(--card-bg)", borderRadius: 2, boxShadow: "var(--shadow-1)", width: "100%" }}
+                  sx={{
+                    gridArea: "info",
+                    background: "var(--card-bg)",
+                    borderRadius: 2,
+                    boxShadow: "var(--shadow-1)",
+                    width: "100%",
+                  }}
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 1.5 }}>
-                    <Typography fontWeight={800} sx={{ textAlign: { xs: "center", md: "left" }, width: "100%" }}>
+                    <Typography
+                      fontWeight={800}
+                      sx={{ textAlign: { xs: "center", md: "left" }, width: "100%" }}
+                    >
                       Сведения
                     </Typography>
                   </AccordionSummary>
                   <AccordionDetails>
                     <List sx={{ pl: 0 }}>
-                      {!!user!.about && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>О себе:</b> {user!.about}</span>} /></ListItem>)}
-                      {!!user!.status && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Статус:</b> {user!.status}</span>} /></ListItem>)}
-                      {!!user!.record_book_number && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Номер зачётной книжки:</b> {user!.record_book_number}</span>} /></ListItem>)}
-                      {!!user!.education_level && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Уровень образования:</b> {user!.education_level}</span>} /></ListItem>)}
-                      {!!user!.track && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Направление:</b> {user!.track}</span>} /></ListItem>)}
-                      {!!user!.program && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Образовательная программа:</b> {user!.program}</span>} /></ListItem>)}
-                      {!!user!.department && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Кафедра/отдел:</b> {user!.department}</span>} /></ListItem>)}
-                      {!!user!.position && (<ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}><ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon><ListItemText primary={<span><b>Должность:</b> {user!.position}</span>} /></ListItem>)}
+                      {!!user!.about && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>О себе:</b> {user!.about}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.status && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Статус:</b> {user!.status}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.record_book_number && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Номер зачётной книжки:</b> {user!.record_book_number}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.education_level && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Уровень образования:</b> {user!.education_level}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.track && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Направление:</b> {user!.track}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.program && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Образовательная программа:</b> {user!.program}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.department && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Кафедра/отдел:</b> {user!.department}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.position && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Должность:</b> {user!.position}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
                       {!!user!.achievements && (
                         <>
-                          <ListItem sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}>
-                            <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}><FiberManualRecordIcon fontSize="small" /></ListItemIcon>
-                            <ListItemText primary={<span><b>Достижения:</b></span>} />
+                          <ListItem
+                            sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                          >
+                            <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                              <FiberManualRecordIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={
+                                <span>
+                                  <b>Достижения:</b>
+                                </span>
+                              }
+                            />
                           </ListItem>
-                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ pl: 0, mt: 0.5, justifyContent: { xs: "center", md: "flex-start" } }}>
-                            {String(user!.achievements || "").split(/[,;\n]/).map((str, i) => {
-                              const raw = String(str || "").trim();
-                              if (!raw) return null;
-                              const [name, issuer, date, url] = raw.split("|").map(s => s.trim());
-                              return (
-                                <Chip key={i} className="chip-gradient" label={name} clickable onClick={() => setAchOpen({ name, issuer, date, url })} sx={{ "& .MuiChip-label": { whiteSpace: "normal", display: "block" } }} />
-                              );
-                            })}
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            useFlexGap
+                            flexWrap="wrap"
+                            sx={{
+                              pl: 0,
+                              mt: 0.5,
+                              justifyContent: { xs: "center", md: "flex-start" },
+                            }}
+                          >
+                            {String(user!.achievements || "")
+                              .split(/[,;\n]/)
+                              .map((str, i) => {
+                                const raw = String(str || "").trim();
+                                if (!raw) return null;
+                                const [name, issuer, date, url] = raw
+                                  .split("|")
+                                  .map((s) => s.trim());
+                                return (
+                                  <Chip
+                                    key={i}
+                                    className="chip-gradient"
+                                    label={name}
+                                    clickable
+                                    onClick={() => setAchOpen({ name, issuer, date, url })}
+                                    sx={{
+                                      "& .MuiChip-label": {
+                                        whiteSpace: "normal",
+                                        display: "block",
+                                      },
+                                    }}
+                                  />
+                                );
+                              })}
                           </Stack>
                         </>
                       )}
@@ -854,27 +1382,59 @@ export default function Profile() {
             )}
           </Box>
 
-          <canvas ref={confettiRef} style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }} />
+          <canvas
+            ref={confettiRef}
+            style={{
+              position: "fixed",
+              left: 0,
+              top: 0,
+              width: "100vw",
+              height: "100vh",
+              pointerEvents: "none",
+              zIndex: 2147483000,
+            }}
+          />
         </Paper>
 
-        <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
+        <Dialog open={qrOpen} onClose={closeQrModal} maxWidth="xs" fullWidth>
           <DialogTitle>QR визитки</DialogTitle>
-          <DialogContent sx={{ display: "grid", placeItems: "center" }}>
-            {qrUrl ? <img src={qrUrl} alt="QR" style={{ width: 280, height: 280 }} /> : <Typography>Установите пакет qrcode или скачайте .vcf</Typography>}
+          <DialogContent
+            sx={{ display: "grid", placeItems: "center", minHeight: 280 }}
+            role="status"
+            aria-live="polite"
+          >
+            {qrUrl && <img src={qrUrl} alt="QR-код визитки" style={{ width: 280, height: 280 }} />}
+            {!qrUrl && !qrError && <CircularProgress aria-label="Генерация QR-кода" />}
+            {!!qrError && (
+              <Typography role="alert" sx={{ textAlign: "center" }}>
+                {qrError}
+              </Typography>
+            )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setQrOpen(false)}>Готово</Button>
+            <Button onClick={closeQrModal}>Готово</Button>
           </DialogActions>
         </Dialog>
 
         <Dialog open={!!achOpen} onClose={() => setAchOpen(null)} maxWidth="sm" fullWidth>
           <DialogTitle>{achOpen?.name}</DialogTitle>
           <DialogContent>
-            {!!achOpen?.issuer && <Typography sx={{ mb: 1 }}><b>Выдано:</b> {achOpen.issuer}</Typography>}
-            {!!achOpen?.date && <Typography sx={{ mb: 1 }}><b>Дата:</b> {achOpen.date}</Typography>}
+            {!!achOpen?.issuer && (
+              <Typography sx={{ mb: 1 }}>
+                <b>Выдано:</b> {achOpen.issuer}
+              </Typography>
+            )}
+            {!!achOpen?.date && (
+              <Typography sx={{ mb: 1 }}>
+                <b>Дата:</b> {achOpen.date}
+              </Typography>
+            )}
             {!!achOpen?.url && (
               <Typography sx={{ mb: 1 }}>
-                <b>Подтверждение:</b> <a href={achOpen.url} target="_blank" rel="noreferrer">{achOpen.url}</a>
+                <b>Подтверждение:</b>{" "}
+                <a href={achOpen.url} target="_blank" rel="noreferrer">
+                  {achOpen.url}
+                </a>
               </Typography>
             )}
           </DialogContent>
@@ -883,8 +1443,18 @@ export default function Profile() {
           </DialogActions>
         </Dialog>
 
-        <Snackbar open={!!snack} autoHideDuration={2600} onClose={() => setSnack(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
-          <Alert onClose={() => setSnack(null)} severity={snack?.sev || "info"} variant="filled" sx={{ width: "100%" }}>
+        <Snackbar
+          open={!!snack}
+          autoHideDuration={2600}
+          onClose={() => setSnack(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert
+            onClose={() => setSnack(null)}
+            severity={snack?.sev || "info"}
+            variant="filled"
+            sx={{ width: "100%" }}
+          >
             {snack?.text}
           </Alert>
         </Snackbar>
@@ -897,11 +1467,16 @@ export default function Profile() {
               "@type": "Person",
               name: user?.full_name || "",
               email: user?.email || "",
-              jobTitle: user?.role === "teacher" ? (user?.position || "") : (user?.role === "student" ? "Student" : "Administrator"),
+              jobTitle:
+                user?.role === "teacher"
+                  ? user?.position || ""
+                  : user?.role === "student"
+                    ? "Student"
+                    : "Administrator",
               affiliation: user?.institute || user?.department || "",
               url: typeof window !== "undefined" ? window.location.href : "",
-              image: getAvatarSrc() || ""
-            })
+              image: getAvatarSrc() || "",
+            }),
           }}
         />
       </Box>
