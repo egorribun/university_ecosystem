@@ -1,9 +1,27 @@
 <!DOCTYPE html>
 <html lang="ru">
   <head>
+    <script>
+      (function () {
+        var s = null;
+        try { s = localStorage.getItem("theme"); } catch (e) {}
+        var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var dark = s ? s === "dark" : m;
+        var bg = dark ? "#0b0d11" : "#f4f8fd";
+        var html = document.documentElement;
+        html.style.backgroundColor = bg;
+        if (dark) html.classList.add("dark");
+        document.addEventListener("DOMContentLoaded", function () {
+          document.body.style.backgroundColor = bg;
+          document.body.classList.toggle("dark", dark);
+          var r = document.getElementById("root");
+          if (r) r.style.backgroundColor = bg;
+        });
+      })();
+    </script>
     <style>
       html, body, #root { min-height: 100vh; min-height: 100svh; min-height: 100dvh; height: auto }
-      body { margin: 0; background: var(--page-bg, #f3f6fa); overscroll-behavior-y: none }
+      body { margin: 0; background: inherit; overscroll-behavior-y: none }
       #root { background: inherit }
       * { scrollbar-width: none; -ms-overflow-style: none }
       *::-webkit-scrollbar { display: none; width: 0; height: 0 }
@@ -12,8 +30,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f6fa" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f15" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f8fd" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d11" />
     <meta name="description" content="Экосистема ГУУ — профиль, расписание, новости и события." />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Экосистема ГУУ" />
@@ -27,7 +45,6 @@
     <meta name="twitter:image" content="/og-image.png" />
     <title>Экосистема ГУУ</title>
     <link rel="icon" type="image/png" href="/guu_logo.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Oxygen:wght@300;400;700&family=Varela&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />

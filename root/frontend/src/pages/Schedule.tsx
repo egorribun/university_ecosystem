@@ -144,7 +144,6 @@ export default function Schedule() {
   const mainAlignSx = { ml: { xs: 0, sm: 2, md: 3, lg: 6 }, mr: { xs: 0, sm: 2, md: 3, lg: 6 } }
   const todayIdx = getTodayIdx()
   const hasToday = todayIdx >= 0 && todayIdx < days.length
-  const activeDay: (typeof days)[number] | undefined = hasToday ? days[todayIdx as number] : undefined
   const [nowTick, setNowTick] = useState(dayjs())
   useEffect(() => {
     const id = setInterval(() => setNowTick(dayjs()), 30000)
@@ -218,11 +217,11 @@ export default function Schedule() {
   )
 
   const todayLessons = useMemo(() => {
-    if (!activeDay) return []
+    if (!hasToday) return []
     return filteredSchedule
-      .filter(l => l.weekday === activeDay)
+      .filter(l => l.weekday === days[todayIdx])
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
-  }, [filteredSchedule, activeDay])
+  }, [filteredSchedule, hasToday, todayIdx])
 
   const currentLesson = useMemo(() => {
     if (!hasToday) return null
@@ -528,7 +527,7 @@ export default function Schedule() {
                 <TableCell
                   align="center"
                   key={day}
-                  ref={(el: HTMLTableCellElement | null) => { headRefs.current[idx] = el }}
+                  ref={el => { headRefs.current[idx] = el }}
                   sx={{
                     fontWeight: 700,
                     background: hasToday && idx === todayIdx ? "var(--table-row-today)" : "var(--table-header-bg)",

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, memo, useCallback } from "react";
-import { Badge, Box, Button, Divider, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Popover, Stack, Typography, Avatar, Tooltip, Skeleton } from "@mui/material";
+import { Badge, Box, Button, CircularProgress, Divider, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Popover, Stack, Typography, Avatar, Tooltip } from "@mui/material";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
@@ -147,19 +147,7 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
 
   const content = useMemo(() => {
     if (loading && !items.length) {
-      return (
-        <Stack spacing={1.6} sx={{ py: 2.5, px: 1.6 }} role="status" aria-live="polite">
-          {Array.from({ length: 4 }).map((_, idx) => (
-            <Stack key={idx} direction="row" spacing={1.4} alignItems="flex-start">
-              <Skeleton variant="circular" width={32} height={32} />
-              <Box sx={{ flex: 1 }}>
-                <Skeleton variant="text" height={20} width={idx % 2 === 0 ? "94%" : "82%"} />
-                <Skeleton variant="text" height={16} width={idx % 2 === 0 ? "72%" : "64%"} sx={{ mt: 0.4 }} />
-              </Box>
-            </Stack>
-          ))}
-        </Stack>
-      );
+      return <Stack alignItems="center" justifyContent="center" sx={{ py: 3 }}><CircularProgress size={26} /></Stack>;
     }
     if (items.length === 0) {
       return (
@@ -179,10 +167,7 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
         {(hasMore || loadingMore) && (
           <Box sx={{ p: 1.2 }}>
             {loadingMore ? (
-              <Stack spacing={0.8} sx={{ py: 1 }}>
-                <Skeleton variant="text" height={18} width="60%" />
-                <Skeleton variant="text" height={18} width="48%" />
-              </Stack>
+              <Stack alignItems="center" sx={{ py: 1 }}><CircularProgress size={22} /></Stack>
             ) : (
               <Button fullWidth variant="outlined" onClick={loadMore} aria-busy={loadingMore}>Показать ещё</Button>
             )}

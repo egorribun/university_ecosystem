@@ -1,7 +1,5 @@
 import { useEffect, useRef, useCallback } from "react"
 
-type ReminderNotificationOptions = NotificationOptions & { renotify?: boolean }
-
 export type RemindItem = {
   id: string | number
   title: string
@@ -61,15 +59,7 @@ export function useClassReminders(items: RemindItem[] | undefined, opts?: { defa
         try {
           const reg = await navigator.serviceWorker?.getRegistration()
           if (reg && "showNotification" in reg) {
-            const options: ReminderNotificationOptions = {
-              body,
-              tag,
-              renotify: true,
-              data,
-              icon: "/guu_logo.png",
-              badge: "/guu_logo.png",
-            }
-            await reg.showNotification(title, options)
+            await reg.showNotification(title, { body, tag, renotify: true, data, icon: "/icons/icon-192.png", badge: "/icons/badge-72.png" })
           } else {
             const n = new Notification(title, { body, tag, data })
             n.onclick = () => openUrl(data.url)

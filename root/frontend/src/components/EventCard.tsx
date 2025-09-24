@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect, type MouseEvent as ReactMouseEvent, type SyntheticEvent } from "react"
+import { FC, useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "../api/axios"
 import {
@@ -503,17 +503,15 @@ const EventCard: FC<EventCardProps> = ({
                 keepMounted
                 disableScrollLock
                 transitionDuration={{ enter: 0, exit: 0 }}
-                onClose={(event: SyntheticEvent, reason) => {
+                onClose={(e, reason) => {
                   if (reason === "backdropClick") {
-                    if ("stopPropagation" in event && typeof (event as any).stopPropagation === "function") {
-                      (event as any).stopPropagation()
-                    }
+                    e?.stopPropagation?.()
                     setSkipNextClick(true)
                   }
                   setQrOpen(false)
                 }}
                 PaperProps={{
-                  onClick: (e: ReactMouseEvent<HTMLDivElement>) => e.stopPropagation(),
+                  onClick: (e) => e.stopPropagation(),
                   sx: { borderRadius: 2, p: 2 }
                 }}
                 BackdropProps={{ sx: { backdropFilter: "blur(2px)" } }}
