@@ -5,7 +5,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx",
+    "lint:all": "eslint \"src/**/*.{ts,tsx}\"",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "prettier --write src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx vite.config.ts",
+    "format:check": "prettier --check src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "analyze": "ANALYZE=1 vite build"
   },
   "keywords": [],
   "author": "",
@@ -19,14 +27,10 @@
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "@mui/x-date-pickers": "^8.5.0",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
-    "@types/zxcvbn": "^4.4.5",
     "axios": "^1.8.4",
     "dayjs": "^1.11.13",
     "framer-motion": "^12.23.13",
     "jspdf": "^3.0.2",
-    "motion": "^12.0.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -35,9 +39,22 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/zxcvbn": "^4.4.5",
     "@vitejs/plugin-react": "^4.4.0",
+    "@eslint/js": "^9.12.0",
+    "eslint": "^9.12.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-jsx-a11y": "^6.9.0",
+    "eslint-plugin-react": "^7.36.1",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "prettier": "^3.3.3",
+    "rollup-plugin-visualizer": "^5.12.0",
     "typescript": "^5.8.3",
-    "vite": "^6.3.1"
+    "typescript-eslint": "^8.12.1",
+    "vite": "^6.3.1",
+    "vitest": "^2.1.5"
   },
   "description": ""
 }
