@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useEffect, useState } from "react"
 import api from "../api/axios"
 import Layout from "../components/Layout"

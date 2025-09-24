@@ -2,8 +2,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import api from '../api/axios'
 import {
-  Box, Typography, Paper, CircularProgress, Stack, IconButton, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Button, useMediaQuery, Snackbar
+  Box, Typography, Paper, Stack, IconButton, TextField,
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Button, useMediaQuery, Snackbar, Skeleton
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -163,9 +163,34 @@ const NewsDetail = () => {
   if (loading) {
     return (
       <Layout>
-        <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
-          <CircularProgress />
-        </Box>
+        <Paper
+          elevation={0}
+          sx={{
+            width: "100vw",
+            minHeight: "calc(100vh - 56px)",
+            bgcolor: "background.paper",
+            borderRadius: 0,
+            boxShadow: "none",
+            display: "flex",
+            flexDirection: "column",
+            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
+            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
+            py: { xs: 2, sm: 2, md: 2, lg: 2 },
+            boxSizing: "border-box"
+          }}
+        >
+          <Skeleton variant="rounded" width={140} height={44} sx={{ mb: 3, maxWidth: 220 }} />
+          <Stack spacing={3} sx={{ flex: 1 }}>
+            <Skeleton variant="text" width="72%" height={52} />
+            <Skeleton variant="rounded" height={240} sx={{ borderRadius: 3 }} />
+            <Stack spacing={1.4}>
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <Skeleton key={idx} variant="text" height={28} width={idx % 2 === 0 ? "100%" : "86%"} />
+              ))}
+            </Stack>
+            <Skeleton variant="rounded" height={56} sx={{ borderRadius: 2, width: { xs: "100%", sm: "60%", md: "48%" } }} />
+          </Stack>
+        </Paper>
       </Layout>
     )
   }

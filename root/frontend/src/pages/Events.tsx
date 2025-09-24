@@ -20,7 +20,7 @@ const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
 const tabs = [
   { key: "active", label: "Актуальные", is_active: true },
   { key: "archive", label: "Архив", is_active: false },
-  { key: "my", label: "Мои события" },
+  { key: "my", label: "Мои события", is_active: undefined },
 ] as const
 
 const initialEvent = {
