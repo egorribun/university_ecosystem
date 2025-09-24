@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Экосистема ГУУ — офлайн</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+        background: #f4f8fd;
+        color: #0b0d11;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #0b0d11;
+          color: #f4f8fd;
+        }
+      }
+      main {
+        max-width: 32rem;
+        padding: 2.5rem 2rem;
+        text-align: center;
+      }
+      h1 {
+        font-size: clamp(1.75rem, 3vw, 2.25rem);
+        margin-bottom: 1rem;
+      }
+      p {
+        margin: 0 auto 1.5rem;
+        line-height: 1.6;
+        opacity: 0.8;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+        font-weight: 600;
+        border-bottom: 1px solid currentColor;
+      }
+      button {
+        font: inherit;
+        padding: 0.75rem 1.5rem;
+        border-radius: 999px;
+        border: none;
+        cursor: pointer;
+        background: #0b63f4;
+        color: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        button {
+          background: #4c8dff;
+          color: #0b0d11;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Нет подключения к сети</h1>
+      <p>
+        Похоже, что вы офлайн. Проверьте подключение к интернету и
+        попробуйте снова открыть приложение.
+      </p>
+      <button type="button" onclick="window.location.reload()">Повторить попытку</button>
+      <p style="margin-top:2rem; font-size:0.875rem; opacity:0.6;">
+        Экосистема ГУУ продолжит работать, как только появится соединение.
+      </p>
+    </main>
+  </body>
+</html>

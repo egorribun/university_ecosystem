@@ -1,4 +1,13 @@
-import { FC, useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react"
+import {
+  FC,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  useLayoutEffect,
+  type MouseEvent as ReactMouseEvent,
+} from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "../api/axios"
 import {
@@ -6,6 +15,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   IconButton, Menu, MenuItem, useMediaQuery, Tooltip, Snackbar
 } from "@mui/material"
+import type { DialogProps } from "@mui/material/Dialog"
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
 import PlaceIcon from "@mui/icons-material/Place"
 import EventIcon from "@mui/icons-material/Event"
@@ -503,15 +513,22 @@ const EventCard: FC<EventCardProps> = ({
                 keepMounted
                 disableScrollLock
                 transitionDuration={{ enter: 0, exit: 0 }}
-                onClose={(e, reason) => {
+                onClose={((event, reason) => {
                   if (reason === "backdropClick") {
-                    e?.stopPropagation?.()
+                    if (
+                      event &&
+                      typeof event === "object" &&
+                      "stopPropagation" in event &&
+                      typeof (event as { stopPropagation?: () => void }).stopPropagation === "function"
+                    ) {
+                      (event as { stopPropagation?: () => void }).stopPropagation?.()
+                    }
                     setSkipNextClick(true)
                   }
                   setQrOpen(false)
-                }}
+                }) as DialogProps["onClose"]}
                 PaperProps={{
-                  onClick: (e) => e.stopPropagation(),
+                  onClick: (event: ReactMouseEvent<HTMLDivElement>) => event.stopPropagation(),
                   sx: { borderRadius: 2, p: 2 }
                 }}
                 BackdropProps={{ sx: { backdropFilter: "blur(2px)" } }}

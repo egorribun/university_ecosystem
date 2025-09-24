@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, type ReactElement } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -29,13 +29,15 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Settings = lazy(() => import("./pages/Settings"));
 
-function PrivateRoute({ children }) {
+type RouteGuardProps = { children: ReactElement };
+
+function PrivateRoute({ children }: RouteGuardProps) {
   const { isAuth, loading } = useAuth();
   if (loading) return null;
   return isAuth ? children : <Navigate to="/login" />;
 }
 
-function AdminRoute({ children }) {
+function AdminRoute({ children }: RouteGuardProps) {
   const { isAuth, user, loading } = useAuth();
   if (loading) return null;
   if (!isAuth) return <Navigate to="/login" />;
@@ -55,7 +57,7 @@ function AppContent() {
     location.pathname.startsWith("/reset-password");
 
   useEffect(() => {
-    registerServiceWorker();
+    void registerServiceWorker();
   }, []);
 
   useEffect(() => {
@@ -73,7 +75,7 @@ function AppContent() {
     window.history.replaceState({}, "", next);
   }, [location.pathname, location.search, setUser]);
 
-  const wrap = (node: JSX.Element) => {
+  const wrap = (node: ReactElement) => {
     if (reduceMotion || hideNavbar) return node;
     return <PageTransition>{node}</PageTransition>;
   };
