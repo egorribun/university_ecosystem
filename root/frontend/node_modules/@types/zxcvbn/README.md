@@ -1,0 +1,15 @@
+# Installation
+> `npm install --save @types/zxcvbn`
+
+# Summary
+This package contains type definitions for zxcvbn (https://github.com/dropbox/zxcvbn#readme).
+
+# Details
+Files were exported from https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/zxcvbn.
+
+### Additional Details
+ * Last updated: Mon, 26 Aug 2024 02:45:06 GMT
+ * Dependencies: none
+
+# Credits
+These definitions were written by [Matt Traynham](https://github.com/mtraynham).
