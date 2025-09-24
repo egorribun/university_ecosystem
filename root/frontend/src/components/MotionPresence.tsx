@@ -1,17 +1,13 @@
-import { Suspense, lazy, type ComponentProps } from "react"
+import type { ComponentProps } from "react";
+import { AnimatePresence } from "framer-motion";
 
-type AnimatePresenceProps = ComponentProps<typeof import("framer-motion").AnimatePresence>
-
-const LazyAnimatePresence = lazy(() =>
-  import("framer-motion").then((mod) => ({ default: mod.AnimatePresence }))
-)
-
-export default function MotionPresence({ children, ...props }: AnimatePresenceProps) {
+export default function MotionPresence({
+  children,
+  ...props
+}: ComponentProps<typeof AnimatePresence>) {
   return (
-    <Suspense fallback={<>{children}</>}>
-      <LazyAnimatePresence initial={false} mode="wait" {...props}>
-        {children}
-      </LazyAnimatePresence>
-    </Suspense>
-  )
+    <AnimatePresence initial={false} mode="wait" {...props}>
+      {children}
+    </AnimatePresence>
+  );
 }
