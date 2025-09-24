@@ -405,3 +405,33 @@ $RECYCLE.BIN/
 pyvenv.cfg
 .venv
 pip-selfcheck.json
+
+# Vite SSR output
+dist-ssr/
+
+# OS/IDE noise
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Merge/backup artifacts
+*.orig
+*.rej
+*.bak
+*.tmp
+
+# Secrets / certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Optional: local SQLite (если вдруг используешь в dev)
+*.sqlite
+*.sqlite3
+
+# Project runtime uploads (оставь .gitkeep, если нужна пустая папка)
+app/static/uploads/**
+!app/static/uploads/.gitkeep
