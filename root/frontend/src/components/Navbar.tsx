@@ -90,25 +90,11 @@ const Navbar = () => {
   const location = useLocation();
   const { user, isAuth, loading } = useAuth();
 
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "dark") return true;
-    if (saved === "light") return false;
-    if (typeof window !== "undefined" && "matchMedia" in window) {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    }
-    return false;
-  });
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const isMobile = useIsMobile();
   const prevIsMobile = useRef(isMobile);
   const navRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    document.body.classList.toggle("dark", dark);
-    localStorage.setItem("theme", dark ? "dark" : "light");
-  }, [dark]);
 
   useEffect(() => {
     if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false);

@@ -14,6 +14,7 @@ type NewsItem = {
   title: string
   content: string
   image_url?: string
+  created_at?: string
 }
 
 const initialNews = { title: "", content: "" }
@@ -226,7 +227,7 @@ const News = () => {
           {Array.isArray(visibleList) &&
             visibleList.map((news) => (
               <Box key={news.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                <NewsCard {...news} onChange={fetchNews} />
+                <NewsCard {...news} created_at={news.created_at ?? ""} onChange={fetchNews} />
               </Box>
             ))}
 

@@ -10,7 +10,6 @@ import {
   Box,
   Paper,
   Stack,
-  CircularProgress,
   IconButton,
   Snackbar,
   List,
@@ -30,6 +29,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Skeleton,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import EmailIcon from "@mui/icons-material/Email";
@@ -303,9 +303,54 @@ export default function Profile() {
 
   if (loading)
     return (
-      <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
-        <CircularProgress />
-      </Box>
+      <>
+        <Box
+          sx={{
+            position: "fixed",
+            left: 0,
+            top: 0,
+            width: "100vw",
+            height: "100vh",
+            zIndex: -1,
+            backgroundImage: `linear-gradient(120deg, var(--hero-grad-start), var(--hero-grad-end)), url(${profileBg})`,
+            backgroundRepeat: "no-repeat, repeat",
+            backgroundSize: "cover, 480px",
+            backgroundAttachment: "fixed, fixed",
+          }}
+        />
+        <Box maxWidth="100vw" mx="auto" width="100vw" minHeight="100svh" px={0} py={{ xs: 2, sm: 3 }}>
+          <Paper
+            sx={{
+              p: { xs: 1.6, sm: 2.4, md: 4, lg: 6 },
+              borderRadius: 0,
+              width: "100vw",
+              minHeight: "100svh",
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+            }}
+          >
+            <Skeleton variant="rounded" height={240} sx={{ borderRadius: 3 }} />
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={3}
+              alignItems={{ xs: "flex-start", md: "center" }}
+            >
+              <Skeleton variant="circular" width={128} height={128} />
+              <Stack spacing={1.2} sx={{ flex: 1, width: "100%" }}>
+                <Skeleton variant="text" height={40} width="42%" />
+                <Skeleton variant="text" height={24} width="68%" />
+                <Skeleton variant="text" height={24} width="52%" />
+              </Stack>
+            </Stack>
+            <Stack spacing={1.6}>
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <Skeleton key={idx} variant="rounded" height={96} sx={{ borderRadius: 2 }} />
+              ))}
+            </Stack>
+          </Paper>
+        </Box>
+      </>
     );
 
   const getAvatarSrc = () => {
@@ -1404,7 +1449,15 @@ export default function Profile() {
             aria-live="polite"
           >
             {qrUrl && <img src={qrUrl} alt="QR-код визитки" style={{ width: 280, height: 280 }} />}
-            {!qrUrl && !qrError && <CircularProgress aria-label="Генерация QR-кода" />}
+            {!qrUrl && !qrError && (
+              <Skeleton
+                variant="rounded"
+                width={220}
+                height={220}
+                sx={{ borderRadius: 2 }}
+                aria-label="Генерация QR-кода"
+              />
+            )}
             {!!qrError && (
               <Typography role="alert" sx={{ textAlign: "center" }}>
                 {qrError}
