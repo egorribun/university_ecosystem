@@ -27,7 +27,6 @@ import {
   DialogContent,
   DialogActions
 } from "@mui/material";
-import { useColorScheme } from "@mui/material/styles";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -53,21 +52,30 @@ export default function Settings() {
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
 
-  const { mode, setMode } = useColorScheme();
-  const [themeChoice, setThemeChoice] = useState<ThemeMode>((mode as ThemeMode) || "system");
+  const sysPref = window.matchMedia("(prefers-color-scheme: dark)");
+  const readStored = () => (localStorage.getItem("theme") as ThemeMode | null) || "system";
+  const [theme, setTheme] = useState<ThemeMode>(readStored());
+
+  const applyTheme = useCallback(
+    (mode: ThemeMode) => {
+      const dark = mode === "dark" || (mode === "system" && sysPref.matches);
+      document.body.classList.toggle("dark", dark);
+    },
+    [sysPref.matches]
+  );
 
   useEffect(() => {
-    if (!mode) return;
-    setThemeChoice(mode as ThemeMode);
-  }, [mode]);
+    applyTheme(theme);
+    localStorage.setItem("theme", theme);
+  }, [theme, applyTheme]);
 
-  const handleThemeSelection = useCallback(
-    (next: ThemeMode) => {
-      setThemeChoice(next);
-      setMode(next);
-    },
-    [setMode]
-  );
+  useEffect(() => {
+    const onChange = () => {
+      if (theme === "system") applyTheme("system");
+    };
+    sysPref.addEventListener?.("change", onChange);
+    return () => sysPref.removeEventListener?.("change", onChange);
+  }, [theme, applyTheme, sysPref]);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -288,7 +296,7 @@ export default function Settings() {
               <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
                 Тема
               </Typography>
-              <RadioGroup row value={themeChoice} onChange={(e) => handleThemeSelection(e.target.value as ThemeMode)}>
+              <RadioGroup row value={theme} onChange={(e) => setTheme(e.target.value as ThemeMode)}>
                 <FormControlLabel
                   value="system"
                   control={<Radio />}
