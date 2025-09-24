@@ -1,6 +1,6 @@
 import Layout from "../components/Layout"
 import EventCard from "../components/EventCard"
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, type SyntheticEvent } from "react"
 import axios from "../api/axios"
 import {
   Box, Tabs, Tab, TextField, Typography, Button,
@@ -17,11 +17,14 @@ import { useSearchParams } from "react-router-dom"
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
 
+type EventTabKey = "active" | "archive" | "my"
+type EventTab = { key: EventTabKey; label: string; is_active?: boolean }
+
 const tabs = [
   { key: "active", label: "Актуальные", is_active: true },
   { key: "archive", label: "Архив", is_active: false },
   { key: "my", label: "Мои события" },
-] as const
+] as const satisfies readonly EventTab[]
 
 const initialEvent = {
   title: "",
@@ -48,7 +51,7 @@ const Events = () => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [events, setEvents] = useState<any[]>([])
-  const [tab, setTab] = useState<(typeof tabs)[number]["key"]>("active")
+  const [tab, setTab] = useState<EventTabKey>("active")
   const [search, setSearch] = useState("")
   const [type, setType] = useState("")
   const [location, setLocation] = useState("")
@@ -93,11 +96,12 @@ const Events = () => {
   const fetchEvents = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
+      const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
       const params =
         tab === "my"
           ? undefined
           : {
-              is_active: tabs.find((t) => t.key === tab)?.is_active,
+              is_active: isActiveFilter,
               search: dSearch,
               type: dType,
               location: dLocation,
@@ -124,7 +128,7 @@ const Events = () => {
     return () => ctrl.abort()
   }, [fetchEvents])
 
-  const handleTabChange = (_: any, newValue: typeof tab) => setTab(newValue)
+  const handleTabChange = (_event: SyntheticEvent, newValue: EventTabKey) => setTab(newValue)
 
   const handleImageUpload = async (file: File) => {
     setImageUploading(true)
