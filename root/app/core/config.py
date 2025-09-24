@@ -1,5 +1,27 @@
+from __future__ import annotations
+
 from functools import cached_property
+from pathlib import Path
+from typing import Iterable
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_env_file(base_dir: Path) -> Path:
+    candidates = [".env", ".env.local", ".env.example"]
+    for name in candidates:
+        candidate = base_dir / name
+        if candidate.exists():
+            return candidate
+    # Fallback: honour the highest priority path even if it does not exist yet
+    return base_dir / candidates[0]
+
+
+_ENV_FILE = _resolve_env_file(_PROJECT_ROOT)
+
 
 class Settings(BaseSettings):
     database_url: str
@@ -7,15 +29,17 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     frontend_origin: str = "http://localhost:5173"
-    frontend_origins: str = ""
+    frontend_origins: str | list[str] = ""
     app_base_url: str = "http://localhost:5173"
     static_dir: str = "app/static"
-    trusted_hosts: str = "localhost,127.0.0.1"
+    trusted_hosts: str | list[str] = "localhost,127.0.0.1"
+    environment: str = "development"
     auto_create_schema: bool = True
     smtp_host: str = ""
     smtp_port: int = 0
     smtp_user: str = ""
     smtp_password: str = ""
+    smtp_security: str = "none"
     smtp_starttls: bool = False
     mail_from: str = "no-reply@example.com"
     spotify_client_id: str = ""
@@ -25,34 +49,74 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = ""
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False)
+
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
 
     @cached_property
-    def SECRET_KEY(self):
+    def SECRET_KEY(self) -> str:
         return self.secret_key
 
     @cached_property
-    def ALGORITHM(self):
+    def ALGORITHM(self) -> str:
         return self.algorithm
 
     @cached_property
     def frontend_origins_list(self) -> list[str]:
-        values: list[str] = []
-        for v in (self.frontend_origins, self.frontend_origin, self.app_base_url):
-            if not v:
-                continue
-            values.extend([p.strip().rstrip("/") for p in v.split(",") if p.strip()])
-        values.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
+        raw: list[str] = []
+
+        def _extend(values: Iterable[str] | str | None) -> None:
+            if not values:
+                return
+            if isinstance(values, str):
+                raw.extend([v.strip() for v in values.split(",") if v.strip()])
+            else:
+                raw.extend([str(v).strip() for v in values if str(v).strip()])
+
+        _extend(self.frontend_origins)
+        _extend(self.frontend_origin)
+        _extend(self.app_base_url)
+        raw.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
         seen: set[str] = set()
-        out: list[str] = []
-        for o in values:
-            if o and o not in seen:
-                seen.add(o)
-                out.append(o)
-        return out
+        result: list[str] = []
+        for origin in raw:
+            normalized = origin.rstrip("/")
+            key = normalized.lower()
+            if normalized and key not in seen:
+                seen.add(key)
+                result.append(normalized)
+        return result
 
     @cached_property
     def trusted_hosts_list(self) -> list[str]:
-        return [p.strip() for p in self.trusted_hosts.split(",") if p.strip()]
+        if isinstance(self.trusted_hosts, (list, tuple, set)):
+            items = [str(v).strip() for v in self.trusted_hosts]
+        else:
+            items = [p.strip() for p in str(self.trusted_hosts).split(",")]
+        return [host for host in items if host]
+
+    @cached_property
+    def static_dir_path(self) -> Path:
+        raw_path = Path(self.static_dir)
+        if not raw_path.is_absolute():
+            raw_path = (_PROJECT_ROOT / raw_path).resolve()
+        return raw_path
+
+    @cached_property
+    def app_base_url_clean(self) -> str:
+        for candidate in (self.app_base_url, self.frontend_origin):
+            if candidate:
+                return str(candidate).rstrip("/")
+        origins = self.frontend_origins_list
+        return (origins[0] if origins else "http://localhost:5173").rstrip("/")
+
+    @cached_property
+    def is_development(self) -> bool:
+        return str(self.environment).lower() in {"dev", "development", "local"}
+
 
 settings = Settings()
