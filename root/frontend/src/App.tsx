@@ -1,18 +1,18 @@
-import { Suspense, lazy, useEffect } from "react"
+import { Suspense, lazy, useEffect, type ReactNode, type ReactElement } from "react"
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import { AuthProvider, useAuth } from "./contexts/AuthContext"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
-import { AnimatePresence } from "framer-motion"
-import PageTransition from "./components/PageTransition"
+import MotionPresence from "./components/MotionPresence"
 import api from "./api/axios"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import { registerServiceWorker } from "./push/register-sw"
 import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
 
+const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
 const News = lazy(() => import("./pages/News"))
 const NewsDetail = lazy(() => import("./components/NewsDetail"))
@@ -29,13 +29,13 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
 const ResetPassword = lazy(() => import("./pages/ResetPassword"))
 const Settings = lazy(() => import("./pages/Settings"))
 
-function PrivateRoute({ children }) {
+function PrivateRoute({ children }: { children: ReactNode }) {
   const { isAuth, loading } = useAuth()
   if (loading) return null
   return isAuth ? children : <Navigate to="/login" />
 }
 
-function AdminRoute({ children }) {
+function AdminRoute({ children }: { children: ReactNode }) {
   const { isAuth, user, loading } = useAuth()
   if (loading) return null
   if (!isAuth) return <Navigate to="/login" />
@@ -55,6 +55,7 @@ function AppContent() {
     location.pathname.startsWith("/reset-password")
 
   useEffect(() => {
+    if (import.meta.env.DEV) return
     registerServiceWorker()
   }, [])
 
@@ -63,46 +64,65 @@ function AppContent() {
     const s = sp.get("spotify")
     if (!s) return
     if (s === "connected") {
-      api.get("/users/me").then(r => setUser(r.data)).catch(() => {})
+      api
+        .get("/users/me")
+        .then((r) => setUser(r.data))
+        .catch(() => {})
     }
     sp.delete("spotify")
     const next = location.pathname + (sp.toString() ? "?" + sp : "")
     window.history.replaceState({}, "", next)
   }, [location.pathname, location.search, setUser])
 
-  const wrap = (node: JSX.Element) => {
+  const wrap = (node: ReactElement) => {
     if (reduceMotion || hideNavbar) return node
     return <PageTransition>{node}</PageTransition>
   }
 
+  const fallbackShell = (
+    <div
+      aria-hidden="true"
+      style={{ minHeight: "100dvh", background: "var(--page-bg)", color: "var(--page-text)" }}
+    />
+  )
+
+  const routedContent = (
+    <div style={{ minHeight: "100dvh", background: "var(--page-bg)", color: "var(--page-text)" }}>
+      <Suspense fallback={fallbackShell}>
+        <Routes location={location} key={location.pathname}>
+          <Route path="/login" element={wrap(<Login />)} />
+          <Route path="/register" element={wrap(<Register />)} />
+          <Route path="/forgot-password" element={wrap(<ForgotPassword />)} />
+          <Route path="/reset-password" element={wrap(<ResetPassword />)} />
+          <Route path="/reset-password/:token" element={wrap(<ResetPassword />)} />
+          <Route path="/dashboard" element={<PrivateRoute>{wrap(<Dashboard />)}</PrivateRoute>} />
+          <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
+          <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
+          <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
+          <Route path="/activity" element={<PrivateRoute>{wrap(<Activity />)}</PrivateRoute>} />
+          <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
+          <Route
+            path="/events/:id"
+            element={<PrivateRoute>{wrap(<EventDetail />)}</PrivateRoute>}
+          />
+          <Route path="/map" element={<PrivateRoute>{wrap(<MapPage />)}</PrivateRoute>} />
+          <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
+          <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
+          <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
+          <Route path="*" element={<Navigate to="/dashboard" />} />
+        </Routes>
+      </Suspense>
+    </div>
+  )
+
   return (
     <>
       {!hideNavbar && <Navbar />}
-      <AnimatePresence initial={false} mode="wait">
-        <div style={{ minHeight: "100dvh", background: "var(--page-bg)", color: "var(--page-text)" }}>
-          <Suspense fallback={<div style={{ minHeight: "100dvh", background: "var(--page-bg)", color: "var(--page-text)" }} />}>
-            <Routes location={location} key={location.pathname}>
-              <Route path="/login" element={wrap(<Login />)} />
-              <Route path="/register" element={wrap(<Register />)} />
-              <Route path="/forgot-password" element={wrap(<ForgotPassword />)} />
-              <Route path="/reset-password" element={wrap(<ResetPassword />)} />
-              <Route path="/reset-password/:token" element={wrap(<ResetPassword />)} />
-              <Route path="/dashboard" element={<PrivateRoute>{wrap(<Dashboard />)}</PrivateRoute>} />
-              <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
-              <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
-              <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
-              <Route path="/activity" element={<PrivateRoute>{wrap(<Activity />)}</PrivateRoute>} />
-              <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
-              <Route path="/events/:id" element={<PrivateRoute>{wrap(<EventDetail />)}</PrivateRoute>} />
-              <Route path="/map" element={<PrivateRoute>{wrap(<MapPage />)}</PrivateRoute>} />
-              <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
-              <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
-              <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
-              <Route path="*" element={<Navigate to="/dashboard" />} />
-            </Routes>
-          </Suspense>
-        </div>
-      </AnimatePresence>
+      {reduceMotion || hideNavbar ? (
+        routedContent
+      ) : (
+        <MotionPresence>{routedContent}</MotionPresence>
+      )}
       {!hideNavbar && <BackToTop />}
       {!hideNavbar && <Footer />}
       {!hideNavbar && <MobileBottomNav />}

@@ -20,5 +20,5 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src", "vite-env.d.ts"]
+  "include": ["src"]
 }
