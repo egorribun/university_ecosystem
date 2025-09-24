@@ -35,7 +35,7 @@ async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
         "image/webp": ".webp",
     }.get(upload.content_type, "")
     name = _gen_name(prefix, ext)
-    base = Path(settings.static_dir)
+    base = settings.static_dir_path
     _ensure_dir(base / subdir)
     path = base / subdir / name
     with open(path, "wb") as f:

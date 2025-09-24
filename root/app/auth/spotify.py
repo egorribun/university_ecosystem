@@ -56,13 +56,13 @@ async def _refresh_if_needed(db: AsyncSession, user: User) -> bool:
 @router.get("/auth/spotify/callback")
 async def spotify_callback(code: str = Query(""), state: str = Query(""), db: AsyncSession = Depends(get_db)):
     if not code or not state:
-        return RedirectResponse(f"{settings.app_base_url}/profile?spotify=error")
+        return RedirectResponse(f"{settings.app_base_url_clean}/profile?spotify=error")
     payload = decode_token(state)
     sub = payload.get("sub") if payload else None
     try:
         user_id = int(sub)
     except:
-        return RedirectResponse(f"{settings.app_base_url}/profile?spotify=error")
+        return RedirectResponse(f"{settings.app_base_url_clean}/profile?spotify=error")
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
             "https://accounts.spotify.com/api/token",
@@ -70,7 +70,7 @@ async def spotify_callback(code: str = Query(""), state: str = Query(""), db: As
             headers=_basic_headers(),
         )
         if r.status_code != 200:
-            return RedirectResponse(f"{settings.app_base_url}/profile?spotify=error")
+            return RedirectResponse(f"{settings.app_base_url_clean}/profile?spotify=error")
         tok = r.json()
         access = tok.get("access_token")
         refresh = tok.get("refresh_token")
@@ -79,7 +79,7 @@ async def spotify_callback(code: str = Query(""), state: str = Query(""), db: As
         me_data = me.json() if me.status_code == 200 else {}
     user = await db.get(User, user_id)
     if not user:
-        return RedirectResponse(f"{settings.app_base_url}/profile?spotify=error")
+        return RedirectResponse(f"{settings.app_base_url_clean}/profile?spotify=error")
     user.spotify_access_token = access
     if refresh:
         user.spotify_refresh_token = refresh
@@ -88,7 +88,7 @@ async def spotify_callback(code: str = Query(""), state: str = Query(""), db: As
     if me_data.get("id"):
         user.spotify_user_id = me_data["id"]
     await db.commit()
-    return RedirectResponse(f"{settings.app_base_url}/profile?spotify=connected")
+    return RedirectResponse(f"{settings.app_base_url_clean}/profile?spotify=connected")
 
 @router.get("/spotify/now-playing", response_model=schemas.SpotifyNowPlayingOut)
 async def spotify_now_playing(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):

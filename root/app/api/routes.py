@@ -1,9 +1,10 @@
+from pathlib import Path
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks, Request, status
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
-import os
 import uuid
 import secrets
 import mimetypes
@@ -32,12 +33,12 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
-    host = settings.smtp_host or os.getenv("SMTP_HOST", "")
-    port = int(settings.smtp_port or int(os.getenv("SMTP_PORT", "0") or 0))
-    user = settings.smtp_user or os.getenv("SMTP_USER", "")
-    password = settings.smtp_password or os.getenv("SMTP_PASSWORD", "")
-    mail_from = settings.mail_from or os.getenv("MAIL_FROM", "no-reply@example.com")
-    security = os.getenv("SMTP_SECURITY", "none").lower()
+    host = settings.smtp_host or ""
+    port = int(settings.smtp_port or 0)
+    user = settings.smtp_user or ""
+    password = settings.smtp_password or ""
+    mail_from = settings.mail_from or "no-reply@example.com"
+    security = (settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")).lower()
     name = f", {full_name}" if full_name else ""
     html = f"""
     <div style="font-family:Inter,Arial,sans-serif">
@@ -88,14 +89,12 @@ async def save_upload(file: UploadFile, subdir: str, prefix: str) -> str:
         raise HTTPException(status_code=413, detail="file too large")
     ext = mimetypes.guess_extension(file.content_type) or f".{file.filename.split('.')[-1].lower()}"
     name = f"{prefix}_{secrets.token_hex(8)}{ext}"
-    base_dir = settings.static_dir or os.path.join("app", "static")
-    folder = os.path.join(base_dir, subdir)
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, name)
-    with open(path, "wb") as f:
-        f.write(data)
-    web_root = "/static" if base_dir.endswith("static") else f"/{os.path.basename(base_dir.strip('/'))}"
-    return f"{web_root}/{subdir}/{name}"
+    base_dir = settings.static_dir_path
+    folder = base_dir / subdir
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_bytes(data)
+    return f"/static/{subdir}/{name}"
 
 @router.post("/password/forgot")
 async def forgot_password(payload: schemas.ForgotPasswordIn, bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
@@ -107,7 +106,7 @@ async def forgot_password(payload: schemas.ForgotPasswordIn, bg: BackgroundTasks
         expires = datetime.now(timezone.utc) + timedelta(minutes=45)
         db.add(models.PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires, used=False))
         await db.commit()
-        base = (settings.app_base_url or os.getenv("APP_BASE_URL", "http://localhost:5173")).rstrip("/")
+        base = settings.app_base_url_clean
         reset_link = f"{base}/reset-password?token={token}"
         bg.add_task(_send_reset_email, user.email, reset_link, user.full_name or "")
     return {"ok": True}
@@ -193,11 +192,12 @@ async def update_user_admin(user_id: int, data: schemas.UserAdminUpdate, db: Asy
 async def delete_avatar(db: AsyncSession = Depends(get_db), user: models.User = Depends(get_current_user)):
     db_user = await db.get(models.User, user.id)
     if db_user.avatar_url:
-        base_dir = settings.static_dir or os.path.join("app", "static")
-        avatar_path = os.path.join(base_dir, db_user.avatar_url.replace("/static/", "").lstrip("/"))
-        if os.path.exists(avatar_path):
+        base_dir = settings.static_dir_path
+        rel_path = db_user.avatar_url.replace("/static/", "", 1).lstrip("/")
+        avatar_path = base_dir / Path(rel_path)
+        if avatar_path.exists():
             try:
-                os.remove(avatar_path)
+                avatar_path.unlink()
             except Exception:
                 pass
     db_user.avatar_url = None
@@ -292,7 +292,7 @@ async def spotify_auth_url(req: Request, user: models.User = Depends(get_current
 @router.get("/spotify/callback")
 async def spotify_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     if error or not code:
-        url = settings.app_base_url.rstrip("/") + "/profile?spotify=error"
+        url = settings.app_base_url_clean + "/profile?spotify=error"
         return RedirectResponse(url)
     uid = None
     if state:
@@ -302,11 +302,11 @@ async def spotify_callback(request: Request, code: Optional[str] = None, state: 
         except Exception:
             uid = None
     if not uid:
-        url = settings.app_base_url.rstrip("/") + "/profile?spotify=error"
+        url = settings.app_base_url_clean + "/profile?spotify=error"
         return RedirectResponse(url)
     user = await db.get(models.User, uid)
     if not user or not user.is_active:
-        url = settings.app_base_url.rstrip("/") + "/profile?spotify=error"
+        url = settings.app_base_url_clean + "/profile?spotify=error"
         return RedirectResponse(url)
     async with httpx.AsyncClient(timeout=10) as client:
         data = {
@@ -317,7 +317,7 @@ async def spotify_callback(request: Request, code: Optional[str] = None, state: 
         headers = {"Authorization": _spotify_auth_header(), "Content-Type": "application/x-www-form-urlencoded"}
         r = await client.post("https://accounts.spotify.com/api/token", data=data, headers=headers)
     if r.status_code != 200:
-        url = settings.app_base_url.rstrip("/") + "/profile?spotify=error"
+        url = settings.app_base_url_clean + "/profile?spotify=error"
         return RedirectResponse(url)
     j = r.json()
     now = datetime.now(timezone.utc)
@@ -330,7 +330,7 @@ async def spotify_callback(request: Request, code: Optional[str] = None, state: 
     if hasattr(user, "spotify_is_connected"):
         setattr(user, "spotify_is_connected", True)
     await db.commit()
-    url = settings.app_base_url.rstrip("/") + "/profile?spotify=connected"
+    url = settings.app_base_url_clean + "/profile?spotify=connected"
     return RedirectResponse(url)
 
 @router.get("/spotify/now-playing", response_model=schemas.SpotifyNowPlayingOut)
@@ -417,13 +417,12 @@ async def upload_event_file(id: int, file: UploadFile = File(...), db: AsyncSess
         raise HTTPException(status_code=403, detail="forbidden")
     ext = file.filename.split(".")[-1].lower()
     filename = f"event_{id}_{uuid.uuid4()}.{ext}"
-    base_dir = settings.static_dir or os.path.join("app", "static")
-    folder = os.path.join(base_dir, "event_files")
-    os.makedirs(folder, exist_ok=True)
-    file_path = os.path.join(folder, filename)
+    base_dir = settings.static_dir_path
+    folder = base_dir / "event_files"
+    folder.mkdir(parents=True, exist_ok=True)
+    file_path = folder / filename
     data = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(data)
+    file_path.write_bytes(data)
     ef = models.EventFile(event_id=id, file_url=f"/static/event_files/{filename}")
     db.add(ef)
     await db.commit()

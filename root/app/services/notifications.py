@@ -1,8 +1,8 @@
 import asyncio
 import datetime as dt
-from typing import Optional, Sequence
+from typing import Awaitable, Callable, Optional, Sequence
 
-from sqlalchemy import select, and_, insert, func
+from sqlalchemy import select, and_, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
@@ -116,15 +116,50 @@ async def _scheduler_loop(poll_seconds: int = 30, window_minutes: int = 6):
         return
 
 
-def start_notifications_scheduler():
-    loop = asyncio.get_event_loop()
-    task = loop.create_task(_scheduler_loop())
+_scheduler_task: asyncio.Task[None] | None = None
 
-    async def _stop():
+
+async def start_notifications_scheduler(
+    *, poll_seconds: int = 30, window_minutes: int = 6
+) -> Callable[[], Awaitable[None]]:
+    """Start background notifications scheduler and return a stopper."""
+
+    global _scheduler_task
+
+    async def _stop_task(task: asyncio.Task[None]) -> None:
+        if task.done():
+            try:
+                task.result()
+            except Exception:
+                pass
+            return
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
+
+    if _scheduler_task and not _scheduler_task.done():
+        existing = _scheduler_task
+
+        async def _stop_existing() -> None:
+            global _scheduler_task
+            await _stop_task(existing)
+            if _scheduler_task is existing:
+                _scheduler_task = None
+
+        return _stop_existing
+
+    loop = asyncio.get_running_loop()
+    task = loop.create_task(
+        _scheduler_loop(poll_seconds=poll_seconds, window_minutes=window_minutes)
+    )
+    _scheduler_task = task
+
+    async def _stop() -> None:
+        global _scheduler_task
+        await _stop_task(task)
+        if _scheduler_task is task:
+            _scheduler_task = None
 
     return _stop

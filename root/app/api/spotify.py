@@ -93,7 +93,7 @@ async def spotify_callback(code: str = Query(...), state: str = Query(...), db: 
         user.spotify_user_id = info.get("id") or None
         user.spotify_display_name = info.get("display_name") or None
         await db.commit()
-    target = settings.app_base_url.rstrip("/") + "/profile?spotify=connected"
+    target = settings.app_base_url_clean + "/profile?spotify=connected"
     return RedirectResponse(target, status_code=302)
 
 @router.get("/now-playing", response_model=SpotifyNowPlayingOut)
