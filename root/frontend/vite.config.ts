@@ -76,10 +76,11 @@ export default defineConfig(({ mode }) => {
           },
           {
             urlPattern: ({ request }) =>
-              ["style", "script", "worker"].includes(request.destination),
-            handler: "StaleWhileRevalidate",
+              ["style", "script", "worker", "font"].includes(request.destination),
+            handler: "CacheFirst",
             options: {
               cacheName: "static-resources",
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
           {
@@ -91,7 +92,28 @@ export default defineConfig(({ mode }) => {
                 maxEntries: 60,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
               },
+              cacheableResponse: { statuses: [0, 200] },
             },
+          },
+          {
+            urlPattern: ({ request, sameOrigin, url }) =>
+              sameOrigin &&
+              request.method === "GET" &&
+              url.pathname.startsWith("/api") &&
+              (/\b(list|lists|catalog|all)\b/.test(url.pathname) ||
+                url.searchParams.has("page") ||
+                url.searchParams.has("limit")),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "api-lists",
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith("/auth"),
+            handler: "NetworkOnly",
           },
           {
             urlPattern: ({ url, sameOrigin }) =>
