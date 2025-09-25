@@ -59,8 +59,15 @@ jobs:
         if: steps.probe.outputs.has == 'true'
         run: |
           python -m pip install -U pip
-          if [ -f requirements.txt ]; then pip install --pre -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install --pre .; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install .; fi
+          python - <<'PY'
+          import sys, subprocess
+          try:
+              import pytest  # noqa
+          except Exception:
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pytest", "pytest-asyncio"])
+          PY
       - name: Test
         if: steps.probe.outputs.has == 'true'
         run: |
