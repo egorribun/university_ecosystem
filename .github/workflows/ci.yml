@@ -14,28 +14,23 @@ jobs:
         working-directory: root/frontend
     steps:
       - uses: actions/checkout@v4
-
       - name: Detect frontend
         id: probe
         run: |
           if [ -f package.json ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
-
       - uses: actions/setup-node@v5
         if: steps.probe.outputs.has == 'true'
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: root/frontend/package-lock.json
-
       - name: Install
         if: steps.probe.outputs.has == 'true'
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
       - name: Build
         if: steps.probe.outputs.has == 'true'
         run: npm run build --if-present
-
       - name: Test
         if: steps.probe.outputs.has == 'true'
         run: npm test --if-present
@@ -43,31 +38,29 @@ jobs:
   python:
     name: Python (backend)
     runs-on: ubuntu-latest
+    env:
+      OTEL_SDK_DISABLED: "true"
     defaults:
       run:
         working-directory: root
     steps:
       - uses: actions/checkout@v4
-
       - name: Detect backend
         id: probe
         run: |
           if [ -f requirements.txt ] || [ -f pyproject.toml ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
-
       - uses: actions/setup-python@v5
         if: steps.probe.outputs.has == 'true'
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: root/requirements.txt
-
       - name: Install
         if: steps.probe.outputs.has == 'true'
         run: |
           python -m pip install -U pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install .; fi
-
+          if [ -f requirements.txt ]; then pip install --pre -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install --pre .; fi
       - name: Test
         if: steps.probe.outputs.has == 'true'
         run: |
