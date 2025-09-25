@@ -177,5 +177,18 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    test: {
+      globals: true,
+      environment: "jsdom",
+      setupFiles: "./src/test/setup.ts",
+      css: true,
+      restoreMocks: true,
+      include: ["src/**/*.{test,spec}.{ts,tsx}", "src/**/__tests__/**/*.{ts,tsx}"],
+      exclude: ["node_modules", "tests", "dist"],
+      snapshotFormat: {
+        escapeString: true,
+        printBasicPrototype: true,
+      },
+    },
   }
 })

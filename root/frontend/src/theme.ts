@@ -260,75 +260,107 @@ const baseTheme = extendTheme({
     },
     MuiButtonBase: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          minHeight: "44px",
-          minWidth: "44px",
-          borderRadius: `max(${theme.vars.radiusScale.md}, 0.75rem)`,
-          transition: "background-color 0.18s ease, box-shadow 0.2s ease, transform 0.18s ease",
-          outline: "none",
-          "&:focus-visible": {
+        root: ({ theme }) => {
+          const radiusVars = theme.vars?.radiusScale ?? radiusScale
+          const focusVars = theme.vars?.focusRing ?? focusRing
+
+          return {
+            minHeight: "44px",
+            minWidth: "44px",
+            borderRadius: `max(${radiusVars.md}, 0.75rem)`,
+            transition: "background-color 0.18s ease, box-shadow 0.2s ease, transform 0.18s ease",
             outline: "none",
-            boxShadow: `var(--ue-focus-ring, ${theme.vars.focusRing.light})`,
-          },
-        }),
+            "&:focus-visible": {
+              outline: "none",
+              boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
+            },
+          }
+        },
       },
     },
     MuiButton: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          borderRadius: theme.vars.radiusScale.lg,
-          paddingInline: `max(${theme.vars.spacingScale.sm}, ${theme.spacing(2)})`,
-          paddingBlock: `max(${theme.vars.spacingScale["2xs"]}, ${theme.spacing(1)})`,
-          minHeight: "44px",
-        }),
+        root: ({ theme }) => {
+          const radiusVars = theme.vars?.radiusScale ?? radiusScale
+          const spacingVars = theme.vars?.spacingScale ?? spacingScale
+
+          return {
+            borderRadius: radiusVars.lg,
+            paddingInline: `max(${spacingVars.sm}, ${theme.spacing(2)})`,
+            paddingBlock: `max(${spacingVars["2xs"]}, ${theme.spacing(1)})`,
+            minHeight: "44px",
+          }
+        },
       },
     },
     MuiIconButton: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          minWidth: "44px",
-          minHeight: "44px",
-          borderRadius: theme.vars.radiusScale.pill,
-          padding: theme.vars.spacingScale.xs,
-          "&:focus-visible": {
-            boxShadow: `var(--ue-focus-ring, ${theme.vars.focusRing.light})`,
-          },
-        }),
+        root: ({ theme }) => {
+          const radiusVars = theme.vars?.radiusScale ?? radiusScale
+          const spacingVars = theme.vars?.spacingScale ?? spacingScale
+          const focusVars = theme.vars?.focusRing ?? focusRing
+
+          return {
+            minWidth: "44px",
+            minHeight: "44px",
+            borderRadius: radiusVars.pill,
+            padding: spacingVars.xs,
+            "&:focus-visible": {
+              boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
+            },
+          }
+        },
       },
     },
     MuiToggleButton: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          minHeight: "44px",
-          borderRadius: theme.vars.radiusScale.md,
-          paddingInline: theme.vars.spacingScale.sm,
-          "&:focus-visible": {
-            boxShadow: `var(--ue-focus-ring, ${theme.vars.focusRing.light})`,
-          },
-        }),
+        root: ({ theme }) => {
+          const radiusVars = theme.vars?.radiusScale ?? radiusScale
+          const spacingVars = theme.vars?.spacingScale ?? spacingScale
+          const focusVars = theme.vars?.focusRing ?? focusRing
+
+          return {
+            minHeight: "44px",
+            borderRadius: radiusVars.md,
+            paddingInline: spacingVars.sm,
+            "&:focus-visible": {
+              boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
+            },
+          }
+        },
       },
     },
     MuiListItemButton: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          minHeight: "48px",
-          borderRadius: theme.vars.radiusScale.md,
-          "&:focus-visible": {
-            boxShadow: `var(--ue-focus-ring, ${theme.vars.focusRing.light})`,
-          },
-        }),
+        root: ({ theme }) => {
+          const radiusVars = theme.vars?.radiusScale ?? radiusScale
+          const focusVars = theme.vars?.focusRing ?? focusRing
+
+          return {
+            minHeight: "48px",
+            borderRadius: radiusVars.md,
+            "&:focus-visible": {
+              boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
+            },
+          }
+        },
       },
     },
     MuiLink: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          borderRadius: theme.vars.radiusScale.sm,
-          outline: "none",
-          "&:focus-visible": {
+        root: ({ theme }) => {
+          const radiusVars = theme.vars?.radiusScale ?? radiusScale
+          const focusVars = theme.vars?.focusRing ?? focusRing
+
+          return {
+            borderRadius: radiusVars.sm,
             outline: "none",
-            boxShadow: `var(--ue-focus-ring, ${theme.vars.focusRing.light})`,
-          },
-        }),
+            "&:focus-visible": {
+              outline: "none",
+              boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
+            },
+          }
+        },
       },
     },
     MuiPaper: {

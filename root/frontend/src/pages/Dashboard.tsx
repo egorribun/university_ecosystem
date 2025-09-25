@@ -219,7 +219,12 @@ export default function Dashboard() {
       setNews(sliced)
       setCache<NewsItem[]>("dash:news", sliced)
     } catch {
-      setNews([])
+      const cached = getCache<NewsItem[]>("dash:news")
+      if (cached) {
+        setNews(cached)
+      } else {
+        setNews([])
+      }
     } finally {
       setLoadingNews(false)
     }

@@ -1,0 +1,11 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`BackToTop > renders hidden button by default 1`] = `
+<button
+  aria-label="Наверх"
+  class="back-to-top"
+  type="button"
+>
+  ↑
+</button>
+`;
