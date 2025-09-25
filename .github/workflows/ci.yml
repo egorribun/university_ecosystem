@@ -107,13 +107,13 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
+      - uses: actions/checkout@v4
       - name: Ensure preview URL is provided
         run: |
           if [ -z "$PREVIEW_URL" ]; then
             echo "PREVIEW_URL repository variable or secret must be set for Lighthouse CI" >&2
             exit 1
           fi
-      - uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
