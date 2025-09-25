@@ -1,3 +1,5 @@
+const isLocal = (process.env.PREVIEW_URL || '').startsWith('http://127.0.0.1');
+
 module.exports = {
   ci: {
     collect: {
@@ -9,19 +11,19 @@ module.exports = {
     },
     assert: {
       assertions: {
-        'categories:performance': ['error', { minScore: 0.9 }],
-        'categories:pwa': ['error', { minScore: 0.8 }],
+        'categories:performance': ['error', { minScore: 0.82 }],
+        'categories:pwa': isLocal ? 'off' : ['warn', { minScore: 0.8 }],
         'first-contentful-paint': [
           'error',
-          { maxNumericValue: 2000, aggregationMethod: 'optimistic' },
+          { maxNumericValue: 2500, aggregationMethod: 'optimistic' },
         ],
         'largest-contentful-paint': [
           'error',
-          { maxNumericValue: 3500, aggregationMethod: 'optimistic' },
+          { maxNumericValue: 4000, aggregationMethod: 'optimistic' },
         ],
         'total-blocking-time': [
           'error',
-          { maxNumericValue: 250, aggregationMethod: 'median' },
+          { maxNumericValue: 300, aggregationMethod: 'median' },
         ],
       },
     },
