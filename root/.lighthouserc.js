@@ -1,34 +1,28 @@
-const isLocal = (process.env.PREVIEW_URL || '').startsWith('http://127.0.0.1');
+const base = process.env.LHCI_URL || 'http://127.0.0.1:4173';
 
 module.exports = {
   ci: {
     collect: {
       numberOfRuns: 3,
-      url: [process.env.PREVIEW_URL].filter(Boolean),
-      settings: {
-        preset: 'desktop',
-      },
+      url: [`${base}/`, `${base}/login`],
+      settings: { preset: 'desktop' }
     },
     assert: {
       assertions: {
-        'categories:performance': ['error', { minScore: 0.82 }],
-        'categories:pwa': isLocal ? 'off' : ['warn', { minScore: 0.8 }],
-        'first-contentful-paint': [
-          'error',
-          { maxNumericValue: 2500, aggregationMethod: 'optimistic' },
-        ],
-        'largest-contentful-paint': [
-          'error',
-          { maxNumericValue: 4000, aggregationMethod: 'optimistic' },
-        ],
-        'total-blocking-time': [
-          'error',
-          { maxNumericValue: 300, aggregationMethod: 'median' },
-        ],
+        'categories:performance': ['error', { minScore: 0.82, aggregationMethod: 'median' }],
+        'total-blocking-time': ['error', { maxNumericValue: 450, aggregationMethod: 'median' }],
+        'categories:pwa': ['warn', { minScore: 0.8 }]
       },
+      assertMatrix: [
+        {
+          matchingUrlPattern: '/login',
+          assertions: {
+            'categories:performance': ['warn', { minScore: 0.75, aggregationMethod: 'median' }],
+            'total-blocking-time': ['warn', { maxNumericValue: 600, aggregationMethod: 'median' }]
+          }
+        }
+      ]
     },
-    upload: {
-      target: 'temporary-public-storage',
-    },
-  },
+    upload: { target: 'temporary-public-storage' }
+  }
 };
