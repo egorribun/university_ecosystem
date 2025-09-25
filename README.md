@@ -23,6 +23,32 @@
 3. Обновите `FRONTEND_ORIGINS`/`FRONTEND_ORIGIN`, чтобы CORS принимал только ваши домены, и при необходимости укажите `APP_BASE_URL` для ссылок из писем.
 4. Для ограничений по трафику и заголовков безопасности доступны параметры: `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_SENSITIVE`, `RATE_LIMIT_ENABLED`, `SECURITY_CSP`, `SECURITY_CSP_REPORT_ONLY`, `SECURITY_CSP_REPORT_URI`, `SECURITY_HSTS_ENABLED`, `SECURITY_HSTS_MAX_AGE`, `SECURITY_PERMISSIONS_POLICY`, `SECURITY_X_FRAME_OPTIONS` и др. Все они читаются из `.env`.
 
+## Разработка в VS Code Dev Container
+
+> Требования: [Docker Desktop](https://www.docker.com/products/docker-desktop/) или совместимый движок, [Visual Studio Code](https://code.visualstudio.com/) и расширение [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
+
+1. Создайте `root/.env` из примера, как описано выше — файл автоматически пробрасывается во все сервисы.
+2. Откройте репозиторий в VS Code и выполните команду **Dev Containers: Reopen in Container**.
+3. После сборки образа автоматически установятся Python/Node зависимости, а рекомендуемые расширения (`Python`, `Pylance`, `Docker`, `ESLint`, `Prettier`) будут добавлены в рабочую среду.
+4. Бэкенд (FastAPI) и фронтенд (Vite) стартуют внутри контейнеров по адресам `http://localhost:8000` и `http://localhost:5173` соответственно. База данных доступна на `localhost:5432`.
+
+Остановка dev-контейнера автоматически выключит связанные сервисы (`shutdownAction: stopCompose`).
+
+## Локальный запуск через Docker Compose
+
+1. Убедитесь, что Docker запущен, и подготовьте `root/.env`.
+2. Выполните единственную команду для поднятия всей инфраструктуры:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   - `backend`: FastAPI на `http://localhost:8000` с hot-reload и доступом к Postgres.
+   - `frontend`: Vite dev-server на `http://localhost:5173` с прокинутой переменной `VITE_BACKEND_ORIGIN`.
+   - `postgres`: база данных с данными в volume `postgres-data`.
+
+3. Для остановки и очистки томов выполните `docker compose down -v`.
+
 ## Быстрый старт на Windows
 
 1. Установите Python 3.13 и PostgreSQL, убедитесь, что сервер БД запущен, а учётные данные совпадают с параметрами из `.env`.
