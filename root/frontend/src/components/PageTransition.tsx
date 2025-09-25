@@ -16,6 +16,10 @@ const loadMotionModule = async () => {
 const PageTransition: FC<Props> = ({ children }) => {
   const [motionModule, setMotionModule] = useState<MotionModule | null>(null)
   const [hasPainted, setHasPainted] = useState(didPaint)
+  const [reduceMotion, setReduceMotion] = useState(() => {
+    if (typeof window === "undefined" || !("matchMedia" in window)) return false
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  })
 
   useEffect(() => {
     didPaint = true
@@ -23,6 +27,21 @@ const PageTransition: FC<Props> = ({ children }) => {
   }, [])
 
   useEffect(() => {
+    if (typeof window === "undefined" || !("matchMedia" in window)) return
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handleChange = (event: MediaQueryListEvent) => {
+      setReduceMotion(event.matches)
+    }
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", handleChange)
+      return () => media.removeEventListener("change", handleChange)
+    }
+    media.addListener(handleChange)
+    return () => media.removeListener(handleChange)
+  }, [])
+
+  useEffect(() => {
+    if (reduceMotion) return
     let active = true
     loadMotionModule()
       .then((mod) => {
@@ -32,9 +51,15 @@ const PageTransition: FC<Props> = ({ children }) => {
     return () => {
       active = false
     }
-  }, [])
+  }, [reduceMotion])
 
-  if (!motionModule) return <>{children}</>
+  if (reduceMotion || !motionModule) {
+    return (
+      <div style={{ position: "relative", minHeight: "100%", background: "var(--page-bg)" }}>
+        <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
+      </div>
+    )
+  }
 
   const { LazyMotion, domAnimation, motion } = motionModule
   const initial = hasPainted ? { opacity: 0.001, y: 12 } : false
