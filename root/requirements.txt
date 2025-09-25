@@ -31,3 +31,4 @@ aiosqlite>=0.19
 pytest>=7.4
 pytest-asyncio>=0.23
 pytest-cov>=4.1
+sentry-sdk[opentelemetry]>=2,<3
