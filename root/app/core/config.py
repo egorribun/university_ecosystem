@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = ""
+    enable_otel: bool = False
+    otel_service_name: str = "university-ecosystem"
+    otel_exporter_otlp_endpoint: str = ""
+    otel_exporter_otlp_headers: str = ""
+    otel_trace_sampler_ratio: float = 1.0
+    enable_otel_metrics: bool = True
+    enable_otel_logs: bool = True
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0
+    sentry_profiles_sample_rate: float = 0.0
+    sentry_environment: str = ""
+    log_level: str = "INFO"
+    request_id_header: str = "x-request-id"
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),

@@ -14,6 +14,7 @@ from app.api.spotify import router as spotify_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
+from app.core.observability import configure_observability, shutdown_observability
 from app.services.notifications import start_notifications_scheduler
 
 try:  # pragma: no cover - optional dependency
@@ -34,9 +35,12 @@ async def lifespan(app: FastAPI):
     finally:
         if stop_scheduler is not None:
             await stop_scheduler()
+        shutdown_observability()
 
 
 app = FastAPI(lifespan=lifespan)
+
+configure_observability(app, engine=engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +70,12 @@ async def healthz():
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready():
+    await wait_db(max_attempts=1, delay=0.1)
+    return {"status": "ready"}
 
 
 app.include_router(auth_router)
