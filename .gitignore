@@ -435,7 +435,3 @@ dist-ssr/
 # Project runtime uploads (оставь .gitkeep, если нужна пустая папка)
 app/static/uploads/**
 !app/static/uploads/.gitkeep
-
-# Generated maskable PWA icons (materialized from base64 during build)
-root/frontend/public/maskable-icon-192.png
-root/frontend/public/maskable-icon-512.png

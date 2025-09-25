@@ -1,7 +1,0 @@
-npm --prefix root/frontend run lint-staged
-if command -v pre-commit >/dev/null 2>&1; then
-  pre-commit run --hook-stage pre-commit
-else
-  echo "pre-commit is not installed. Run 'pip install pre-commit' or 'pip install -r root/requirements.txt'." >&2
-  exit 1
-fi

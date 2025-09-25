@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import api from "../api/axios"
 import Layout from "../components/Layout"
 import {
   Box, Typography, Avatar, Select, MenuItem, TextField, InputLabel, FormControl,
-  IconButton, Paper, Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Stack,
-  type SelectChangeEvent,
+  IconButton, Paper, Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Stack, Button
 } from "@mui/material"
 import DeleteIcon from "@mui/icons-material/Delete"
 import { useAuth } from "../contexts/AuthContext"
@@ -12,87 +11,45 @@ import useMediaQuery from "@mui/material/useMediaQuery"
 
 const backendBaseUrl = "http://localhost:8000"
 
-type UserRole = "student" | "teacher" | "admin"
-
-type AdminUser = {
-  id: number
-  full_name: string
-  email: string
-  role: UserRole
-  group_id: number | null
-  avatar_url?: string | null
-}
-
-type Group = { id: number; name: string }
-
-type UserFilters = {
-  full_name: string
-  group_id: string
-  role: "" | UserRole
-}
-
-function getAvatar(url: string | null | undefined, id: number) {
+function getAvatar(url, id) {
   if (!url) return ""
   if (url.startsWith("http")) return url
   return backendBaseUrl + url + "?uid=" + id
 }
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
-  const [filters, setFilters] = useState<UserFilters>({ full_name: "", group_id: "", role: "" })
+  const [users, setUsers] = useState([])
+  const [groups, setGroups] = useState([])
+  const [filters, setFilters] = useState({ full_name: "", group_id: "", role: "" })
   const { user: userContext } = useAuth()
   const isMobile = useMediaQuery("(max-width:1200px)")
 
-  const fetchUsers = useCallback(async () => {
-    const params: Record<string, string> = {}
+  useEffect(() => { fetchUsers() }, [filters])
+  useEffect(() => { fetchGroups() }, [])
+
+  const fetchUsers = async () => {
+    const params = {}
     if (filters.full_name) params.full_name = filters.full_name
     if (filters.group_id) params.group_id = filters.group_id
     if (filters.role) params.role = filters.role
-    const res = await api.get<AdminUser[]>("/users", { params })
-    setUsers(Array.isArray(res.data) ? res.data : [])
-  }, [filters])
-
-  const fetchGroups = useCallback(async () => {
-    const res = await api.get<Group[]>("/groups")
-    setGroups(Array.isArray(res.data) ? res.data : [])
-  }, [])
-
-  useEffect(() => {
-    void fetchUsers()
-  }, [fetchUsers])
-
-  useEffect(() => {
-    void fetchGroups()
-  }, [fetchGroups])
-
-  const handleGroupChange = async (userId: number, groupId: string) => {
-    const nextGroup = groupId ? Number(groupId) : null
-    await api.patch(`/users/${userId}`, { group_id: nextGroup })
-    void fetchUsers()
+    const res = await api.get("/users", { params })
+    setUsers(res.data)
   }
 
-  const handleDelete = async (userId: number) => {
+  const fetchGroups = async () => {
+    const res = await api.get("/groups")
+    setGroups(res.data)
+  }
+
+  const handleGroupChange = async (userId, groupId) => {
+    await api.patch(`/users/${userId}`, { group_id: groupId })
+    fetchUsers()
+  }
+
+  const handleDelete = async (userId) => {
     if (!window.confirm("Удалить пользователя?")) return
     await api.delete(`/users/${userId}`)
-    void fetchUsers()
-  }
-
-  const handleFilterChange = (field: keyof UserFilters) => (value: string) => {
-    setFilters(prev => ({ ...prev, [field]: value }))
-  }
-
-  const handleRoleChange = (event: SelectChangeEvent<string>) => {
-    const value = event.target.value as UserFilters["role"]
-    setFilters(prev => ({ ...prev, role: value }))
-  }
-
-  const handleGroupFilterChange = (event: SelectChangeEvent<string>) => {
-    setFilters(prev => ({ ...prev, group_id: event.target.value }))
-  }
-
-  const handleGroupSelectChange = (userId: number) => (event: SelectChangeEvent<string>) => {
-    void handleGroupChange(userId, event.target.value)
+    fetchUsers()
   }
 
   return (
@@ -133,23 +90,19 @@ export default function AdminUsers() {
             <TextField
               label="ФИО"
               value={filters.full_name}
-              onChange={e => handleFilterChange("full_name")(e.target.value)}
+              onChange={e => setFilters(f => ({ ...f, full_name: e.target.value }))}
               sx={{ minWidth: 220 }}
             />
             <FormControl sx={{ minWidth: 150 }}>
               <InputLabel>Группа</InputLabel>
-              <Select value={filters.group_id} onChange={handleGroupFilterChange}>
+              <Select value={filters.group_id} onChange={e => setFilters(f => ({ ...f, group_id: e.target.value }))}>
                 <MenuItem value="">Все</MenuItem>
-                {groups.map(g => (
-                  <MenuItem value={String(g.id)} key={g.id}>
-                    {g.name}
-                  </MenuItem>
-                ))}
+                {groups.map(g => <MenuItem value={g.id} key={g.id}>{g.name}</MenuItem>)}
               </Select>
             </FormControl>
             <FormControl sx={{ minWidth: 150 }}>
               <InputLabel>Роль</InputLabel>
-              <Select value={filters.role} onChange={handleRoleChange}>
+              <Select value={filters.role} onChange={e => setFilters(f => ({ ...f, role: e.target.value }))}>
                 <MenuItem value="">Все</MenuItem>
                 <MenuItem value="student">Студент</MenuItem>
                 <MenuItem value="teacher">Преподаватель</MenuItem>
@@ -188,16 +141,12 @@ export default function AdminUsers() {
                       {user.role !== "teacher" && user.role !== "admin" && (
                         <FormControl size="small" sx={{ minWidth: 60 }}>
                           <Select
-                            value={user.group_id ? String(user.group_id) : ""}
-                            onChange={handleGroupSelectChange(user.id)}
+                            value={user.group_id || ""}
+                            onChange={e => handleGroupChange(user.id, e.target.value)}
                             sx={{ fontSize: 14, height: 28 }}
                           >
                             <MenuItem value="">-</MenuItem>
-                            {groups.map(g => (
-                              <MenuItem value={String(g.id)} key={g.id}>
-                                {g.name}
-                              </MenuItem>
-                            ))}
+                            {groups.map(g => <MenuItem value={g.id} key={g.id}>{g.name}</MenuItem>)}
                           </Select>
                         </FormControl>
                       )}
@@ -248,16 +197,12 @@ export default function AdminUsers() {
                       <TableCell align="center">
                         {user.role !== "teacher" && user.role !== "admin" ? (
                           <Select
-                            value={user.group_id ? String(user.group_id) : ""}
-                            onChange={handleGroupSelectChange(user.id)}
+                            value={user.group_id || ""}
+                            onChange={e => handleGroupChange(user.id, e.target.value)}
                             sx={{ minWidth: 65 }}
                           >
                             <MenuItem value="">-</MenuItem>
-                            {groups.map(g => (
-                              <MenuItem value={String(g.id)} key={g.id}>
-                                {g.name}
-                              </MenuItem>
-                            ))}
+                            {groups.map(g => <MenuItem value={g.id} key={g.id}>{g.name}</MenuItem>)}
                           </Select>
                         ) : (
                           ""

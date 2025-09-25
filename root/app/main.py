@@ -2,13 +2,10 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.notifications import router as notifications_router
 from app.api.push import router as push_router
@@ -17,15 +14,13 @@ from app.api.spotify import router as spotify_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
-from app.core.observability import configure_observability, shutdown_observability
-from app.core.rate_limit import limiter
-from app.core.security_headers import SecurityHeadersMiddleware
 from app.services.notifications import start_notifications_scheduler
 
 try:  # pragma: no cover - optional dependency
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 except Exception:  # pragma: no cover - optional dependency
     ProxyHeadersMiddleware = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,25 +34,17 @@ async def lifespan(app: FastAPI):
     finally:
         if stop_scheduler is not None:
             await stop_scheduler()
-        shutdown_observability()
 
 
 app = FastAPI(lifespan=lifespan)
 
-configure_observability(app, engine=engine)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.frontend_origins_list,
-    allow_credentials=settings.cors_allow_credentials,
-    allow_methods=settings.cors_allow_methods_list,
-    allow_headers=settings.cors_allow_headers_list,
-    expose_headers=settings.cors_expose_headers_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
-
-app.add_middleware(SecurityHeadersMiddleware, settings=settings)
-app.add_middleware(SlowAPIMiddleware, limiter=limiter)
-app.state.limiter = limiter
 
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list
@@ -81,19 +68,8 @@ async def healthz():
     return {"status": "ok"}
 
 
-@app.get("/ready")
-async def ready():
-    await wait_db(max_attempts=1, delay=0.1)
-    return {"status": "ready"}
-
-
 app.include_router(auth_router)
 app.include_router(spotify_router)
 app.include_router(notifications_router)
 app.include_router(push_router)
 app.include_router(main_router)
-
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(status_code=429, content={"detail": "Too Many Requests"})

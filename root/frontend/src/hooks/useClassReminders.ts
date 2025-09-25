@@ -59,15 +59,7 @@ export function useClassReminders(items: RemindItem[] | undefined, opts?: { defa
         try {
           const reg = await navigator.serviceWorker?.getRegistration()
           if (reg && "showNotification" in reg) {
-            const options: NotificationOptions & { renotify?: boolean } = {
-              body,
-              tag,
-              data,
-              icon: "/icons/icon-192.png",
-              badge: "/icons/badge-72.png",
-              renotify: true,
-            }
-            await reg.showNotification(title, options)
+            await reg.showNotification(title, { body, tag, renotify: true, data, icon: "/icons/icon-192.png", badge: "/icons/badge-72.png" })
           } else {
             const n = new Notification(title, { body, tag, data })
             n.onclick = () => openUrl(data.url)

@@ -13,22 +13,8 @@ type NewsItem = {
   id: number
   title: string
   content: string
-  created_at: string
-  image_url?: string | null
+  image_url?: string
 }
-
-const isNewsItem = (value: unknown): value is NewsItem => {
-  if (!value || typeof value !== "object") return false
-  const obj = value as Record<string, unknown>
-  return (
-    typeof obj.id === "number" &&
-    typeof obj.title === "string" &&
-    typeof obj.content === "string" &&
-    typeof obj.created_at === "string"
-  )
-}
-
-const toNewsList = (value: unknown): NewsItem[] => (Array.isArray(value) ? value.filter(isNewsItem) : [])
 
 const initialNews = { title: "", content: "" }
 
@@ -54,28 +40,28 @@ const News = () => {
     const cached = localStorage.getItem(cacheKey)
     if (cached && newsList.length === 0) {
       try {
-        const arr = toNewsList(JSON.parse(cached))
-        startTransition(() => setNewsList(arr))
+        const arr = JSON.parse(cached)
+        startTransition(() => setNewsList(Array.isArray(arr) ? arr : []))
       } catch {}
     }
     setLoading(!cached)
     try {
       const etag = localStorage.getItem(etagKey) || ""
-      const res = await axios.get<NewsItem[]>("/news", {
+      const res = await axios.get("/news", {
         headers: etag ? { "If-None-Match": etag } : {},
         validateStatus: s => s === 200 || s === 304
       })
       if (!cancelled) {
         if (res.status === 200) {
-          const arr = toNewsList(res.data)
+          const arr = Array.isArray(res.data) ? res.data : []
           startTransition(() => setNewsList(arr))
           localStorage.setItem(cacheKey, JSON.stringify(arr))
           const newTag = (res.headers?.etag as string) || ""
           if (newTag) localStorage.setItem(etagKey, newTag)
         } else if (res.status === 304 && cached) {
           try {
-            const arr = toNewsList(JSON.parse(cached))
-            startTransition(() => setNewsList(arr))
+            const arr = JSON.parse(cached)
+            startTransition(() => setNewsList(Array.isArray(arr) ? arr : []))
           } catch {
             startTransition(() => setNewsList([]))
           }
@@ -159,7 +145,7 @@ const News = () => {
         URL.revokeObjectURL(imagePreview)
         setImagePreview(null)
       }
-      void fetchNews()
+      fetchNews()
       if (imageInputRef.current) imageInputRef.current.value = ""
     } finally {
       setAdding(false)
@@ -240,13 +226,7 @@ const News = () => {
           {Array.isArray(visibleList) &&
             visibleList.map((news) => (
               <Box key={news.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                <NewsCard
-                  {...news}
-                  image_url={news.image_url ?? undefined}
-                  onChange={() => {
-                    void fetchNews()
-                  }}
-                />
+                <NewsCard {...news} onChange={fetchNews} />
               </Box>
             ))}
 

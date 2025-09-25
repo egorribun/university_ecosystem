@@ -40,6 +40,11 @@ import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
 
+dayjs.extend(isoWeek)
+dayjs.locale("ru")
+
+type Lesson = any
+
 const days = [
   "Понедельник",
   "Вторник",
@@ -47,38 +52,9 @@ const days = [
   "Четверг",
   "Пятница",
   "Суббота"
-]
+] as const
 
-const dayShort = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
-
-dayjs.extend(isoWeek)
-dayjs.locale("ru")
-
-type LessonParity = "odd" | "even" | "both"
-type LessonWeekday = (typeof days)[number] | string
-
-type Lesson = {
-  id: number
-  weekday: LessonWeekday
-  parity: LessonParity
-  start_time: string | null
-  end_time: string | null
-  subject?: string | null
-  teacher?: string | null
-  room?: string | null
-  lesson_type?: string | null
-  group_id?: number | null
-}
-
-type AddLessonFields = {
-  subject: string
-  teacher: string
-  room: string
-  lessonType: string
-  startTime: string
-  endTime: string
-  parity: LessonParity
-}
+const dayShort = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"] as const
 
 const lessonTypeColor: Record<string, string> = {
   "Лекция": "var(--badge-lec)",
@@ -86,8 +62,6 @@ const lessonTypeColor: Record<string, string> = {
   "ЛЗ": "var(--badge-lab)",
   "Проектная деятельность": "#607d8b"
 }
-
-const getLessonTypeColor = (type?: string | null) => lessonTypeColor[type ?? ""] ?? "#888"
 
 function getTimeStr(lesson: Lesson) {
   if (!lesson?.start_time) return ""
@@ -127,7 +101,7 @@ function getTodayIdx() {
   return (iso - 1) as 0 | 1 | 2 | 3 | 4 | 5
 }
 
-function minutesDiff(a?: string | null, b?: string | null) {
+function minutesDiff(a?: string, b?: string) {
   const ma = parseMinutes(a) ?? 0
   const mb = parseMinutes(b) ?? 0
   return mb - ma
@@ -152,7 +126,7 @@ export default function Schedule() {
   const [editLesson, setEditLesson] = useState<Lesson | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addDay, setAddDay] = useState<string>("")
-  const [addFields, setAddFields] = useState<AddLessonFields>({
+  const [addFields, setAddFields] = useState({
     subject: "",
     teacher: "",
     room: "",
@@ -244,10 +218,8 @@ export default function Schedule() {
 
   const todayLessons = useMemo(() => {
     if (!hasToday) return []
-    const today = days.at(todayIdx)
-    if (!today) return []
     return filteredSchedule
-      .filter(l => l.weekday === today)
+      .filter(l => l.weekday === days[todayIdx])
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   }, [filteredSchedule, hasToday, todayIdx])
 
@@ -339,7 +311,7 @@ export default function Schedule() {
   useEffect(() => {
     if (isMobile || !hasToday) return
     const container = tableScrollRef.current
-    const cell = todayIdx >= 0 ? headRefs.current[todayIdx] : null
+    const cell = headRefs.current[todayIdx]
     if (container && cell) {
       const left = cell.offsetLeft - 120
       container.scrollTo({ left, behavior: "smooth" })
@@ -475,13 +447,13 @@ export default function Schedule() {
       }}
       title={isConflict ? "Пересечение по времени" : undefined}
     >
-      <Box sx={{ position: "absolute", left: -1, top: -1, bottom: -1, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
+      <Box sx={{ position: "absolute", left: -1, top: -1, bottom: -1, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: lessonTypeColor[lesson.lesson_type] || "#888" }} />
       <Stack spacing={0.6}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Chip
             size="small"
-            label={lesson.lesson_type ?? ""}
-            sx={{ height: 22, fontWeight: 700, color: "#fff", background: getLessonTypeColor(lesson.lesson_type) }}
+            label={lesson.lesson_type}
+            sx={{ height: 22, fontWeight: 700, color: "#fff", background: lessonTypeColor[lesson.lesson_type] || "#888" }}
           />
           <Chip
             size="small"
@@ -555,9 +527,7 @@ export default function Schedule() {
                 <TableCell
                   align="center"
                   key={day}
-                  ref={(el: HTMLTableCellElement | null) => {
-                    headRefs.current[idx] = el
-                  }}
+                  ref={el => { headRefs.current[idx] = el }}
                   sx={{
                     fontWeight: 700,
                     background: hasToday && idx === todayIdx ? "var(--table-row-today)" : "var(--table-header-bg)",
@@ -683,9 +653,7 @@ export default function Schedule() {
         return (
           <Paper
             key={day}
-            ref={(el: HTMLDivElement | null) => {
-              dayCardRefs.current[dayIdx] = el
-            }}
+            ref={el => { dayCardRefs.current[dayIdx] = el }}
             elevation={4}
             sx={{
               borderRadius: 3,
@@ -741,9 +709,9 @@ export default function Schedule() {
                           position: "relative"
                         }}
                       >
-                        <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
+                        <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: lessonTypeColor[lesson.lesson_type] || "#888" }} />
                         <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" sx={{ pl: 1 }}>
-                          <Chip size="small" label={lesson.lesson_type ?? ""} className="chip-type" sx={{ background: getLessonTypeColor(lesson.lesson_type), color: "#fff", height: 24, fontWeight: 700 }} />
+                          <Chip size="small" label={lesson.lesson_type} className="chip-type" sx={{ background: lessonTypeColor[lesson.lesson_type] || "#888", color: "#fff", height: 24, fontWeight: 700 }} />
                           <Chip size="small" className="chip-time" icon={<AccessTimeIcon sx={{ fontSize: 16 }} />} label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`} />
                         </Stack>
                         <Typography fontWeight={700} fontSize="1.02rem" sx={{ color: "var(--page-text)", pl: 1, mt: 0.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -870,8 +838,8 @@ export default function Schedule() {
               <Box>
                 <Box mb={1}>
                   <b>Тип:</b>{" "}
-                  <span style={{ color: "#fff", background: getLessonTypeColor(dialogLesson.lesson_type), borderRadius: 5, padding: "2px 8px" }}>
-                    {dialogLesson.lesson_type ?? ""}
+                  <span style={{ color: "#fff", background: lessonTypeColor[dialogLesson.lesson_type] || "#888", borderRadius: 5, padding: "2px 8px" }}>
+                    {dialogLesson.lesson_type}
                   </span>
                 </Box>
                 <Box><b>Время:</b> {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}</Box>
@@ -921,14 +889,7 @@ export default function Schedule() {
                   value={getEndTimeStr(editLesson)}
                   onChange={e => setEditLesson({ ...editLesson, end_time: `${editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00` })}
                 />
-                <TextField
-                  select
-                  label="Неделя"
-                  value={editLesson.parity}
-                  onChange={e =>
-                    setEditLesson(prev => (prev ? { ...prev, parity: e.target.value as LessonParity } : prev))
-                  }
-                >
+                <TextField select label="Неделя" value={editLesson.parity} onChange={e => setEditLesson({ ...editLesson, parity: e.target.value })}>
                   <MenuItem value="both">Обе</MenuItem>
                   <MenuItem value="odd">Нечётная</MenuItem>
                   <MenuItem value="even">Чётная</MenuItem>
@@ -988,13 +949,7 @@ export default function Schedule() {
               </TextField>
               <TextField type="time" label="Начало" value={addFields.startTime} onChange={e => setAddFields({ ...addFields, startTime: e.target.value })} fullWidth />
               <TextField type="time" label="Конец" value={addFields.endTime} onChange={e => setAddFields({ ...addFields, endTime: e.target.value })} fullWidth />
-              <TextField
-                select
-                label="Неделя"
-                value={addFields.parity}
-                onChange={e => setAddFields(prev => ({ ...prev, parity: e.target.value as LessonParity }))}
-                fullWidth
-              >
+              <TextField select label="Неделя" value={addFields.parity} onChange={e => setAddFields({ ...addFields, parity: e.target.value })} fullWidth>
                 <MenuItem value="both">Обе</MenuItem>
                 <MenuItem value="odd">Нечётная</MenuItem>
                 <MenuItem value="even">Чётная</MenuItem>

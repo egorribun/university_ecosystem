@@ -1,4 +1,4 @@
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import { Box, Paper, Typography, TextField, Button, Stack, Select, MenuItem, InputLabel, FormControl, useMediaQuery, CircularProgress, InputAdornment, IconButton, LinearProgress, Chip, Tooltip } from "@mui/material";
@@ -40,12 +40,6 @@ function suggestEmailDomain(email: string) {
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type RegisterState = {
-  status: "idle" | "success" | "error";
-  error?: string;
-  field?: "full_name" | "email" | "password" | "confirm" | "invite_code";
-};
-
 const Register = () => {
   const navigate = useNavigate();
   const [form, setForm] = useState({ full_name: "", email: "", password: "", confirm: "", role: "student", invite_code: "" });
@@ -54,14 +48,11 @@ const Register = () => {
   const [capsPass, setCapsPass] = useState(false);
   const [capsConfirm, setCapsConfirm] = useState(false);
   const [strength, setStrength] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
 
   const isMobile = useMediaQuery("(max-width:600px)");
-  const fullNameRef = useRef<HTMLInputElement | null>(null);
-  const emailRef = useRef<HTMLInputElement | null>(null);
-  const inviteRef = useRef<HTMLInputElement | null>(null);
-  const passwordRef = useRef<HTMLInputElement | null>(null);
-  const confirmRef = useRef<HTMLInputElement | null>(null);
   const needsInvite = form.role === "teacher" || form.role === "admin";
   const minLenOk = form.password.length >= 8;
   const matchOk = form.confirm.length > 0 && form.password === form.confirm;
@@ -70,6 +61,7 @@ const Register = () => {
 
   const handleChange = (e: any) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    setError("");
   };
 
   const handleEmailBlur = () => {
@@ -79,6 +71,7 @@ const Register = () => {
 
   const handlePass = async (v: string) => {
     setForm((f) => ({ ...f, password: v }));
+    setError("");
     if (!v) {
       setStrength(null);
       return;
@@ -92,70 +85,47 @@ const Register = () => {
     }
   };
 
-  const [registerState, registerAction, registerPending] = useActionState(async (_prev: RegisterState, formData: FormData) => {
-    const fullName = String(formData.get("full_name") ?? "").trim();
-    const email = String(formData.get("email") ?? "").trim();
-    const password = String(formData.get("password") ?? "");
-    const confirm = String(formData.get("confirm") ?? "");
-    const role = String(formData.get("role") ?? "student");
-    const inviteCode = String(formData.get("invite_code") ?? "").trim();
-
-    if (!fullName || !email || !password) {
-      const field: RegisterState["field"] = !fullName ? "full_name" : !email ? "email" : "password";
-      return { status: "error" as const, error: "Пожалуйста, заполните все поля.", field };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    setError("");
+    if (!form.full_name || !form.email || !form.password) {
+      setError("Пожалуйста, заполните все поля.");
+      return;
     }
-
-    if (!emailRe.test(email)) {
-      return { status: "error" as const, error: "Неверный формат email", field: "email" };
+    if (form.password !== form.confirm) {
+      setError("Пароли не совпадают.");
+      return;
     }
-
-    if (password !== confirm) {
-      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" };
+    if ((form.role === "teacher" || form.role === "admin") && !form.invite_code) {
+      setError("Необходим код приглашения для выбранной роли.");
+      return;
     }
-
-    if ((role === "teacher" || role === "admin") && !inviteCode) {
-      return { status: "error" as const, error: "Необходим код приглашения для выбранной роли.", field: "invite_code" };
-    }
-
+    setLoading(true);
     try {
       await api.post("/users", {
-        full_name: fullName,
-        email,
-        password,
-        role,
-        invite_code: inviteCode,
+        full_name: form.full_name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+        invite_code: form.invite_code.trim(),
       });
       navigate("/login");
-      return { status: "success" as const };
     } catch (err: any) {
       const msg = err?.response?.data?.detail || "Ошибка регистрации";
-      const text = typeof msg === "string" ? msg : Array.isArray(msg) ? msg.join("; ") : "Ошибка регистрации";
-      return { status: "error" as const, error: text };
+      setError(typeof msg === "string" ? msg : Array.isArray(msg) ? msg.join("; ") : "Ошибка регистрации");
     }
-  }, { status: "idle" as const });
-
-  const registerStatus = registerState.status;
-  const registerErrorField = registerState.field;
-  const registerErrorMessage = registerStatus === "error" ? registerState.error ?? "" : "";
-
-  useEffect(() => {
-    if (!registerPending && registerStatus === "error" && registerErrorField) {
-      if (registerErrorField === "full_name") fullNameRef.current?.focus();
-      else if (registerErrorField === "email") emailRef.current?.focus();
-      else if (registerErrorField === "password") passwordRef.current?.focus();
-      else if (registerErrorField === "confirm") confirmRef.current?.focus();
-      else if (registerErrorField === "invite_code") inviteRef.current?.focus();
-    }
-  }, [registerPending, registerStatus, registerErrorField]);
+    setLoading(false);
+  };
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", px: 1, width: "100vw", overflow: "visible" }}>
       <Paper elevation={7} sx={{ width: "100%", minWidth: 0, maxWidth: 460, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, boxShadow: 8, bgcolor: "var(--card-bg)", mx: "auto" }}>
-        <form action={registerAction} autoComplete="off">
+        <form onSubmit={handleSubmit} autoComplete="off">
           <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>Регистрация</Typography>
           <Stack spacing={2}>
-            <TextField name="full_name" label="Имя" value={form.full_name} onChange={handleChange} fullWidth variant="outlined" autoComplete="name" autoFocus inputRef={fullNameRef} disabled={registerPending} inputProps={{ autoCapitalize: "words", spellCheck: "false" }} />
-            <TextField name="email" label="E-mail" type="email" value={form.email} onChange={handleChange} onBlur={handleEmailBlur} fullWidth variant="outlined" autoComplete="email" error={!emailValid} helperText={!emailValid ? "Неверный формат email" : " "} inputRef={emailRef} disabled={registerPending} inputProps={{ inputMode: "email", autoCapitalize: "none", autoCorrect: "off", spellCheck: "false" }} />
+            <TextField name="full_name" label="Имя" value={form.full_name} onChange={handleChange} fullWidth variant="outlined" autoComplete="name" autoFocus inputProps={{ autoCapitalize: "words", spellCheck: "false" }} />
+            <TextField name="email" label="E-mail" type="email" value={form.email} onChange={handleChange} onBlur={handleEmailBlur} fullWidth variant="outlined" autoComplete="email" error={!emailValid} helperText={!emailValid ? "Неверный формат email" : " "} inputProps={{ inputMode: "email", autoCapitalize: "none", autoCorrect: "off", spellCheck: "false" }} />
             {emailSuggestion && (
               <Box sx={{ mt: -1.5 }}>
                 <Chip size="small" variant="outlined" color="primary" label={`Исправить на ${emailSuggestion}`} onClick={() => { setForm(f => ({ ...f, email: emailSuggestion })); setEmailSuggestion(null); }} />
@@ -163,14 +133,14 @@ const Register = () => {
             )}
             <FormControl fullWidth>
               <InputLabel id="role-label">Роль</InputLabel>
-              <Select labelId="role-label" name="role" label="Роль" value={form.role} onChange={handleChange} variant="outlined" disabled={registerPending} MenuProps={{ PaperProps: { sx: { maxHeight: 220, borderRadius: 2 } }, anchorOrigin: { vertical: "bottom", horizontal: "left" }, transformOrigin: { vertical: "top", horizontal: "left" }, sx: { zIndex: 3000 } }}>
+              <Select labelId="role-label" name="role" label="Роль" value={form.role} onChange={handleChange} variant="outlined" MenuProps={{ PaperProps: { sx: { maxHeight: 220, borderRadius: 2 } }, anchorOrigin: { vertical: "bottom", horizontal: "left" }, transformOrigin: { vertical: "top", horizontal: "left" }, sx: { zIndex: 3000 } }}>
                 <MenuItem value="student">Студент</MenuItem>
                 <MenuItem value="teacher">Преподаватель</MenuItem>
                 <MenuItem value="admin">Админ</MenuItem>
               </Select>
             </FormControl>
             {(form.role === "teacher" || form.role === "admin") && (
-              <TextField name="invite_code" label="Код приглашения" value={form.invite_code} onChange={handleChange} fullWidth variant="outlined" autoComplete="one-time-code" inputRef={inviteRef} disabled={registerPending} inputProps={{ autoCapitalize: "characters", spellCheck: "false" }} />
+              <TextField name="invite_code" label="Код приглашения" value={form.invite_code} onChange={handleChange} fullWidth variant="outlined" autoComplete="one-time-code" inputProps={{ autoCapitalize: "characters", spellCheck: "false" }} />
             )}
             <TextField
               name="password"
@@ -183,8 +153,6 @@ const Register = () => {
               fullWidth
               variant="outlined"
               autoComplete="new-password"
-              inputRef={passwordRef}
-              disabled={registerPending}
               helperText="Минимум 8 символов"
               FormHelperTextProps={{ sx: { mt: 0.5 } }}
               InputProps={{
@@ -218,8 +186,6 @@ const Register = () => {
               fullWidth
               variant="outlined"
               autoComplete="new-password"
-              inputRef={confirmRef}
-              disabled={registerPending}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -233,8 +199,8 @@ const Register = () => {
               }}
             />
             <Box sx={{ minHeight: 20 }}>{capsConfirm && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}</Box>
-            <Box sx={{ minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }} aria-live="assertive">{registerErrorMessage && <Typography color="error" fontSize={15}>{registerErrorMessage}</Typography>}</Box>
-            <Button type="submit" variant="contained" size="large" fullWidth sx={{ mt: 1, fontWeight: 600, borderRadius: 2, fontSize: 17, py: 1.2 }} disabled={registerPending || !isValid}>{registerPending ? <CircularProgress size={26} color="inherit" /> : "Зарегистрироваться"}</Button>
+            <Box sx={{ minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }} aria-live="assertive">{!!error && <Typography color="error" fontSize={15}>{error}</Typography>}</Box>
+            <Button type="submit" variant="contained" size="large" fullWidth sx={{ mt: 1, fontWeight: 600, borderRadius: 2, fontSize: 17, py: 1.2 }} disabled={loading || !isValid}>{loading ? <CircularProgress size={26} color="inherit" /> : "Зарегистрироваться"}</Button>
           </Stack>
           <Box mt={4} textAlign="center" fontSize={15}>
             Уже есть аккаунт? <Link to="/login" style={{ color: "var(--nav-link)", textDecoration: "underline" }}>Войти</Link>

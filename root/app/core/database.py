@@ -5,7 +5,6 @@ import logging
 from typing import AsyncGenerator
 
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
@@ -37,16 +36,8 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    while True:
-        try:
-            async with async_session() as session:
-                yield session
-            break
-        except DBAPIError as exc:  # pragma: no cover - defensive guard
-            if exc.connection_invalidated:
-                logger.warning("Database connection invalidated; retrying session")
-                continue
-            raise
+    async with async_session() as session:
+        yield session
 
 
 async def wait_db(max_attempts: int = 5, delay: float = 1.0) -> None:
