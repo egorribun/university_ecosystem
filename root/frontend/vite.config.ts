@@ -72,8 +72,7 @@ export default defineConfig(({ mode }) => {
       manifest: {
         name: "Экосистема ГУУ",
         short_name: "ГУУ",
-        description:
-          "Экосистема ГУУ — личный кабинет со расписанием, событиями и уведомлениями.",
+        description: "Экосистема ГУУ — личный кабинет со расписанием, событиями и уведомлениями.",
         theme_color: "#0b63f4",
         background_color: "#0b0d11",
         display: "standalone",
@@ -122,11 +121,11 @@ export default defineConfig(({ mode }) => {
               plugins: [
                 {
                   handlerDidError: async () => {
-                    const cacheStorage = globalThis.caches;
-                    if (!cacheStorage) return undefined;
-                    const appShell = await cacheStorage.match("/index.html");
-                    if (appShell) return appShell;
-                    return cacheStorage.match("/offline.html");
+                    const cacheStorage = globalThis.caches
+                    if (!cacheStorage) return undefined
+                    const appShell = await cacheStorage.match("/index.html")
+                    if (appShell) return appShell
+                    return cacheStorage.match("/offline.html")
                   },
                 },
               ],
@@ -182,8 +181,7 @@ export default defineConfig(({ mode }) => {
             handler: "NetworkOnly",
           },
           {
-            urlPattern: ({ url, sameOrigin }) =>
-              sameOrigin && url.pathname.startsWith("/api"),
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/api"),
             handler: "NetworkFirst",
             options: {
               cacheName: "api-cache",

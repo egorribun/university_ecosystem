@@ -25,7 +25,7 @@ function BodyColorSchemeSync() {
   const { mode, systemMode } = useColorScheme()
 
   useEffect(() => {
-    const resolved = mode === "system" ? systemMode ?? "light" : mode ?? "light"
+    const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
     document.body.dataset.colorScheme = resolved
     document.body.classList.toggle("dark", resolved === "dark")
     return () => {

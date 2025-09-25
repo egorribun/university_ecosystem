@@ -10,9 +10,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  run-hooks:
+    name: Run hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Determine diff range
+        id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ]; then
+            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            echo "base=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
+            echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=" >> "$GITHUB_OUTPUT"
+            echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: root/requirements.txt
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r root/requirements.txt
+      - name: Run pre-commit
+        run: |
+          base='${{ steps.diff.outputs.base }}'
+          head='${{ steps.diff.outputs.head }}'
+          if [ -z "$base" ]; then
+            pre-commit run --all-files --show-diff-on-failure --color always
+          else
+            pre-commit run --show-diff-on-failure --color always --from-ref "$base" --to-ref "$head"
+          fi
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: root/frontend
+        run: npm ci
+      - name: Run ESLint and Prettier
+        working-directory: root/frontend
+        run: |
+          npm run lint
+          npm run format:check
+
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
+    needs: run-hooks
     env:
       OTEL_SDK_DISABLED: "true"
     defaults:
@@ -50,6 +108,7 @@ jobs:
   frontend-tests:
     name: Frontend tests
     runs-on: ubuntu-latest
+    needs: run-hooks
     defaults:
       run:
         working-directory: root/frontend
@@ -75,6 +134,7 @@ jobs:
   build:
     name: Frontend build
     runs-on: ubuntu-latest
+    needs: run-hooks
     defaults:
       run:
         working-directory: root/frontend
@@ -99,7 +159,8 @@ jobs:
 
   lighthouse:
     name: Lighthouse CI
-    needs: build
+    needs:
+      - build
     runs-on: ubuntu-latest
     env:
       PREVIEW_URL: ${{ vars.PREVIEW_URL || secrets.PREVIEW_URL || '' }}
