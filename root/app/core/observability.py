@@ -28,10 +28,19 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 
-from sentry_sdk import init as sentry_init
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
-from sentry_sdk.integrations.opentelemetry import SentrySpanProcessor
+try:
+    from sentry_sdk import init as sentry_init
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    try:
+        from sentry_sdk.integrations.opentelemetry import SentrySpanProcessor  # type: ignore
+    except Exception:
+        SentrySpanProcessor = None  # type: ignore[assignment]
+except Exception:
+    sentry_init = None  # type: ignore[assignment]
+    FastApiIntegration = None  # type: ignore[assignment]
+    LoggingIntegration = None  # type: ignore[assignment]
+    SentrySpanProcessor = None  # type: ignore[assignment]
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -48,14 +57,10 @@ _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
 def get_request_id() -> str | None:
-    """Return the request correlation identifier from the current context."""
-
     return _request_id_ctx.get(None)
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    """Populate and propagate a correlation identifier for every request."""
-
     def __init__(self, app: FastAPI, header_name: str = "x-request-id") -> None:
         super().__init__(app)
         self._header_name = header_name
@@ -73,9 +78,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 
 
 class TraceContextFilter(logging.Filter):
-    """Append trace/span/request identifiers to every log record."""
-
-    def filter(self, record: logging.LogRecord) -> bool:  # pragma: no cover - logging glue
+    def filter(self, record: logging.LogRecord) -> bool:
         span = trace.get_current_span()
         span_context = span.get_span_context()
         if span_context is not None and span_context.is_valid:
@@ -92,12 +95,10 @@ class TraceContextFilter(logging.Filter):
 
 
 class JSONLogFormatter(logging.Formatter):
-    """Render log records as structured JSON strings."""
-
     default_time_format = "%Y-%m-%dT%H:%M:%S"
     default_msec_format = "%s.%03dZ"
 
-    def format(self, record: logging.LogRecord) -> str:  # pragma: no cover - logging glue
+    def format(self, record: logging.LogRecord) -> str:
         log_record: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
@@ -159,7 +160,7 @@ def _configure_logging() -> None:
 
 
 def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
-    if not settings.sentry_dsn:
+    if not settings.sentry_dsn or sentry_init is None or LoggingIntegration is None or FastApiIntegration is None:
         return
 
     sentry_logging = LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
@@ -172,8 +173,8 @@ def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
         send_default_pii=False,
     )
 
-    if tracer_provider is not None:
-        tracer_provider.add_span_processor(SentrySpanProcessor())
+    if tracer_provider is not None and SentrySpanProcessor is not None:
+        tracer_provider.add_span_processor(SentrySpanProcessor())  # type: ignore[arg-type]
 
 
 def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
@@ -245,7 +246,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
                 meter_provider=meter_provider if settings.enable_otel_metrics else None,
             )
             _sqlalchemy_instrumented = True
-        except Exception:  # pragma: no cover - defensive guard
+        except Exception:
             pass
 
     _otel_configured = True
@@ -253,8 +254,6 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
 
 
 def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
-    """Initialise logging, tracing, metrics and error reporting."""
-
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
         app.add_middleware(CorrelationIdMiddleware, header_name=settings.request_id_header)
@@ -268,7 +267,7 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
                     tracer_provider=trace.get_tracer_provider(),
                     meter_provider=metrics.get_meter_provider(),
                 )
-            except Exception:  # pragma: no cover - defensive guard
+            except Exception:
                 pass
             app.state.otel_instrumented = True
 
@@ -276,23 +275,20 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
 
 
 def shutdown_observability() -> None:
-    """Flush telemetry providers when the application stops."""
-
     provider = trace.get_tracer_provider()
-    with suppress(Exception):  # pragma: no cover - best effort
+    with suppress(Exception):
         if isinstance(provider, TracerProvider):
             provider.shutdown()
 
     meter_provider = metrics.get_meter_provider()
-    with suppress(Exception):  # pragma: no cover - best effort
+    with suppress(Exception):
         if isinstance(meter_provider, MeterProvider):
             meter_provider.shutdown()
 
     if _otel_logging_handler is not None:
-        with suppress(Exception):  # pragma: no cover - best effort
+        with suppress(Exception):
             logging.getLogger().removeHandler(_otel_logging_handler)
 
     if _otel_logger_provider is not None:
-        with suppress(Exception):  # pragma: no cover - best effort
+        with suppress(Exception):
             _otel_logger_provider.shutdown()
-
