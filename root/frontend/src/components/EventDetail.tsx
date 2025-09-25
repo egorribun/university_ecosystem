@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from 'react'
 import api from '../api/axios'
 import {
   Box, Typography, Paper, CircularProgress, Stack, Chip, Button, Divider,
@@ -32,6 +32,22 @@ const formatLocalDateTime = (s?: string) => {
 }
 const formatDateSafe = (v?: string) => formatLocalDateTime(v)
 
+type UploadState = {
+  status: 'idle' | 'success' | 'error'
+  error?: string
+}
+
+type OptimisticEventFile = {
+  id: number | string
+  description?: string
+  file_url?: string
+  pending?: boolean
+}
+
+type FileOptimisticAction =
+  | { type: 'add'; file: OptimisticEventFile }
+  | { type: 'remove'; id: number | string }
+
 const EventDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -41,9 +57,50 @@ const EventDetail = () => {
   const [event, setEvent] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  const [fileLoading, setFileLoading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [optimisticFiles, mutateFiles] = useOptimistic<OptimisticEventFile[]>(event?.files ?? [], (current, action: FileOptimisticAction) => {
+    switch (action.type) {
+      case 'add':
+        return [...current, action.file]
+      case 'remove':
+        return current.filter(f => f.id !== action.id)
+      default:
+        return current
+    }
+  })
+
+  const [uploadState, uploadAction, uploadPending] = useActionState(async (_prev: UploadState, input: FormData) => {
+    if (input.get('__upload_reset__') === '1') {
+      return { status: 'idle' as const }
+    }
+
+    const file = input.get('file')
+    if (!(file instanceof File) || file.size === 0) {
+      return { status: 'error', error: 'Выберите файл' }
+    }
+
+    const optimisticId = `pending-${Date.now()}`
+    mutateFiles({ type: 'add', file: { id: optimisticId, description: file.name, file_url: '', pending: true } })
+
+    try {
+      const data = new FormData()
+      data.append('file', file)
+      await api.post(`/events/${id}/upload_file`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      mutateFiles({ type: 'remove', id: optimisticId })
+      setSnack('Файл добавлен')
+      setSelectedFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      await refreshEvent().catch(() => {})
+      return { status: 'success' }
+    } catch (err) {
+      mutateFiles({ type: 'remove', id: optimisticId })
+      setSnack('Ошибка добавления файла')
+      return { status: 'error', error: 'Не удалось добавить файл' }
+    }
+  }, { status: 'idle' as const })
 
   const [editingAbout, setEditingAbout] = useState(false)
   const [aboutDraft, setAboutDraft] = useState('')
@@ -52,57 +109,56 @@ const EventDetail = () => {
   const [snack, setSnack] = useState('')
   const aboutSectionRef = useRef<HTMLHeadingElement | null>(null)
 
-  const loadEvent = useCallback(() => {
-    const controller = new AbortController()
-    setLoading(true)
-    api.get(`/events/${id}`, { signal: controller.signal as any })
-      .then(res => setEvent(res.data))
-      .catch((err) => {
-        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
-          setSnack('Ошибка загрузки')
-        }
-      })
-      .finally(() => setLoading(false))
-    return () => controller.abort()
+  const fetchEvent = useCallback(async (signal?: AbortSignal) => {
+    const res = await api.get(`/events/${id}`, signal ? { signal } as any : undefined)
+    return res.data
   }, [id])
 
+  const refreshEvent = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
+    try {
+      const data = await fetchEvent(signal)
+      if (!signal?.aborted) {
+        setEvent(data)
+      }
+      return data
+    } catch (err: any) {
+      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED' && !signal?.aborted) {
+        setSnack('Ошибка загрузки')
+      }
+      throw err
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
+    }
+  }, [fetchEvent])
+
   useEffect(() => {
-    const clean = loadEvent()
-    return () => clean && clean()
-  }, [loadEvent])
+    const controller = new AbortController()
+    refreshEvent(controller.signal).catch(() => {})
+    return () => controller.abort()
+  }, [refreshEvent])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedFile(e.target.files?.[0] || null)
-  }
-
-  const handleFileUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedFile) return
-    setFileLoading(true)
-    try {
-      const data = new FormData()
-      data.append('file', selectedFile)
-      await api.post(`/events/${id}/upload_file`, data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      setSnack('Файл добавлен')
-      setSelectedFile(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      loadEvent()
-    } catch {
-      setSnack('Ошибка добавления файла')
-    } finally {
-      setFileLoading(false)
+    const nextFile = e.target.files?.[0] || null
+    setSelectedFile(nextFile)
+    if (uploadState.status === 'error' && !uploadPending) {
+      const marker = new FormData()
+      marker.append('__upload_reset__', '1')
+      uploadAction(marker)
     }
   }
 
   const handleDeleteFile = async (fileId: number) => {
+    mutateFiles({ type: 'remove', id: fileId })
     try {
       await api.delete(`/events/file/${fileId}`)
       setSnack('Файл удалён')
-      loadEvent()
     } catch {
       setSnack('Ошибка удаления файла')
+    } finally {
+      await refreshEvent().catch(() => {})
     }
   }
 
@@ -304,9 +360,9 @@ const EventDetail = () => {
 
             {user && (user.role === 'admin' || user.role === 'teacher') && (
               <Box>
-                <form onSubmit={handleFileUpload}>
+                <form action={uploadAction}>
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Button variant="contained" component="label" disabled={fileLoading}>
+                    <Button variant="contained" component="label" disabled={uploadPending}>
                       Файл
                       <input
                         type="file"
@@ -315,11 +371,11 @@ const EventDetail = () => {
                         required
                         ref={fileInputRef}
                         onChange={handleFileChange}
-                        disabled={fileLoading}
+                        disabled={uploadPending}
                       />
                     </Button>
-                    <Button variant="outlined" type="submit" disabled={!selectedFile || fileLoading}>
-                      {fileLoading ? 'Добавление...' : 'Добавить'}
+                    <Button variant="outlined" type="submit" disabled={!selectedFile || uploadPending}>
+                      {uploadPending ? 'Добавление...' : 'Добавить'}
                     </Button>
                     {selectedFile && (
                       <Typography
@@ -337,40 +393,59 @@ const EventDetail = () => {
                       </Typography>
                     )}
                   </Stack>
+                  {uploadState.status === 'error' && (
+                    <Typography color="error" fontSize={12} sx={{ mt: 0.5 }}>
+                      {uploadState.error}
+                    </Typography>
+                  )}
                 </form>
               </Box>
             )}
 
-            {Array.isArray(event.files) && event.files.length > 0 ? (
+            {optimisticFiles.length > 0 ? (
               <Box>
                 <Typography variant="subtitle1" fontWeight={600}>Файлы:</Typography>
                 <Stack spacing={1}>
-                  {event.files.map((f: any) =>
-                    <Box key={f.id} display="flex" alignItems="center">
-                      <a
-                        href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        title={f.description || (f.file_url.split('/').pop())}
-                        aria-label={`Скачать файл ${f.description || f.file_url.split('/').pop()}`}
-                        style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
-                      >
-                        {f.description || (f.file_url.split('/').pop())}
-                      </a>
-                      {(user?.role === 'admin' || user?.role === 'teacher') && (
-                        <IconButton
-                          aria-label="Удалить файл"
-                          color="error"
-                          onClick={async () => await handleDeleteFile(f.id)}
-                          size="small"
-                          sx={{ ml: 1 }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      )}
-                    </Box>
-                  )}
+                  {optimisticFiles.map((f: any) => {
+                    const isPendingFile = !!f.pending || typeof f.id !== 'number'
+                    return (
+                      <Box key={f.id} display="flex" alignItems="center">
+                        {isPendingFile ? (
+                          <Typography color="text.secondary" sx={{ flex: 1 }}>
+                            {f.description || 'Добавление файла...'}
+                          </Typography>
+                        ) : (
+                          <a
+                            href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download
+                            title={f.description || (f.file_url?.split('/').pop())}
+                            aria-label={`Скачать файл ${f.description || f.file_url?.split('/').pop()}`}
+                            style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
+                          >
+                            {f.description || (f.file_url?.split('/').pop())}
+                          </a>
+                        )}
+                        {(user?.role === 'admin' || user?.role === 'teacher') && (
+                          <IconButton
+                            aria-label="Удалить файл"
+                            color="error"
+                            disabled={isPendingFile}
+                            onClick={async () => {
+                              if (typeof f.id === 'number') {
+                                await handleDeleteFile(f.id)
+                              }
+                            }}
+                            size="small"
+                            sx={{ ml: 1 }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Box>
+                    )
+                  })}
                 </Stack>
               </Box>
             ) : (
@@ -499,9 +574,9 @@ const EventDetail = () => {
 
             {user && (user.role === 'admin' || user.role === 'teacher') && (
               <Box mt={2}>
-                <form onSubmit={handleFileUpload}>
+                <form action={uploadAction}>
                   <Stack direction="row" spacing={2} alignItems="center">
-                    <Button variant="contained" component="label" disabled={fileLoading}>
+                    <Button variant="contained" component="label" disabled={uploadPending}>
                       Файл
                       <input
                         type="file"
@@ -510,11 +585,11 @@ const EventDetail = () => {
                         required
                         ref={fileInputRef}
                         onChange={handleFileChange}
-                        disabled={fileLoading}
+                        disabled={uploadPending}
                       />
                     </Button>
-                    <Button variant="outlined" type="submit" disabled={!selectedFile || fileLoading}>
-                      {fileLoading ? 'Добавление...' : 'Добавить'}
+                    <Button variant="outlined" type="submit" disabled={!selectedFile || uploadPending}>
+                      {uploadPending ? 'Добавление...' : 'Добавить'}
                     </Button>
                     {selectedFile && (
                       <Typography
@@ -532,41 +607,60 @@ const EventDetail = () => {
                       </Typography>
                     )}
                   </Stack>
+                  {uploadState.status === 'error' && (
+                    <Typography color="error" fontSize={13} sx={{ mt: 0.75 }}>
+                      {uploadState.error}
+                    </Typography>
+                  )}
                 </form>
               </Box>
             )}
 
-            {Array.isArray(event.files) && event.files.length > 0 ? (
+            {optimisticFiles.length > 0 ? (
               <Box>
                 <Divider sx={{ my: 1 }} />
                 <Typography variant="subtitle1" fontWeight={600}>Файлы:</Typography>
                 <Stack spacing={1}>
-                  {event.files.map((f: any) =>
-                    <Box key={f.id} display="flex" alignItems="center">
-                      <a
-                        href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        title={f.description || (f.file_url.split('/').pop())}
-                        aria-label={`Скачать файл ${f.description || f.file_url.split('/').pop()}`}
-                        style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
-                      >
-                        {f.description || (f.file_url.split('/').pop())}
-                      </a>
-                      {(user?.role === 'admin' || user?.role === 'teacher') && (
-                        <IconButton
-                          aria-label="Удалить файл"
-                          color="error"
-                          onClick={async () => await handleDeleteFile(f.id)}
-                          size="small"
-                          sx={{ ml: 1 }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      )}
-                    </Box>
-                  )}
+                  {optimisticFiles.map((f: any) => {
+                    const isPendingFile = !!f.pending || typeof f.id !== 'number'
+                    return (
+                      <Box key={f.id} display="flex" alignItems="center">
+                        {isPendingFile ? (
+                          <Typography color="text.secondary" sx={{ flex: 1 }}>
+                            {f.description || 'Добавление файла...'}
+                          </Typography>
+                        ) : (
+                          <a
+                            href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download
+                            title={f.description || (f.file_url?.split('/').pop())}
+                            aria-label={`Скачать файл ${f.description || f.file_url?.split('/').pop()}`}
+                            style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
+                          >
+                            {f.description || (f.file_url?.split('/').pop())}
+                          </a>
+                        )}
+                        {(user?.role === 'admin' || user?.role === 'teacher') && (
+                          <IconButton
+                            aria-label="Удалить файл"
+                            color="error"
+                            disabled={isPendingFile}
+                            onClick={async () => {
+                              if (typeof f.id === 'number') {
+                                await handleDeleteFile(f.id)
+                              }
+                            }}
+                            size="small"
+                            sx={{ ml: 1 }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Box>
+                    )
+                  })}
                 </Stack>
               </Box>
             ) : (

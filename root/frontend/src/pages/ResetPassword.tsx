@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import axios from "../api/axios";
 import { Box, Paper, Typography, TextField, Button, Stack, InputAdornment, IconButton, LinearProgress, Tooltip } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
@@ -6,6 +6,12 @@ import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 
 const RESET_URL = "/password/reset";
+
+type ResetState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+  field?: "password" | "confirm";
+};
 
 async function sha1Hex(str: string) {
   const buf = new TextEncoder().encode(str);
@@ -37,21 +43,15 @@ export default function ResetPassword() {
   const [strength, setStrength] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [pwned, setPwned] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    if (!token) setError("Некорректная ссылка сброса пароля.");
-  }, [token]);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+  const confirmRef = useRef<HTMLInputElement | null>(null);
 
   const minLenOk = password.length >= 8;
   const matchOk = confirm.length > 0 && password === confirm;
-  const canSubmit = token && minLenOk && matchOk && !submitting;
+  const canSubmit = token && minLenOk && matchOk;
 
   const onPass = async (v: string) => {
     setPassword(v);
-    setError("");
     setFeedback("");
     if (!v) {
       setStrength(null);
@@ -73,22 +73,42 @@ export default function ResetPassword() {
     } catch {}
   };
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError("");
-    try {
-      await axios.post(RESET_URL, { token, password });
-      setDone(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || "Не удалось сбросить пароль. Ссылка могла устареть.");
-    } finally {
-      setSubmitting(false);
+  const [resetState, resetAction, resetPending] = useActionState(async (_prev: ResetState, input: FormData) => {
+    if (input.get("__set_error__")) {
+      return { status: "error" as const, error: String(input.get("__set_error__")) };
     }
-  };
 
-  if (done) {
+    const pwd = String(input.get("password") ?? "");
+    const confirmValue = String(input.get("confirm") ?? "");
+
+    if (!token) {
+      return { status: "error" as const, error: "Некорректная ссылка сброса пароля." };
+    }
+
+    if (pwd !== confirmValue) {
+      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" };
+    }
+
+    try {
+      await axios.post(RESET_URL, { token, password: pwd });
+      return { status: "success" as const };
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Не удалось сбросить пароль. Ссылка могла устареть.";
+      return { status: "error" as const, error: msg };
+    }
+  }, token ? { status: "idle" as const } : { status: "error" as const, error: "Некорректная ссылка сброса пароля." });
+
+  const resetStatus = resetState.status;
+  const resetErrorMessage = resetStatus === "error" ? resetState.error ?? "" : "";
+
+  useEffect(() => {
+    if (!resetPending && resetStatus === "error" && resetState.field) {
+      if (resetState.field === "password") passwordRef.current?.focus();
+      else if (resetState.field === "confirm") confirmRef.current?.focus();
+    }
+  }, [resetPending, resetStatus, resetState.field]);
+
+  if (resetStatus === "success") {
     return (
       <Box sx={{ minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
         <Paper elevation={7} sx={{ width: "100%", maxWidth: 460, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, bgcolor: "var(--card-bg)" }}>
@@ -107,10 +127,11 @@ export default function ResetPassword() {
       <Paper elevation={7} sx={{ width: "100%", maxWidth: 460, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, bgcolor: "var(--card-bg)" }}>
         <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>Новый пароль</Typography>
         <Typography color="text.secondary" align="center" sx={{ mb: 2 }}>Придумайте новый пароль для вашей учётной записи.</Typography>
-        <form onSubmit={submit} autoComplete="off">
+        <form action={resetAction} autoComplete="off">
           <Stack spacing={2}>
             <TextField
               label="Пароль"
+              name="password"
               type={showPass ? "text" : "password"}
               value={password}
               onChange={(e)=>onPass(e.target.value)}
@@ -119,6 +140,8 @@ export default function ResetPassword() {
               fullWidth
               autoFocus
               autoComplete="new-password"
+              inputRef={passwordRef}
+              disabled={resetPending || resetStatus === "success"}
               helperText="Минимум 8 символов"
               InputProps={{
                 endAdornment: (
@@ -148,6 +171,7 @@ export default function ResetPassword() {
             {pwned && <Typography color="warning.main" fontSize={13}>Этот пароль встречался в утечках — лучше выберите другой.</Typography>}
             <TextField
               label="Повторите пароль"
+              name="confirm"
               type={showConfirm ? "text" : "password"}
               value={confirm}
               onChange={(e)=>setConfirm(e.target.value)}
@@ -155,6 +179,8 @@ export default function ResetPassword() {
               onKeyDown={(e)=>setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
               fullWidth
               autoComplete="new-password"
+              inputRef={confirmRef}
+              disabled={resetPending || resetStatus === "success"}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -177,9 +203,9 @@ export default function ResetPassword() {
             />
             {capsConfirm && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}
             <Box sx={{ minHeight: 22, textAlign: "center" }} aria-live="assertive">
-              {!!error && <Typography color="error" fontSize={15}>{error}</Typography>}
+              {resetErrorMessage && <Typography color="error" fontSize={15}>{resetErrorMessage}</Typography>}
             </Box>
-            <Button type="submit" variant="contained" size="large" fullWidth disabled={!canSubmit}>{submitting ? "Сохраняю…" : "Сохранить пароль"}</Button>
+            <Button type="submit" variant="contained" size="large" fullWidth disabled={!canSubmit || resetPending}>{resetPending ? "Сохраняю…" : "Сохранить пароль"}</Button>
             <Button component={Link} to="/forgot-password" variant="text">Не пришло письмо?</Button>
           </Stack>
         </form>

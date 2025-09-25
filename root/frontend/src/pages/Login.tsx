@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -25,6 +25,12 @@ function levenshtein(a: string, b: string) {
 const COMMON_EMAIL_DOMAINS = ["gmail.com","googlemail.com","yahoo.com","outlook.com","hotmail.com","live.com","icloud.com","mail.ru","bk.ru","list.ru","inbox.ru","yandex.ru","yandex.com","rambler.ru","proton.me"];
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+type LoginState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+  field?: "username" | "password";
+};
+
 function suggestEmailDomain(email: string) {
   const at = email.indexOf("@");
   if (at < 0) return null;
@@ -41,20 +47,17 @@ function suggestEmailDomain(email: string) {
 }
 
 const Login = () => {
+  const savedEmail = useRef<string>(localStorage.getItem("auth:lastEmail") || "");
   const [remember, setRemember] = useState<boolean>(() => localStorage.getItem("auth:remember") === "1");
   const [caps, setCaps] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
-  const [emailMirror, setEmailMirror] = useState("");
+  const [emailMirror, setEmailMirror] = useState(savedEmail.current);
 
   const navigate = useNavigate();
   const { login } = useAuth();
   const isMobile = useMediaQuery("(max-width:600px)");
 
-  const savedEmail = useRef<string>(localStorage.getItem("auth:lastEmail") || "");
-  const formRef = useRef<HTMLFormElement | null>(null);
   const emailRef = useRef<HTMLInputElement | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
 
@@ -86,47 +89,54 @@ const Login = () => {
     setEmailSuggestion(s && s !== val ? s : null);
   };
 
-  const doLogin = async (username: string, password: string) => {
-    setError("");
-    setSubmitting(true);
+  const [loginState, loginAction, loginPending] = useActionState(async (_prev: LoginState, formData: FormData) => {
+    const username = String(formData.get("username") || "").trim();
+    const passwordValue = String(formData.get("password") || "");
+
+    if (!emailRe.test(username)) {
+      return { status: "error" as const, error: "Введите корректный email", field: "username" };
+    }
+
+    if (!passwordValue) {
+      return { status: "error" as const, error: "Введите пароль", field: "password" };
+    }
+
     try {
-      const formData = new URLSearchParams();
-      formData.append("username", username);
-      formData.append("password", password);
-      const res = await axios.post("/auth/login", formData, { headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-      if (remember) localStorage.setItem("auth:lastEmail", username);
+      const payload = new URLSearchParams();
+      payload.append("username", username);
+      payload.append("password", passwordValue);
+      const res = await axios.post("/auth/login", payload, { headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      if (remember) {
+        localStorage.setItem("auth:lastEmail", username);
+        savedEmail.current = username;
+      }
       localStorage.setItem("auth:remember", remember ? "1" : "0");
       await login(res.data.access_token);
       navigate("/dashboard");
+      return { status: "success" as const };
     } catch {
-      setError("Неверные данные для входа");
-    } finally {
-      setSubmitting(false);
+      return { status: "error" as const, error: "Неверные данные для входа" };
     }
-  };
+  }, { status: "idle" as const });
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const fd = new FormData(formRef.current || undefined);
-    const username = String(fd.get("username") || "").trim();
-    const password = String(fd.get("password") || "");
-    if (!emailRe.test(username)) {
-      setError("Введите корректный email");
-      emailRef.current?.focus();
-      return;
+  const loginStatus = loginState.status;
+  const loginErrorField = loginState.field;
+  const loginErrorMessage = loginStatus === "error" ? loginState.error ?? "" : "";
+
+  useEffect(() => {
+    if (!loginPending && loginStatus === "error") {
+      if (loginErrorField === "username") {
+        emailRef.current?.focus();
+      } else if (loginErrorField === "password") {
+        passwordRef.current?.focus();
+      }
     }
-    if (!password) {
-      setError("Введите пароль");
-      passwordRef.current?.focus();
-      return;
-    }
-    await doLogin(username, password);
-  };
+  }, [loginPending, loginStatus, loginErrorField]);
 
   return (
     <Box sx={{ minHeight: "100dvh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
       <Paper elevation={7} sx={{ width: "100%", maxWidth: 400, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, boxShadow: 8, bgcolor: "var(--card-bg)", transition: "background 0.22s, box-shadow 0.22s" }}>
-        <form ref={formRef} onSubmit={handleLogin} noValidate autoComplete="on">
+        <form action={loginAction} noValidate autoComplete="on">
           <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>Вход</Typography>
           <Stack spacing={2}>
             <TextField
@@ -141,7 +151,7 @@ const Login = () => {
               onBlur={handleEmailBlur}
               autoComplete="username"
               autoFocus
-              disabled={submitting}
+              disabled={loginPending}
               error={!emailValid}
               helperText={!emailValid ? "Неверный формат email" : " "}
               inputProps={{ inputMode: "email", autoCapitalize: "none", autoCorrect: "off", spellCheck: "false" }}
@@ -162,7 +172,7 @@ const Login = () => {
               onKeyUp={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
               onKeyDown={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
               autoComplete="current-password"
-              disabled={submitting}
+              disabled={loginPending}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -186,10 +196,10 @@ const Login = () => {
               required
             />
             <Box sx={{ minHeight: 20, textAlign: "left" }}>{caps && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}</Box>
-            <Box sx={{ minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }} aria-live="assertive">{!!error && <Typography color="error" fontSize={15}>{error}</Typography>}</Box>
-            <FormControlLabel control={<Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={submitting} />} label="Запомнить email" sx={{ mt: -0.5 }} />
-            <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 1, fontWeight: 600, borderRadius: 2, fontSize: 17, py: 1.2, bgcolor: "var(--nav-link)", color: "#fff", touchAction: "manipulation", "&:hover": { bgcolor: "var(--nav-link-hover)" } }}>
-              {submitting ? <CircularProgress size={26} color="inherit" /> : "Войти"}
+            <Box sx={{ minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }} aria-live="assertive">{loginErrorMessage && <Typography color="error" fontSize={15}>{loginErrorMessage}</Typography>}</Box>
+            <FormControlLabel control={<Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={loginPending} />} label="Запомнить email" sx={{ mt: -0.5 }} />
+            <Button type="submit" variant="contained" size="large" fullWidth disabled={loginPending} sx={{ mt: 1, fontWeight: 600, borderRadius: 2, fontSize: 17, py: 1.2, bgcolor: "var(--nav-link)", color: "#fff", touchAction: "manipulation", "&:hover": { bgcolor: "var(--nav-link-hover)" } }}>
+              {loginPending ? <CircularProgress size={26} color="inherit" /> : "Войти"}
             </Button>
           </Stack>
           <Box mt={1.5} textAlign="center" fontSize={15}>
