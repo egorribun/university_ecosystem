@@ -108,22 +108,45 @@ jobs:
         working-directory: root/frontend
     steps:
       - uses: actions/checkout@v4
-      - name: Ensure preview URL is provided
-        run: |
-          if [ -z "$PREVIEW_URL" ]; then
-            echo "PREVIEW_URL repository variable or secret must be set for Lighthouse CI" >&2
-            exit 1
-          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: root/frontend/package-lock.json
+
+      - name: Download built dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: root/frontend/dist
+
+      - name: Decide target URL
+        id: url
+        run: |
+          if [ -n "$PREVIEW_URL" ]; then
+            echo "LHCI_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+            echo "mode=remote" >> "$GITHUB_OUTPUT"
+          else
+            echo "LHCI_URL=http://127.0.0.1:4173" >> "$GITHUB_ENV"
+            echo "mode=local" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start local static server (fallback)
+        if: steps.url.outputs.mode == 'local'
+        run: |
+          npx -y http-server ./dist -p 4173 -s >/dev/null 2>&1 &
+          npx -y wait-on http://127.0.0.1:4173
+
       - name: Install dependencies
         run: npm ci
+
       - name: Run Lighthouse CI
+        env:
+          LHCI_URL: ${{ env.LHCI_URL }}
         run: npx lhci autorun --config=../.lighthouserc.js
+
       - name: Upload Lighthouse artifacts
         uses: actions/upload-artifact@v4
         with:
