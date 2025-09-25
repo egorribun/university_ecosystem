@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, ChangeEvent } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
@@ -27,6 +27,7 @@ import {
   DialogContent,
   DialogActions
 } from "@mui/material";
+import { useColorScheme } from "@mui/material/styles";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -52,30 +53,15 @@ export default function Settings() {
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
 
-  const sysPref = window.matchMedia("(prefers-color-scheme: dark)");
-  const readStored = () => (localStorage.getItem("theme") as ThemeMode | null) || "system";
-  const [theme, setTheme] = useState<ThemeMode>(readStored());
+  const { mode: storedMode, setMode } = useColorScheme();
+  const theme = (storedMode ?? "system") as ThemeMode;
 
-  const applyTheme = useCallback(
-    (mode: ThemeMode) => {
-      const dark = mode === "dark" || (mode === "system" && sysPref.matches);
-      document.body.classList.toggle("dark", dark);
+  const handleThemeChange = useCallback(
+    (_: ChangeEvent<HTMLInputElement>, value: string) => {
+      setMode(value as ThemeMode);
     },
-    [sysPref.matches]
+    [setMode]
   );
-
-  useEffect(() => {
-    applyTheme(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme, applyTheme]);
-
-  useEffect(() => {
-    const onChange = () => {
-      if (theme === "system") applyTheme("system");
-    };
-    sysPref.addEventListener?.("change", onChange);
-    return () => sysPref.removeEventListener?.("change", onChange);
-  }, [theme, applyTheme, sysPref]);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -296,7 +282,7 @@ export default function Settings() {
               <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
                 Тема
               </Typography>
-              <RadioGroup row value={theme} onChange={(e) => setTheme(e.target.value as ThemeMode)}>
+              <RadioGroup row value={theme} onChange={handleThemeChange}>
                 <FormControlLabel
                   value="system"
                   control={<Radio />}

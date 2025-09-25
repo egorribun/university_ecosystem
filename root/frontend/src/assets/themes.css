@@ -67,7 +67,24 @@
   --hint-fg: rgba(0,0,0,.6);
   --placeholder-fg: rgba(0,0,0,.45);
   --bn-h: clamp(58px, 9.5vh, 92px);
-  --bn-pad-v: 6px
+  --bn-pad-v: 6px;
+  --ue-spacing-2xs: 0.25rem;
+  --ue-spacing-xs: 0.5rem;
+  --ue-spacing-sm: 0.75rem;
+  --ue-spacing-md: 1rem;
+  --ue-spacing-lg: 1.5rem;
+  --ue-spacing-xl: 2rem;
+  --ue-radius-xs: 0.35rem;
+  --ue-radius-sm: 0.5rem;
+  --ue-radius-md: 0.75rem;
+  --ue-radius-lg: 1rem;
+  --ue-radius-xl: 1.75rem;
+  --ue-radius-pill: 999px;
+  --ue-focus-ring: 0 0 0 1px rgba(255,255,255,.92), 0 0 0 4px rgba(0,94,162,.35);
+  --ue-z-index-nav: 2600;
+  --ue-z-index-overlay: 2500;
+  --ue-z-index-floating: 2800;
+  --ue-z-index-toast: 3400
 }
 body.dark {
   --nav-bg: #0E1116;
@@ -105,14 +122,35 @@ body.dark {
   --glass-tint-3: rgba(255,255,255,.01);
   --glass-alpha: .05;
   --hint-fg: rgba(255,255,255,.72);
-  --placeholder-fg: rgba(255,255,255,.64)
+  --placeholder-fg: rgba(255,255,255,.64);
+  --ue-focus-ring: 0 0 0 1px rgba(11,15,21,.92), 0 0 0 4px rgba(105,169,220,.5)
 }
-* { outline: none }
 ::selection { background: var(--selection-bg); color: var(--selection-text) }
 ::-moz-selection { background: var(--selection-bg); color: var(--selection-text) }
 html, body, #root { height: 100%; margin: 0 }
 #root { min-height: 100dvh }
 html { scroll-behavior: smooth }
+button:not(.MuiButtonBase-root),
+.menu-link,
+.menu-btn-settings,
+.burger-btn,
+.bottom-nav__item { min-height: 44px; min-width: 44px }
+
+button:not(.MuiButtonBase-root),
+.menu-link,
+.menu-btn-settings,
+.burger-btn,
+.bottom-nav__item { touch-action: manipulation }
+
+button:not(.MuiButtonBase-root):focus-visible,
+.menu-link:focus-visible,
+.menu-btn-settings:focus-visible,
+.burger-btn:focus-visible,
+.bottom-nav__item:focus-visible {
+  outline: none;
+  box-shadow: var(--ue-focus-ring);
+  border-radius: max(var(--ue-radius-sm), 0.75rem)
+}
 body {
   background: var(--page-bg);
   color: var(--page-text);
@@ -141,8 +179,11 @@ h1 { font-size: var(--fs-h1) }
 h2 { font-size: var(--fs-h2) }
 h3 { font-size: var(--fs-h3) }
 .menu-link {
-  display: inline-block;
-  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 10px 16px;
   border-radius: 12px;
   font-weight: 700;
   font-size: 1rem;
@@ -151,17 +192,22 @@ h3 { font-size: var(--fs-h3) }
   text-decoration: none;
   transition: transform var(--anim-fast), box-shadow var(--anim-fast), color var(--anim-fast), background var(--anim-fast)
 }
-.menu-link:hover,.menu-link:focus {
+.menu-link:hover,
+.menu-link:focus {
   color: var(--menu-hover-text) !important;
   background: var(--menu-hover-bg);
-  transform: translateY(-1px) scale(1.08);
+  transform: translateY(-1px) scale(1.05);
   box-shadow: 0 6px 20px rgba(0,94,162,.18);
   text-decoration: none;
   z-index: 2
 }
-.menu-link:focus-visible { box-shadow: var(--shadow-focus) }
+.menu-link:focus-visible {
+  transform: none;
+  box-shadow: var(--ue-focus-ring);
+}
 .menu-link.settings { background: transparent; border: none; color: var(--nav-text); box-shadow: none }
-.menu-link.settings:hover,.menu-link.settings:focus { background: var(--menu-hover-bg); color: var(--menu-hover-text) !important; box-shadow: 0 2px 10px #0001 }
+.menu-link.settings:hover,
+.menu-link.settings:focus { background: var(--menu-hover-bg); color: var(--menu-hover-text) !important; box-shadow: 0 2px 10px #0001 }
 .menu-link.logout {
   color: #e53935 !important;
   background: #fff4f4;
@@ -293,6 +339,31 @@ a:hover { color: var(--nav-link-hover); text-decoration: underline; text-underli
 body.dark ::-webkit-scrollbar-thumb { background: #343c59 }
 body,.menu-link,.navbar-root,.menu-btn-settings,.burger-btn,.menu-link.logout,.main-card,.option-card,.gradient-card-btn {
   transition: background var(--anim-med), color var(--anim-med), border-color var(--anim-med), box-shadow var(--anim-med)
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
+  }
+  body,
+  .menu-link,
+  .navbar-root,
+  .menu-btn-settings,
+  .burger-btn,
+  .menu-link.logout,
+  .main-card,
+  .option-card,
+  .gradient-card-btn,
+  .mobile-drawer,
+  .mobile-drawer nav { transition: none !important }
+  .menu-link:hover,
+  .menu-link.logout:hover,
+  .card-hover:hover,
+  .card-hover:focus-within { transform: none !important; box-shadow: none !important }
 }
 body.dark .MuiDayCalendar-weekDayLabel,
 body.dark .MuiDayCalendar-header,

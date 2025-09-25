@@ -90,25 +90,11 @@ const Navbar = () => {
   const location = useLocation();
   const { user, isAuth, loading } = useAuth();
 
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "dark") return true;
-    if (saved === "light") return false;
-    if (typeof window !== "undefined" && "matchMedia" in window) {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    }
-    return false;
-  });
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const isMobile = useIsMobile();
   const prevIsMobile = useRef(isMobile);
   const navRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    document.body.classList.toggle("dark", dark);
-    localStorage.setItem("theme", dark ? "dark" : "light");
-  }, [dark]);
 
   useEffect(() => {
     if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false);
@@ -199,7 +185,7 @@ const Navbar = () => {
           overflowX: "hidden",
           position: "sticky",
           top: "env(safe-area-inset-top, 0px)",
-          zIndex: 2600
+          zIndex: "var(--ue-z-index-nav)"
         }}
       >
         <div
@@ -329,7 +315,7 @@ const Navbar = () => {
         <div
           id="mobile-drawer"
           className="mobile-drawer"
-          style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 2500, pointerEvents: mobileMenu ? "auto" : "none", background: mobileMenu ? "rgba(0,0,0,0.23)" : "transparent", transition: "background 0.28s", display: "flex" }}
+          style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: "var(--ue-z-index-overlay)", pointerEvents: mobileMenu ? "auto" : "none", background: mobileMenu ? "rgba(0,0,0,0.23)" : "transparent", transition: "background 0.28s", display: "flex" }}
           onClick={() => setMobileMenu(false)}
           role="dialog"
           aria-modal="true"
