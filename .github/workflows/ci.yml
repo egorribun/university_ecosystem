@@ -5,38 +5,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-jobs:
-  node:
-    name: Node.js (frontend)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: root/frontend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Detect frontend
-        id: probe
-        run: |
-          if [ -f package.json ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: actions/setup-node@v5
-        if: steps.probe.outputs.has == 'true'
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: root/frontend/package-lock.json
-      - name: Install
-        if: steps.probe.outputs.has == 'true'
-        run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
-      - name: Build
-        if: steps.probe.outputs.has == 'true'
-        run: npm run build --if-present
-      - name: Test
-        if: steps.probe.outputs.has == 'true'
-        run: npm test --if-present
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-  python:
-    name: Python (backend)
+jobs:
+  backend-tests:
+    name: Backend tests
     runs-on: ubuntu-latest
     env:
       OTEL_SDK_DISABLED: "true"
@@ -45,30 +20,113 @@ jobs:
         working-directory: root
     steps:
       - uses: actions/checkout@v4
-      - name: Detect backend
-        id: probe
-        run: |
-          if [ -f requirements.txt ] || [ -f pyproject.toml ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: actions/setup-python@v5
-        if: steps.probe.outputs.has == 'true'
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: pip
-          cache-dependency-path: root/requirements.txt
-      - name: Install
-        if: steps.probe.outputs.has == 'true'
+          cache-dependency-path: |
+            root/requirements.txt
+            root/pyproject.toml
+      - name: Install dependencies
         run: |
-          python -m pip install -U pip
+          python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f pyproject.toml ]; then pip install .; fi
-          python - <<'PY'
-          import sys, subprocess
-          try:
-              import pytest  # noqa
-          except Exception:
-              subprocess.check_call([sys.executable, "-m", "pip", "install", "pytest", "pytest-asyncio"])
-          PY
-      - name: Test
-        if: steps.probe.outputs.has == 'true'
+      - name: Run pytest
+        run: pytest --cov=app --cov-report=xml --cov-report=term-missing --junitxml=pytest-report.xml
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-xml
+          path: root/coverage.xml
+      - name: Upload pytest report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-report
+          path: root/pytest-report.xml
+          if-no-files-found: warn
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: root/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm run test -- --reporter=junit --outputFile=vitest-report.xml
+      - name: Upload vitest report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-vitest-report
+          path: root/frontend/vitest-report.xml
+          if-no-files-found: warn
+
+  build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: root/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build app
+        run: npm run build
+      - name: Upload production bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: root/frontend/dist
+          if-no-files-found: error
+
+  lighthouse:
+    name: Lighthouse CI
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_URL: ${{ vars.PREVIEW_URL || secrets.PREVIEW_URL || '' }}
+    defaults:
+      run:
+        working-directory: root/frontend
+    steps:
+      - name: Ensure preview URL is provided
         run: |
-          if compgen -G "tests/**" > /dev/null; then pytest -q; else echo "No tests"; fi
+          if [ -z "$PREVIEW_URL" ]; then
+            echo "PREVIEW_URL repository variable or secret must be set for Lighthouse CI" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Lighthouse CI
+        run: npx lhci autorun --config=../.lighthouserc.js
+      - name: Upload Lighthouse artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-results
+          path: root/frontend/.lighthouseci
+          if-no-files-found: warn
