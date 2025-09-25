@@ -19,9 +19,9 @@ jobs:
       run:
         working-directory: root
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -54,7 +54,7 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -79,7 +79,7 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -107,7 +107,7 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -115,7 +115,7 @@ jobs:
           cache: npm
           cache-dependency-path: root/frontend/package-lock.json
       - name: Download built dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frontend-dist
           path: root/frontend/dist
