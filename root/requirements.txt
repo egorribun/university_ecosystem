@@ -27,3 +27,4 @@ opentelemetry-instrumentation-httpx==0.58b0
 opentelemetry-instrumentation-sqlalchemy==0.58b0
 opentelemetry-instrumentation-asyncpg==0.58b0
 opentelemetry-semantic-conventions==0.58b0
+sentry-sdk[opentelemetry]>=2,<3
