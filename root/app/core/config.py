@@ -23,6 +23,16 @@ def _resolve_env_file(base_dir: Path) -> Path:
 _ENV_FILE = _resolve_env_file(_PROJECT_ROOT)
 
 
+def _coerce_str_list(values: Iterable[str] | str | None) -> list[str]:
+    if not values:
+        return []
+    if isinstance(values, str):
+        items = [item.strip() for item in values.split(",")]
+    else:
+        items = [str(item).strip() for item in values]
+    return [item for item in items if item]
+
+
 class Settings(BaseSettings):
     database_url: str
     secret_key: str
@@ -62,6 +72,35 @@ class Settings(BaseSettings):
     sentry_environment: str = ""
     log_level: str = "INFO"
     request_id_header: str = "x-request-id"
+    cors_allow_credentials: bool = True
+    cors_allow_methods: str | list[str] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    cors_allow_headers: str | list[str] = "Authorization,Content-Type"
+    cors_expose_headers: str | list[str] = ""
+    rate_limit_enabled: bool = True
+    rate_limit_default: str | list[str] = "100/minute"
+    rate_limit_sensitive: str = "5/minute"
+    rate_limit_storage_uri: str = "memory://"
+    rate_limit_headers_enabled: bool = True
+    security_csp: str = (
+        "default-src 'self'; "
+        "base-uri 'none'; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "object-src 'none'"
+    )
+    security_csp_report_only: bool = True
+    security_csp_report_uri: str = ""
+    security_hsts_enabled: bool = True
+    security_hsts_max_age: int = 31536000
+    security_hsts_include_subdomains: bool = True
+    security_hsts_preload: bool = False
+    security_x_frame_options: str = "DENY"
+    security_permissions_policy: str = "geolocation=(), microphone=(), camera=()"
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
@@ -130,6 +169,29 @@ class Settings(BaseSettings):
     @cached_property
     def is_development(self) -> bool:
         return str(self.environment).lower() in {"dev", "development", "local"}
+
+    @cached_property
+    def cors_allow_methods_list(self) -> list[str]:
+        methods = _coerce_str_list(self.cors_allow_methods)
+        return methods or ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+    @cached_property
+    def cors_allow_headers_list(self) -> list[str]:
+        headers = _coerce_str_list(self.cors_allow_headers)
+        return headers or ["Authorization", "Content-Type"]
+
+    @cached_property
+    def cors_expose_headers_list(self) -> list[str]:
+        return _coerce_str_list(self.cors_expose_headers)
+
+    @cached_property
+    def rate_limit_default_list(self) -> list[str]:
+        return _coerce_str_list(self.rate_limit_default)
+
+    @cached_property
+    def rate_limit_sensitive_value(self) -> str | None:
+        value = str(self.rate_limit_sensitive).strip()
+        return value or None
 
 
 settings = Settings()

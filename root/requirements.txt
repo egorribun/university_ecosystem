@@ -15,6 +15,7 @@ python-multipart>=0.0.7
 aiofiles>=23.0
 pywebpush>=1.9
 psycopg[binary]>=3.1
+slowapi>=0.1.9
 
 opentelemetry-api==1.37.0
 opentelemetry-sdk==1.37.0

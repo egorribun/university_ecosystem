@@ -19,6 +19,7 @@
 1. Скопируйте `root/.env.example` в `root/.env` и задайте собственные значения для секретов (`SECRET_KEY`, VAPID ключи, OAuth-данные Spotify, SMTP-доступы и т.д.).
 2. В переменной `TRUSTED_HOSTS` перечислите домены/адреса прокси, от которых приложению можно доверять заголовки `X-Forwarded-*`.
 3. Обновите `FRONTEND_ORIGINS`/`FRONTEND_ORIGIN`, чтобы CORS принимал только ваши домены, и при необходимости укажите `APP_BASE_URL` для ссылок из писем.
+4. Для ограничений по трафику и заголовков безопасности доступны параметры: `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_SENSITIVE`, `RATE_LIMIT_ENABLED`, `SECURITY_CSP`, `SECURITY_CSP_REPORT_ONLY`, `SECURITY_CSP_REPORT_URI`, `SECURITY_HSTS_ENABLED`, `SECURITY_HSTS_MAX_AGE`, `SECURITY_PERMISSIONS_POLICY`, `SECURITY_X_FRAME_OPTIONS` и др. Все они читаются из `.env`.
 
 ## Быстрый старт на Windows
 
@@ -36,6 +37,18 @@
 - OpenTelemetry включается установкой `ENABLE_OTEL=true`. Дополнительные настройки: `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACE_SAMPLER_RATIO`, `ENABLE_OTEL_METRICS` и `ENABLE_OTEL_LOGS`. Трейсы FastAPI и SQLAlchemy, метрики и логи отправляются в OTLP-совместимый бекенд.
 - Для Sentry задайте `SENTRY_DSN` и, при необходимости, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_PROFILES_SAMPLE_RATE`. Ошибки связываются с trace-id из OpenTelemetry.
 - SQLAlchemy использует `pool_pre_ping` и повторяет создание сессии при инвалидированном соединении, поэтому кратковременный разрыв подключения к БД не приводит к падению приложения.
+
+## Безопасность и ограничения запросов
+
+- SlowAPI применяет глобальные лимиты (`RATE_LIMIT_DEFAULT`) и отдельные ограничения для чувствительных операций (`RATE_LIMIT_SENSITIVE`, например логин и регистрация). Хранилище счётчиков настраивается через `RATE_LIMIT_STORAGE_URI`, заголовки `Retry-After` — через `RATE_LIMIT_HEADERS_ENABLED`.
+- HTTP-ответы дополняются заголовками: строгий CSP (`SECURITY_CSP`, по умолчанию в режиме Report-Only), HSTS (`SECURITY_HSTS_*`), `X-Frame-Options` (`SECURITY_X_FRAME_OPTIONS`) и `Permissions-Policy` (`SECURITY_PERMISSIONS_POLICY`).
+- CORS использует whitelisting: списки методов и заголовков управляются переменными `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, а домены — через `FRONTEND_ORIGINS`/`FRONTEND_ORIGIN`.
+
+### Как ослабить политику в разработке
+
+- Отключите лимиты, установив `RATE_LIMIT_ENABLED=false`, либо задайте более мягкие значения в `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_SENSITIVE` (например, `500/minute`).
+- Для отладки фронтенда расширьте CSP: укажите `SECURITY_CSP="default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:5173"` и оставьте `SECURITY_CSP_REPORT_ONLY=true`, чтобы браузер только логировал нарушения. При необходимости добавьте `SECURITY_CSP_REPORT_URI` для сбора отчётов.
+- Чтобы избежать проблем с локальным HTTP, установите `SECURITY_HSTS_ENABLED=false` и при необходимости ослабьте `SECURITY_PERMISSIONS_POLICY`/`SECURITY_X_FRAME_OPTIONS`.
 
 ## Что пофиксили и почему
 

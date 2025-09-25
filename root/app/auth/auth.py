@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
+from app.core.rate_limit import sensitive_route_limit
 from app.auth.security import verify_password, create_access_token, get_password_hash
 from app.models.models import User
 from app.schemas.schemas import Token, UserCreate
@@ -15,6 +16,7 @@ class LoginIn(BaseModel):
     password: str
 
 @router.post("/login", response_model=Token)
+@sensitive_route_limit()
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     email = form_data.username.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
@@ -27,6 +29,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     return {"access_token": token, "token_type": "bearer"}
 
 @router.post("/login-json", response_model=Token)
+@sensitive_route_limit()
 async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
     email = payload.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
@@ -39,6 +42,7 @@ async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 @router.post("/register")
+@sensitive_route_limit()
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     email = user.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
