@@ -29,6 +29,14 @@
 5. Создайте пустую базу данных (например, через `createdb` или pgAdmin) — она должна совпадать с `DATABASE_URL`.
 6. Запустите сервер разработки из каталога `root`: `uvicorn app.main:app --reload --env-file .env --reload-exclude .venv`. При необходимости добавьте флаг `--reload-dir root/app`.
 
+## Наблюдаемость и обработка ошибок
+
+- Для проверки живости и готовности сервиса доступны эндпоинты `GET /healthz` (быстрый ответ FastAPI и пинг базы) и `GET /ready` (ожидает восстановление соединения с базой).
+- Структурированные логи (JSON) содержат уровни, имена логгеров, `trace_id`, `span_id` и `request_id`. Заголовок корреляции по умолчанию `X-Request-ID`, но можно переопределить через `REQUEST_ID_HEADER`.
+- OpenTelemetry включается установкой `ENABLE_OTEL=true`. Дополнительные настройки: `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACE_SAMPLER_RATIO`, `ENABLE_OTEL_METRICS` и `ENABLE_OTEL_LOGS`. Трейсы FastAPI и SQLAlchemy, метрики и логи отправляются в OTLP-совместимый бекенд.
+- Для Sentry задайте `SENTRY_DSN` и, при необходимости, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_PROFILES_SAMPLE_RATE`. Ошибки связываются с trace-id из OpenTelemetry.
+- SQLAlchemy использует `pool_pre_ping` и повторяет создание сессии при инвалидированном соединении, поэтому кратковременный разрыв подключения к БД не приводит к падению приложения.
+
 ## Что пофиксили и почему
 
 - Настроили конфигурацию на Pydantic v2: настройки читаются из `.env`/`.env.local`/`.env.example` в любом каталоге запуска, добавлены вспомогательные списки CORS и доверенных хостов.
