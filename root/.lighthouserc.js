@@ -18,6 +18,8 @@ module.exports = {
         'total-blocking-time': ['warn', { maxNumericValue: 435, aggregationMethod: 'median' }]
       }
     },
+    // Требование по maskable-иконкам покрывает аудит PWA Lighthouse:
+    // https://web.dev/articles/lighthouse-pwa#pwa-optimized - отдельный пункт "Maskable icons are provided".
     upload: { target: 'temporary-public-storage' }
   }
 };

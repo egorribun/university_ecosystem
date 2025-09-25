@@ -1,10 +1,40 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig, loadEnv } from "vite"
 import react from "@vitejs/plugin-react"
 import { VitePWA } from "vite-plugin-pwa"
 import { visualizer } from "rollup-plugin-visualizer"
+import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 
 const srcDir = fileURLToPath(new URL("./src", import.meta.url))
+const publicDir = fileURLToPath(new URL("./public", import.meta.url))
+
+const ensureMaskableIcons = () => {
+  for (const [filename, base64] of Object.entries(MASKABLE_ICON_BASE64)) {
+    const destination = resolve(publicDir, filename)
+    const expected = Buffer.from(base64.replace(/\s+/g, ""), "base64")
+
+    let writeFile = true
+    try {
+      const current = readFileSync(destination)
+      if (current.equals(expected)) {
+        writeFile = false
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error
+      }
+    }
+
+    if (writeFile) {
+      mkdirSync(publicDir, { recursive: true })
+      writeFileSync(destination, expected)
+    }
+  }
+}
+
+ensureMaskableIcons()
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
@@ -33,7 +63,12 @@ export default defineConfig(({ mode }) => {
       registerType: "autoUpdate",
       injectRegister: "auto",
       strategies: "generateSW",
-      includeAssets: ["guu_logo.png", "offline.html"],
+      includeAssets: [
+        "guu_logo.png",
+        "offline.html",
+        "maskable-icon-192.png",
+        "maskable-icon-512.png",
+      ],
       manifest: {
         name: "Экосистема ГУУ",
         short_name: "ГУУ",
@@ -52,10 +87,21 @@ export default defineConfig(({ mode }) => {
             type: "image/png",
           },
           {
+            src: "/maskable-icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "maskable any",
+          },
+          {
             src: "/guu_logo.png",
             sizes: "512x512",
             type: "image/png",
-            purpose: "any maskable",
+          },
+          {
+            src: "/maskable-icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable any",
           },
         ],
       },
@@ -66,6 +112,26 @@ export default defineConfig(({ mode }) => {
         navigationPreload: true,
         cleanupOutdatedCaches: true,
         runtimeCaching: [
+          {
+            urlPattern: ({ sameOrigin, url }) =>
+              sameOrigin && (url.pathname === "/" || url.pathname === "/login"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-shell",
+              networkTimeoutSeconds: 5,
+              plugins: [
+                {
+                  handlerDidError: async () => {
+                    const cacheStorage = globalThis.caches;
+                    if (!cacheStorage) return undefined;
+                    const appShell = await cacheStorage.match("/index.html");
+                    if (appShell) return appShell;
+                    return cacheStorage.match("/offline.html");
+                  },
+                },
+              ],
+            },
+          },
           {
             urlPattern: ({ request }) => request.mode === "navigate",
             handler: "NetworkFirst",
