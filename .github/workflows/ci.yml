@@ -123,20 +123,22 @@ jobs:
         id: url
         run: |
           if [ -n "$PREVIEW_URL" ]; then
-            echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+            echo "LHCI_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
             echo "mode=remote" >> "$GITHUB_OUTPUT"
           else
-            echo "PREVIEW_URL=http://127.0.0.1:4174" >> "$GITHUB_ENV"
+            echo "LHCI_URL=http://127.0.0.1:4173" >> "$GITHUB_ENV"
             echo "mode=local" >> "$GITHUB_OUTPUT"
           fi
-      - name: Install dependencies
-        run: npm ci
-      - name: Start local static server (fallback)
+      - name: Start local preview server
         if: steps.url.outputs.mode == 'local'
         run: |
-          nohup npm run preview -- --port 4174 --strictPort --host > /dev/null 2>&1 &
-          npx -y wait-on http://127.0.0.1:4174
+          npx -y vite preview --host 127.0.0.1 --strictPort --port 4173 --outDir dist >/dev/null 2>&1 &
+          npx -y wait-on http://127.0.0.1:4173
+      - name: Install dependencies
+        run: npm ci
       - name: Run Lighthouse CI
+        env:
+          LHCI_URL: ${{ env.LHCI_URL }}
         run: npx lhci autorun --config=../.lighthouserc.js
       - name: Upload Lighthouse artifacts
         uses: actions/upload-artifact@v4
