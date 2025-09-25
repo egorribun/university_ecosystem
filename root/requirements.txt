@@ -18,6 +18,7 @@ psycopg[binary]>=3.1
 slowapi>=0.1.9
 aiosqlite>=0.19
 pytest>=8
+pre-commit>=3.8
 pytest-asyncio>=0.23
 pytest-cov>=5
 

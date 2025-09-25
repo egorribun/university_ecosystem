@@ -16,12 +16,82 @@
 
 > Цель проекта — собрать ключевые сервисы студента и преподавателя в удобной экосистеме с современным UX и открытой архитектурой для дальнейших интеграций.
 
-## Подготовка окружения
+## Быстрый старт
 
-1. Скопируйте `root/.env.example` в `root/.env` и задайте собственные значения для секретов (`SECRET_KEY`, VAPID ключи, OAuth-данные Spotify, SMTP-доступы и т.д.).
-2. В переменной `TRUSTED_HOSTS` перечислите домены/адреса прокси, от которых приложению можно доверять заголовки `X-Forwarded-*`.
-3. Обновите `FRONTEND_ORIGINS`/`FRONTEND_ORIGIN`, чтобы CORS принимал только ваши домены, и при необходимости укажите `APP_BASE_URL` для ссылок из писем.
-4. Для ограничений по трафику и заголовков безопасности доступны параметры: `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_SENSITIVE`, `RATE_LIMIT_ENABLED`, `SECURITY_CSP`, `SECURITY_CSP_REPORT_ONLY`, `SECURITY_CSP_REPORT_URI`, `SECURITY_HSTS_ENABLED`, `SECURITY_HSTS_MAX_AGE`, `SECURITY_PERMISSIONS_POLICY`, `SECURITY_X_FRAME_OPTIONS` и др. Все они читаются из `.env`.
+1. Склонируйте репозиторий и подготовьте окружение:
+
+   ```bash
+   git clone git@github.com:OWNER/university_ecosystem.git
+   cd university_ecosystem
+   cp root/.env.example root/.env
+   cp root/frontend/.env.example root/frontend/.env
+   ```
+
+2. Создайте виртуальное окружение, установите Python-зависимости (включая `pre-commit`) и Node-пакеты фронтенда:
+
+   ```bash
+   python -m venv .venv && source .venv/bin/activate
+   pip install -r root/requirements.txt
+   npm --prefix root/frontend install
+   npm --prefix root/frontend run prepare
+   ```
+
+   Хуки используют [pre-commit](https://pre-commit.com/) для Python и [Husky](https://typicode.github.io/husky) + lint-staged для фронтенда.
+
+3. Запустите приложения разработки:
+
+   ```bash
+   uvicorn app.main:app --reload --env-file root/.env --app-dir root/app
+   npm --prefix root/frontend run dev
+   ```
+
+4. Проверьте тесты:
+
+   ```bash
+   pytest -q
+   npm --prefix root/frontend run test
+   ```
+
+5. Убедитесь, что форматирование и PWA-сборка в порядке:
+
+   ```bash
+   pre-commit run --all-files
+   npm --prefix root/frontend run lint
+   npm --prefix root/frontend run format:check
+   npm --prefix root/frontend run build
+   ```
+
+## Команды
+
+### Backend (`root/`)
+
+- `uvicorn app.main:app --reload --env-file root/.env --app-dir root/app` — дев-сервер FastAPI.
+- `pytest` — юнит- и интеграционные тесты.
+- `pre-commit run --all-files` — полный прогон ruff/black/isort.
+- `alembic upgrade head` — применение миграций.
+
+### Frontend (`root/frontend/`)
+
+- `npm run dev` — Vite dev server.
+- `npm run lint` — проверка ESLint для ключевых экранов.
+- `npm run test` / `npm run test:watch` — Vitest.
+- `npm run test:e2e` — Playwright.
+- `npm run lint:all` и `npm run format:check` — полный прогон ESLint/Prettier при необходимости.
+- `npm run build` — продакшн-сборка с генерацией PWA-артефактов.
+- `npm run lint-staged` — запуск lint-staged для текущих изменений.
+- `npm run prepare` — переустановка Husky-хуков (выполняется автоматически после `npm install`).
+
+### Docker
+
+- `docker compose up --build` — поднять все сервисы (backend, frontend, postgres).
+- `docker compose down -v` — остановить и очистить тома.
+
+## Требования к PR
+
+- Перед коммитом дайте Husky выполнить `pre-commit` и `lint-staged`; убедитесь, что `pre-commit run --all-files` и `npm --prefix root/frontend run lint` проходят без ошибок.
+- Прогоните тесты: `pytest` и `npm --prefix root/frontend run test` (дополнительно `npm run test:e2e` при изменении e2e).
+- Обновляйте `README.md`, `.env.example` и примеры конфигураций при добавлении новых параметров.
+- Поддерживайте небольшие осмысленные коммиты, описывайте изменения в PR и следите за зелёным CI.
 
 ## Разработка в VS Code Dev Container
 
@@ -33,30 +103,6 @@
 4. Бэкенд (FastAPI) и фронтенд (Vite) стартуют внутри контейнеров по адресам `http://localhost:8000` и `http://localhost:5173` соответственно. База данных доступна на `localhost:5432`.
 
 Остановка dev-контейнера автоматически выключит связанные сервисы (`shutdownAction: stopCompose`).
-
-## Локальный запуск через Docker Compose
-
-1. Убедитесь, что Docker запущен, и подготовьте `root/.env`.
-2. Выполните единственную команду для поднятия всей инфраструктуры:
-
-   ```bash
-   docker compose up --build
-   ```
-
-   - `backend`: FastAPI на `http://localhost:8000` с hot-reload и доступом к Postgres.
-   - `frontend`: Vite dev-server на `http://localhost:5173` с прокинутой переменной `VITE_BACKEND_ORIGIN`.
-   - `postgres`: база данных с данными в volume `postgres-data`.
-
-3. Для остановки и очистки томов выполните `docker compose down -v`.
-
-## Быстрый старт на Windows
-
-1. Установите Python 3.13 и PostgreSQL, убедитесь, что сервер БД запущен, а учётные данные совпадают с параметрами из `.env`.
-2. Скопируйте пример настроек: `copy root\.env.example root\.env`, затем заполните значения под вашу среду (секреты, URL БД, ключи push-уведомлений).
-3. Создайте виртуальное окружение: `python -m venv .venv` и активируйте его `\.venv\Scripts\activate`.
-4. Установите зависимости бэкенда: `pip install -r root/requirements.txt`.
-5. Создайте пустую базу данных (например, через `createdb` или pgAdmin) — она должна совпадать с `DATABASE_URL`.
-6. Запустите сервер разработки из каталога `root`: `uvicorn app.main:app --reload --env-file .env --reload-exclude .venv`. При необходимости добавьте флаг `--reload-dir root/app`.
 
 ## Обновления зависимостей
 
