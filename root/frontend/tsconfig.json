@@ -18,7 +18,12 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "types": ["vite/client", "vite-plugin-pwa/client"]
+    "types": [
+      "vite/client",
+      "vite-plugin-pwa/client",
+      "vitest",
+      "vitest/globals"
+    ]
   },
-  "include": ["src"]
+  "include": ["src", "tests", "playwright.config.ts"]
 }

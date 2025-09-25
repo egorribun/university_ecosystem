@@ -1,0 +1,287 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MobileBottomNav > renders links for main sections 1`] = `
+<nav
+  aria-label="Основная навигация"
+  class="bottom-nav glass"
+  role="navigation"
+>
+  <a
+    aria-current="page"
+    aria-label="Главная"
+    class="bottom-nav__item active"
+    href="/dashboard"
+  >
+    <span
+      class="bottom-nav__icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+        data-testid="DashboardIcon"
+        focusable="false"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"
+        />
+      </svg>
+    </span>
+    <span
+      class="bottom-nav__label"
+    >
+      Главная
+    </span>
+  </a>
+  <a
+    aria-label="Новости"
+    class="bottom-nav__item"
+    href="/news"
+  >
+    <span
+      class="bottom-nav__icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+        data-testid="ArticleIcon"
+        focusable="false"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m-5 14H7v-2h7zm3-4H7v-2h10zm0-4H7V7h10z"
+        />
+      </svg>
+    </span>
+    <span
+      class="bottom-nav__label"
+    >
+      Новости
+    </span>
+  </a>
+  <a
+    aria-label="События"
+    class="bottom-nav__item"
+    href="/events"
+  >
+    <span
+      class="bottom-nav__icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+        data-testid="EventNoteIcon"
+        focusable="false"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M17 10H7v2h10zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zm-5-5H7v2h7z"
+        />
+      </svg>
+    </span>
+    <span
+      class="bottom-nav__label"
+    >
+      События
+    </span>
+  </a>
+  <a
+    aria-label="Расписание"
+    class="bottom-nav__item"
+    href="/schedule"
+  >
+    <span
+      class="bottom-nav__icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+        data-testid="TodayIcon"
+        focusable="false"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zM7 10h5v5H7z"
+        />
+      </svg>
+    </span>
+    <span
+      class="bottom-nav__label"
+    >
+      Расписание
+    </span>
+  </a>
+  <a
+    aria-label="Профиль"
+    class="bottom-nav__item"
+    href="/profile"
+  >
+    <span
+      class="bottom-nav__icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+        data-testid="PersonIcon"
+        focusable="false"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4m0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4"
+        />
+      </svg>
+    </span>
+    <span
+      class="bottom-nav__label"
+    >
+      Профиль
+    </span>
+  </a>
+</nav>
+`;
+
+exports[`MobileBottomNav > renders links for main sections 2`] = `
+<div>
+  <nav
+    aria-label="Основная навигация"
+    class="bottom-nav glass"
+    role="navigation"
+  >
+    <a
+      aria-current="page"
+      aria-label="Главная"
+      class="bottom-nav__item active"
+      href="/dashboard"
+    >
+      <span
+        class="bottom-nav__icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+          data-testid="DashboardIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"
+          />
+        </svg>
+      </span>
+      <span
+        class="bottom-nav__label"
+      >
+        Главная
+      </span>
+    </a>
+    <a
+      aria-label="Новости"
+      class="bottom-nav__item"
+      href="/news"
+    >
+      <span
+        class="bottom-nav__icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+          data-testid="ArticleIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m-5 14H7v-2h7zm3-4H7v-2h10zm0-4H7V7h10z"
+          />
+        </svg>
+      </span>
+      <span
+        class="bottom-nav__label"
+      >
+        Новости
+      </span>
+    </a>
+    <a
+      aria-label="События"
+      class="bottom-nav__item"
+      href="/events"
+    >
+      <span
+        class="bottom-nav__icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+          data-testid="EventNoteIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M17 10H7v2h10zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zm-5-5H7v2h7z"
+          />
+        </svg>
+      </span>
+      <span
+        class="bottom-nav__label"
+      >
+        События
+      </span>
+    </a>
+    <a
+      aria-label="Расписание"
+      class="bottom-nav__item"
+      href="/schedule"
+    >
+      <span
+        class="bottom-nav__icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+          data-testid="TodayIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zM7 10h5v5H7z"
+          />
+        </svg>
+      </span>
+      <span
+        class="bottom-nav__label"
+      >
+        Расписание
+      </span>
+    </a>
+    <a
+      aria-label="Профиль"
+      class="bottom-nav__item"
+      href="/profile"
+    >
+      <span
+        class="bottom-nav__icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+          data-testid="PersonIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4m0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4"
+          />
+        </svg>
+      </span>
+      <span
+        class="bottom-nav__label"
+      >
+        Профиль
+      </span>
+    </a>
+  </nav>
+  <div
+    aria-hidden="true"
+    class="bottom-nav-spacer"
+  />
+</div>
+`;
