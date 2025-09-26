@@ -24,7 +24,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def _apply_hsts(self, response: Response) -> None:
         headers = response.headers
         if not self._settings.security_hsts_enabled:
-            headers.pop("Strict-Transport-Security", None)
+            try:
+                del headers["Strict-Transport-Security"]
+            except KeyError:
+                pass
             return
         value = f"max-age={int(self._settings.security_hsts_max_age)}"
         if self._settings.security_hsts_include_subdomains:
@@ -40,16 +43,26 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         header_name = "Content-Security-Policy"
         if self._settings.security_csp_report_only:
             header_name = "Content-Security-Policy-Report-Only"
-        alternate = "Content-Security-Policy" if header_name.endswith("Report-Only") else "Content-Security-Policy-Report-Only"
+        alternate = (
+            "Content-Security-Policy"
+            if header_name.endswith("Report-Only")
+            else "Content-Security-Policy-Report-Only"
+        )
         if not policy:
-            headers.pop("Content-Security-Policy", None)
-            headers.pop("Content-Security-Policy-Report-Only", None)
+            for name in ("Content-Security-Policy", "Content-Security-Policy-Report-Only"):
+                try:
+                    del headers[name]
+                except KeyError:
+                    pass
             return
         normalized = policy.rstrip("; ")
         if report_uri:
             normalized = f"{normalized}; report-uri {report_uri}"
         headers[header_name] = normalized
-        headers.pop(alternate, None)
+        try:
+            del headers[alternate]
+        except KeyError:
+            pass
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers
@@ -57,7 +70,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if value:
             headers["X-Frame-Options"] = value
         else:
-            headers.pop("X-Frame-Options", None)
+            try:
+                del headers["X-Frame-Options"]
+            except KeyError:
+                pass
 
     def _apply_permissions_policy(self, response: Response) -> None:
         headers = response.headers
@@ -65,5 +81,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if value:
             headers["Permissions-Policy"] = value
         else:
-            headers.pop("Permissions-Policy", None)
-
+            try:
+                del headers["Permissions-Policy"]
+            except KeyError:
+                pass
