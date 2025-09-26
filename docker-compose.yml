@@ -10,7 +10,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/university
       FRONTEND_ORIGIN: http://localhost:5173
       FRONTEND_ORIGINS: http://localhost:5173
     depends_on:

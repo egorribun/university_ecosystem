@@ -9,10 +9,7 @@ import uuid
 import secrets
 import mimetypes
 import hashlib
-import ssl
-import smtplib
 import base64
-from email.message import EmailMessage
 from starlette.responses import RedirectResponse
 from urllib.parse import urlencode
 import httpx
@@ -23,6 +20,7 @@ from app.models import models
 from app import crud
 from app.core.config import settings
 from app.auth.security import decode_token
+from app.utils.email import send_reset_email
 
 router = APIRouter()
 
@@ -31,55 +29,6 @@ MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
-    host = settings.smtp_host or ""
-    port = int(settings.smtp_port or 0)
-    user = settings.smtp_user or ""
-    password = settings.smtp_password or ""
-    mail_from = settings.mail_from or "no-reply@example.com"
-    security = (settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")).lower()
-    name = f", {full_name}" if full_name else ""
-    html = f"""
-    <div style="font-family:Inter,Arial,sans-serif">
-      <h2>Сброс пароля</h2>
-      <p>Здравствуйте{name}!</p>
-      <p>Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует 45 минут.</p>
-      <p><a href="{link}" style="display:inline-block;padding:10px 16px;background:#1d5fff;color:#fff;border-radius:8px;text-decoration:none">Сбросить пароль</a></p>
-      <p>Если вы не запрашивали сброс, проигнорируйте это письмо.</p>
-    </div>
-    """
-    msg = EmailMessage()
-    msg["Subject"] = "Сброс пароля — Экосистема ГУУ"
-    msg["From"] = mail_from
-    msg["To"] = to_email
-    msg.set_content(f"Ссылка для сброса пароля: {link}\nОна действует 45 минут.")
-    msg.add_alternative(html, subtype="html")
-    try:
-        if not host or not port:
-            print(f"[EMAIL_FALLBACK] {to_email} <- {link}")
-            return
-        ctx = ssl.create_default_context()
-        if security == "ssl":
-            with smtplib.SMTP_SSL(host, port, context=ctx, timeout=10) as s:
-                if user:
-                    s.login(user, password)
-                s.send_message(msg)
-        elif security == "starttls":
-            with smtplib.SMTP(host, port, timeout=10) as s:
-                s.ehlo()
-                s.starttls(context=ctx)
-                s.ehlo()
-                if user:
-                    s.login(user, password)
-                s.send_message(msg)
-        else:
-            with smtplib.SMTP(host, port, timeout=10) as s:
-                if user:
-                    s.login(user, password)
-                s.send_message(msg)
-    except Exception as e:
-        print(f"[EMAIL_ERROR] {e}. Link for {to_email}: {link}")
 
 async def save_upload(file: UploadFile, subdir: str, prefix: str) -> str:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
@@ -108,7 +57,7 @@ async def forgot_password(payload: schemas.ForgotPasswordIn, bg: BackgroundTasks
         await db.commit()
         base = settings.app_base_url_clean
         reset_link = f"{base}/reset-password?token={token}"
-        bg.add_task(_send_reset_email, user.email, reset_link, user.full_name or "")
+        bg.add_task(send_reset_email, user.email, reset_link, user.full_name or "")
     return {"ok": True}
 
 @router.post("/password/reset")
@@ -160,7 +109,13 @@ async def upload_cover(file: UploadFile = File(...), db: AsyncSession = Depends(
     return db_user
 
 @router.post("/users", response_model=schemas.UserOut)
-async def create_user(data: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
+async def create_user(
+    data: schemas.UserCreate,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="forbidden")
     code_obj = None
     if data.role in ["teacher", "admin"]:
         if not data.invite_code:
@@ -421,7 +376,9 @@ async def upload_event_file(id: int, file: UploadFile = File(...), db: AsyncSess
     folder = base_dir / "event_files"
     folder.mkdir(parents=True, exist_ok=True)
     file_path = folder / filename
-    data = await file.read()
+    data = await file.read(10 * 1024 * 1024 + 1)
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="file too large")
     file_path.write_bytes(data)
     ef = models.EventFile(event_id=id, file_url=f"/static/event_files/{filename}")
     db.add(ef)

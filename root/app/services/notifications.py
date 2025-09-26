@@ -55,8 +55,9 @@ async def create_notifications_for_users(
             "url": url or "/",
             "type": type or None,
         }
+        loop = asyncio.get_running_loop()
         for s in subs:
-            asyncio.create_task(asyncio.to_thread(send_web_push, s, payload))
+            loop.create_task(asyncio.to_thread(send_web_push, s, payload))
     return len(rows)
 
 
