@@ -63,7 +63,12 @@ async def forgot_password(payload: schemas.ForgotPasswordIn, bg: BackgroundTasks
 @router.post("/password/reset")
 async def reset_password(payload: schemas.ResetPasswordIn, db: AsyncSession = Depends(get_db)):
     token_hash = _hash_token(payload.token)
-    result = await db.execute(select(models.PasswordResetToken).where(models.PasswordResetToken.token_hash == token_hash, models.PasswordResetToken.used == False))
+    result = await db.execute(
+        select(models.PasswordResetToken).where(
+            models.PasswordResetToken.token_hash == token_hash,
+            models.PasswordResetToken.used.is_(False),
+        )
+    )
     rec = result.scalar_one_or_none()
     if not rec or rec.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недействительная или просроченная ссылка")
@@ -73,7 +78,14 @@ async def reset_password(payload: schemas.ResetPasswordIn, db: AsyncSession = De
     from app.auth.security import get_password_hash
     user.hashed_password = get_password_hash(payload.password)
     rec.used = True
-    await db.execute(update(models.PasswordResetToken).where(models.PasswordResetToken.user_id == rec.user_id, models.PasswordResetToken.used == False).values(used=True))
+    await db.execute(
+        update(models.PasswordResetToken)
+        .where(
+            models.PasswordResetToken.user_id == rec.user_id,
+            models.PasswordResetToken.used.is_(False),
+        )
+        .values(used=True)
+    )
     await db.commit()
     return {"ok": True}
 
@@ -123,7 +135,7 @@ async def create_user(
         q = select(models.InviteCode).where(
             models.InviteCode.code == data.invite_code,
             models.InviteCode.role == data.role,
-            models.InviteCode.is_active == True,
+            models.InviteCode.is_active.is_(True),
         )
         code_obj = (await db.execute(q)).scalar_one_or_none()
         if not code_obj:
