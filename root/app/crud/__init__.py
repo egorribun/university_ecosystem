@@ -31,7 +31,6 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         )
         code = (await db.execute(code_q)).scalar_one_or_none()
         if not code:
-            # Лучше бросать ValueError — выше можно отдать HTTP 400
             raise ValueError("Неверный или уже использованный invite code")
 
     exists = await db.execute(
@@ -137,7 +136,7 @@ async def get_all_events(
     is_active: bool = True,
 ):
     q = select(models.Event)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     if search:
         q = q.where(
@@ -200,14 +199,22 @@ async def get_all_events(
 
 
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
+    starts_at = (
+        event.starts_at.replace(tzinfo=None)
+        if event.starts_at.tzinfo
+        else event.starts_at
+    )
+    ends_at = (
+        event.ends_at.replace(tzinfo=None) if event.ends_at.tzinfo else event.ends_at
+    )
     record = models.Event(
         title=event.title,
         description=event.description,
         about=getattr(event, "about", None),
         event_type=getattr(event, "event_type", None),
         location=event.location,
-        starts_at=event.starts_at,
-        ends_at=event.ends_at,
+        starts_at=starts_at,
+        ends_at=ends_at,
         created_by=user_id,
         speaker=getattr(event, "speaker", None),
         image_url=getattr(event, "image_url", None),
