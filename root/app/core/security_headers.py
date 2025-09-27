@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from app.core.config import Settings
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 from starlette.types import ASGIApp
-
-from app.core.config import Settings
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -13,7 +12,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._settings = settings
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # type: ignore[override]
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:  # type: ignore[override]
         response = await call_next(request)
         self._apply_hsts(response)
         self._apply_csp(response)
@@ -49,7 +50,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             else "Content-Security-Policy-Report-Only"
         )
         if not policy:
-            for name in ("Content-Security-Policy", "Content-Security-Policy-Report-Only"):
+            for name in (
+                "Content-Security-Policy",
+                "Content-Security-Policy-Report-Only",
+            ):
                 try:
                     del headers[name]
                 except KeyError:

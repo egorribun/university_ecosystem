@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeVar
 
+from app.core.config import settings
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-
-from app.core.config import settings
 
 F = TypeVar("F", bound=Callable[..., object])
 
@@ -27,6 +26,7 @@ limiter = Limiter(
 
 def limit_if_configured(limit_value: str | None) -> Callable[[F], F]:
     if not limit_value:
+
         def decorator(func: F) -> F:
             return func
 
@@ -36,4 +36,3 @@ def limit_if_configured(limit_value: str | None) -> Callable[[F], F]:
 
 def sensitive_route_limit() -> Callable[[F], F]:
     return limit_if_configured(settings.rate_limit_sensitive_value)
-

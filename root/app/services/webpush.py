@@ -1,10 +1,11 @@
 import json
-from sqlalchemy import delete, create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.engine import make_url
-from pywebpush import webpush, WebPushException
+
 from app.core.config import settings
 from app.models.models import PushSubscription
+from pywebpush import WebPushException, webpush
+from sqlalchemy import create_engine, delete
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 url = make_url(settings.database_url)
 if url.drivername.endswith("+asyncpg"):
@@ -12,8 +13,10 @@ if url.drivername.endswith("+asyncpg"):
 _sync_engine = create_engine(str(url), pool_pre_ping=True, future=True)
 _Session = sessionmaker(bind=_sync_engine, autocommit=False, autoflush=False)
 
+
 def json_dumps(obj):
     return json.dumps(obj, ensure_ascii=False)
+
 
 def send_web_push(sub: PushSubscription, data: dict):
     payload = {
@@ -41,7 +44,9 @@ def send_web_push(sub: PushSubscription, data: dict):
             subscription_info=subscription_info,
             data=json_dumps(payload),
             vapid_private_key=settings.vapid_private_key,
-            vapid_claims={"sub": settings.vapid_subject or "mailto:no-reply@example.com"},
+            vapid_claims={
+                "sub": settings.vapid_subject or "mailto:no-reply@example.com"
+            },
             headers=headers,
             ttl=ttl if ttl is not None else 43200,
         )

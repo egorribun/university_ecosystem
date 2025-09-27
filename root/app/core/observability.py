@@ -9,17 +9,13 @@ from contextvars import ContextVar
 from typing import Any, Iterable, Mapping
 
 from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-
 from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -28,13 +24,19 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 try:
     from sentry_sdk import init as sentry_init
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.logging import LoggingIntegration
+
     try:
-        from sentry_sdk.integrations.opentelemetry import SentrySpanProcessor  # type: ignore
+        from sentry_sdk.integrations.opentelemetry import (
+            SentrySpanProcessor,  # type: ignore
+        )
     except Exception:
         SentrySpanProcessor = None  # type: ignore[assignment]
 except Exception:
@@ -43,10 +45,8 @@ except Exception:
     LoggingIntegration = None  # type: ignore[assignment]
     SentrySpanProcessor = None  # type: ignore[assignment]
 
-from sqlalchemy.ext.asyncio import AsyncEngine
-
 from app.core.config import settings
-
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 _logging_configured = False
 _otel_configured = False
@@ -161,7 +161,12 @@ def _configure_logging() -> None:
 
 
 def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
-    if not settings.sentry_dsn or sentry_init is None or LoggingIntegration is None or FastApiIntegration is None:
+    if (
+        not settings.sentry_dsn
+        or sentry_init is None
+        or LoggingIntegration is None
+        or FastApiIntegration is None
+    ):
         return
 
     sentry_logging = LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
@@ -193,7 +198,9 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
         }
     )
 
-    sampler = ParentBased(TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0)))
+    sampler = ParentBased(
+        TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
+    )
     tracer_provider = TracerProvider(resource=resource, sampler=sampler)
 
     otlp_headers = _resolve_headers(settings.otel_exporter_otlp_headers)
@@ -257,7 +264,9 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
 def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
-        app.add_middleware(CorrelationIdMiddleware, header_name=settings.request_id_header)
+        app.add_middleware(
+            CorrelationIdMiddleware, header_name=settings.request_id_header
+        )
         tracer_provider = _configure_otel(engine)
         _configure_sentry(tracer_provider)
 

@@ -1,23 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from app.api.deps import get_current_user
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.models import PushSubscription, User
+from app.services.webpush import send_web_push
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.core.config import settings
-from app.api.deps import get_current_user
-from app.models.models import PushSubscription, User
-from app.services.webpush import send_web_push
-
 router = APIRouter(prefix="/push", tags=["push"])
+
 
 class SubKeys(BaseModel):
     p256dh: str
     auth: str
 
+
 class SubPayload(BaseModel):
     endpoint: str
     keys: SubKeys
+
 
 class NotifyBody(BaseModel):
     title: str
@@ -29,9 +31,11 @@ class NotifyBody(BaseModel):
     urgency: str | None = "normal"
     topic: str | None = None
 
+
 @router.get("/public-key")
 async def public_key():
     return {"key": settings.vapid_public_key}
+
 
 @router.post("/subscribe")
 async def subscribe(
@@ -44,7 +48,9 @@ async def subscribe(
     auth = payload.keys.auth.strip()
     if not endpoint or not p256dh or not auth:
         raise HTTPException(status_code=400, detail="invalid subscription")
-    res = await session.execute(select(PushSubscription).where(PushSubscription.endpoint == endpoint))
+    res = await session.execute(
+        select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+    )
     sub = res.scalar_one_or_none()
     if sub:
         await session.execute(
@@ -53,9 +59,18 @@ async def subscribe(
             .values(active=True, p256dh=p256dh, auth=auth, user_id=user.id)
         )
     else:
-        session.add(PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth, active=True, user_id=user.id))
+        session.add(
+            PushSubscription(
+                endpoint=endpoint,
+                p256dh=p256dh,
+                auth=auth,
+                active=True,
+                user_id=user.id,
+            )
+        )
     await session.commit()
     return {"ok": True}
+
 
 @router.post("/unsubscribe")
 async def unsubscribe(
@@ -66,27 +81,29 @@ async def unsubscribe(
     endpoint = payload.endpoint.strip()
     await session.execute(
         update(PushSubscription)
-        .where(PushSubscription.endpoint == endpoint, PushSubscription.user_id == user.id)
+        .where(
+            PushSubscription.endpoint == endpoint, PushSubscription.user_id == user.id
+        )
         .values(active=False)
     )
     await session.commit()
     return {"ok": True}
 
+
 @router.post("/test")
 async def send_test(
     data: NotifyBody | None = None,
-    bg: BackgroundTasks = None,            # <-- НИ КАКОГО Depends()!
+    bg: BackgroundTasks = None,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # FastAPI сам инжектит BackgroundTasks, поэтому подстрахуемся на случай IDE:
     if bg is None:
         bg = BackgroundTasks()
 
     res = await session.execute(
         select(PushSubscription).where(
             PushSubscription.user_id == user.id,
-            PushSubscription.active == True,
+            PushSubscription.active.is_(True),
         )
     )
     subs = res.scalars().all()
@@ -102,6 +119,7 @@ async def send_test(
         bg.add_task(send_web_push, s, payload)
     return {"count": len(subs)}
 
+
 @router.post("/broadcast")
 async def broadcast(
     data: NotifyBody,
@@ -111,7 +129,9 @@ async def broadcast(
 ):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
-    res = await session.execute(select(PushSubscription).where(PushSubscription.active == True))
+    res = await session.execute(
+        select(PushSubscription).where(PushSubscription.active.is_(True))
+    )
     subs = res.scalars().all()
     for s in subs:
         bg.add_task(send_web_push, s, data.model_dump())

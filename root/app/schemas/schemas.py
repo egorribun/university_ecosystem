@@ -1,19 +1,25 @@
-from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
 
 class OrmModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     @classmethod
     def from_orm(cls, obj):
         return cls.model_validate(obj)
 
+
 class ForgotPasswordIn(BaseModel):
     email: EmailStr
+
 
 class ResetPasswordIn(BaseModel):
     token: str
     password: str
+
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -37,20 +43,24 @@ class UserBase(BaseModel):
     spotify_connected: bool = False
     spotify_display_name: Optional[str] = None
 
+
 class UserCreate(UserBase):
     password: str
     invite_code: Optional[str] = None
+
 
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool
     spotify_is_connected: Optional[bool] = None
 
+
 class UserAdminUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[str] = None
     group_id: Optional[int] = None
+
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -68,16 +78,19 @@ class UserProfileUpdate(BaseModel):
     department: Optional[str] = None
     position: Optional[str] = None
 
+
 class GroupCreate(BaseModel):
     name: str
     course: Optional[int] = None
     faculty: Optional[str] = None
+
 
 class GroupOut(OrmModel):
     id: int
     name: str
     course: Optional[int] = None
     faculty: Optional[str] = None
+
 
 class ScheduleBase(BaseModel):
     group_id: int
@@ -90,8 +103,10 @@ class ScheduleBase(BaseModel):
     parity: Optional[str] = "both"
     lesson_type: Optional[str] = "Лекция"
 
+
 class ScheduleCreate(ScheduleBase):
     pass
+
 
 class ScheduleUpdate(BaseModel):
     group_id: Optional[int] = None
@@ -104,23 +119,28 @@ class ScheduleUpdate(BaseModel):
     parity: Optional[str] = None
     lesson_type: Optional[str] = None
 
+
 class ScheduleOut(OrmModel, ScheduleBase):
     id: int
+
 
 class NewsCreate(BaseModel):
     title: str
     content: str
     image_url: Optional[str] = None
 
+
 class NewsOut(OrmModel, NewsCreate):
     id: int
     created_at: datetime
+
 
 class EventFileOut(OrmModel):
     id: int
     event_id: int
     file_url: str
     description: Optional[str] = None
+
 
 class EventCreate(BaseModel):
     title: str
@@ -133,6 +153,7 @@ class EventCreate(BaseModel):
     image_url: Optional[str] = None
     about: Optional[str] = None
 
+
 class EventUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
@@ -144,6 +165,7 @@ class EventUpdate(BaseModel):
     speaker: Optional[str] = None
     image_url: Optional[str] = None
     about: Optional[str] = None
+
 
 class EventOut(OrmModel):
     id: int
@@ -163,8 +185,10 @@ class EventOut(OrmModel):
     participant_count: int = 0
     is_registered: Optional[bool] = None
 
+
 class EventAttendanceCreate(BaseModel):
     event_id: int
+
 
 class EventAttendanceOut(OrmModel):
     id: int
@@ -173,12 +197,15 @@ class EventAttendanceOut(OrmModel):
     registered_at: datetime
     qr_code: Optional[str] = None
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+
 class SpotifyAuthURL(BaseModel):
     url: str
+
 
 class SpotifyNowPlayingOut(BaseModel):
     is_playing: bool
@@ -193,12 +220,14 @@ class SpotifyNowPlayingOut(BaseModel):
     preview_url: Optional[str] = None
     fetched_at: datetime
 
+
 class NotificationCreate(BaseModel):
     user_id: int
     title: str
     body: Optional[str] = None
     type: Optional[str] = None
     url: Optional[str] = None
+
 
 class NotificationOut(OrmModel):
     id: int
@@ -210,10 +239,12 @@ class NotificationOut(OrmModel):
     read: bool
     read_at: Optional[datetime] = None
 
+
 class NotificationsListOut(BaseModel):
     items: List[NotificationOut]
     unread_count: int
     has_more: bool
+
 
 class NotificationMarkReadIn(BaseModel):
     id: Optional[int] = None

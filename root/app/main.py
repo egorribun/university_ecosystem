@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
-
 from app.api.notifications import router as notifications_router
 from app.api.push import router as push_router
 from app.api.routes import router as main_router
@@ -17,6 +12,10 @@ from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.services.notifications import start_notifications_scheduler
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
