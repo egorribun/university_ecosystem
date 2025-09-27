@@ -117,6 +117,7 @@ async def async_client(
     monkeypatch.setattr(
         main, "start_notifications_scheduler", _start_notifications_scheduler
     )
+
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
