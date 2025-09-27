@@ -11,26 +11,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import httpx
 import pytest
+from asgi_lifespan import LifespanManager
 from sqlalchemy.ext.asyncio import AsyncSession
-
-try:
-    from asgi_lifespan import LifespanManager as _RealLifespanManager
-except Exception:
-    _RealLifespanManager = None
-
-    class _NoopLifespanManager:
-        def __init__(self, app):
-            self.app = app
-
-        async def __aenter__(self):
-            return self.app
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    LifespanManager = _NoopLifespanManager
-else:
-    LifespanManager = _RealLifespanManager
 
 try:
     from opentelemetry.sdk import _logs as otel_logs
