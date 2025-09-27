@@ -199,8 +199,12 @@ async def get_all_events(
 
 
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
-    starts_at = event.starts_at.replace(tzinfo=None) if event.starts_at.tzinfo else event.starts_at
-    ends_at = event.ends_at.replace(tzinfo=None) if event.ends_at.tzinfo else event.ends_at
+    starts_at = (
+        event.starts_at.replace(tzinfo=None) if event.starts_at.tzinfo else event.starts_at
+    )
+    ends_at = (
+        event.ends_at.replace(tzinfo=None) if event.ends_at.tzinfo else event.ends_at
+    )
     record = models.Event(
         title=event.title,
         description=event.description,
