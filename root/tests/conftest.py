@@ -11,7 +11,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import httpx
 import pytest
-from asgi_lifespan import LifespanManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
@@ -68,6 +67,11 @@ from app import main
 from app.core.database import Base, async_session, engine
 from app.models import models
 
+try:
+    from asgi_lifespan import LifespanManager as _LifespanManager  # type: ignore
+except Exception:
+    _LifespanManager = None  # type: ignore[assignment]
+
 
 @pytest.fixture(scope="session")
 def event_loop() -> AsyncIterator[asyncio.AbstractEventLoop]:
@@ -118,7 +122,13 @@ async def async_client(
         main, "start_notifications_scheduler", _start_notifications_scheduler
     )
     transport = httpx.ASGITransport(app=main.app)
-    async with LifespanManager(main.app):
+    if _LifespanManager is not None:
+        async with _LifespanManager(main.app):
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://testserver", follow_redirects=True
+            ) as client:
+                yield client
+    else:
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver", follow_redirects=True
         ) as client:
