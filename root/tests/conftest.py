@@ -20,8 +20,10 @@ except Exception:
     otel_logs = None
 else:
     if not hasattr(otel_logs, "set_logger_provider"):
+
         def _set_logger_provider(provider):
             return None
+
         otel_logs.set_logger_provider = _set_logger_provider
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
@@ -39,11 +41,14 @@ try:
 except Exception:
     slowapi_middleware = None
 else:
+
     class _NoopSlowAPIMiddleware:
         def __init__(self, app, *args, **kwargs):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
     slowapi_middleware.SlowAPIMiddleware = _NoopSlowAPIMiddleware
 
 from app.core import security_headers as security_headers_module
@@ -52,6 +57,7 @@ from app.core import security_headers as security_headers_module
 class _NoopSecurityHeadersMiddleware:
     def __init__(self, app, *args, **kwargs):
         self.app = app
+
     async def __call__(self, scope, receive, send):
         await self.app(scope, receive, send)
 
@@ -105,6 +111,7 @@ async def async_client(
     ) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
+
         return _stop
 
     monkeypatch.setattr(
@@ -139,6 +146,7 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
         await db_session.commit()
         await db_session.refresh(user)
         return user
+
     return _factory
 
 
