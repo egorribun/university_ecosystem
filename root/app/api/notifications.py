@@ -1,19 +1,20 @@
-from typing import Optional, Tuple, List
 from datetime import datetime, timedelta
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, update, func, and_, desc, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models.models import User, Notification, Schedule
+from app.core.database import get_db
+from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import NotificationOut, NotificationsListOut
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
+
 def _encode_cursor(dt: datetime, nid: int) -> str:
     return f"{int(dt.timestamp() * 1000)}:{nid}"
+
 
 def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
     if not value:
@@ -23,6 +24,7 @@ def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
         return datetime.utcfromtimestamp(int(ms_s) / 1000.0), int(id_s)
     except Exception:
         return None
+
 
 @router.get("", response_model=NotificationsListOut)
 async def list_notifications(
@@ -37,7 +39,12 @@ async def list_notifications(
         if not parsed:
             raise HTTPException(status_code=400, detail="bad cursor")
         c_dt, c_id = parsed
-        where.append(or_(Notification.created_at < c_dt, and_(Notification.created_at == c_dt, Notification.id < c_id)))
+        where.append(
+            or_(
+                Notification.created_at < c_dt,
+                and_(Notification.created_at == c_dt, Notification.id < c_id),
+            )
+        )
 
     q_items = (
         select(Notification)
@@ -49,10 +56,16 @@ async def list_notifications(
     items = rows[:limit]
     has_more = len(rows) > limit
 
-    q_unread = select(func.count(Notification.id)).where(and_(Notification.user_id == user.id, Notification.read.is_(False)))
+    q_unread = select(func.count(Notification.id)).where(
+        and_(Notification.user_id == user.id, Notification.read.is_(False))
+    )
     unread = (await db.execute(q_unread)).scalar_one() or 0
 
-    next_cursor = _encode_cursor(items[-1].created_at, items[-1].id) if items and has_more else None
+    next_cursor = (
+        _encode_cursor(items[-1].created_at, items[-1].id)
+        if items and has_more
+        else None
+    )
 
     return NotificationsListOut(
         items=[NotificationOut.from_orm(n) for n in items],
@@ -60,6 +73,7 @@ async def list_notifications(
         has_more=has_more,
         next_cursor=next_cursor,
     )
+
 
 @router.post("/{notif_id}/read")
 async def mark_read_single(
@@ -75,6 +89,7 @@ async def mark_read_single(
     await db.commit()
     return {"ok": True}
 
+
 @router.post("/read-all")
 async def mark_all_read(
     db: AsyncSession = Depends(get_db),
@@ -87,6 +102,7 @@ async def mark_all_read(
     )
     await db.commit()
     return {"ok": True}
+
 
 @router.post("/check-schedule", response_model=NotificationsListOut)
 async def check_schedule_and_generate(
@@ -102,7 +118,13 @@ async def check_schedule_and_generate(
 
     q = (
         select(Schedule)
-        .where(and_(Schedule.group_id == user.group_id, Schedule.start_time >= now, Schedule.start_time <= soon))
+        .where(
+            and_(
+                Schedule.group_id == user.group_id,
+                Schedule.start_time >= now,
+                Schedule.start_time <= soon,
+            )
+        )
         .order_by(Schedule.start_time.asc())
     )
     lessons = (await db.execute(q)).scalars().all()
@@ -114,13 +136,28 @@ async def check_schedule_and_generate(
         url = "/schedule"
 
         dupe = select(func.count(Notification.id)).where(
-            and_(Notification.user_id == user.id, Notification.title == title, Notification.url == url, Notification.created_at >= now - timedelta(hours=1))
+            and_(
+                Notification.user_id == user.id,
+                Notification.title == title,
+                Notification.url == url,
+                Notification.created_at >= now - timedelta(hours=1),
+            )
         )
         exists = (await db.execute(dupe)).scalar_one() or 0
         if exists:
             continue
 
-        db.add(Notification(user_id=user.id, type="schedule", title=title, body=body, url=url, created_at=now, read=False))
+        db.add(
+            Notification(
+                user_id=user.id,
+                type="schedule",
+                title=title,
+                body=body,
+                url=url,
+                created_at=now,
+                read=False,
+            )
+        )
         created_any = True
 
     if created_any:

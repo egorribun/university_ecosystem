@@ -1,19 +1,20 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    ForeignKey,
-    DateTime,
-    Text,
-    Boolean,
-    UniqueConstraint,
-    Index,
-    CheckConstraint,
-)
-from sqlalchemy.orm import relationship
 import datetime
 import secrets
+
 from app.core.database import Base
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import relationship
 
 
 class User(Base):
@@ -264,6 +265,11 @@ class PushSubscription(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, index=True)
+    updated_at = Column(
+        DateTime,
+        default=datetime.datetime.utcnow,
+        onupdate=datetime.datetime.utcnow,
+        index=True,
+    )
 
     user = relationship("User", back_populates="push_subscriptions")

@@ -14,27 +14,33 @@ jobs:
     name: Run hooks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Determine diff range
         id: diff
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.sha }}"
           elif [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ]; then
-            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
-            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
           elif git rev-parse HEAD^ >/dev/null 2>&1; then
-            echo "base=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
-            echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            base="$(git rev-parse HEAD^)"
+            head="$(git rev-parse HEAD)"
           else
-            echo "base=" >> "$GITHUB_OUTPUT"
-            echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            base=""
+            head="$(git rev-parse HEAD)"
           fi
+          if [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base=""
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
@@ -44,6 +50,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r root/requirements.txt
       - name: Run pre-commit
+        shell: bash
         run: |
           base='${{ steps.diff.outputs.base }}'
           head='${{ steps.diff.outputs.head }}'
@@ -53,7 +60,7 @@ jobs:
             pre-commit run --show-diff-on-failure --color always --from-ref "$base" --to-ref "$head"
           fi
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
@@ -77,9 +84,9 @@ jobs:
       run:
         working-directory: root
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
@@ -90,7 +97,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
           if [ -f pyproject.toml ]; then pip install .; fi
+          pip install asgi-lifespan pytest-asyncio httpx
       - name: Run pytest
         run: pytest --cov=app --cov-report=xml --cov-report=term-missing --junitxml=pytest-report.xml
       - name: Upload coverage artifact
@@ -113,9 +122,9 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
@@ -139,9 +148,9 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
@@ -168,9 +177,9 @@ jobs:
       run:
         working-directory: root/frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
@@ -182,6 +191,7 @@ jobs:
           path: root/frontend/dist
       - name: Decide target URL
         id: url
+        shell: bash
         run: |
           if [ -n "$PREVIEW_URL" ]; then
             echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"

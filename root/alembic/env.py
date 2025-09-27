@@ -1,12 +1,12 @@
-import sys
 import os
-
+import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # <-- добавлено: корректная работа import'ов моделей (если запускаешь alembic из корня проекта) -->
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.models import models  # импортируй свою базу моделей здесь!
 
 # this is the Alembic Config object, which provides
@@ -40,7 +40,7 @@ def run_migrations_offline():
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
-        compare_type=True,    # <-- Важно для изменения типов
+        compare_type=True,  # <-- Важно для изменения типов
         dialect_opts={"paramstyle": "named"},
     )
 
@@ -69,6 +69,7 @@ def run_migrations_online():
 
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

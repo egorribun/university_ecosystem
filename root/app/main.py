@@ -2,14 +2,6 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-
 from app.api.notifications import router as notifications_router
 from app.api.push import router as push_router
 from app.api.routes import router as main_router
@@ -18,14 +10,18 @@ from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
-from app.core.rate_limit import limiter
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.services.notifications import start_notifications_scheduler
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
-try:  # pragma: no cover - optional dependency
+try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-except Exception:  # pragma: no cover - optional dependency
+except Exception:
     ProxyHeadersMiddleware = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,8 +52,6 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
-app.add_middleware(SlowAPIMiddleware, limiter=limiter)
-app.state.limiter = limiter
 
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list
@@ -92,8 +86,3 @@ app.include_router(spotify_router)
 app.include_router(notifications_router)
 app.include_router(push_router)
 app.include_router(main_router)
-
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(status_code=429, content={"detail": "Too Many Requests"})

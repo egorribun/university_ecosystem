@@ -1,0 +1,2 @@
+[lint.per-file-ignores]
+"root/tests/conftest.py" = ["E402"]

@@ -2,13 +2,12 @@ import asyncio
 import datetime as dt
 from typing import Awaitable, Callable, Optional, Sequence
 
-from sqlalchemy import select, and_, insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.database import async_session
 from app.core.config import settings
-from app.models.models import User, Schedule, Notification, PushSubscription
+from app.core.database import async_session
+from app.models.models import Notification, PushSubscription, Schedule, User
 from app.services.webpush import send_web_push
+from sqlalchemy import and_, insert, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_notifications_for_users(
@@ -40,15 +39,19 @@ async def create_notifications_for_users(
     await db.commit()
     if settings.vapid_private_key and settings.vapid_public_key:
         subs = (
-            await db.execute(
-                select(PushSubscription).where(
-                    and_(
-                        PushSubscription.active.is_(True),
-                        PushSubscription.user_id.in_(uids),
+            (
+                await db.execute(
+                    select(PushSubscription).where(
+                        and_(
+                            PushSubscription.active.is_(True),
+                            PushSubscription.user_id.in_(uids),
+                        )
                     )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         payload = {
             "title": title,
             "body": body or "",
@@ -60,10 +63,14 @@ async def create_notifications_for_users(
     return len(rows)
 
 
-async def generate_schedule_reminders(db: AsyncSession, *, window_minutes: int = 6) -> int:
+async def generate_schedule_reminders(
+    db: AsyncSession, *, window_minutes: int = 6
+) -> int:
     now = dt.datetime.utcnow()
     soon = now + dt.timedelta(minutes=window_minutes)
-    q = select(Schedule).where(and_(Schedule.start_time >= now, Schedule.start_time <= soon))
+    q = select(Schedule).where(
+        and_(Schedule.start_time >= now, Schedule.start_time <= soon)
+    )
     rows = (await db.execute(q)).scalars().all()
     if not rows:
         return 0
@@ -72,7 +79,11 @@ async def generate_schedule_reminders(db: AsyncSession, *, window_minutes: int =
         title = f"Скоро пара: {sch.subject}"
         time_str = sch.start_time.strftime("%H:%M")
         body = f"{sch.lesson_type or ''} в {sch.room or 'ауд.'}, начало в {time_str}"
-        uids_all = (await db.execute(select(User.id).where(User.group_id == sch.group_id))).scalars().all()
+        uids_all = (
+            (await db.execute(select(User.id).where(User.group_id == sch.group_id)))
+            .scalars()
+            .all()
+        )
         if not uids_all:
             continue
         dup_since = now - dt.timedelta(minutes=30)
@@ -80,7 +91,9 @@ async def generate_schedule_reminders(db: AsyncSession, *, window_minutes: int =
             select(Notification.user_id)
             .where(
                 and_(
-                    Notification.user_id.in_(select(User.id).where(User.group_id == sch.group_id)),
+                    Notification.user_id.in_(
+                        select(User.id).where(User.group_id == sch.group_id)
+                    ),
                     Notification.title == title,
                     Notification.url == "/schedule",
                     Notification.created_at >= dup_since,
