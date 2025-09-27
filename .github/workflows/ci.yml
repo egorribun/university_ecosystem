@@ -49,6 +49,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r root/requirements.txt
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: root/frontend
+        run: npm ci
       - name: Run pre-commit
         shell: bash
         run: |
@@ -59,15 +68,6 @@ jobs:
           else
             pre-commit run --show-diff-on-failure --color always --from-ref "$base" --to-ref "$head"
           fi
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: root/frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: root/frontend
-        run: npm ci
       - name: Run ESLint and Prettier
         working-directory: root/frontend
         run: |
@@ -92,14 +92,24 @@ jobs:
           cache: pip
           cache-dependency-path: |
             root/requirements.txt
+            root/requirements-dev.txt
             root/pyproject.toml
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          if [ -f pyproject.toml ]; then pip install .; fi
+          pip install -r requirements.txt -r requirements-dev.txt
           pip install asgi-lifespan pytest-asyncio httpx
+      - name: Verify test deps
+        run: |
+          python - <<'PY'
+          import sys
+          try:
+              import asgi_lifespan, httpx, pytest_asyncio  # noqa
+              print("OK: asgi_lifespan/httpx/pytest_asyncio installed")
+          except Exception as e:
+              print("Import check failed:", e)
+              sys.exit(1)
+          PY
       - name: Run pytest
         run: pytest --cov=app --cov-report=xml --cov-report=term-missing --junitxml=pytest-report.xml
       - name: Upload coverage artifact
