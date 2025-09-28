@@ -86,14 +86,12 @@ jobs:
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         shell: bash
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            branch='${{ steps.branch.outputs.name }}'
-            git fetch origin "$branch" || true
-            git switch -c "$branch" "origin/$branch" 2>/dev/null || git switch "$branch"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "chore: pre-commit autofix" || true
+          branch='${{ steps.branch.outputs.name }}'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: pre-commit autofix"
             git pull --rebase origin "$branch" || true
             git push --force-with-lease origin "HEAD:$branch"
           fi
@@ -101,7 +99,8 @@ jobs:
       - name: Fail if fixes were needed and cannot push (fork PR)
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          git add -A
+          if ! git diff --cached --quiet; then
             echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Pull and commit the fixes locally."
             exit 1
           fi
