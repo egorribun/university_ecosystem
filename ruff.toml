@@ -1,2 +1,10 @@
+line-length = 88
+target-version = "py312"
+src = ["root"]
+
+[lint]
+select = ["E", "F", "I"]
+fixable = ["ALL"]
+
 [lint.per-file-ignores]
 "root/tests/conftest.py" = ["E402"]

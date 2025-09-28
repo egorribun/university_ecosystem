@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeVar
 
-from app.core.config import settings
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from app.core.config import settings
 
 F = TypeVar("F", bound=Callable[..., object])
 

@@ -2,12 +2,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from app.auth.security import get_password_hash
-from app.models import models
-from app.schemas import schemas
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.security import get_password_hash
+from app.models import models
+from app.schemas import schemas
 
 
 async def get_user_auth(db: AsyncSession, login: str):

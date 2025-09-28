@@ -7,11 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-try:
-    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-except Exception:
-    ProxyHeadersMiddleware = None
-
 from app.api.notifications import router as notifications_router
 from app.api.push import router as push_router
 from app.api.routes import router as main_router
@@ -22,6 +17,11 @@ from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.services.notifications import start_notifications_scheduler
+
+try:
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+except Exception:
+    ProxyHeadersMiddleware = None
 
 
 @asynccontextmanager
@@ -52,8 +52,7 @@ app.add_middleware(
     expose_headers=settings.cors_expose_headers_list,
 )
 
-if settings.strict_security_headers_enabled:
-    app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list

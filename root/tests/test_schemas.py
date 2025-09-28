@@ -1,6 +1,7 @@
 import pytest
-from app.schemas import schemas
 from pydantic import ValidationError
+
+from app.schemas import schemas
 
 pytestmark = pytest.mark.anyio("asyncio")
 

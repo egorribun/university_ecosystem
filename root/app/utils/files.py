@@ -2,8 +2,9 @@ import mimetypes
 import secrets
 from pathlib import Path
 
-from app.core.config import settings
 from fastapi import HTTPException, UploadFile, status
+
+from app.core.config import settings
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024

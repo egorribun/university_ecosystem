@@ -1,11 +1,12 @@
 import json
 
-from app.core.config import settings
-from app.models.models import PushSubscription
 from pywebpush import WebPushException, webpush
 from sqlalchemy import create_engine, delete
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
+
+from app.core.config import settings
+from app.models.models import PushSubscription
 
 url = make_url(settings.database_url)
 if url.drivername.endswith("+asyncpg"):

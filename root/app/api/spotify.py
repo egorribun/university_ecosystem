@@ -4,15 +4,16 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
 from app.auth.security import create_access_token, decode_token
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/spotify", tags=["spotify"])
 
