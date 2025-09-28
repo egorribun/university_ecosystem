@@ -249,6 +249,8 @@ export default defineConfig(({ mode }) => {
       restoreMocks: true,
       include: ["src/**/*.{test,spec}.{ts,tsx}", "src/**/__tests__/**/*.{ts,tsx}"],
       exclude: ["node_modules", "tests", "dist"],
+      reporters: ["default", "junit"],
+      outputFile: { junit: "vitest-report.xml" },
       snapshotFormat: {
         escapeString: true,
         printBasicPrototype: true,

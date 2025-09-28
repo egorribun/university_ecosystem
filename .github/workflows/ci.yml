@@ -201,7 +201,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run unit tests
-        run: npm run test -- --reporter=junit --outputFile=vitest-report.xml
+        run: npm run test
       - name: Upload vitest report
         uses: actions/upload-artifact@v4
         with:
