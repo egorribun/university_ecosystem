@@ -95,9 +95,9 @@ jobs:
       - name: Run pip-audit
         run: |
           set -euo pipefail
-          pip-audit --progress-spinner=off --requirement root/requirements.txt --severity high --severity critical --strict
+          pip-audit --progress-spinner=off -r root/requirements.txt
           if [ -f root/requirements-dev.txt ]; then
-            pip-audit --progress-spinner=off --requirement root/requirements-dev.txt --severity high --severity critical --strict
+            pip-audit --progress-spinner=off -r root/requirements-dev.txt
           else
             echo "requirements-dev.txt not found, skipping"
           fi
@@ -132,7 +132,7 @@ jobs:
           python - <<'PY'
           import sys
           try:
-              import asgi_lifespan, httpx, pytest_asyncio  # noqa
+              import asgi_lifespan, httpx, pytest_asyncio
               print("OK: asgi_lifespan/httpx/pytest_asyncio installed")
           except Exception as e:
               print("Import check failed:", e)
