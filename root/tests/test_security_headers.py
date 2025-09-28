@@ -1,10 +1,11 @@
+from importlib import util as importlib_util
+
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 
 from app.core.config import Settings
-from importlib import util as importlib_util
 
 
 @pytest.mark.anyio
@@ -40,6 +41,8 @@ async def test_strict_security_headers_enabled(monkeypatch):
     assert headers.get("X-Content-Type-Options") == "nosniff"
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
-    assert headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
+    assert (
+        headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
+    )
     csp = headers.get("Content-Security-Policy", "")
     assert "default-src 'self'" in csp
