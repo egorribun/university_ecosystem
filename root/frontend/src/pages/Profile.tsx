@@ -13,6 +13,10 @@ import {
   CircularProgress,
   IconButton,
   Snackbar,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
   Tooltip,
   Chip,
   Alert,
@@ -26,19 +30,14 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Skeleton,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import EmailIcon from "@mui/icons-material/Email";
 import TelegramIcon from "@mui/icons-material/Telegram";
+import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import ShareIcon from "@mui/icons-material/IosShare";
-import DownloadIcon from "@mui/icons-material/Download";
-import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import QrCodeIcon from "@mui/icons-material/QrCode2";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { resolveMediaUrl } from "@/utils/media";
-import { alpha, useTheme } from "@mui/material/styles";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 
@@ -88,12 +87,9 @@ type NowPlaying = {
 };
 
 const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const theme = useTheme();
   const [progress, setProgress] = useState<number>(data.progress_ms ?? 0);
   const startRef = useRef<number>(Date.now() - (data.progress_ms ?? 0));
   const rafRef = useRef<number | null>(null);
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     startRef.current = Date.now() - (data.progress_ms ?? 0);
@@ -124,198 +120,22 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
     return `${m}:${ss}`;
   };
 
-  const clickable = Boolean(data.track_url);
-
   return (
-    <Paper
-      elevation={0}
-      className="spotify-card nowplaying--spotify"
-      sx={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-        px: theme.spacing(2),
-        py: theme.spacing(1.5),
-        borderRadius: theme.shape.borderRadius * 1.4,
-        backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.4 : 0.7),
-        backdropFilter: "blur(12px)",
-        boxShadow: theme.shadows[1],
-      }}
-    >
-      <Box
-        sx={{
-          position: "relative",
-          width: 64,
-          height: 64,
-          flexShrink: 0,
-          borderRadius: theme.shape.borderRadius,
-          overflow: "hidden",
-          boxShadow: theme.shadows[1],
-        }}
-      >
-        {!imgLoaded && !imgError && (
-          <Skeleton variant="rounded" width="100%" height="100%" animation="wave" />
-        )}
-        <Avatar
-          variant="rounded"
-          src={!imgError ? data.album_image_url || "" : undefined}
-          alt={data.album_name || data.track_name || "Spotify cover"}
-          imgProps={{
-            loading: "lazy",
-            onLoad: () => setImgLoaded(true),
-            onError: () => setImgError(true),
-            style: { objectFit: "cover" },
-          }}
-          sx={{
-            width: "100%",
-            height: "100%",
-            opacity: imgLoaded && !imgError ? 1 : 0,
-            transition: "opacity 240ms ease",
-            backgroundColor: alpha(theme.palette.text.primary, 0.08),
-          }}
-        >
-          {data.track_name?.[0] ?? ""}
-        </Avatar>
-      </Box>
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Tooltip title={data.track_name || ""} disableHoverListener={!data.track_name} arrow>
-          <Typography
-            className="spotify-title np-title"
-            variant="subtitle2"
-            noWrap
-            component={clickable ? "a" : "p"}
-            href={clickable ? data.track_url : undefined}
-            target={clickable ? "_blank" : undefined}
-            rel={clickable ? "noreferrer" : undefined}
-            aria-label={clickable ? `Открыть трек ${data.track_name}` : undefined}
-            sx={{
-              color: theme.palette.text.primary,
-              fontWeight: 600,
-              textDecoration: "none",
-              display: "block",
-              transition: "color 160ms ease",
-              '&:hover, &:focus-visible': clickable
-                ? {
-                    color: theme.palette.primary.main,
-                    outline: "none",
-                  }
-                : undefined,
-            }}
-          >
-            {data.track_name || "—"}
-          </Typography>
-        </Tooltip>
-        <Tooltip
-          title={(data.artists || []).join(", ")}
-          disableHoverListener={!data.artists?.length}
-          arrow
-        >
-          <Typography
-            className="spotify-sub np-art"
-            variant="body2"
-            color="text.secondary"
-            noWrap
-            sx={{ mt: 0.2 }}
-          >
-            {(data.artists || []).join(", ") || "—"}
-          </Typography>
-        </Tooltip>
-        <Box sx={{ mt: 1 }}>
-          <LinearProgress
-            className="progress"
-            variant="determinate"
-            value={pct}
-            sx={{
-              height: 4,
-              borderRadius: theme.shape.borderRadius,
-              backgroundColor: alpha(theme.palette.text.primary, 0.08),
-              '& .MuiLinearProgress-bar': {
-                borderRadius: theme.shape.borderRadius,
-              },
-            }}
-          />
+    <Paper elevation={0} className="spotify-card nowplaying--spotify" sx={{ width: "100%" }}>
+      <Avatar src={data.album_image_url || ""} variant="rounded" />
+      <Box style={{ minWidth: 0 }}>
+        <Typography className="spotify-title np-title" variant="body2">
+          {data.track_name || "—"}
+        </Typography>
+        <Typography className="spotify-sub np-art" variant="caption">
+          {(data.artists || []).join(", ")}
+        </Typography>
+        <Box sx={{ mt: 0.4 }}>
+          <LinearProgress className="progress" variant="determinate" value={pct} />
         </Box>
       </Box>
-      <Typography
-        className="spotify-time np-time"
-        variant="caption"
-        color="text.secondary"
-        sx={{
-          fontFamily: theme.typography.fontFamilyMonospace,
-          whiteSpace: "nowrap",
-        }}
-      >
+      <Typography className="spotify-time np-time" variant="caption">
         {fmt(progress)} / {fmt(data.duration_ms)}
-      </Typography>
-    </Paper>
-  );
-});
-
-const NowPlayingCardSkel = memo(function NowPlayingCardSkel() {
-  const theme = useTheme();
-  return (
-    <Paper
-      elevation={0}
-      className="spotify-card nowplaying--spotify"
-      sx={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-        px: theme.spacing(2),
-        py: theme.spacing(1.5),
-        borderRadius: theme.shape.borderRadius * 1.4,
-        backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.35 : 0.65),
-        backdropFilter: "blur(12px)",
-        boxShadow: theme.shadows[1],
-      }}
-    >
-      <Skeleton variant="rounded" width={64} height={64} animation="wave" />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Skeleton variant="text" width="70%" sx={{ fontSize: theme.typography.subtitle2.fontSize }} />
-        <Skeleton variant="text" width="50%" sx={{ fontSize: theme.typography.body2.fontSize }} />
-        <Skeleton variant="rectangular" height={4} sx={{ mt: 1, borderRadius: theme.shape.borderRadius }} />
-      </Box>
-      <Skeleton variant="text" width={72} sx={{ fontSize: theme.typography.caption.fontSize }} />
-    </Paper>
-  );
-});
-
-const NowPlayingEmpty = memo(function NowPlayingEmpty() {
-  const theme = useTheme();
-  return (
-    <Paper
-      elevation={0}
-      className="spotify-card nowplaying--spotify"
-      sx={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-        px: theme.spacing(2),
-        py: theme.spacing(1.5),
-        borderRadius: theme.shape.borderRadius * 1.4,
-        backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.35 : 0.65),
-        backdropFilter: "blur(12px)",
-        boxShadow: theme.shadows[1],
-        color: theme.palette.text.secondary,
-      }}
-    >
-      <Avatar
-        variant="rounded"
-        sx={{
-          width: 56,
-          height: 56,
-          backgroundColor: alpha(theme.palette.text.primary, 0.08),
-          color: theme.palette.text.secondary,
-          fontWeight: 600,
-        }}
-      >
-        ♫
-      </Avatar>
-      <Typography variant="body2" color="text.secondary">
-        Сейчас ничего не играет
       </Typography>
     </Paper>
   );
@@ -323,7 +143,6 @@ const NowPlayingEmpty = memo(function NowPlayingEmpty() {
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth();
-  const theme = useTheme();
 
   const [snack, setSnack] = useState<{
     text: string;
@@ -331,10 +150,6 @@ export default function Profile() {
   } | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
-  const [avatarLoaded, setAvatarLoaded] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
-  const [coverLoaded, setCoverLoaded] = useState(false);
-  const [coverError, setCoverError] = useState(false);
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const isTwoCol = useMediaQuery("(min-width:1400px)");
   const isMobile = useMediaQuery("(max-width:600px)");
@@ -350,13 +165,11 @@ export default function Profile() {
     date?: string;
     url?: string;
   } | null>(null);
-  const [shareAvailable, setShareAvailable] = useState(false);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
 
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
-  const [nowPlayingLoading, setNowPlayingLoading] = useState(false);
   const endTimerRef = useRef<number | null>(null);
   const pollRef = useRef<number | null>(null);
   const fetchingRef = useRef(false);
@@ -382,16 +195,6 @@ export default function Profile() {
   const [department, setDepartment] = useState(user?.department || "");
   const [position, setPosition] = useState(user?.position || "");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setAvatarLoaded(false);
-    setAvatarError(false);
-  }, [avatarVersion, user?.avatar_url]);
-
-  useEffect(() => {
-    setCoverLoaded(false);
-    setCoverError(false);
-  }, [coverVersion, user?.cover_url]);
 
   const initEditFields = useCallback(() => {
     setFullName(user?.full_name || "");
@@ -450,7 +253,6 @@ export default function Profile() {
   const fetchNowPlaying = useCallback(async () => {
     if (!spotifyConnected || fetchingRef.current) return;
     fetchingRef.current = true;
-    setNowPlayingLoading(true);
     try {
       const r = await api.get<NowPlaying>("/spotify/now-playing");
       setNowPlaying(r.data);
@@ -470,7 +272,6 @@ export default function Profile() {
     } catch {
     } finally {
       fetchingRef.current = false;
-      setNowPlayingLoading(false);
     }
   }, [spotifyConnected]);
 
@@ -516,8 +317,7 @@ export default function Profile() {
   const getCoverSrc = () => {
     const url = user?.cover_url || "";
     const resolved = resolveMediaUrl(url, BACKEND_ORIGIN);
-    if (resolved) return `${resolved}?v=${coverVersion}`;
-    return "https://mui.com/static/images/cards/cover1.jpg";
+    return resolved || "https://mui.com/static/images/cards/cover1.jpg";
   };
 
   const ensureConfettiSize = useCallback(() => {
@@ -593,12 +393,6 @@ export default function Profile() {
   useEffect(() => {
     if (snack && snack.sev === "success" && snack.text !== "Скопировано") burstConfetti();
   }, [snack, burstConfetti]);
-
-  useEffect(() => {
-    if (typeof navigator === "undefined") return;
-    const hasShare = typeof navigator.share === "function" || typeof navigator.canShare === "function";
-    if (hasShare) setShareAvailable(true);
-  }, []);
 
   const copy = async (text: string, evt?: { clientX: number; clientY: number }) => {
     try {
@@ -910,45 +704,6 @@ export default function Profile() {
     }
   };
 
-  const downloadVcf = useCallback(() => {
-    if (!user) return;
-    try {
-      const card = buildVCard();
-      const blob = new Blob([card], { type: "text/vcard;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const fname = (user.full_name || "contact").replace(/\s+/g, "_") + ".vcf";
-      a.download = fname;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      requestAnimationFrame(() => URL.revokeObjectURL(url));
-      setSnack({ text: ".vcf сохранён", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось сохранить .vcf", sev: "error" });
-    }
-  }, [buildVCard, user]);
-
-  const shareProfile = useCallback(async () => {
-    if (!shareAvailable || typeof navigator === "undefined") return;
-    try {
-      const shareData: ShareData = {
-        title: user?.full_name || "Профиль",
-        text: user?.about || undefined,
-        url: typeof window !== "undefined" ? window.location.href : undefined,
-      };
-      if (navigator.canShare && !navigator.canShare(shareData)) {
-        throw new Error("Нельзя поделиться этими данными");
-      }
-      await navigator.share?.(shareData);
-      setSnack({ text: "Ссылка отправлена", sev: "success" });
-    } catch (error: any) {
-      if (error?.name === "AbortError") return;
-      setSnack({ text: "Не удалось поделиться", sev: "error" });
-    }
-  }, [shareAvailable, user?.full_name, user?.about]);
-
   const telegramHref = useMemo(() => {
     const t = user?.telegram || "";
     if (!t) return "";
@@ -957,61 +712,6 @@ export default function Profile() {
     if (v.startsWith("@")) v = v.slice(1);
     return `https://t.me/${v}`;
   }, [user?.telegram]);
-
-  const infoItems = useMemo(() => {
-    if (!user) return [] as { label: string; value: string }[];
-    return [
-      { label: "О себе", value: user.about || "" },
-      { label: "Статус", value: user.status || "" },
-      { label: "Номер зачётной книжки", value: user.record_book_number || "" },
-      { label: "Уровень образования", value: user.education_level || "" },
-      { label: "Направление", value: user.track || "" },
-      { label: "Образовательная программа", value: user.program || "" },
-      { label: "Кафедра/отдел", value: user.department || "" },
-      { label: "Должность", value: user.position || "" },
-    ].filter((item) => item.value);
-  }, [user]);
-
-  const achievementsList = useMemo(
-    () =>
-      String(user?.achievements || "")
-        .split(/[,;\n]/)
-        .map((str) => {
-          const raw = String(str || "").trim();
-          if (!raw) return null;
-          const [name, issuer, date, url] = raw.split("|").map((s) => s.trim());
-          if (!name) return null;
-          return { name, issuer, date, url };
-        })
-        .filter((item): item is { name: string; issuer?: string; date?: string; url?: string } => Boolean(item)),
-    [user?.achievements]
-  );
-
-  const contactItems = useMemo(
-    () =>
-      !user
-        ? []
-        : (
-            [
-              user.email
-                ? {
-                    type: "email" as const,
-                    value: user.email,
-                    href: `mailto:${user.email}`,
-                  }
-                : null,
-              user.telegram
-                ? {
-                    type: "telegram" as const,
-                    value: user.telegram,
-                    href: telegramHref || undefined,
-                  }
-                : null,
-            ].filter(Boolean) as { type: "email" | "telegram"; value: string; href?: string }[]
-          ),
-    [telegramHref, user]
-  );
-  const displayFullName = user?.full_name || "";
 
   const handleSave = async () => {
     setSaving(true);
@@ -1065,19 +765,7 @@ export default function Profile() {
     ? `-${Math.round(avatarPx * 0.32)}px`
     : `-${Math.round(avatarPx * 0.5)}px`;
   const mtStacked = `${Math.round(avatarPx * 0.36)}px`;
-  const fieldSx = useMemo(
-    () => ({
-      "& .MuiInputBase-root": {
-        borderRadius: theme.shape.borderRadius * 1.2,
-        minHeight: theme.spacing(6),
-      },
-      "& .MuiFormHelperText-root": {
-        marginLeft: 0,
-        marginRight: 0,
-      },
-    }),
-    [theme]
-  );
+  const mtRow = `${Math.max(24, Math.round(avatarPx * 0.3))}px`;
 
   return (
     <>
@@ -1092,9 +780,7 @@ export default function Profile() {
           backgroundImage: `linear-gradient(120deg, var(--hero-grad-start), var(--hero-grad-end)), url(${profileBg})`,
           backgroundRepeat: "no-repeat, repeat",
           backgroundSize: "cover, 480px",
-          backgroundAttachment: reduceMotion ? "scroll, scroll" : "fixed, fixed",
-          filter: "saturate(1.05)",
-          transition: reduceMotion ? "none" : "opacity 600ms ease",
+          backgroundAttachment: "fixed, fixed",
         }}
       />
       <Box maxWidth="100vw" mx="auto" mt={0} width="100vw" minHeight="100svh" px={0}>
@@ -1102,79 +788,54 @@ export default function Profile() {
           ref={containerRef}
           className="glass glass--panel profile-page"
           sx={{
-            p: { xs: theme.spacing(2), sm: theme.spacing(3), md: theme.spacing(4.5), lg: theme.spacing(6) },
+            p: { xs: 1.6, sm: 2.4, md: 4, lg: 6 },
             borderRadius: 0,
             width: "100vw",
             minHeight: "100svh",
             display: "flex",
             flexDirection: { xs: "column", md: isTwoCol ? "row" : "column" },
             alignItems: { xs: "stretch", md: isTwoCol ? "flex-start" : "stretch" },
-            gap: {
-              xs: theme.spacing(4),
-              md: isTwoCol ? theme.spacing(5) : theme.spacing(4),
-            },
+            rowGap: { xs: 2, md: 2 },
+            columnGap: { xs: 2, sm: 2, md: 3, lg: 3, xl: 3 },
             position: "relative",
-            backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.55 : 0.7),
-            backdropFilter: "blur(14px)",
-            boxShadow: theme.shadows[2],
-            border: `1px solid ${alpha(theme.palette.common.white, theme.palette.mode === "dark" ? 0.08 : 0.18)}`,
           }}
         >
           <Box
-            width={{ xs: "100%", md: isTwoCol ? 420 : "100%" }}
+            width={{ xs: "100%", md: isTwoCol ? 430 : "100%" }}
             display="flex"
             flexDirection="column"
             minWidth={0}
-            sx={{ mx: { xs: "auto", md: 0 }, gap: theme.spacing(3) }}
+            sx={{ mx: { xs: "auto", md: 0 } }}
           >
             <Box sx={{ position: "relative", width: "100%" }}>
               <Box
                 sx={{
                   width: "100%",
-                  height: { xs: 220, sm: 260, md: 300, lg: 320 },
-                  minHeight: 140,
+                  height: { xs: 210, sm: 260, md: 300, lg: 320 },
+                  minHeight: 60,
                   position: "relative",
-                  borderRadius: { xs: 3, sm: 3.2, md: 4 },
-                  overflow: "hidden",
-                  boxShadow: theme.shadows[3],
-                  backgroundColor: alpha(theme.palette.background.default, 0.3),
+                  borderRadius: { xs: 2, sm: 2.3, md: 3 },
+                  mb: 0,
+                  boxShadow: "var(--shadow-2)",
+                  overflow: "visible",
                 }}
               >
-                {!coverLoaded && !coverError && (
-                  <Skeleton
-                    variant="rectangular"
-                    width="100%"
-                    height="100%"
-                    animation="wave"
-                    sx={{ position: "absolute", inset: 0 }}
-                  />
-                )}
                 <Box
-                  component="img"
-                  src={!coverError ? getCoverSrc() : profileBg}
-                  alt="Обложка профиля"
-                  onLoad={() => setCoverLoaded(true)}
-                  onError={() => setCoverError(true)}
                   sx={{
                     position: "absolute",
                     inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
+                    background: `url(${getCoverSrc()}?v=${coverVersion}) center/cover no-repeat`,
                     transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-                    transition: reduceMotion ? "none" : "transform 600ms ease, opacity 320ms ease",
-                    opacity: coverLoaded && !coverError ? 1 : 0,
+                    transition: reduceMotion ? "none" : "transform var(--anim-med)",
+                    borderRadius: { xs: 2, sm: 2.3, md: 3 },
                   }}
                 />
                 <Box
                   sx={{
                     position: "absolute",
                     inset: 0,
-                    borderRadius: { xs: 3, sm: 3.2, md: 4 },
-                    background: `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0)} 45%, ${alpha(
-                      theme.palette.background.paper,
-                      theme.palette.mode === "dark" ? 0.76 : 0.52
-                    )} 100%)`,
+                    borderRadius: { xs: 2, sm: 2.3, md: 3 },
+                    background: "linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.28) 100%)",
                     pointerEvents: "none",
                   }}
                 />
@@ -1183,7 +844,7 @@ export default function Profile() {
               <Box
                 sx={{
                   position: "absolute",
-                  left: { xs: "50%", md: isTwoCol ? theme.spacing(3) : "50%" },
+                  left: { xs: "50%", md: isTwoCol ? 28 : "50%" },
                   transform: {
                     xs: "translateX(-50%)",
                     md: isTwoCol ? "none" : "translateX(-50%)",
@@ -1191,65 +852,31 @@ export default function Profile() {
                   bottom: avatarBottom,
                   width: avatarSize,
                   height: avatarSize,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  borderRadius: "50%",
+                  p: 0,
+                  background: "transparent",
+                  boxShadow: "0 12px 36px rgba(0,0,0,.22)",
                   zIndex: 2,
                 }}
               >
                 <Box
                   sx={{
-                    position: "relative",
                     width: "100%",
                     height: "100%",
                     borderRadius: "50%",
-                    p: theme.spacing(0.75),
-                    backgroundColor: alpha(
-                      theme.palette.background.paper,
-                      theme.palette.mode === "dark" ? 0.92 : 0.96
-                    ),
-                    boxShadow: theme.shadows[3],
-                    transition: "transform 200ms ease",
+                    p: "6px",
+                    background: "var(--card-bg)",
                   }}
                 >
-                  {!avatarLoaded && !avatarError && (
-                    <Skeleton variant="circular" width="100%" height="100%" animation="wave" />
-                  )}
-                  <Avatar
-                    src={!avatarError ? getAvatarSrc() : undefined}
-                    alt={user?.full_name || "Аватар"}
-                    imgProps={{
-                      onLoad: () => setAvatarLoaded(true),
-                      onError: () => setAvatarError(true),
-                      style: { objectFit: "cover" },
-                    }}
-                    tabIndex={0}
-                    aria-label="Аватар профиля"
-                    sx={{
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: "50%",
-                      fontSize: "clamp(32px, 6vw, 62px)",
-                      border: `3px solid ${alpha(
-                        theme.palette.common.white,
-                        theme.palette.mode === "dark" ? 0.24 : 0.7
-                      )}`,
-                      boxShadow: theme.shadows[2],
-                      opacity: avatarLoaded && !avatarError ? 1 : 0,
-                      transition: "opacity 240ms ease, transform 240ms ease, box-shadow 240ms ease",
-                      backgroundColor: alpha(theme.palette.text.primary, 0.12),
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      '&:hover, &:focus-visible': {
-                        boxShadow: theme.shadows[3],
-                        transform: "translateY(-2px)",
-                        outline: "none",
-                      },
-                    }}
-                  >
-                    {user?.full_name?.[0] || user?.email?.[0] || "?"}
-                  </Avatar>
+                  <Box>
+                    <Avatar
+                      src={getAvatarSrc()}
+                      alt={user?.full_name}
+                      sx={{ width: "100%", height: "100%", fontSize: "clamp(28px, 6vw, 62px)" }}
+                    >
+                      {user?.full_name?.[0]}
+                    </Avatar>
+                  </Box>
                 </Box>
               </Box>
             </Box>
@@ -1268,68 +895,52 @@ export default function Profile() {
               width: "100%",
               position: "relative",
               zIndex: 1,
+              ml: { xl: -10 },
+              alignSelf: { md: "flex-start" },
             }}
           >
             {edit ? (
-              <Box
-                className="profile-edit"
-                sx={{
-                  maxWidth: 760,
-                  mx: "auto",
-                  width: "100%",
-                  pb: { xs: theme.spacing(6), md: theme.spacing(4) },
-                }}
-                aria-busy={saving}
-              >
-                <Stack spacing={3}>
-                  <Stack spacing={1.5}>
-                    <Typography
-                      variant="overline"
-                      color="text.secondary"
-                      sx={{ letterSpacing: ".12em" }}
-                    >
-                      Основное
-                    </Typography>
-                    <Stack spacing={1.5}>
+              <Box sx={{ maxWidth: 760, mx: "auto", width: "100%" }} className="profile-edit">
+                <Stack spacing={2}>
+                  <TextField
+                    label="Имя"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    fullWidth
+                    inputProps={{ maxLength: 120 }}
+                  />
+                  <TextField
+                    label="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    fullWidth
+                    type="email"
+                  />
+                  <TextField
+                    label="Telegram"
+                    value={telegram}
+                    onChange={(e) => setTelegram(e.target.value)}
+                    fullWidth
+                    helperText="Можно ввести @username или ссылку"
+                  />
+                  {user!.role === "teacher" && (
+                    <>
                       <TextField
-                        label="Имя"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
+                        label="Кафедра/отдел"
+                        value={department}
+                        onChange={(e) => setDepartment(e.target.value)}
                         fullWidth
-                        inputProps={{ maxLength: 120 }}
-                        disabled={saving}
-                        sx={fieldSx}
                       />
                       <TextField
-                        label="Email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        label="Должность"
+                        value={position}
+                        onChange={(e) => setPosition(e.target.value)}
                         fullWidth
-                        type="email"
-                        disabled={saving}
-                        sx={fieldSx}
                       />
-                      <TextField
-                        label="Telegram"
-                        value={telegram}
-                        onChange={(e) => setTelegram(e.target.value)}
-                        fullWidth
-                        helperText="Можно ввести @username или ссылку"
-                        disabled={saving}
-                        sx={fieldSx}
-                      />
-                    </Stack>
-                  </Stack>
-
-                  <Stack spacing={1.5}>
-                    <Typography
-                      variant="overline"
-                      color="text.secondary"
-                      sx={{ letterSpacing: ".12em" }}
-                    >
-                      Дополнительно
-                    </Typography>
-                    <Stack spacing={1.5}>
+                    </>
+                  )}
+                  {user!.role === "student" && (
+                    <>
                       <TextField
                         label="О себе"
                         value={about}
@@ -1337,8 +948,48 @@ export default function Profile() {
                         fullWidth
                         multiline
                         minRows={3}
-                        disabled={saving}
-                        sx={fieldSx}
+                      />
+                      <TextField
+                        label="Номер зачётной книжки"
+                        value={recordBookNumber}
+                        onChange={(e) => setRecordBookNumber(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Статус"
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Институт"
+                        value={institute}
+                        onChange={(e) => setInstitute(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Курс"
+                        value={course}
+                        onChange={(e) => setCourse(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Уровень образования"
+                        value={educationLevel}
+                        onChange={(e) => setEducationLevel(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Направление"
+                        value={track}
+                        onChange={(e) => setTrack(e.target.value)}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Образовательная программа"
+                        value={program}
+                        onChange={(e) => setProgram(e.target.value)}
+                        fullWidth
                       />
                       <TextField
                         label="Достижения"
@@ -1347,172 +998,9 @@ export default function Profile() {
                         fullWidth
                         multiline
                         minRows={2}
-                        disabled={saving}
-                        sx={fieldSx}
                       />
-                    </Stack>
-                  </Stack>
-
-                  {user!.role === "teacher" && (
-                    <Stack spacing={1.5}>
-                      <Typography
-                        variant="overline"
-                        color="text.secondary"
-                        sx={{ letterSpacing: ".12em" }}
-                      >
-                        Работа
-                      </Typography>
-                      <Stack spacing={1.5}>
-                        <TextField
-                          label="Кафедра/отдел"
-                          value={department}
-                          onChange={(e) => setDepartment(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Должность"
-                          value={position}
-                          onChange={(e) => setPosition(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                      </Stack>
-                    </Stack>
+                    </>
                   )}
-
-                  {user!.role === "student" && (
-                    <Stack spacing={1.5}>
-                      <Typography
-                        variant="overline"
-                        color="text.secondary"
-                        sx={{ letterSpacing: ".12em" }}
-                      >
-                        Учёба
-                      </Typography>
-                      <Stack spacing={1.5}>
-                        <TextField
-                          label="Номер зачётной книжки"
-                          value={recordBookNumber}
-                          onChange={(e) => setRecordBookNumber(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Статус"
-                          value={status}
-                          onChange={(e) => setStatus(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Институт"
-                          value={institute}
-                          onChange={(e) => setInstitute(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Курс"
-                          value={course}
-                          onChange={(e) => setCourse(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Уровень образования"
-                          value={educationLevel}
-                          onChange={(e) => setEducationLevel(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Направление"
-                          value={track}
-                          onChange={(e) => setTrack(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Образовательная программа"
-                          value={program}
-                          onChange={(e) => setProgram(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                      </Stack>
-                    </Stack>
-                  )}
-
-                  {user!.role !== "student" && user!.role !== "teacher" && (
-                    <Stack spacing={1.5}>
-                      <Typography
-                        variant="overline"
-                        color="text.secondary"
-                        sx={{ letterSpacing: ".12em" }}
-                      >
-                        Профиль
-                      </Typography>
-                      <Stack spacing={1.5}>
-                        <TextField
-                          label="Статус"
-                          value={status}
-                          onChange={(e) => setStatus(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Кафедра/отдел"
-                          value={department}
-                          onChange={(e) => setDepartment(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Должность"
-                          value={position}
-                          onChange={(e) => setPosition(e.target.value)}
-                          fullWidth
-                          disabled={saving}
-                          sx={fieldSx}
-                        />
-                      </Stack>
-                    </Stack>
-                  )}
-                </Stack>
-
-                <Box
-                  sx={{
-                    position: { xs: "sticky", md: "static" },
-                    bottom: { xs: 0, md: "auto" },
-                    left: 0,
-                    mt: theme.spacing(3),
-                    backgroundColor: {
-                      xs: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.9 : 0.95),
-                      md: "transparent",
-                    },
-                    backdropFilter: { xs: "blur(14px)", md: "none" },
-                    borderRadius: { xs: theme.shape.borderRadius * 1.5, md: 0 },
-                    boxShadow: { xs: theme.shadows[2], md: "none" },
-                    px: { xs: theme.spacing(2), md: 0 },
-                    py: { xs: theme.spacing(2), md: 0 },
-                    border: {
-                      xs: `1px solid ${alpha(theme.palette.divider, 0.25)}`,
-                      md: "none",
-                    },
-                  }}
-                >
                   <Stack
                     direction={{ xs: "column", sm: "row" }}
                     spacing={2}
@@ -1522,26 +1010,24 @@ export default function Profile() {
                       onClick={handleSave}
                       variant="contained"
                       disabled={saving}
-                      startIcon={saving ? <CircularProgress size={18} /> : undefined}
                       sx={{ width: { xs: "100%", sm: "auto" } }}
                     >
-                      {saving ? "Сохраняем…" : "Сохранить"}
+                      {saving ? "СОХРАНЯЕМ..." : "СОХРАНИТЬ"}
                     </Button>
                     <Button
                       onClick={handleCancel}
                       variant="outlined"
-                      disabled={saving}
                       sx={{ width: { xs: "100%", sm: "auto" } }}
                     >
-                      Отмена
+                      ОТМЕНА
                     </Button>
                   </Stack>
-                </Box>
+                </Stack>
               </Box>
             ) : (
               <Box
                 sx={{
-                  maxWidth: 960,
+                  maxWidth: 920,
                   mx: "auto",
                   width: "100%",
                   display: "grid",
@@ -1559,33 +1045,25 @@ export default function Profile() {
                          "links links"
                          "info  info"`,
                   },
-                  columnGap: { xs: theme.spacing(2), md: theme.spacing(3) },
-                  rowGap: { xs: theme.spacing(2.5), md: theme.spacing(3) },
+                  columnGap: { xs: 1, md: 1.2 },
+                  rowGap: { xs: 1, md: 1.1 },
                 }}
               >
-                <Tooltip
-                  title={displayFullName}
-                  disableHoverListener={!displayFullName || displayFullName.length < 18}
+                <Typography
+                  variant="h3"
+                  fontWeight={800}
+                  fontSize="clamp(1.28rem, 3vw, 2.5rem)"
+                  className="profile-name"
+                  sx={{
+                    gridArea: "name",
+                    textAlign: { xs: "center", md: "left" },
+                    lineHeight: 1.15,
+                    mt: { xs: 0.25, md: 0 },
+                    mb: 0.3,
+                  }}
                 >
-                  <Typography
-                    variant="h3"
-                    fontWeight={800}
-                    className="profile-name"
-                    sx={{
-                      gridArea: "name",
-                      textAlign: { xs: "center", md: "left" },
-                      lineHeight: 1.15,
-                      fontSize: "clamp(1.3rem, 3vw, 2.6rem)",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {user!.full_name}
-                  </Typography>
-                </Tooltip>
+                  {user!.full_name}
+                </Typography>
 
                 <Stack
                   direction="row"
@@ -1594,8 +1072,8 @@ export default function Profile() {
                   flexWrap="wrap"
                   sx={{
                     gridArea: "chips",
+                    mb: 1.1,
                     justifyContent: { xs: "center", md: "flex-start" },
-                    mb: { xs: 0, md: 0.5 },
                   }}
                 >
                   <Chip
@@ -1605,8 +1083,8 @@ export default function Profile() {
                       user!.role === "teacher"
                         ? "Преподаватель"
                         : user!.role === "student"
-                        ? "Студент"
-                        : "Администратор"
+                          ? "Студент"
+                          : "Администратор"
                     }
                   />
                   {!!user!.course && user!.role === "student" && (
@@ -1618,255 +1096,292 @@ export default function Profile() {
                 </Stack>
 
                 <Box sx={{ gridArea: "np" }}>
-                  {spotifyConnected ? (
-                    nowPlayingLoading && !nowPlaying ? (
-                      <NowPlayingCardSkel />
-                    ) : nowPlaying ? (
-                      nowPlaying.is_playing ? (
-                        <NowPlayingCard data={nowPlaying} />
-                      ) : (
-                        <NowPlayingEmpty />
-                      )
-                    ) : (
-                      <NowPlayingEmpty />
-                    )
-                  ) : null}
+                  {spotifyConnected && nowPlaying ? <NowPlayingCard data={nowPlaying} /> : <Box />}
                 </Box>
 
                 <Stack
-                  sx={{ gridArea: "acts", minWidth: { md: 220 } }}
-                  direction={{ xs: "row", sm: "row", md: "column" }}
-                  spacing={{ xs: 1.5, md: 1.5 }}
-                  alignItems="stretch"
+                  sx={{ gridArea: "acts", minWidth: { md: 180 } }}
+                  direction={{ xs: "row", md: "column" }}
+                  spacing={1}
+                  alignItems={{ xs: "stretch", md: "stretch" }}
                   justifyContent={{ xs: "center", md: "flex-start" }}
-                  flexWrap={{ xs: "wrap", md: "nowrap" }}
                 >
                   <Button
+                    size="small"
                     variant="outlined"
                     onClick={openQrModal}
-                    startIcon={<QrCodeIcon />}
-                    sx={{ flexBasis: { xs: "48%", md: "auto" }, minWidth: 140 }}
+                    sx={{ width: { xs: "50%", sm: "auto" } }}
                   >
                     Показать QR
                   </Button>
                   <Button
+                    size="small"
                     variant="outlined"
                     onClick={downloadPdfCard}
-                    startIcon={<PictureAsPdfIcon />}
-                    sx={{ flexBasis: { xs: "48%", md: "auto" }, minWidth: 140 }}
+                    sx={{ width: { xs: "50%", sm: "auto" } }}
                   >
                     PDF визитка
                   </Button>
-                  {shareAvailable && (
-                    <Button
-                      variant="outlined"
-                      onClick={shareProfile}
-                      startIcon={<ShareIcon />}
-                      sx={{ flexBasis: { xs: "48%", md: "auto" }, minWidth: 140 }}
-                      aria-label="Поделиться ссылкой на профиль"
-                    >
-                      Поделиться
-                    </Button>
-                  )}
-                  <Button
-                    variant="outlined"
-                    onClick={downloadVcf}
-                    startIcon={<DownloadIcon />}
-                    sx={{ flexBasis: { xs: "48%", md: "auto" }, minWidth: 140 }}
-                  >
-                    Скачать .vcf
-                  </Button>
                 </Stack>
 
-                {contactItems.length > 0 && (
-                  <Stack
-                    className="contact-links"
-                    sx={{
-                      gridArea: "links",
-                      textAlign: { xs: "center", md: "left" },
-                      mt: { xs: 0, md: 0.5 },
-                      mb: theme.spacing(2),
-                    }}
-                    spacing={1.5}
-                  >
-                    {contactItems.map((item) => {
-                      const isEmail = item.type === "email";
-                      const icon = isEmail ? (
-                        <EmailIcon color="primary" aria-hidden={false} fontSize="small" />
-                      ) : (
-                        <TelegramIcon color="primary" aria-hidden={false} fontSize="small" />
-                      );
-                      const copyLabel = isEmail ? "Скопировать email" : "Скопировать ник в Telegram";
-                      const href = item.href;
-                      const target = item.type === "telegram" ? "_blank" : undefined;
-                      const rel = item.type === "telegram" ? "noreferrer" : undefined;
-                      return (
-                        <Stack
-                          key={item.type}
-                          direction="row"
-                          alignItems="center"
-                          spacing={1.2}
-                          sx={{ width: "100%", maxWidth: "100%" }}
-                        >
-                          <Box aria-hidden sx={{ display: "flex", alignItems: "center" }}>
-                            {icon}
-                          </Box>
-                          <Tooltip title={item.value} arrow disableInteractive>
-                            <Typography
-                              component={href ? "a" : "span"}
-                              href={href}
-                              target={target}
-                              rel={rel}
-                              sx={{
-                                fontWeight: 600,
-                                color: "inherit",
-                                textDecoration: "none",
-                                maxWidth: { xs: "70vw", md: "100%" },
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {item.value}
-                            </Typography>
-                          </Tooltip>
-                          <Tooltip title={copyLabel} arrow>
-                            <IconButton
-                              size="small"
-                              onClick={(e) => copy(item.value, e)}
-                              aria-label={copyLabel}
-                              sx={{
-                                '&:focus-visible': {
-                                  outline: `2px solid ${theme.palette.primary.main}`,
-                                  outlineOffset: 2,
-                                },
-                              }}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      );
-                    })}
+                <Stack
+                  className="contact-links"
+                  sx={{
+                    gridArea: "links",
+                    textAlign: { xs: "center", md: "left" },
+                    mt: 0.3,
+                    mb: 1.8,
+                  }}
+                  direction={{ xs: "column", md: "row" }}
+                  alignItems={{ xs: "center", md: "center" }}
+                  spacing={2}
+                >
+                  <Stack direction="row" alignItems="center" spacing={1.2}>
+                    <EmailIcon color="primary" aria-hidden />
+                    <Typography sx={{ fontWeight: 600 }}>
+                      <a href={`mailto:${user!.email}`}>{user!.email}</a>
+                    </Typography>
+                    <Tooltip title="Скопировать email">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => copy(user!.email, e)}
+                        aria-label="Скопировать email"
+                      >
+                        <ContentCopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Stack>
-                )}
+
+                  {user!.telegram && (
+                    <Stack direction="row" alignItems="center" spacing={1.2}>
+                      <TelegramIcon color="primary" aria-hidden />
+                      <Typography sx={{ fontWeight: 600 }}>
+                        <a href={telegramHref} target="_blank" rel="noreferrer">
+                          {user!.telegram}
+                        </a>
+                      </Typography>
+                      <Tooltip title="Скопировать ник">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => copy(user!.telegram!, e)}
+                          aria-label="Скопировать ник в Telegram"
+                        >
+                          <ContentCopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  )}
+                </Stack>
 
                 <Accordion
                   disableGutters
                   sx={{
                     gridArea: "info",
-                    backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.94),
-                    borderRadius: theme.shape.borderRadius * 1.6,
-                    boxShadow: theme.shadows[1],
-                    border: `1px solid ${alpha(theme.palette.divider, 0.25)}`,
+                    background: "var(--card-bg)",
+                    borderRadius: 2,
+                    boxShadow: "var(--shadow-1)",
                     width: "100%",
                   }}
                 >
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: { xs: 2, md: 2.5 } }}>
-                    <Typography fontWeight={800} sx={{ textAlign: { xs: "center", md: "left" }, width: "100%" }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 1.5 }}>
+                    <Typography
+                      fontWeight={800}
+                      sx={{ textAlign: { xs: "center", md: "left" }, width: "100%" }}
+                    >
                       Сведения
                     </Typography>
                   </AccordionSummary>
-                  <AccordionDetails sx={{ px: { xs: 2, md: 2.5 }, pb: { xs: 2.5, md: 3 } }}>
-                    <Stack spacing={2.5}>
-                      {infoItems.length > 0 && (
-                        <Box
-                          sx={{
-                            display: "grid",
-                            gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" },
-                            gap: { xs: theme.spacing(2), md: theme.spacing(2.5) },
-                          }}
+                  <AccordionDetails>
+                    <List sx={{ pl: 0 }}>
+                      {!!user!.about && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
                         >
-                          {infoItems.map((item) => (
-                            <Box key={item.label}>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{
-                                  textTransform: "uppercase",
-                                  letterSpacing: ".08em",
-                                  fontWeight: 600,
-                                  display: "block",
-                                }}
-                              >
-                                {item.label}
-                              </Typography>
-                              <Tooltip title={item.value} arrow disableInteractive>
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    mt: 0.5,
-                                    display: "-webkit-box",
-                                    WebkitLineClamp: 3,
-                                    WebkitBoxOrient: "vertical",
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  {item.value}
-                                </Typography>
-                              </Tooltip>
-                            </Box>
-                          ))}
-                        </Box>
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>О себе:</b> {user!.about}
+                              </span>
+                            }
+                          />
+                        </ListItem>
                       )}
-
-                      {achievementsList.length > 0 && (
-                        <Box>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              textTransform: "uppercase",
-                              letterSpacing: ".08em",
-                              fontWeight: 600,
-                              display: "block",
-                              mb: 1,
-                            }}
+                      {!!user!.status && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Статус:</b> {user!.status}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.record_book_number && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Номер зачётной книжки:</b> {user!.record_book_number}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.education_level && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Уровень образования:</b> {user!.education_level}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.track && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Направление:</b> {user!.track}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.program && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Образовательная программа:</b> {user!.program}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.department && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Кафедра/отдел:</b> {user!.department}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.position && (
+                        <ListItem
+                          sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                            <FiberManualRecordIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <span>
+                                <b>Должность:</b> {user!.position}
+                              </span>
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      {!!user!.achievements && (
+                        <>
+                          <ListItem
+                            sx={{ pl: 0, py: 0.5, alignItems: "flex-start", borderRadius: 2 }}
                           >
-                            Достижения
-                          </Typography>
+                            <ListItemIcon sx={{ minWidth: 30, mt: 0.3 }}>
+                              <FiberManualRecordIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={
+                                <span>
+                                  <b>Достижения:</b>
+                                </span>
+                              }
+                            />
+                          </ListItem>
                           <Stack
                             direction="row"
                             spacing={1}
                             useFlexGap
                             flexWrap="wrap"
-                            sx={{ justifyContent: { xs: "center", md: "flex-start" } }}
+                            sx={{
+                              pl: 0,
+                              mt: 0.5,
+                              justifyContent: { xs: "center", md: "flex-start" },
+                            }}
                           >
-                            {achievementsList.map(({ name, issuer, date, url }, idx) => (
-                              <Tooltip key={`${name}-${idx}`} title={name} arrow>
-                                <Chip
-                                  className="chip-gradient"
-                                  label={name}
-                                  clickable
-                                  onClick={() => setAchOpen({ name, issuer, date, url })}
-                                  sx={{
-                                    '& .MuiChip-label': {
-                                      whiteSpace: "normal",
-                                      display: "block",
-                                      textAlign: "left",
-                                      lineHeight: 1.25,
-                                    },
-                                    '&:focus-visible': {
-                                      outline: `2px solid ${theme.palette.primary.main}`,
-                                      outlineOffset: 2,
-                                    },
-                                  }}
-                                  aria-label={`Подробнее о достижении ${name}`}
-                                />
-                              </Tooltip>
-                            ))}
+                            {String(user!.achievements || "")
+                              .split(/[,;\n]/)
+                              .map((str, i) => {
+                                const raw = String(str || "").trim();
+                                if (!raw) return null;
+                                const [name, issuer, date, url] = raw
+                                  .split("|")
+                                  .map((s) => s.trim());
+                                return (
+                                  <Chip
+                                    key={i}
+                                    className="chip-gradient"
+                                    label={name}
+                                    clickable
+                                    onClick={() => setAchOpen({ name, issuer, date, url })}
+                                    sx={{
+                                      "& .MuiChip-label": {
+                                        whiteSpace: "normal",
+                                        display: "block",
+                                      },
+                                    }}
+                                  />
+                                );
+                              })}
                           </Stack>
-                        </Box>
+                        </>
                       )}
-                    </Stack>
+                    </List>
                   </AccordionDetails>
                 </Accordion>
               </Box>
             )}
+          </Box>
 
-  
-              </Box>
-            ) : (
           <canvas
             ref={confettiRef}
             style={{
