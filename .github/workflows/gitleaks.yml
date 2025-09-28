@@ -1,23 +1,21 @@
 name: Gitleaks
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - uses: actions/checkout@v4
         with:
-          args: detect --source . --report-format sarif --report-path gitleaks.sarif
-      - name: Upload SARIF artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-sarif
-          path: gitleaks.sarif
-      - name: Publish SARIF to Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: gitleaks.sarif
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
