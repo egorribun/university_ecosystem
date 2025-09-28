@@ -1,7 +1,6 @@
 import datetime
 import secrets
 
-from app.core.database import Base
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -15,6 +14,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
+
+from app.core.database import Base
 
 
 class User(Base):
