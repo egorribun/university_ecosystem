@@ -54,11 +54,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 except KeyError:
                     pass
             return
-        headers["Content-Security-Policy"] = policy
-        try:
-            del headers["Content-Security-Policy-Report-Only"]
-        except KeyError:
-            pass
+        for name in (
+            "Content-Security-Policy",
+            "Content-Security-Policy-Report-Only",
+        ):
+            try:
+                del headers[name]
+            except KeyError:
+                pass
+        header_name = (
+            "Content-Security-Policy-Report-Only"
+            if self._settings.security_csp_report_only
+            else "Content-Security-Policy"
+        )
+        headers[header_name] = policy
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers
