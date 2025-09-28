@@ -34,6 +34,7 @@
     "axios": "^1.8.4",
     "dayjs": "^1.11.13",
     "framer-motion": "^12.23.13",
+    "lucide-react": "^0.469.0",
     "jspdf": "^3.0.2",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
