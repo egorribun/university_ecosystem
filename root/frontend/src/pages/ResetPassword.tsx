@@ -73,7 +73,7 @@ export default function ResetPassword() {
     } catch {}
   };
 
-  const [resetState, resetAction, resetPending] = useActionState(async (_prev: ResetState, input: FormData) => {
+  const [resetState, resetAction, resetPending] = useActionState<ResetState, FormData>(async (_prev, input) => {
     if (input.get("__set_error__")) {
       return { status: "error" as const, error: String(input.get("__set_error__")) };
     }
@@ -86,7 +86,7 @@ export default function ResetPassword() {
     }
 
     if (pwd !== confirmValue) {
-      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" };
+      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" as const };
     }
 
     try {
@@ -108,7 +108,8 @@ export default function ResetPassword() {
     }
   }, [resetPending, resetStatus, resetState.field]);
 
-  if (resetStatus === "success") {
+  const isSuccess = resetStatus === "success";
+  if (isSuccess) {
     return (
       <Box sx={{ minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
         <Paper elevation={7} sx={{ width: "100%", maxWidth: 460, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, bgcolor: "var(--card-bg)" }}>
@@ -141,7 +142,7 @@ export default function ResetPassword() {
               autoFocus
               autoComplete="new-password"
               inputRef={passwordRef}
-              disabled={resetPending || resetStatus === "success"}
+              disabled={resetPending}
               helperText="Минимум 8 символов"
               InputProps={{
                 endAdornment: (
@@ -180,7 +181,7 @@ export default function ResetPassword() {
               fullWidth
               autoComplete="new-password"
               inputRef={confirmRef}
-              disabled={resetPending || resetStatus === "success"}
+              disabled={resetPending}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">

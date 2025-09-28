@@ -59,7 +59,7 @@ const EventDetail = () => {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [optimisticFiles, mutateFiles] = useOptimistic<OptimisticEventFile[]>(event?.files ?? [], (current, action: FileOptimisticAction) => {
+  const [optimisticFiles, mutateFiles] = useOptimistic<OptimisticEventFile[], FileOptimisticAction>(event?.files ?? [], (current, action) => {
     switch (action.type) {
       case 'add':
         return [...current, action.file]
@@ -70,14 +70,14 @@ const EventDetail = () => {
     }
   })
 
-  const [uploadState, uploadAction, uploadPending] = useActionState(async (_prev: UploadState, input: FormData) => {
+  const [uploadState, uploadAction, uploadPending] = useActionState<UploadState, FormData>(async (_prev, input) => {
     if (input.get('__upload_reset__') === '1') {
       return { status: 'idle' as const }
     }
 
     const file = input.get('file')
     if (!(file instanceof File) || file.size === 0) {
-      return { status: 'error', error: 'Выберите файл' }
+      return { status: 'error' as const, error: 'Выберите файл' }
     }
 
     const optimisticId = `pending-${Date.now()}`
@@ -94,11 +94,11 @@ const EventDetail = () => {
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await refreshEvent().catch(() => {})
-      return { status: 'success' }
+      return { status: 'success' as const }
     } catch (err) {
       mutateFiles({ type: 'remove', id: optimisticId })
       setSnack('Ошибка добавления файла')
-      return { status: 'error', error: 'Не удалось добавить файл' }
+      return { status: 'error' as const, error: 'Не удалось добавить файл' }
     }
   }, { status: 'idle' as const })
 
@@ -173,7 +173,7 @@ const EventDetail = () => {
       await api.patch(`/events/${event.id}`, { about: aboutDraft.trim() })
       setEditingAbout(false)
       setSnack('Описание обновлено')
-      loadEvent()
+      await refreshEvent().catch(() => {})
       setTimeout(() => aboutSectionRef.current?.focus?.(), 0)
     } catch {
       setSnack('Ошибка сохранения описания')
