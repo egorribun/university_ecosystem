@@ -3,8 +3,8 @@ repos:
     rev: v0.7.3
     hooks:
       - id: ruff
-        name: ruff lint
-        args: [--fix]
+        name: ruff check
+        args: ["--select", "I", "--fix"]
       - id: ruff-format
         name: ruff format
   - repo: https://github.com/psf/black
@@ -17,3 +17,8 @@ repos:
     hooks:
       - id: isort
         args: [--profile=black]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.3
+    hooks:
+      - id: gitleaks
+        args: ["protect", "--staged"]
