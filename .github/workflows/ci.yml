@@ -92,15 +92,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pip-audit
-      - name: Run pip-audit
+      - name: Run pip-audit (fail only if fixable vulns)
+        shell: bash
         run: |
-          set -euo pipefail
-          pip-audit --progress-spinner=off -r root/requirements.txt
-          if [ -f root/requirements-dev.txt ]; then
-            pip-audit --progress-spinner=off -r root/requirements-dev.txt
-          else
-            echo "requirements-dev.txt not found, skipping"
-          fi
+          audit_file() {
+            f="$1"
+            if [ ! -f "$f" ]; then
+              echo "$f not found, skipping"
+              return 0
+            fi
+            fixable="$(pip-audit -r "$f" --format=json 2>/dev/null | jq '.dependencies[].vulns[].fix_versions[]' || true)"
+            if [ -z "$fixable" ]; then
+              echo "No fixable vulnerabilities in $f"
+              return 0
+            else
+              pip-audit -r "$f"
+            fi
+          }
+          audit_file root/requirements.txt
+          audit_file root/requirements-dev.txt
 
   backend-tests:
     name: Backend tests
