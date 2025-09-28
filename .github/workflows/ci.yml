@@ -64,22 +64,13 @@ jobs:
       - name: Run pre-commit (apply fixes)
         shell: bash
         run: |
-          base='${{ steps.diff.outputs.base }}'
-          head='${{ steps.diff.outputs.head }}'
-          if [ -z "$base" ]; then
-            pre-commit run --all-files --show-diff-on-failure --color always || true
-          else
-            pre-commit run --show-diff-on-failure --color always --from-ref "$base" --to-ref "$head" || true
-          fi
+          pre-commit run --all-files --show-diff-on-failure --color always || true
       - name: Commit pre-commit fixes
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         shell: bash
         run: |
           if ! git diff --quiet; then
             branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              git checkout "$branch"
-            fi
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
@@ -93,16 +84,16 @@ jobs:
             echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Pull and commit the fixes locally."
             exit 1
           fi
+      - name: Refresh repo after possible autofix push
+        shell: bash
+        run: |
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin "${branch}"
+          git reset --hard "origin/${branch}"
       - name: Run pre-commit (verify clean)
         shell: bash
         run: |
-          base='${{ steps.diff.outputs.base }}'
-          head='${{ steps.diff.outputs.head }}'
-          if [ -z "$base" ]; then
-            pre-commit run --all-files --show-diff-on-failure --color always
-          else
-            pre-commit run --show-diff-on-failure --color always --from-ref "$base" --to-ref "$head"
-          fi
+          pre-commit run --all-files --show-diff-on-failure --color always
       - name: Run ESLint and Prettier
         working-directory: root/frontend
         run: |
