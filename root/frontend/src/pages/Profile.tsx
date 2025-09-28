@@ -473,6 +473,40 @@ export default function Profile() {
     return resolved || "https://mui.com/static/images/cards/cover1.jpg";
   };
 
+  const structuredDataJson = useMemo(() => {
+    const role = user?.role;
+    const jobTitle =
+      role === "teacher"
+        ? user?.position || ""
+        : role === "student"
+        ? "Student"
+        : "Administrator";
+    const affiliation = user?.institute || user?.department || "";
+    const avatarUrl = user?.avatar_url || "";
+    const resolvedAvatar = resolveMediaUrl(avatarUrl, BACKEND_ORIGIN);
+    const image = resolvedAvatar ? `${resolvedAvatar}?v=${avatarVersion}` : "";
+
+    return JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Person",
+      name: user?.full_name || "",
+      email: user?.email || "",
+      jobTitle,
+      affiliation,
+      url: typeof window !== "undefined" ? window.location.href : "",
+      image,
+    });
+  }, [
+    user?.role,
+    user?.position,
+    user?.institute,
+    user?.department,
+    user?.avatar_url,
+    user?.full_name,
+    user?.email,
+    avatarVersion,
+  ]);
+
   const ensureConfettiSize = useCallback(() => {
     const canvas = confettiRef.current;
     if (!canvas) return { dpr: 1, w: window.innerWidth, h: window.innerHeight };
@@ -1995,26 +2029,7 @@ export default function Profile() {
         </Alert>
       </Snackbar>
 
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Person",
-            name: user?.full_name || "",
-            email: user?.email || "",
-            jobTitle:
-              user?.role === "teacher"
-                ? user?.position || ""
-                : user?.role === "student"
-                ? "Student"
-                : "Administrator",
-            affiliation: user?.institute || user?.department || "",
-            url: typeof window !== "undefined" ? window.location.href : "",
-            image: getAvatarSrc() || "",
-          }),
-        }}
-      />
+      <script type="application/ld+json">{structuredDataJson}</script>
     </>
   );
 }
