@@ -15,7 +15,6 @@ def _resolve_env_file(base_dir: Path) -> Path:
         candidate = base_dir / name
         if candidate.exists():
             return candidate
-    # Fallback: honour the highest priority path even if it does not exist yet
     return base_dir / candidates[0]
 
 
