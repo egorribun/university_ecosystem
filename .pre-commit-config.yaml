@@ -3,20 +3,25 @@ repos:
     rev: v0.7.3
     hooks:
       - id: ruff
-        name: ruff check
+        name: ruff fix imports
         args: ["--select", "I", "--fix"]
+      - id: ruff
+        name: ruff check imports (no-fix)
+        stages: [manual]
+        args: ["--select", "I"]
       - id: ruff-format
         name: ruff format
+
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:
       - id: black
+        args: [--line-length=88]
+      - id: black
+        name: black (check only)
+        stages: [manual]
         args: [--check, --diff, --line-length=88]
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: [--profile=black]
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.3
     hooks:
