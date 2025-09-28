@@ -31,7 +31,7 @@
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "@mui/x-date-pickers": "^8.5.0",
-    "axios": "^1.8.4",
+    "axios": "^1.12.2",
     "dayjs": "^1.11.13",
     "framer-motion": "^12.23.13",
     "jspdf": "^3.0.2",
