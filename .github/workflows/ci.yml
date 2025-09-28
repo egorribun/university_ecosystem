@@ -77,10 +77,22 @@ jobs:
         working-directory: root/frontend
         run: npm ci
 
-      - name: Run pre-commit (apply fixes)
+      - name: Run pre-commit (apply fixes until clean, max 3)
         shell: bash
         run: |
-          pre-commit run --all-files --show-diff-on-failure --color always || true
+          set -e
+          for i in 1 2 3; do
+            echo "::group::pre-commit pass $i"
+            pre-commit run --all-files --show-diff-on-failure --color always || true
+            git add -A
+            if git diff --cached --quiet; then
+              echo "No staged changes after pass $i"
+              echo "::endgroup::"
+              break
+            fi
+            echo "Autofixes staged after pass $i"
+            echo "::endgroup::"
+          done
 
       - name: Commit pre-commit fixes
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -89,7 +101,6 @@ jobs:
           branch='${{ steps.branch.outputs.name }}'
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
           if ! git diff --cached --quiet; then
             git commit -m "chore: pre-commit autofix"
             git pull --rebase origin "$branch" || true
@@ -99,7 +110,6 @@ jobs:
       - name: Fail if fixes were needed and cannot push (fork PR)
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          git add -A
           if ! git diff --cached --quiet; then
             echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Pull and commit the fixes locally."
             exit 1
