@@ -1,2 +1,8 @@
+line-length = 88
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I"]
+
 [lint.per-file-ignores]
 "root/tests/conftest.py" = ["E402"]
