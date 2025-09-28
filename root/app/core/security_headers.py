@@ -44,31 +44,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_csp(self, response: Response) -> None:
         headers = response.headers
-        policy = self._settings.strict_security_csp
-        if not policy:
-            for name in (
-                "Content-Security-Policy",
-                "Content-Security-Policy-Report-Only",
-            ):
-                try:
-                    del headers[name]
-                except KeyError:
-                    pass
-            return
-        for name in (
-            "Content-Security-Policy",
-            "Content-Security-Policy-Report-Only",
-        ):
-            try:
-                del headers[name]
-            except KeyError:
-                pass
-        header_name = (
-            "Content-Security-Policy-Report-Only"
-            if self._settings.security_csp_report_only
-            else "Content-Security-Policy"
-        )
-        headers[header_name] = policy
+        policy = (self._settings.strict_security_csp or "default-src 'self'").strip()
+        headers["Content-Security-Policy"] = policy
+        try:
+            del headers["Content-Security-Policy-Report-Only"]
+        except KeyError:
+            pass
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers
