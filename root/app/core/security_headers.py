@@ -16,10 +16,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:  # type: ignore[override]
         response = await call_next(request)
+        if not self._settings.strict_security_headers_enabled:
+            return response
         self._apply_hsts(response)
         self._apply_csp(response)
         self._apply_frame_options(response)
         self._apply_permissions_policy(response)
+        self._apply_content_type_options(response)
+        self._apply_referrer_policy(response)
         return response
 
     def _apply_hsts(self, response: Response) -> None:
@@ -39,16 +43,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_csp(self, response: Response) -> None:
         headers = response.headers
-        policy = self._settings.security_csp.strip()
-        report_uri = self._settings.security_csp_report_uri.strip()
-        header_name = "Content-Security-Policy"
-        if self._settings.security_csp_report_only:
-            header_name = "Content-Security-Policy-Report-Only"
-        alternate = (
-            "Content-Security-Policy"
-            if header_name.endswith("Report-Only")
-            else "Content-Security-Policy-Report-Only"
-        )
+        policy = self._settings.strict_security_csp
         if not policy:
             for name in (
                 "Content-Security-Policy",
@@ -59,12 +54,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 except KeyError:
                     pass
             return
-        normalized = policy.rstrip("; ")
-        if report_uri:
-            normalized = f"{normalized}; report-uri {report_uri}"
-        headers[header_name] = normalized
+        headers["Content-Security-Policy"] = policy
         try:
-            del headers[alternate]
+            del headers["Content-Security-Policy-Report-Only"]
         except KeyError:
             pass
 
@@ -87,5 +79,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         else:
             try:
                 del headers["Permissions-Policy"]
+            except KeyError:
+                pass
+
+    def _apply_content_type_options(self, response: Response) -> None:
+        headers = response.headers
+        value = self._settings.security_x_content_type_options.strip()
+        if value:
+            headers["X-Content-Type-Options"] = value
+        else:
+            try:
+                del headers["X-Content-Type-Options"]
+            except KeyError:
+                pass
+
+    def _apply_referrer_policy(self, response: Response) -> None:
+        headers = response.headers
+        value = self._settings.security_referrer_policy.strip()
+        if value:
+            headers["Referrer-Policy"] = value
+        else:
+            try:
+                del headers["Referrer-Policy"]
             except KeyError:
                 pass

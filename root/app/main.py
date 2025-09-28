@@ -51,7 +51,8 @@ app.add_middleware(
     expose_headers=settings.cors_expose_headers_list,
 )
 
-app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+if settings.strict_security_headers_enabled:
+    app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list

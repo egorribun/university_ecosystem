@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     security_hsts_preload: bool = False
     security_x_frame_options: str = "DENY"
     security_permissions_policy: str = "geolocation=(), microphone=(), camera=()"
+    security_referrer_policy: str = "no-referrer"
+    security_x_content_type_options: str = "nosniff"
+    enable_strict_security_headers: bool | None = None
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
@@ -167,7 +170,13 @@ class Settings(BaseSettings):
 
     @cached_property
     def is_development(self) -> bool:
-        return str(self.environment).lower() in {"dev", "development", "local"}
+        return str(self.environment).lower() in {
+            "dev",
+            "development",
+            "local",
+            "test",
+            "testing",
+        }
 
     @cached_property
     def cors_allow_methods_list(self) -> list[str]:
@@ -191,6 +200,26 @@ class Settings(BaseSettings):
     def rate_limit_sensitive_value(self) -> str | None:
         value = str(self.rate_limit_sensitive).strip()
         return value or None
+
+    @cached_property
+    def strict_security_headers_enabled(self) -> bool:
+        value = self.enable_strict_security_headers
+        if value is None:
+            return not self.is_development
+        return bool(value)
+
+    @cached_property
+    def strict_security_csp(self) -> str:
+        policy = self.security_csp.strip()
+        if not policy:
+            policy = "default-src 'self'"
+        normalized = policy.rstrip("; ")
+        if "default-src" not in normalized.lower():
+            normalized = f"default-src 'self'; {normalized}".rstrip("; ")
+        report_uri = self.security_csp_report_uri.strip()
+        if report_uri:
+            normalized = f"{normalized}; report-uri {report_uri}".rstrip("; ")
+        return normalized
 
 
 settings = Settings()
