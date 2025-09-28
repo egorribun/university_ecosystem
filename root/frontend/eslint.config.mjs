@@ -4,6 +4,16 @@ import reactPlugin from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import prettier from "eslint-config-prettier";
+import security from "eslint-plugin-security";
+
+const securityRecommended = security.configs.recommended;
+const securityRules = Object.fromEntries(
+  Object.keys(securityRecommended.rules ?? {}).map((rule) => [rule, "error"])
+);
+const securityConfig = {
+  ...securityRecommended,
+  rules: securityRules,
+};
 
 export default tseslint.config(
   {
@@ -13,6 +23,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   reactPlugin.configs.flat.recommended,
   jsxA11y.flatConfigs.recommended,
+  securityConfig,
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
