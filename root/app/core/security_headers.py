@@ -44,7 +44,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_csp(self, response: Response) -> None:
         headers = response.headers
-        policy = (self._settings.strict_security_csp or "default-src 'self'").strip()
+        base = "default-src 'self'"
+        extra = (self._settings.strict_security_csp or "").strip()
+        if extra:
+            policy = extra if "default-src" in extra else f"{base}; {extra}"
+        else:
+            policy = base
         headers["Content-Security-Policy"] = policy
         try:
             del headers["Content-Security-Policy-Report-Only"]
