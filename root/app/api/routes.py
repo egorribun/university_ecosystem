@@ -12,13 +12,6 @@ from typing import List, Optional
 from urllib.parse import urlencode
 
 import httpx
-from app import crud
-from app.api.deps import get_current_user
-from app.auth.security import decode_token
-from app.core.config import settings
-from app.core.database import get_db
-from app.models import models
-from app.schemas import schemas
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -33,6 +26,14 @@ from fastapi import (
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
+
+from app import crud
+from app.api.deps import get_current_user
+from app.auth.security import decode_token
+from app.core.config import settings
+from app.core.database import get_db
+from app.models import models
+from app.schemas import schemas
 
 router = APIRouter()
 

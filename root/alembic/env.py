@@ -2,8 +2,9 @@ import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # <-- добавлено: корректная работа import'ов моделей (если запускаешь alembic из корня проекта) -->
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

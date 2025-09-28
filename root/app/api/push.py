@@ -1,12 +1,13 @@
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import PushSubscription, User
 from app.services.webpush import send_web_push
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/push", tags=["push"])
 

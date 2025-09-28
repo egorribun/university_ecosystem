@@ -1,12 +1,13 @@
-from app.auth.security import create_access_token, get_password_hash, verify_password
-from app.core.database import get_db
-from app.models.models import User
-from app.schemas.schemas import Token, UserCreate
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.security import create_access_token, get_password_hash, verify_password
+from app.core.database import get_db
+from app.models.models import User
+from app.schemas.schemas import Token, UserCreate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

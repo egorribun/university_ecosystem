@@ -2,12 +2,13 @@ import asyncio
 import datetime as dt
 from typing import Awaitable, Callable, Optional, Sequence
 
+from sqlalchemy import and_, insert, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.models import Notification, PushSubscription, Schedule, User
 from app.services.webpush import send_web_push
-from sqlalchemy import and_, insert, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_notifications_for_users(

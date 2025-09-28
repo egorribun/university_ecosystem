@@ -45,8 +45,9 @@ except Exception:
     LoggingIntegration = None  # type: ignore[assignment]
     SentrySpanProcessor = None  # type: ignore[assignment]
 
-from app.core.config import settings
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+from app.core.config import settings
 
 _logging_configured = False
 _otel_configured = False

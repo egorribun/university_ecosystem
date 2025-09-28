@@ -4,12 +4,13 @@ import asyncio
 import logging
 from typing import AsyncGenerator
 
-from app.core.config import settings
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

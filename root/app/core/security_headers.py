@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from app.core.config import Settings
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 from starlette.types import ASGIApp
+
+from app.core.config import Settings
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
