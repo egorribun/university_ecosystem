@@ -92,7 +92,7 @@ const Register = () => {
     }
   };
 
-  const [registerState, registerAction, registerPending] = useActionState(async (_prev: RegisterState, formData: FormData) => {
+  const [registerState, registerAction, registerPending] = useActionState<RegisterState, FormData>(async (_prev, formData) => {
     const fullName = String(formData.get("full_name") ?? "").trim();
     const email = String(formData.get("email") ?? "").trim();
     const password = String(formData.get("password") ?? "");
@@ -106,15 +106,15 @@ const Register = () => {
     }
 
     if (!emailRe.test(email)) {
-      return { status: "error" as const, error: "Неверный формат email", field: "email" };
+      return { status: "error" as const, error: "Неверный формат email", field: "email" as const };
     }
 
     if (password !== confirm) {
-      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" };
+      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" as const };
     }
 
     if ((role === "teacher" || role === "admin") && !inviteCode) {
-      return { status: "error" as const, error: "Необходим код приглашения для выбранной роли.", field: "invite_code" };
+      return { status: "error" as const, error: "Необходим код приглашения для выбранной роли.", field: "invite_code" as const };
     }
 
     try {

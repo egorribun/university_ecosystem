@@ -89,16 +89,16 @@ const Login = () => {
     setEmailSuggestion(s && s !== val ? s : null);
   };
 
-  const [loginState, loginAction, loginPending] = useActionState(async (_prev: LoginState, formData: FormData) => {
+  const [loginState, loginAction, loginPending] = useActionState<LoginState, FormData>(async (_prev, formData) => {
     const username = String(formData.get("username") || "").trim();
     const passwordValue = String(formData.get("password") || "");
 
     if (!emailRe.test(username)) {
-      return { status: "error" as const, error: "Введите корректный email", field: "username" };
+      return { status: "error" as const, error: "Введите корректный email", field: "username" as const };
     }
 
     if (!passwordValue) {
-      return { status: "error" as const, error: "Введите пароль", field: "password" };
+      return { status: "error" as const, error: "Введите пароль", field: "password" as const };
     }
 
     try {
