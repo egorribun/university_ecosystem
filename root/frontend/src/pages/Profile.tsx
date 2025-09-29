@@ -39,27 +39,9 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { resolveMediaUrl } from "@/utils/media";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
-import { QRCodeSVG } from "qrcode.react";
+import { useQrDataUrl } from "../hooks/useQrDataUrl";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
-
-type QRCodeModule = {
-  toDataURL: (text: string, options?: { width?: number; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<string>;
-  toCanvas?: (canvas: HTMLCanvasElement, text: string, options?: { width?: number; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<void>;
-  toString?: (text: string, options?: { type?: "svg"; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<string>;
-};
-let qrModulePromise: Promise<QRCodeModule> | null = null;
-const loadQrModule = async (): Promise<QRCodeModule> => {
-  if (!qrModulePromise) {
-    qrModulePromise = import("qrcode")
-      .then((mod) => (mod as any).default ?? (mod as any))
-      .catch((e) => {
-        qrModulePromise = null;
-        throw e;
-      });
-  }
-  return qrModulePromise;
-};
 
 let jsPdfModulePromise: Promise<typeof import("jspdf")> | null = null;
 const loadJsPdfModule = async () => {
@@ -70,6 +52,42 @@ const loadJsPdfModule = async () => {
     });
   }
   return jsPdfModulePromise;
+};
+
+let html2CanvasPromise: Promise<typeof import("html2canvas")> | null = null;
+const loadHtml2Canvas = async (): Promise<typeof import("html2canvas")> => {
+  if (!html2CanvasPromise) {
+    html2CanvasPromise = import("html2canvas").catch((error) => {
+      html2CanvasPromise = null;
+      throw error;
+    });
+  }
+  return html2CanvasPromise;
+};
+
+const ensureImagesLoaded = async (root: HTMLElement) => {
+  const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(
+    images.map((img) => {
+      if (img.complete && img.naturalWidth > 0) {
+        if (typeof img.decode === "function") {
+          return img.decode().catch(() => undefined);
+        }
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        const cleanup = () => {
+          img.removeEventListener("load", onLoad);
+          img.removeEventListener("error", onError);
+          resolve();
+        };
+        const onLoad = () => cleanup();
+        const onError = () => cleanup();
+        img.addEventListener("load", onLoad, { once: true });
+        img.addEventListener("error", onError, { once: true });
+      });
+    })
+  );
 };
 
 type NowPlaying = {
@@ -312,6 +330,7 @@ export default function Profile() {
   const [scrollY, setScrollY] = useState(0);
 
   const [qrOpen, setQrOpen] = useState(false);
+  const [pdfPreparing, setPdfPreparing] = useState(false);
   const [achOpen, setAchOpen] = useState<{ name: string; issuer?: string; date?: string; url?: string } | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -580,244 +599,66 @@ export default function Profile() {
     setQrOpen(false);
   }, []);
 
-  const fetchAsDataUrl = async (url: string) => {
-    try {
-      const r = await api.get(url, { responseType: "blob", withCredentials: true } as any);
-      const blob: Blob = r.data;
-      return await new Promise<string>((res) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result as string);
-        fr.readAsDataURL(blob);
-      });
-    } catch {
-      const r = await fetch(url, { credentials: "include", cache: "no-store" });
-      const blob = await r.blob();
-      return await new Promise<string>((res) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result as string);
-        fr.readAsDataURL(blob);
-      });
-    }
-  };
+  const vcardValue = useMemo(() => buildVCard(), [buildVCard]);
+  const { url: qrDataUrl, loading: qrLoading } = useQrDataUrl(vcardValue, 320);
+  const qrUrlRef = useRef<string | null>(null);
+  const qrLoadingRef = useRef(false);
 
-  const svgStringToPngDataUrl = async (svg: string, size: number) => {
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      const loaded = new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = (e) => reject(e);
-      });
-      img.src = url;
-      await loaded;
-      const c = document.createElement("canvas");
-      c.width = size;
-      c.height = size;
-      const ctx = c.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, size, size);
-      return c.toDataURL("image/png");
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  };
+  useEffect(() => {
+    qrUrlRef.current = qrDataUrl;
+  }, [qrDataUrl]);
 
-  const makeQrPng = async (text: string, size: number) => {
-    const lib = await loadQrModule();
-    try {
-      const png = await lib.toDataURL(text, { width: size, errorCorrectionLevel: "M", margin: 1 });
-      if (png && png.startsWith("data:image")) return png;
-    } catch {}
-    if (typeof lib.toCanvas === "function") {
-      try {
-        const c = document.createElement("canvas");
-        await lib.toCanvas!(c, text, { width: size, errorCorrectionLevel: "M", margin: 1 });
-        return c.toDataURL("image/png");
-      } catch {}
-    }
-    if (typeof lib.toString === "function") {
-      try {
-        const svg = await lib.toString!(text, { type: "svg", errorCorrectionLevel: "M", margin: 1 });
-        const png = await svgStringToPngDataUrl(svg, size);
-        return png;
-      } catch {}
-    }
-    return null;
-  };
+  useEffect(() => {
+    qrLoadingRef.current = qrLoading;
+  }, [qrLoading]);
 
   const downloadPdfCard = async () => {
     if (!user) return;
+    const node = containerRef.current;
+    if (!node) return;
+    setPdfPreparing(true);
     try {
-      const [{ jsPDF }, qrLibReady] = await Promise.all([loadJsPdfModule(), loadQrModule()]);
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [360, 210] });
-      doc.setFillColor(242, 246, 255);
-      doc.rect(0, 0, 360, 210, "F");
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(230, 235, 245);
-      doc.roundedRect(22, 22, 360 - 44, 210 - 44, 12, 12, "FD");
-
-      const padX = 42;
-      const padY = 38;
-      const contentW = 360 - padX * 2;
-      const leftW = Math.round(contentW * 0.62);
-      const rightX = padX + leftW;
-
-      const isStudent = user.role === "student";
-      const instituteLine = isStudent ? user.institute || "" : user.department || "";
-      const programOrTitleLine = isStudent ? user.program || user.track || user.status || "Студент" : user.position || user.status || "";
-      const emailText = user.email || "";
-      const tg = user.telegram || "";
-
-      const avatarBox = 72;
-      const nameTop = padY + avatarBox + 14;
-
-      const fitSize = (text: string, max: number, base: number, step = 1, min = 10, font: "bold" | "normal" = "bold") => {
-        let s = base;
-        doc.setFont("helvetica", font === "bold" ? "bold" : "normal");
-        while (s > min) {
-          doc.setFontSize(s);
-          if (doc.getTextWidth(text) <= max) break;
-          s -= step;
+      const start = performance.now();
+      while (qrLoadingRef.current || !qrUrlRef.current) {
+        if (performance.now() - start > 4000) {
+          throw new Error("QR not ready");
         }
-        return s;
-      };
-
-      doc.setTextColor(17, 17, 17);
-      const nameSize = fitSize(user.full_name || "", leftW, 34);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(nameSize);
-      doc.text(user.full_name || "", padX, nameTop);
-
-      let y = nameTop + nameSize + 8;
-      const lineH = 18;
-      const blockGap = 8;
-
-      if (isStudent) {
-        if (instituteLine) {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(14);
-          doc.setTextColor(102, 102, 102);
-          doc.text(String(instituteLine), padX, y);
-          y += lineH + blockGap;
-        }
-        const progSize = fitSize(String(programOrTitleLine || ""), leftW, 16, 1, 10, "normal");
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(progSize);
-        if (programOrTitleLine) {
-          doc.setTextColor(68, 68, 68);
-          doc.text(String(programOrTitleLine), padX, y);
-          y += Math.round(progSize + 6) + blockGap;
-        }
-      } else {
-        const titleSize = fitSize(String(programOrTitleLine || ""), leftW, 16, 1, 10, "normal");
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(titleSize);
-        if (programOrTitleLine) {
-          doc.setTextColor(68, 68, 68);
-          doc.text(String(programOrTitleLine), padX, y);
-          y += Math.round(titleSize + 6) + blockGap;
-        }
-        if (instituteLine) {
-          doc.setFontSize(14);
-          doc.setTextColor(102, 102, 102);
-          doc.text(String(instituteLine), padX, y);
-          y += lineH + blockGap;
-        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      doc.setTextColor(51, 51, 51);
-      if (emailText) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(14);
-        doc.text(String(emailText), padX, y);
-        y += lineH + blockGap;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await ensureImagesLoaded(node);
+      const [jsPdfModule, html2canvasModule] = await Promise.all([loadJsPdfModule(), loadHtml2Canvas()]);
+      const { jsPDF } = jsPdfModule;
+      const html2canvas = (html2canvasModule.default ?? (html2canvasModule as unknown as typeof import("html2canvas")));
+      const scale = Math.max(2, window.devicePixelRatio || 2);
+      const canvas = await html2canvas(node, {
+        useCORS: true,
+        foreignObjectRendering: true,
+        scale,
+        backgroundColor: null,
+      });
+      const orientation: "p" | "l" = canvas.width >= canvas.height ? "l" : "p";
+      const pdf = new jsPDF(orientation, "mm", "a4");
+      const imgData = canvas.toDataURL("image/png");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const aspect = canvas.width / canvas.height;
+      let renderWidth = pageWidth;
+      let renderHeight = renderWidth / aspect;
+      if (renderHeight > pageHeight) {
+        renderHeight = pageHeight;
+        renderWidth = renderHeight * aspect;
       }
-      if (tg) {
-        doc.text(String(tg), padX, y);
-        y += lineH + blockGap;
-      }
-
-      const qrSidePt = 118;
-      const qrX = rightX + Math.round((contentW - leftW - qrSidePt) / 2);
-      const qrY = padY + 10;
-      let qrDataUrl = null as string | null;
-      try {
-        qrDataUrl = await makeQrPng(buildVCard(), 640);
-      } catch {}
-      if (!qrDataUrl) {
-        setSnack({ text: "Не удалось встроить QR в PDF", sev: "warning" });
-      } else {
-        try {
-          doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSidePt, qrSidePt);
-        } catch {
-          try {
-            const jpegQr = await new Promise<string>((resolve, reject) => {
-              const img = new Image();
-              img.onload = () => {
-                const c = document.createElement("canvas");
-                c.width = 640;
-                c.height = 640;
-                const ctx = c.getContext("2d")!;
-                ctx.fillStyle = "#fff";
-                ctx.fillRect(0, 0, 640, 640);
-                ctx.drawImage(img, 0, 0);
-                resolve(c.toDataURL("image/jpeg", 0.95));
-              };
-              img.onerror = reject;
-              img.src = qrDataUrl!;
-            });
-            doc.addImage(jpegQr, "JPEG", qrX, qrY, qrSidePt, qrSidePt);
-          } catch {}
-        }
-      }
-
-      const avatarResolved = resolveMediaUrl(user.avatar_url || "", BACKEND_ORIGIN);
-      const avatarSrc = avatarResolved ? `${avatarResolved}?v=${avatarVersion}` : null;
-      if (avatarSrc) {
-        try {
-          const dataUrl = await fetchAsDataUrl(avatarSrc);
-          try {
-            doc.addImage(dataUrl, "JPEG", padX, padY, avatarBox, avatarBox);
-          } catch {
-            doc.addImage(dataUrl, "PNG", padX, padY, avatarBox, avatarBox);
-          }
-        } catch {}
-      } else {
-        doc.setFillColor(229, 231, 235);
-        doc.circle(padX + avatarBox / 2, padY + avatarBox / 2, avatarBox / 2, "F");
-        doc.setTextColor(17, 24, 39);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(Math.round(avatarBox * 0.42));
-        const ch = (user.full_name?.[0] || "").toUpperCase();
-        const tw = doc.getTextWidth(ch);
-        const tx = padX + avatarBox / 2 - tw / 2;
-        const ty = padY + avatarBox / 2 + Math.round(avatarBox * 0.16);
-        doc.text(ch, tx, ty);
-      }
-
-      try {
-        const logoUrl = typeof guuLogo === "string" ? guuLogo : String(guuLogo as any);
-        const logoData = await fetchAsDataUrl(logoUrl);
-        const maxW = Math.round((contentW - leftW) * 0.95);
-        const maxH = 80;
-        const lw = maxW;
-        const lh = Math.min(maxH, Math.round(maxW * 0.35));
-        const lx = rightX + Math.round((contentW - leftW - lw) / 2);
-        const lyTop = padY + 160;
-        const ly = Math.min(lyTop, 210 - 22 - lh - 12);
-        try {
-          doc.addImage(logoData, "PNG", lx, ly, lw, lh);
-        } catch {
-          doc.addImage(logoData, "JPEG", lx, ly, lw, lh);
-        }
-      } catch {}
-
+      const offsetX = (pageWidth - renderWidth) / 2;
+      const offsetY = (pageHeight - renderHeight) / 2;
+      pdf.addImage(imgData, "PNG", offsetX, offsetY, renderWidth, renderHeight);
       const fname = (user.full_name || "contact").replace(/\s+/g, "_") + ".pdf";
-      doc.save(fname);
+      pdf.save(fname);
     } catch (e) {
       console.error(e);
       setSnack({ text: "Не удалось подготовить PDF визитку", sev: "error" });
+    } finally {
+      setPdfPreparing(false);
     }
   };
 
@@ -885,6 +726,7 @@ export default function Profile() {
     navigate("/profile", { replace: true });
   };
 
+  const isDark = theme.palette.mode === "dark";
   const avatarPx = useMemo(() => {
     if (isMobile) return 132;
     return isTwoCol ? 188 : 168;
@@ -894,13 +736,14 @@ export default function Profile() {
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`;
   const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`;
   const infoOffsetMargin = `${avatarFloat + 36}px`;
-
-  const isDark = theme.palette.mode === "dark";
-  const glassPanelBg = alpha(theme.palette.background.paper, isDark ? 0.28 : 0.66);
+  const glassPanelBg = alpha(theme.palette.background.paper, isDark ? 0.22 : 0.78);
   const glassRaisedBg = alpha(theme.palette.background.paper, isDark ? 0.18 : 0.78);
   const glassBorder = isDark ? alpha(theme.palette.common.white, 0.24) : alpha(theme.palette.common.black, 0.12);
   const surfaceShadow = isDark ? `0 40px 72px -38px ${alpha(theme.palette.common.black, 0.7)}` : `0 24px 48px -36px ${alpha(theme.palette.common.black, 0.25)}`;
   const subtleRing = alpha(theme.palette.primary.light, isDark ? 0.2 : 0.35);
+  const qrFrameBg = isDark ? alpha(theme.palette.background.paper, 0.92) : theme.palette.common.white;
+  const qrBorderColor = alpha(theme.palette.common.black, isDark ? 0.4 : 0.12);
+  const qrShadow = alpha(theme.palette.common.black, isDark ? 0.76 : 0.32);
   const textPrimary = theme.palette.text.primary;
   const textSecondary = theme.palette.text.secondary;
 
@@ -955,6 +798,37 @@ export default function Profile() {
                 overflow: "hidden",
               }}
             >
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: { xs: 16, sm: 20, md: 24 },
+                  right: { xs: 16, sm: 20, md: 24 },
+                  width: 168,
+                  height: 168,
+                  borderRadius: 2,
+                  backgroundColor: qrFrameBg,
+                  border: `1px solid ${qrBorderColor}`,
+                  boxShadow: `0 24px 48px -32px ${qrShadow}`,
+                  display: pdfPreparing ? "flex" : "none",
+                  "@media print": { display: "flex" },
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                  zIndex: 5,
+                  p: 1.5,
+                }}
+              >
+                {qrDataUrl && !qrLoading ? (
+                  <Box
+                    component="img"
+                    src={qrDataUrl}
+                    alt="QR визитки"
+                    sx={{ width: 144, height: 144, display: "block" }}
+                  />
+                ) : (
+                  <Box sx={{ width: 144, height: 144, backgroundColor: qrFrameBg }} />
+                )}
+              </Box>
               <Box
                 sx={{
                   display: "grid",
@@ -1441,8 +1315,22 @@ export default function Profile() {
       >
         <DialogTitle sx={{ textAlign: "center", fontWeight: 700 }}>QR визитки</DialogTitle>
         <DialogContent sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 280 }}>
-          <Box sx={{ background: "#fff", p: 1.5, borderRadius: 2 }}>
-            <QRCodeSVG value={buildVCard()} size={280} level="M" includeMargin />
+          <Box
+            sx={{
+              background: qrFrameBg,
+              p: 1.5,
+              borderRadius: 2,
+              border: `1px solid ${qrBorderColor}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {qrDataUrl && !qrLoading ? (
+              <Box component="img" src={qrDataUrl} alt="QR визитки" sx={{ width: 280, height: 280, display: "block" }} />
+            ) : (
+              <Box sx={{ width: 280, height: 280, backgroundColor: qrFrameBg }} />
+            )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
