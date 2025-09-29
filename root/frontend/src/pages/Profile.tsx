@@ -13,10 +13,6 @@ import {
   CircularProgress,
   IconButton,
   Snackbar,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Tooltip,
   Chip,
   Alert,
@@ -38,27 +34,28 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import EmailIcon from "@mui/icons-material/Email";
 import TelegramIcon from "@mui/icons-material/Telegram";
-import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { resolveMediaUrl } from "@/utils/media";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
+import { QRCodeSVG } from "qrcode.react";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 
 type QRCodeModule = {
-  toDataURL: (text: string, options?: { width?: number; errorCorrectionLevel?: string; margin?: number }) => Promise<string>;
+  toDataURL: (text: string, options?: { width?: number; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<string>;
+  toCanvas?: (canvas: HTMLCanvasElement, text: string, options?: { width?: number; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<void>;
+  toString?: (text: string, options?: { type?: "svg"; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<string>;
 };
-
 let qrModulePromise: Promise<QRCodeModule> | null = null;
 const loadQrModule = async (): Promise<QRCodeModule> => {
   if (!qrModulePromise) {
     qrModulePromise = import("qrcode")
-      .then((mod) => (mod as { default?: QRCodeModule }).default ?? (mod as QRCodeModule))
-      .catch((error) => {
+      .then((mod) => (mod as any).default ?? (mod as any))
+      .catch((e) => {
         qrModulePromise = null;
-        throw error;
+        throw e;
       });
   }
   return qrModulePromise;
@@ -119,6 +116,11 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
   const rafRef = useRef<number | null>(null);
   const theme = useTheme();
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const isDark = theme.palette.mode === "dark";
+  const bgPaper = alpha(theme.palette.background.paper, isDark ? 0.22 : 0.66);
+  const borderCol = isDark ? alpha(theme.palette.common.white, 0.22) : alpha(theme.palette.common.black, 0.12);
+  const textPrimary = theme.palette.text.primary;
+  const textSecondary = theme.palette.text.secondary;
 
   useEffect(() => {
     startRef.current = Date.now() - (data.progress_ms ?? 0);
@@ -163,15 +165,15 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
         position: "relative",
         overflow: "hidden",
         backdropFilter: "blur(18px)",
-        background: alpha(theme.palette.background.paper, 0.22),
-        border: `1px solid ${alpha(theme.palette.common.white, 0.22)}`,
-        boxShadow: `0 18px 32px -24px ${alpha(theme.palette.common.black, 0.6)}`,
+        background: bgPaper,
+        border: `1px solid ${borderCol}`,
+        boxShadow: `0 18px 32px -24px ${alpha(theme.palette.common.black, isDark ? 0.6 : 0.25)}`,
         transition: "transform 320ms ease, box-shadow 320ms ease, border-color 320ms ease",
         "&:hover": prefersReduce
           ? undefined
           : {
               transform: "translateY(-4px)",
-              boxShadow: `0 24px 36px -20px ${alpha(theme.palette.common.black, 0.65)}`,
+              boxShadow: `0 24px 36px -20px ${alpha(theme.palette.common.black, isDark ? 0.65 : 0.3)}`,
               borderColor: alpha(theme.palette.primary.light, 0.45),
             },
       }}
@@ -183,7 +185,7 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
           height: 64,
           borderRadius: 2,
           overflow: "hidden",
-          boxShadow: `0 10px 22px ${alpha(theme.palette.common.black, 0.36)}`,
+          boxShadow: `0 10px 22px ${alpha(theme.palette.common.black, isDark ? 0.36 : 0.2)}`,
         }}
       >
         <Avatar
@@ -203,18 +205,16 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
           sx={{
             position: "absolute",
             inset: 0,
-            background: prefersReduce
-              ? "transparent"
-              : "linear-gradient(140deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 60%)",
+            background: prefersReduce ? "transparent" : "linear-gradient(140deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 60%)",
             mixBlendMode: "screen",
           }}
         />
       </Box>
       <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
-        <Typography variant="body1" sx={{ fontWeight: 600, color: alpha(theme.palette.common.white, 0.96), lineHeight: 1.2 }}>
+        <Typography variant="body1" sx={{ fontWeight: 600, color: textPrimary, lineHeight: 1.2 }}>
           {data.track_name || "—"}
         </Typography>
-        <Typography variant="body2" sx={{ color: alpha(theme.palette.common.white, 0.7) }}>
+        <Typography variant="body2" sx={{ color: textSecondary }}>
           {(data.artists || []).join(", ")}
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
@@ -225,14 +225,14 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
               flex: 1,
               height: 6,
               borderRadius: 999,
-              backgroundColor: alpha(theme.palette.common.white, 0.12),
+              backgroundColor: alpha(textPrimary, 0.12),
               "& .MuiLinearProgress-bar": {
                 borderRadius: 999,
                 background: `linear-gradient(90deg, ${alpha(theme.palette.primary.light, 0.8)}, ${alpha(theme.palette.secondary.light, 0.9)})`,
               },
             }}
           />
-          <Typography variant="caption" sx={{ color: alpha(theme.palette.common.white, 0.72), whiteSpace: "nowrap" }}>
+          <Typography variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
             {fmt(progress)} / {fmt(data.duration_ms)}
           </Typography>
         </Box>
@@ -262,6 +262,42 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
   );
 });
 
+const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  if (value == null || value === "") return null;
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "14px 1fr",
+        alignItems: "center",
+        gap: 1.2,
+        px: 1.2,
+        py: 1.1,
+        minHeight: 44,
+        borderRadius: 2,
+        background: alpha(theme.palette.text.primary, isDark ? 0.12 : 0.04),
+        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.12)}`,
+      }}
+    >
+      <Box
+        sx={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          bgcolor: theme.palette.info.main,
+          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.25)}`,
+          justifySelf: "center",
+        }}
+      />
+      <Typography sx={{ color: theme.palette.text.primary, lineHeight: 1.25 }}>
+        <b>{label}:</b> {value}
+      </Typography>
+    </Box>
+  );
+};
+
 export default function Profile() {
   const { user, loading, setUser } = useAuth();
   const theme = useTheme();
@@ -276,8 +312,6 @@ export default function Profile() {
   const [scrollY, setScrollY] = useState(0);
 
   const [qrOpen, setQrOpen] = useState(false);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
   const [achOpen, setAchOpen] = useState<{ name: string; issuer?: string; date?: string; url?: string } | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -489,16 +523,17 @@ export default function Profile() {
       });
       let raf = 0;
       const step = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const context = ctx;
+        context.clearRect(0, 0, canvas.width, canvas.height);
         parts.forEach((p) => {
           p.vy += 0.12 * dpr;
           p.x += p.vx * dpr;
           p.y += p.vy * dpr;
           p.life -= 1;
-          ctx.fillStyle = p.color;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2);
-          ctx.fill();
+          context.fillStyle = p.color;
+          context.beginPath();
+          context.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2);
+          context.fill();
         });
         for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1);
         if (parts.length > 0) raf = requestAnimationFrame(step);
@@ -534,121 +569,99 @@ export default function Profile() {
       typeof window !== "undefined" ? `URL:${window.location.href}` : "",
     ].filter(Boolean);
     lines.push("END:VCARD");
-    return lines.join("\n");
+    return lines.join("\r\n");
   }, [user]);
 
-  const openQrModal = useCallback(async () => {
-    setQrError(null);
-    setQrUrl(null);
+  const openQrModal = useCallback(() => {
     setQrOpen(true);
-    try {
-      const qr = await loadQrModule();
-      const dataUrl = await qr.toDataURL(buildVCard(), { width: 280, errorCorrectionLevel: "M" });
-      setQrUrl(dataUrl);
-    } catch {
-      setQrError("Не удалось сгенерировать QR-код. Попробуйте позже.");
-    }
-  }, [buildVCard]);
+  }, []);
 
   const closeQrModal = useCallback(() => {
     setQrOpen(false);
-    setQrError(null);
-    setQrUrl(null);
   }, []);
+
+  const fetchAsDataUrl = async (url: string) => {
+    try {
+      const r = await api.get(url, { responseType: "blob", withCredentials: true } as any);
+      const blob: Blob = r.data;
+      return await new Promise<string>((res) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result as string);
+        fr.readAsDataURL(blob);
+      });
+    } catch {
+      const r = await fetch(url, { credentials: "include", cache: "no-store" });
+      const blob = await r.blob();
+      return await new Promise<string>((res) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result as string);
+        fr.readAsDataURL(blob);
+      });
+    }
+  };
+
+  const svgStringToPngDataUrl = async (svg: string, size: number) => {
+    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const loaded = new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = (e) => reject(e);
+      });
+      img.src = url;
+      await loaded;
+      const c = document.createElement("canvas");
+      c.width = size;
+      c.height = size;
+      const ctx = c.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, size, size);
+      return c.toDataURL("image/png");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const makeQrPng = async (text: string, size: number) => {
+    const lib = await loadQrModule();
+    try {
+      const png = await lib.toDataURL(text, { width: size, errorCorrectionLevel: "M", margin: 1 });
+      if (png && png.startsWith("data:image")) return png;
+    } catch {}
+    if (typeof lib.toCanvas === "function") {
+      try {
+        const c = document.createElement("canvas");
+        await lib.toCanvas!(c, text, { width: size, errorCorrectionLevel: "M", margin: 1 });
+        return c.toDataURL("image/png");
+      } catch {}
+    }
+    if (typeof lib.toString === "function") {
+      try {
+        const svg = await lib.toString!(text, { type: "svg", errorCorrectionLevel: "M", margin: 1 });
+        const png = await svgStringToPngDataUrl(svg, size);
+        return png;
+      } catch {}
+    }
+    return null;
+  };
 
   const downloadPdfCard = async () => {
     if (!user) return;
     try {
-      const [jsPdfModule, qrMaybe] = await Promise.all([loadJsPdfModule(), loadQrModule().catch(() => null)]);
-      const { jsPDF } = jsPdfModule;
-      const makeCanvas = (w: number, h: number) => {
-        const c = document.createElement("canvas");
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext("2d")!;
-        return { c, ctx };
-      };
-      const roundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-      };
-      const loadImg = (src: string) =>
-        new Promise<HTMLImageElement>((resolve, reject) => {
-          const img = new Image();
-          if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-          img.src = src;
-        });
-      const fetchAsDataUrl = async (url: string) => {
-        try {
-          const r = await api.get(url, { responseType: "blob", withCredentials: true } as any);
-          const blob: Blob = r.data;
-          return await new Promise<string>((res) => {
-            const fr = new FileReader();
-            fr.onload = () => res(fr.result as string);
-            fr.readAsDataURL(blob);
-          });
-        } catch {
-          const r = await fetch(url, { credentials: "include", cache: "no-store" });
-          const blob = await r.blob();
-          return await new Promise<string>((res) => {
-            const fr = new FileReader();
-            fr.onload = () => res(fr.result as string);
-            fr.readAsDataURL(blob);
-          });
-        }
-      };
+      const [{ jsPDF }, qrLibReady] = await Promise.all([loadJsPdfModule(), loadQrModule()]);
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [360, 210] });
+      doc.setFillColor(242, 246, 255);
+      doc.rect(0, 0, 360, 210, "F");
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(230, 235, 245);
+      doc.roundedRect(22, 22, 360 - 44, 210 - 44, 12, 12, "FD");
 
-      const cardPt = { w: 360, h: 210 };
-      const scale = 4;
-      const pxPerPt = 96 / 72;
-      const W = Math.round(cardPt.w * scale * pxPerPt);
-      const H = Math.round(cardPt.h * scale * pxPerPt);
-
-      const { c, ctx } = makeCanvas(W, H) as { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
-      (ctx as any).imageSmoothingEnabled = true;
-      (ctx as any).imageSmoothingQuality = "high";
-      const g = ctx.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, "#ffffff");
-      g.addColorStop(1, "#f2f6ff");
-      ctx.fillStyle = g as CanvasGradient;
-      ctx.fillRect(0, 0, W, H);
-
-      ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,.12)";
-      ctx.shadowBlur = 28;
-      ctx.shadowOffsetY = 10;
-      ctx.fillStyle = "#ffffff";
-      roundedRect(ctx, 22 * scale, 22 * scale, W - 44 * scale, H - 44 * scale, 22 * scale);
-      ctx.fill();
-      ctx.restore();
-
-      const padX = Math.round(42 * scale);
-      const padY = Math.round(38 * scale);
-      const contentW = W - padX * 2;
+      const padX = 42;
+      const padY = 38;
+      const contentW = 360 - padX * 2;
       const leftW = Math.round(contentW * 0.62);
       const rightX = padX + leftW;
-      const family = "Inter, Manrope, Arial, sans-serif";
-
-      const fitText = (text: string, maxWidth: number, weight: number, baseSize: number) => {
-        let size = baseSize;
-        while (size > 10) {
-          ctx.font = `${weight} ${size}px ${family}`;
-          if (ctx.measureText(text).width <= maxWidth) break;
-          size -= 1;
-        }
-        return size;
-      };
 
       const isStudent = user.role === "student";
       const instituteLine = isStudent ? user.institute || "" : user.department || "";
@@ -656,142 +669,154 @@ export default function Profile() {
       const emailText = user.email || "";
       const tg = user.telegram || "";
 
-      const avatarReserve = Math.round(72 * scale);
-      const nameTop = padY + avatarReserve + Math.round(14 * scale);
+      const avatarBox = 72;
+      const nameTop = padY + avatarBox + 14;
 
-      const nameSize = fitText(user.full_name || "", leftW, 700, Math.round(34 * scale));
-      ctx.font = `700 ${nameSize}px ${family}`;
-      ctx.fillStyle = "#111";
-      ctx.textBaseline = "top";
-      ctx.fillText(user.full_name || "", padX, nameTop);
+      const fitSize = (text: string, max: number, base: number, step = 1, min = 10, font: "bold" | "normal" = "bold") => {
+        let s = base;
+        doc.setFont("helvetica", font === "bold" ? "bold" : "normal");
+        while (s > min) {
+          doc.setFontSize(s);
+          if (doc.getTextWidth(text) <= max) break;
+          s -= step;
+        }
+        return s;
+      };
 
-      let y = nameTop + nameSize + Math.round(8 * scale);
-      const lineHeight = Math.round(18 * scale);
-      const blockGap = Math.round(8 * scale);
+      doc.setTextColor(17, 17, 17);
+      const nameSize = fitSize(user.full_name || "", leftW, 34);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(nameSize);
+      doc.text(user.full_name || "", padX, nameTop);
+
+      let y = nameTop + nameSize + 8;
+      const lineH = 18;
+      const blockGap = 8;
 
       if (isStudent) {
-        ctx.font = `400 ${Math.round(14 * scale)}px ${family}`;
         if (instituteLine) {
-          ctx.fillStyle = "#666";
-          ctx.fillText(String(instituteLine), padX, y);
-          y += lineHeight + blockGap;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(14);
+          doc.setTextColor(102, 102, 102);
+          doc.text(String(instituteLine), padX, y);
+          y += lineH + blockGap;
         }
-        const progSize = fitText(String(programOrTitleLine || ""), leftW, 400, Math.round(16 * scale));
-        ctx.font = `400 ${progSize}px ${family}`;
+        const progSize = fitSize(String(programOrTitleLine || ""), leftW, 16, 1, 10, "normal");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(progSize);
         if (programOrTitleLine) {
-          ctx.fillStyle = "#444";
-          ctx.fillText(String(programOrTitleLine), padX, y);
+          doc.setTextColor(68, 68, 68);
+          doc.text(String(programOrTitleLine), padX, y);
           y += Math.round(progSize + 6) + blockGap;
         }
       } else {
-        const titleSize = fitText(String(programOrTitleLine || ""), leftW, 400, Math.round(16 * scale));
-        ctx.font = `400 ${titleSize}px ${family}`;
+        const titleSize = fitSize(String(programOrTitleLine || ""), leftW, 16, 1, 10, "normal");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(titleSize);
         if (programOrTitleLine) {
-          ctx.fillStyle = "#444";
-          ctx.fillText(String(programOrTitleLine), padX, y);
+          doc.setTextColor(68, 68, 68);
+          doc.text(String(programOrTitleLine), padX, y);
           y += Math.round(titleSize + 6) + blockGap;
         }
-        ctx.font = `400 ${Math.round(14 * scale)}px ${family}`;
         if (instituteLine) {
-          ctx.fillStyle = "#666";
-          ctx.fillText(String(instituteLine), padX, y);
-          y += lineHeight + blockGap;
+          doc.setFontSize(14);
+          doc.setTextColor(102, 102, 102);
+          doc.text(String(instituteLine), padX, y);
+          y += lineH + blockGap;
         }
       }
 
-      ctx.fillStyle = "#333";
+      doc.setTextColor(51, 51, 51);
       if (emailText) {
-        ctx.fillText(String(emailText), padX, y);
-        y += lineHeight + blockGap;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(14);
+        doc.text(String(emailText), padX, y);
+        y += lineH + blockGap;
       }
       if (tg) {
-        ctx.fillText(String(tg), padX, y);
-        y += lineHeight + blockGap;
+        doc.text(String(tg), padX, y);
+        y += lineH + blockGap;
       }
 
-      const qrSide = Math.round(118 * scale);
-      const qrX = rightX + Math.round((contentW - leftW - qrSide) / 2);
-      const qrY = padY + Math.round(10 * scale);
-
-      let qrImg: HTMLImageElement | null = null;
-      if (qrMaybe) {
-        try {
-          const qrData = await qrMaybe.toDataURL(buildVCard(), { width: qrSide, margin: 1 });
-          qrImg = await loadImg(qrData);
-        } catch {
-          setSnack({ text: "Не удалось сгенерировать QR — сохраняю без QR", sev: "warning" });
-        }
+      const qrSidePt = 118;
+      const qrX = rightX + Math.round((contentW - leftW - qrSidePt) / 2);
+      const qrY = padY + 10;
+      let qrDataUrl = null as string | null;
+      try {
+        qrDataUrl = await makeQrPng(buildVCard(), 640);
+      } catch {}
+      if (!qrDataUrl) {
+        setSnack({ text: "Не удалось встроить QR в PDF", sev: "warning" });
       } else {
-        setSnack({ text: "Не удалось сгенерировать QR — сохраняю без QR", sev: "warning" });
-      }
-
-      if (qrImg) {
-        ctx.drawImage(qrImg, qrX, qrY, qrSide, qrSide);
+        try {
+          doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSidePt, qrSidePt);
+        } catch {
+          try {
+            const jpegQr = await new Promise<string>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                const c = document.createElement("canvas");
+                c.width = 640;
+                c.height = 640;
+                const ctx = c.getContext("2d")!;
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(0, 0, 640, 640);
+                ctx.drawImage(img, 0, 0);
+                resolve(c.toDataURL("image/jpeg", 0.95));
+              };
+              img.onerror = reject;
+              img.src = qrDataUrl!;
+            });
+            doc.addImage(jpegQr, "JPEG", qrX, qrY, qrSidePt, qrSidePt);
+          } catch {}
+        }
       }
 
       const avatarResolved = resolveMediaUrl(user.avatar_url || "", BACKEND_ORIGIN);
       const avatarSrc = avatarResolved ? `${avatarResolved}?v=${avatarVersion}` : null;
-      let avatarImg: HTMLImageElement | null = null;
       if (avatarSrc) {
         try {
           const dataUrl = await fetchAsDataUrl(avatarSrc);
-          avatarImg = await loadImg(dataUrl);
-        } catch {
-          avatarImg = null;
-        }
-      }
-
-      const size = avatarReserve;
-      const ax = padX;
-      const ay = padY;
-
-      if (avatarImg) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(ax + size / 2, ay + size / 2, size / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(avatarImg, ax, ay, size, size);
-        ctx.restore();
+          try {
+            doc.addImage(dataUrl, "JPEG", padX, padY, avatarBox, avatarBox);
+          } catch {
+            doc.addImage(dataUrl, "PNG", padX, padY, avatarBox, avatarBox);
+          }
+        } catch {}
       } else {
-        ctx.save();
-        ctx.fillStyle = "#e5e7eb";
-        ctx.beginPath();
-        ctx.arc(ax + size / 2, ay + size / 2, size / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#111827";
-        ctx.font = `700 ${Math.round(size * 0.42)}px Inter, Arial, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText((user.full_name?.[0] || "").toUpperCase(), ax + size / 2, ay + size / 2 + 2);
-        ctx.restore();
+        doc.setFillColor(229, 231, 235);
+        doc.circle(padX + avatarBox / 2, padY + avatarBox / 2, avatarBox / 2, "F");
+        doc.setTextColor(17, 24, 39);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(Math.round(avatarBox * 0.42));
+        const ch = (user.full_name?.[0] || "").toUpperCase();
+        const tw = doc.getTextWidth(ch);
+        const tx = padX + avatarBox / 2 - tw / 2;
+        const ty = padY + avatarBox / 2 + Math.round(avatarBox * 0.16);
+        doc.text(ch, tx, ty);
       }
 
-      const logoImg = await loadImg(guuLogo as unknown as string).catch(() => null);
-      if (logoImg) {
-        const imgEl = logoImg as HTMLImageElement;
-        const natW = imgEl.naturalWidth || imgEl.width || 1;
-        const natH = imgEl.naturalHeight || imgEl.height || 1;
+      try {
+        const logoUrl = typeof guuLogo === "string" ? guuLogo : String(guuLogo as any);
+        const logoData = await fetchAsDataUrl(logoUrl);
         const maxW = Math.round((contentW - leftW) * 0.95);
-        const maxH = Math.round(80 * scale);
-        const k = Math.min(maxW / natW, maxH / natH);
-        const lw = Math.max(1, Math.round(natW * k));
-        const lh = Math.max(1, Math.round(natH * k));
-        const safeMargin = Math.round(12 * scale);
+        const maxH = 80;
+        const lw = maxW;
+        const lh = Math.min(maxH, Math.round(maxW * 0.35));
         const lx = rightX + Math.round((contentW - leftW - lw) / 2);
-        const lyTop = padY + Math.round(160 * scale);
-        const ly = Math.min(lyTop, H - 22 * scale - lh - safeMargin);
-        ctx.drawImage(imgEl, lx, ly, lw, lh);
-      }
+        const lyTop = padY + 160;
+        const ly = Math.min(lyTop, 210 - 22 - lh - 12);
+        try {
+          doc.addImage(logoData, "PNG", lx, ly, lw, lh);
+        } catch {
+          doc.addImage(logoData, "JPEG", lx, ly, lw, lh);
+        }
+      } catch {}
 
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [cardPt.w, cardPt.h] });
-      const data = c.toDataURL("image/jpeg", 0.95);
-      const pageW = doc.internal.pageSize.getWidth();
-      const pageH = doc.internal.pageSize.getHeight();
-      doc.addImage(data, "JPEG", 0, 0, pageW, pageH);
       const fname = (user.full_name || "contact").replace(/\s+/g, "_") + ".pdf";
       doc.save(fname);
-    } catch {
+    } catch (e) {
+      console.error(e);
       setSnack({ text: "Не удалось подготовить PDF визитку", sev: "error" });
     }
   };
@@ -869,11 +894,15 @@ export default function Profile() {
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`;
   const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`;
   const infoOffsetMargin = `${avatarFloat + 36}px`;
-  const glassPanelBg = alpha(theme.palette.background.paper, 0.28);
-  const glassRaisedBg = alpha(theme.palette.background.paper, 0.18);
-  const glassBorder = alpha(theme.palette.common.white, 0.24);
-  const surfaceShadow = `0 40px 72px -38px ${alpha(theme.palette.common.black, 0.7)}`;
-  const subtleRing = alpha(theme.palette.primary.light, 0.2);
+
+  const isDark = theme.palette.mode === "dark";
+  const glassPanelBg = alpha(theme.palette.background.paper, isDark ? 0.28 : 0.66);
+  const glassRaisedBg = alpha(theme.palette.background.paper, isDark ? 0.18 : 0.78);
+  const glassBorder = isDark ? alpha(theme.palette.common.white, 0.24) : alpha(theme.palette.common.black, 0.12);
+  const surfaceShadow = isDark ? `0 40px 72px -38px ${alpha(theme.palette.common.black, 0.7)}` : `0 24px 48px -36px ${alpha(theme.palette.common.black, 0.25)}`;
+  const subtleRing = alpha(theme.palette.primary.light, isDark ? 0.2 : 0.35);
+  const textPrimary = theme.palette.text.primary;
+  const textSecondary = theme.palette.text.secondary;
 
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean;
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx]);
@@ -947,7 +976,7 @@ export default function Profile() {
                       justifyContent: "center",
                       pb: heroPaddingBottom,
                       background: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.1)}, ${alpha(theme.palette.secondary.dark, 0.08)})`,
-                      boxShadow: `0 36px 80px -44px ${alpha(theme.palette.common.black, 0.72)}`,
+                      boxShadow: `0 36px 80px -44px ${alpha(theme.palette.common.black, isDark ? 0.72 : 0.25)}`,
                     }}
                   >
                     <Box
@@ -977,7 +1006,7 @@ export default function Profile() {
                         justifyContent: "center",
                         background: `linear-gradient(140deg, ${alpha(theme.palette.primary.light, 0.72)}, ${alpha(theme.palette.secondary.light, 0.62)})`,
                         p: "4px",
-                        boxShadow: `0 28px 64px -26px ${alpha(theme.palette.common.black, 0.76)}`,
+                        boxShadow: `0 28px 64px -26px ${alpha(theme.palette.common.black, isDark ? 0.76 : 0.3)}`,
                         animation: reduceMotion ? "none" : `${auraPulse} 12s ease-in-out infinite`,
                       }}
                     >
@@ -1056,7 +1085,7 @@ export default function Profile() {
                       }}
                     >
                       <Box>
-                        <Typography variant="h3" sx={{ fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)", fontWeight: 800, lineHeight: 1.1, color: alpha(theme.palette.common.white, 0.96), textShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.52)}` }}>
+                        <Typography variant="h3" sx={{ fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)", fontWeight: 800, lineHeight: 1.1, color: alpha(theme.palette.common.white, 0.96), textShadow: `0 6px 18px ${alpha(theme.palette.common.black, isDark ? 0.52 : 0.28)}` }}>
                           {user!.full_name}
                         </Typography>
                         {!!user?.position && user?.role === "teacher" && (
@@ -1092,7 +1121,7 @@ export default function Profile() {
                                 "& .MuiChip-label": { px: 1.6, py: 0.62, lineHeight: 1.28 },
                                 "&:hover": {
                                   borderColor: alpha(theme.palette.primary.light, 0.6),
-                                  boxShadow: `0 12px 24px -14px ${alpha(theme.palette.common.black, 0.64)}`,
+                                  boxShadow: `0 12px 24px -14px ${alpha(theme.palette.common.black, isDark ? 0.64 : 0.28)}`,
                                   transform: reduceMotion ? "none" : "translateY(-2px)",
                                 },
                               }}
@@ -1109,9 +1138,9 @@ export default function Profile() {
                       p: { xs: 2.6, sm: 3 },
                       borderRadius: 3,
                       border: `1px solid ${glassBorder}`,
-                      background: glassRaisedBg,
+                      background: alpha(theme.palette.background.paper, isDark ? 0.18 : 0.78),
                       backdropFilter: "blur(22px)",
-                      boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, 0.66)}`,
+                      boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, isDark ? 0.66 : 0.25)}`,
                       display: "flex",
                       flexDirection: "column",
                       gap: { xs: 2.6, md: 3 },
@@ -1137,20 +1166,20 @@ export default function Profile() {
                           py: 1.05,
                           fontWeight: 600,
                           letterSpacing: 0.24,
-                          borderColor: alpha(theme.palette.common.white, 0.34),
-                          color: alpha(theme.palette.common.white, 0.92),
-                          "&:hover": { borderColor: alpha(theme.palette.primary.light, 0.7), backgroundColor: alpha(theme.palette.primary.light, 0.12) },
+                          borderColor: glassBorder,
+                          color: textPrimary,
+                          "&:hover": { borderColor: alpha(theme.palette.primary.light, 0.7), backgroundColor: alpha(theme.palette.primary.light, isDark ? 0.12 : 0.08) },
                         }}
                       >
                         PDF визитка
                       </Button>
                     </Stack>
-                    <Divider sx={{ borderColor: alpha(theme.palette.common.white, 0.12) }} />
+                    <Divider sx={{ borderColor: isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.12) }} />
                     <Stack spacing={1.8}>
                       <Stack direction="row" spacing={1.4} alignItems="center" sx={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                          <EmailIcon aria-hidden sx={{ fontSize: 22, color: alpha(theme.palette.primary.light, 0.9) }} />
-                          <Typography sx={{ fontWeight: 600, color: alpha(theme.palette.common.white, 0.92), wordBreak: "break-word", flex: 1 }}>
+                          <EmailIcon aria-hidden sx={{ fontSize: 22, color: theme.palette.primary.main }} />
+                          <Typography sx={{ fontWeight: 600, color: textPrimary, wordBreak: "break-word", flex: 1 }}>
                             <a href={`mailto:${user!.email}`} style={{ color: "inherit", textDecoration: "none" }}>
                               {user!.email}
                             </a>
@@ -1162,12 +1191,12 @@ export default function Profile() {
                             onClick={(e) => copy(user!.email, e)}
                             aria-label="Скопировать email"
                             sx={{
-                              color: alpha(theme.palette.common.white, 0.8),
+                              color: textSecondary,
                               transition: reduceMotion ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
                               "&:hover": {
                                 transform: reduceMotion ? "none" : "translateY(-1px) scale(1.05)",
-                                boxShadow: `0 8px 16px -12px ${alpha(theme.palette.common.black, 0.6)}`,
-                                color: alpha(theme.palette.primary.light, 0.95),
+                                boxShadow: `0 8px 16px -12px ${alpha(theme.palette.common.black, isDark ? 0.6 : 0.25)}`,
+                                color: theme.palette.primary.main,
                               },
                               "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.light, 0.8)}`, outlineOffset: 2 },
                             }}
@@ -1180,8 +1209,8 @@ export default function Profile() {
                       {!!user!.telegram && (
                         <Stack direction="row" spacing={1.4} alignItems="center" sx={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                            <TelegramIcon aria-hidden sx={{ fontSize: 22, color: alpha(theme.palette.secondary.light, 0.88) }} />
-                            <Typography sx={{ fontWeight: 600, color: alpha(theme.palette.common.white, 0.92), wordBreak: "break-word", flex: 1 }}>
+                            <TelegramIcon aria-hidden sx={{ fontSize: 22, color: theme.palette.secondary.main }} />
+                            <Typography sx={{ fontWeight: 600, color: textPrimary, wordBreak: "break-word", flex: 1 }}>
                               <a href={telegramHref} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
                                 {user!.telegram}
                               </a>
@@ -1193,12 +1222,12 @@ export default function Profile() {
                               onClick={(e) => copy(user!.telegram!, e)}
                               aria-label="Скопировать ник в Telegram"
                               sx={{
-                                color: alpha(theme.palette.common.white, 0.8),
+                                color: textSecondary,
                                 transition: reduceMotion ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
                                 "&:hover": {
                                   transform: reduceMotion ? "none" : "translateY(-1px) scale(1.05)",
-                                  boxShadow: `0 8px 16px -12px ${alpha(theme.palette.common.black, 0.6)}`,
-                                  color: alpha(theme.palette.secondary.light, 0.95),
+                                  boxShadow: `0 8px 16px -12px ${alpha(theme.palette.common.black, isDark ? 0.6 : 0.25)}`,
+                                  color: theme.palette.secondary.main,
                                 },
                                 "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.secondary.light, 0.8)}`, outlineOffset: 2 },
                               }}
@@ -1214,8 +1243,8 @@ export default function Profile() {
                   {spotifyConnected && nowPlaying && (
                     <Fade in timeout={reduceMotion ? 0 : 720}>
                       <Stack spacing={1.4}>
-                        <Typography variant="overline" sx={{ letterSpacing: 2.2, color: alpha(theme.palette.common.white, 0.72) }}>
-                          Сейчас слушает
+                        <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
+                          Сейчас играет
                         </Typography>
                         <NowPlayingCard data={nowPlaying} />
                       </Stack>
@@ -1233,7 +1262,7 @@ export default function Profile() {
                         border: `1px solid ${glassBorder}`,
                         background: glassPanelBg,
                         backdropFilter: "blur(26px)",
-                        boxShadow: `0 32px 64px -42px ${alpha(theme.palette.common.black, 0.68)}`,
+                        boxShadow: `0 32px 64px -42px ${alpha(theme.palette.common.black, isDark ? 0.68 : 0.25)}`,
                         p: { xs: 2.6, sm: 3, md: 3.4 },
                       }}
                     >
@@ -1271,164 +1300,117 @@ export default function Profile() {
                       </Stack>
                     </Paper>
                   ) : (
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        width: "100%",
-                        borderRadius: 3,
-                        border: `1px solid ${glassBorder}`,
-                        background: glassPanelBg,
-                        backdropFilter: "blur(26px)",
-                        boxShadow: `0 32px 64px -42px ${alpha(theme.palette.common.black, 0.68)}`,
-                        p: { xs: 2.6, sm: 3, md: 3.4 },
-                      }}
-                    >
-                      <Typography variant="h5" sx={{ fontWeight: 700, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, color: alpha(theme.palette.common.white, 0.92) }}>
-                        Сведения
-                      </Typography>
-                      <Accordion
-                        disableGutters
-                        defaultExpanded
+                    <>
+                      <Paper
+                        elevation={0}
                         sx={{
-                          background: "transparent",
-                          border: `1px solid ${alpha(theme.palette.common.white, 0.16)}`,
+                          width: "100%",
                           borderRadius: 3,
-                          boxShadow: "none",
-                          "&::before": { display: "none" },
+                          border: `1px solid ${glassBorder}`,
+                          background: glassPanelBg,
+                          backdropFilter: "blur(26px)",
+                          boxShadow: `0 32px 64px -42px ${alpha(theme.palette.common.black, isDark ? 0.68 : 0.25)}`,
+                          p: { xs: 2.6, sm: 3, md: 3.4 },
                         }}
                       >
-                        <AccordionSummary
-                          expandIcon={<ExpandMoreIcon />}
-                          sx={{ px: 2.2, py: 1.4, borderBottom: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, color: alpha(theme.palette.common.white, 0.82) }}
+                        <Typography variant="h5" sx={{ fontWeight: 700, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, color: textPrimary }}>
+                          Сведения
+                        </Typography>
+                        <Accordion
+                          disableGutters
+                          defaultExpanded
+                          sx={{
+                            background: "transparent",
+                            border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.16) : alpha(theme.palette.common.black, 0.12)}`,
+                            borderRadius: 3,
+                            boxShadow: "none",
+                            "&::before": { display: "none" },
+                          }}
                         >
-                          <Typography fontWeight={700}>Детали профиля</Typography>
-                        </AccordionSummary>
-                        <AccordionDetails sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}>
-                          <List
-                            sx={{
-                              display: "grid",
-                              gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" },
-                              columnGap: { xs: 1.6, md: 2.4 },
-                              rowGap: 1.6,
-                              p: 0,
-                            }}
+                          <AccordionSummary
+                            expandIcon={<ExpandMoreIcon />}
+                            sx={{ px: 2.2, py: 1.4, borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.08)}`, color: textPrimary }}
                           >
-                            {!!user!.about && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.info.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>О себе:</b> {user!.about}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.status && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.success.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Статус:</b> {user!.status}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.record_book_number && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.warning.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Номер зачётной книжки:</b> {user!.record_book_number}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.education_level && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.primary.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Уровень образования:</b> {user!.education_level}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.track && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.secondary.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Направление:</b> {user!.track}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.program && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.info.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Образовательная программа:</b> {user!.program}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.department && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.success.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Кафедра/отдел:</b> {user!.department}</span>} />
-                              </ListItem>
-                            )}
-                            {!!user!.position && (
-                              <ListItem sx={{ m: 0, px: 0, py: 0, borderRadius: 2, background: alpha(theme.palette.common.black, 0.18), border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`, alignItems: "flex-start" }}>
-                                <ListItemIcon sx={{ minWidth: 30, mt: 0.3, color: alpha(theme.palette.secondary.light, 0.9) }}>
-                                  <FiberManualRecordIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText primary={<span><b>Должность:</b> {user!.position}</span>} />
-                              </ListItem>
-                            )}
-                          </List>
-                          {achievementsList.length > 0 && (
-                            <Box sx={{ mt: 2.4 }}>
-                              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.4, color: alpha(theme.palette.common.white, 0.86) }}>
-                                Достижения
-                              </Typography>
-                              <Box
-                                sx={{
-                                  display: "grid",
-                                  gridTemplateColumns: { xs: "repeat(auto-fit, minmax(140px, 1fr))", sm: "repeat(auto-fit, minmax(160px, 1fr))" },
-                                  gap: 1.2,
-                                }}
-                              >
-                                {achievementsList.map((ach, idx) => (
-                                  <Grow in key={ach.key} timeout={reduceMotion ? 0 : 520} style={{ transitionDelay: reduceMotion ? "0ms" : `${idx * 90}ms` }}>
-                                    <Chip
-                                      label={ach.name}
-                                      clickable
-                                      onClick={() =>
-                                        setAchOpen({
-                                          name: ach.name,
-                                          issuer: ach.issuer,
-                                          date: ach.date,
-                                          url: ach.url,
-                                        })
-                                      }
-                                      sx={{
-                                        borderRadius: 2,
-                                        textAlign: "left",
-                                        background: alpha(theme.palette.background.paper, 0.22),
-                                        border: `1px solid ${alpha(theme.palette.common.white, 0.28)}`,
-                                        backdropFilter: "blur(18px)",
-                                        color: alpha(theme.palette.common.white, 0.92),
-                                        alignSelf: "stretch",
-                                        animation: reduceMotion ? "none" : `${chipHighlight} 14s ease-in-out infinite`,
-                                        animationDelay: reduceMotion ? "0ms" : `${idx * 120}ms`,
-                                        "& .MuiChip-label": { display: "block", whiteSpace: "normal", lineHeight: 1.3, px: 1.6, py: 1.1 },
-                                        "&:hover": {
-                                          borderColor: alpha(theme.palette.primary.light, 0.7),
-                                          boxShadow: `0 12px 28px -16px ${alpha(theme.palette.common.black, 0.62)}`,
-                                          transform: reduceMotion ? "none" : "translateY(-2px)",
-                                        },
-                                      }}
-                                    />
-                                  </Grow>
-                                ))}
+                            <Typography fontWeight={700}>Детали профиля</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}>
+                            {(() => {
+                              const rows = [
+                                { label: "О себе", value: user!.about },
+                                { label: "Статус", value: user!.status },
+                                { label: "Номер зачётной книжки", value: user!.record_book_number },
+                                { label: "Уровень образования", value: user!.education_level },
+                                { label: "Направление", value: user!.track },
+                                { label: "Образовательная программа", value: user!.program },
+                                { label: "Кафедра/отдел", value: user!.department },
+                                { label: "Должность", value: user!.position },
+                              ];
+                              return (
+                                <Box
+                                  sx={{
+                                    display: "grid",
+                                    gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+                                    gap: { xs: 1.2, md: 1.6 },
+                                  }}
+                                >
+                                  {rows.map((r) => (
+                                    <DetailRow key={r.label} label={r.label} value={r.value} />
+                                  ))}
+                                </Box>
+                              );
+                            })()}
+                            {achievementsList.length > 0 && (
+                              <Box sx={{ mt: 2.4 }}>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.4, color: textPrimary }}>
+                                  Достижения
+                                </Typography>
+                                <Box
+                                  sx={{
+                                    display: "grid",
+                                    gridTemplateColumns: { xs: "repeat(auto-fit, minmax(140px, 1fr))", sm: "repeat(auto-fit, minmax(160px, 1fr))" },
+                                    gap: 1.2,
+                                  }}
+                                >
+                                  {achievementsList.map((ach, idx) => (
+                                    <Grow in key={ach.key} timeout={reduceMotion ? 0 : 520} style={{ transitionDelay: reduceMotion ? "0ms" : `${idx * 90}ms` }}>
+                                      <Chip
+                                        label={ach.name}
+                                        clickable
+                                        onClick={() =>
+                                          setAchOpen({
+                                            name: ach.name,
+                                            issuer: ach.issuer,
+                                            date: ach.date,
+                                            url: ach.url,
+                                          })
+                                        }
+                                        sx={{
+                                          borderRadius: 2,
+                                          textAlign: "left",
+                                          background: alpha(theme.palette.background.paper, isDark ? 0.22 : 0.66),
+                                          border: `1px solid ${glassBorder}`,
+                                          backdropFilter: "blur(18px)",
+                                          color: textPrimary,
+                                          alignSelf: "stretch",
+                                          animation: reduceMotion ? "none" : `${chipHighlight} 14s ease-in-out infinite`,
+                                          animationDelay: reduceMotion ? "0ms" : `${idx * 120}ms`,
+                                          "& .MuiChip-label": { display: "block", whiteSpace: "normal", lineHeight: 1.3, px: 1.6, py: 1.1 },
+                                          "&:hover": {
+                                            borderColor: alpha(theme.palette.primary.light, 0.7),
+                                            boxShadow: `0 12px 28px -16px ${alpha(theme.palette.common.black, isDark ? 0.62 : 0.25)}`,
+                                            transform: reduceMotion ? "none" : "translateY(-2px)",
+                                          },
+                                        }}
+                                      />
+                                    </Grow>
+                                  ))}
+                                </Box>
                               </Box>
-                            </Box>
-                          )}
-                        </AccordionDetails>
-                      </Accordion>
-                    </Paper>
+                            )}
+                          </AccordionDetails>
+                        </Accordion>
+                      </Paper>
+                    </>
                   )}
                 </Box>
               </Box>
@@ -1453,15 +1435,15 @@ export default function Profile() {
             border: `1px solid ${glassBorder}`,
             background: glassPanelBg,
             backdropFilter: "blur(18px)",
-            boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, 0.66)}`,
+            boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, isDark ? 0.66 : 0.25)}`,
           },
         }}
       >
         <DialogTitle sx={{ textAlign: "center", fontWeight: 700 }}>QR визитки</DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 280, gap: 2 }} role="status" aria-live="polite">
-          {qrUrl && <Box component="img" src={qrUrl} alt="QR-код визитки" sx={{ width: "min(100%, 280px)", height: "auto" }} />}
-          {!qrUrl && !qrError && <CircularProgress aria-label="Генерация QR-кода" />}
-          {!!qrError && <Typography role="alert" sx={{ textAlign: "center" }}>{qrError}</Typography>}
+        <DialogContent sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 280 }}>
+          <Box sx={{ background: "#fff", p: 1.5, borderRadius: 2 }}>
+            <QRCodeSVG value={buildVCard()} size={280} level="M" includeMargin />
+          </Box>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
           <Button onClick={closeQrModal}>Готово</Button>
@@ -1479,7 +1461,7 @@ export default function Profile() {
             border: `1px solid ${glassBorder}`,
             background: glassPanelBg,
             backdropFilter: "blur(18px)",
-            boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, 0.66)}`,
+            boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, isDark ? 0.66 : 0.25)}`,
           },
         }}
       >
