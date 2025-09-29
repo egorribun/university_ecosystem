@@ -34,6 +34,7 @@
     "axios": "^1.12.2",
     "dayjs": "^1.11.13",
     "framer-motion": "^12.23.13",
+    "html2canvas": "^1.4.1",
     "jspdf": "^3.0.2",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
