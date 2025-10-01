@@ -75,6 +75,7 @@ const onlinePulse = keyframes`
 `;
 
 const MotionPaper = motion(Paper);
+const isTest = process.env.NODE_ENV === "test";
 
 const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const [progress, setProgress] = useState<number>(data.progress_ms ?? 0);
@@ -93,7 +94,7 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
   }, [data.track_id, data.progress_ms, data.duration_ms, data.is_playing]);
 
   useEffect(() => {
-    if (!data.is_playing || !data.duration_ms) return;
+    if (isTest || !data.is_playing || !data.duration_ms) return;
     const loop = () => {
       const p = Math.min(data.duration_ms!, Date.now() - startRef.current);
       setProgress(p);
@@ -125,11 +126,11 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
       aria-label={data.track_name ? `Открыть в Spotify: ${data.track_name}` : "Открыть Spotify"}
       elevation={0}
       className="nowplaying--spotify"
-      initial={{ y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
+      initial={isTest ? false : { y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
       animate={{ y: 0, opacity: 1, scale: 1 }}
       whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
       whileTap={reduced ? {} : { scale: 0.997 }}
-      transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
+      transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
       sx={{
         width: "100%",
         display: "grid",
@@ -353,6 +354,10 @@ export default function Profile() {
     fetchNowPlaying();
     const startPoll = () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
+      if (isTest) {
+        pollRef.current = null;
+        return;
+      }
       pollRef.current = window.setInterval(fetchNowPlaying, 15000);
     };
     startPoll();
@@ -615,18 +620,25 @@ export default function Profile() {
       />
 
       <motion.div
-        initial={{ opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+        initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 460, damping: 34 }}
+        transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
       >
-        <Box component="main" className="profile-page" sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
+        <Box
+          component="main"
+          className="profile-page"
+          data-testid="profile-root"
+          role="region"
+          aria-label="Профиль"
+          sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
+        >
           <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
             <MotionPaper
               ref={containerRef}
               className="glass profile-card"
-              initial={{ opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }}
+              initial={isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.9 }}
+              transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }}
               sx={{
                 px: { xs: 2.6, sm: 3.6, md: 4.6, lg: 5.6 },
                 py: { xs: 3.6, sm: 4.2, md: 5 },
@@ -752,7 +764,13 @@ export default function Profile() {
                       }}
                     >
                       <Box>
-                        <Typography className="profile-name" variant="h3" sx={{ fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)", fontWeight: 900, lineHeight: 1.08 }}>
+                        <Typography
+                          className="profile-name"
+                          variant="h3"
+                          component="h1"
+                          data-testid="profile-name"
+                          sx={{ fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)", fontWeight: 900, lineHeight: 1.08 }}
+                        >
                           {user!.full_name}
                         </Typography>
                         {!!user?.position && user?.role === "teacher" && (
@@ -767,7 +785,12 @@ export default function Profile() {
                           ...(user!.role === "student" && user!.course ? [`Курс ${user!.course}`] : []),
                           ...(user!.institute ? [user!.institute] : []),
                         ].map((chip, idx) => (
-                          <Grow in key={`${chip}-${idx}`} timeout={reduced ? 0 : 560} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
+                          <Grow
+                            in
+                            key={`${chip}-${idx}`}
+                            timeout={isTest || reduced ? 0 : 560}
+                            style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
+                          >
                             <Chip
                               size="small"
                               label={chip}
@@ -805,6 +828,7 @@ export default function Profile() {
                         color="secondary"
                         className="glass--btn"
                         onClick={openQrModal}
+                        data-testid="open-qr"
                         sx={{ width: "100%", borderRadius: 2, py: 1.05, fontWeight: 800, letterSpacing: 0.24 }}
                       >
                         Показать QR
@@ -816,7 +840,12 @@ export default function Profile() {
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                           <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
                           <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                            <a href={`mailto:${user!.email}`} style={{ color: "inherit", textDecoration: "none" }}>
+                            <a
+                              href={`mailto:${user!.email}`}
+                              style={{ color: "inherit", textDecoration: "none" }}
+                              data-testid="profile-email-link"
+                              title="Email"
+                            >
                               {user!.email}
                             </a>
                           </Typography>
@@ -827,6 +856,7 @@ export default function Profile() {
                             className="glass--btn"
                             onClick={(e) => copy(user!.email, e)}
                             aria-label="Скопировать email"
+                            data-testid="copy-email"
                             sx={{
                               transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
                               "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
@@ -842,7 +872,14 @@ export default function Profile() {
                           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                             <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
                             <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                              <a href={telegramHref} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
+                              <a
+                                href={telegramHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: "inherit", textDecoration: "none" }}
+                                data-testid="profile-telegram-link"
+                                title="Telegram"
+                              >
                                 {user!.telegram}
                               </a>
                             </Typography>
@@ -853,6 +890,7 @@ export default function Profile() {
                               className="glass--btn"
                               onClick={(e) => copy(user!.telegram!, e)}
                               aria-label="Скопировать ник в Telegram"
+                              data-testid="copy-telegram"
                               sx={{
                                 transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
                                 "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
@@ -867,7 +905,7 @@ export default function Profile() {
                   </Paper>
 
                   {spotifyConnected && nowPlaying && (
-                    <Fade in timeout={reduced ? 0 : 720}>
+                    <Fade in timeout={isTest || reduced ? 0 : 720}>
                       <Stack spacing={1.4}>
                         <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
                           Сейчас играет
@@ -997,7 +1035,12 @@ export default function Profile() {
                                   }}
                                 >
                                   {achievementsList.map((ach, idx) => (
-                                    <Grow in key={ach.key} timeout={reduced ? 0 : 500} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
+                                    <Grow
+                                      in
+                                      key={ach.key}
+                                      timeout={isTest || reduced ? 0 : 500}
+                                      style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
+                                    >
                                       <Chip
                                         label={ach.name}
                                         clickable
@@ -1122,7 +1165,13 @@ export default function Profile() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={!!snack} autoHideDuration={2600} onClose={() => setSnack(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={2600}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        data-testid={snack?.text === "Скопировано" ? "snackbar-copied" : undefined}
+      >
         <Alert onClose={() => setSnack(null)} severity={snack?.sev || "info"} variant="filled" sx={{ width: "100%" }}>
           {snack?.text}
         </Alert>
