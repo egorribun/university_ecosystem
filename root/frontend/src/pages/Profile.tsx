@@ -40,37 +40,9 @@ import { resolveMediaUrl } from "@/utils/media";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { QRCodeSVG } from "qrcode.react";
+import { motion, useReducedMotion } from "framer-motion";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
-
-type QRCodeModule = {
-  toDataURL: (text: string, options?: { width?: number; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<string>;
-  toCanvas?: (canvas: HTMLCanvasElement, text: string, options?: { width?: number; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<void>;
-  toString?: (text: string, options?: { type?: "svg"; errorCorrectionLevel?: "L" | "M" | "Q" | "H"; margin?: number }) => Promise<string>;
-};
-let qrModulePromise: Promise<QRCodeModule> | null = null;
-const loadQrModule = async (): Promise<QRCodeModule> => {
-  if (!qrModulePromise) {
-    qrModulePromise = import("qrcode")
-      .then((mod) => (mod as any).default ?? (mod as any))
-      .catch((e) => {
-        qrModulePromise = null;
-        throw e;
-      });
-  }
-  return qrModulePromise;
-};
-
-let jsPdfModulePromise: Promise<typeof import("jspdf")> | null = null;
-const loadJsPdfModule = async () => {
-  if (!jsPdfModulePromise) {
-    jsPdfModulePromise = import("jspdf").catch((error) => {
-      jsPdfModulePromise = null;
-      throw error;
-    });
-  }
-  return jsPdfModulePromise;
-};
 
 type NowPlaying = {
   is_playing: boolean;
@@ -87,28 +59,22 @@ type NowPlaying = {
 };
 
 const auraPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(255,255,255,.35); }
-  50% { box-shadow: 0 0 0 18px rgba(255,255,255,.04); }
+  0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
+  50% { box-shadow: 0 0 0 14px rgba(255,255,255,.03); }
   100% { box-shadow: 0 0 0 0 rgba(255,255,255,.02); }
 `;
-
 const chipHighlight = keyframes`
-  0% { border-color: rgba(255,255,255,.28); }
-  50% { border-color: rgba(255,255,255,.52); }
-  100% { border-color: rgba(255,255,255,.28); }
+  0% { border-color: rgba(255,255,255,.18); }
+  50% { border-color: rgba(255,255,255,.34); }
+  100% { border-color: rgba(255,255,255,.18); }
 `;
-
-const shimmerEdge = keyframes`
-  0% { transform: translateX(-120%); opacity: 0; }
-  50% { opacity: .6; }
-  100% { transform: translateX(140%); opacity: 0; }
-`;
-
 const onlinePulse = keyframes`
-  0% { transform: scale(1); opacity: .7; }
+  0% { transform: scale(1); opacity: .6; }
   70% { transform: scale(1.8); opacity: 0; }
   100% { transform: scale(1.8); opacity: 0; }
 `;
+
+const MotionPaper = motion(Paper);
 
 const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const [progress, setProgress] = useState<number>(data.progress_ms ?? 0);
@@ -116,10 +82,9 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
   const rafRef = useRef<number | null>(null);
   const theme = useTheme();
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const reduced = useReducedMotion();
   const isDark = theme.palette.mode === "dark";
-  const bgPaper = alpha(theme.palette.background.paper, isDark ? 0.22 : 0.66);
-  const borderCol = isDark ? alpha(theme.palette.common.white, 0.22) : alpha(theme.palette.common.black, 0.12);
-  const textPrimary = theme.palette.text.primary;
+  const borderCol = isDark ? alpha(theme.palette.common.white, 0.14) : alpha(theme.palette.common.black, 0.12);
   const textSecondary = theme.palette.text.secondary;
 
   useEffect(() => {
@@ -149,9 +114,22 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
     return `${m}:${ss}`;
   };
 
+  const href = data.track_url || "https://open.spotify.com";
+
   return (
-    <Paper
+    <MotionPaper
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={data.track_name ? `Открыть в Spotify: ${data.track_name}` : "Открыть Spotify"}
       elevation={0}
+      className="nowplaying--spotify"
+      initial={{ y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
+      animate={{ y: 0, opacity: 1, scale: 1 }}
+      whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
+      whileTap={reduced ? {} : { scale: 0.997 }}
+      transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
       sx={{
         width: "100%",
         display: "grid",
@@ -164,28 +142,20 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
         borderRadius: 3,
         position: "relative",
         overflow: "hidden",
-        backdropFilter: "blur(18px)",
-        background: bgPaper,
         border: `1px solid ${borderCol}`,
-        boxShadow: `0 18px 32px -24px ${alpha(theme.palette.common.black, isDark ? 0.6 : 0.25)}`,
-        transition: "transform 320ms ease, box-shadow 320ms ease, border-color 320ms ease",
-        "&:hover": prefersReduce
-          ? undefined
-          : {
-              transform: "translateY(-4px)",
-              boxShadow: `0 24px 36px -20px ${alpha(theme.palette.common.black, isDark ? 0.65 : 0.3)}`,
-              borderColor: alpha(theme.palette.primary.light, 0.45),
-            },
+        textDecoration: "none",
+        ["--glass-alpha" as any]: ".018",
+        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
       }}
     >
       <Box
         sx={{
           position: "relative",
-          width: 64,
-          height: 64,
+          width: 56,
+          height: 56,
           borderRadius: 2,
           overflow: "hidden",
-          boxShadow: `0 10px 22px ${alpha(theme.palette.common.black, isDark ? 0.36 : 0.2)}`,
+          boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`,
         }}
       >
         <Avatar
@@ -196,69 +166,27 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
             width: "100%",
             height: "100%",
             borderRadius: 2,
-            transform: prefersReduce ? "none" : "scale(1.02)",
-            transition: prefersReduce ? "none" : "transform 1.4s ease",
-            "&:hover": prefersReduce ? undefined : { transform: "scale(1.06)" },
-          }}
-        />
-        <Box
-          sx={{
-            position: "absolute",
-            inset: 0,
-            background: prefersReduce ? "transparent" : "linear-gradient(140deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 60%)",
-            mixBlendMode: "screen",
+            transform: prefersReduce ? "none" : "scale(1.012)",
+            transition: prefersReduce ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
+            "&:hover": prefersReduce ? undefined : { transform: "scale(1.02)" },
           }}
         />
       </Box>
       <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
-        <Typography variant="body1" sx={{ fontWeight: 600, color: textPrimary, lineHeight: 1.2 }}>
+        <Typography className="np-title" variant="body1" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}>
           {data.track_name || "—"}
         </Typography>
-        <Typography variant="body2" sx={{ color: textSecondary }}>
+        <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
           {(data.artists || []).join(", ")}
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-          <LinearProgress
-            variant="determinate"
-            value={pct}
-            sx={{
-              flex: 1,
-              height: 6,
-              borderRadius: 999,
-              backgroundColor: alpha(textPrimary, 0.12),
-              "& .MuiLinearProgress-bar": {
-                borderRadius: 999,
-                background: `linear-gradient(90deg, ${alpha(theme.palette.primary.light, 0.8)}, ${alpha(theme.palette.secondary.light, 0.9)})`,
-              },
-            }}
-          />
-          <Typography variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
+          <LinearProgress className="progress" variant="determinate" value={pct} sx={{ flex: 1, height: 6, borderRadius: 999 }} />
+          <Typography className="np-time" variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
             {fmt(progress)} / {fmt(data.duration_ms)}
           </Typography>
         </Box>
       </Box>
-      {!prefersReduce && (
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            "&::before": {
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "45%",
-              height: "200%",
-              background:
-                "linear-gradient(120deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0) 70%)",
-              animation: `${shimmerEdge} 6s ease-in-out infinite`,
-            },
-          }}
-        />
-      )}
-    </Paper>
+    </MotionPaper>
   );
 });
 
@@ -268,6 +196,7 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
   if (value == null || value === "") return null;
   return (
     <Box
+      className="glass"
       sx={{
         display: "grid",
         gridTemplateColumns: "14px 1fr",
@@ -277,8 +206,9 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
         py: 1.1,
         minHeight: 44,
         borderRadius: 2,
-        background: alpha(theme.palette.text.primary, isDark ? 0.12 : 0.04),
-        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.12)}`,
+        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.1)}`,
+        ["--glass-alpha" as any]: ".016",
+        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
       }}
     >
       <Box
@@ -287,11 +217,11 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
           height: 8,
           borderRadius: "50%",
           bgcolor: theme.palette.info.main,
-          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.25)}`,
+          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.22)}`,
           justifySelf: "center",
         }}
       />
-      <Typography sx={{ color: theme.palette.text.primary, lineHeight: 1.25 }}>
+      <Typography sx={{ lineHeight: 1.25 }}>
         <b>{label}:</b> {value}
       </Typography>
     </Box>
@@ -308,6 +238,7 @@ export default function Profile() {
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const isTwoCol = useMediaQuery("(min-width:1400px)");
   const isMobile = useMediaQuery("(max-width:600px)");
+  const reduced = useReducedMotion();
 
   const [scrollY, setScrollY] = useState(0);
 
@@ -376,8 +307,8 @@ export default function Profile() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  const coverParallax = reduceMotion ? 0 : Math.min(scrollY * 0.12, 48);
-  const coverScale = reduceMotion ? 1 : Math.min(1 + scrollY * 0.00018, 1.05);
+  const coverParallax = reduceMotion ? 0 : Math.min(scrollY * 0.1, 40);
+  const coverScale = reduceMotion ? 1 : Math.min(1 + scrollY * 0.00014, 1.04);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -514,12 +445,12 @@ export default function Profile() {
       const { dpr, w, h } = ensureConfettiSize();
       const cx = x != null ? x * dpr : (w * dpr) / 2;
       const cy = y != null ? y * dpr : (h * dpr) / 5;
-      const count = 140;
+      const count = 120;
       const parts = Array.from({ length: count }).map((_, i) => {
         const angle = Math.random() * Math.PI - Math.PI / 2;
         const speed = 3 + Math.random() * 6;
         const hue = Math.floor((i / count) * 360);
-        return { x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2, life: 60 + Math.random() * 40, size: 2 + Math.random() * 3, color: `hsl(${hue} 90% 55%)` };
+        return { x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2, life: 56 + Math.random() * 36, size: 2 + Math.random() * 3, color: `hsl(${hue} 90% 55%)` };
       });
       let raf = 0;
       const step = () => {
@@ -572,254 +503,8 @@ export default function Profile() {
     return lines.join("\r\n");
   }, [user]);
 
-  const openQrModal = useCallback(() => {
-    setQrOpen(true);
-  }, []);
-
-  const closeQrModal = useCallback(() => {
-    setQrOpen(false);
-  }, []);
-
-  const fetchAsDataUrl = async (url: string) => {
-    try {
-      const r = await api.get(url, { responseType: "blob", withCredentials: true } as any);
-      const blob: Blob = r.data;
-      return await new Promise<string>((res) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result as string);
-        fr.readAsDataURL(blob);
-      });
-    } catch {
-      const r = await fetch(url, { credentials: "include", cache: "no-store" });
-      const blob = await r.blob();
-      return await new Promise<string>((res) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result as string);
-        fr.readAsDataURL(blob);
-      });
-    }
-  };
-
-  const svgStringToPngDataUrl = async (svg: string, size: number) => {
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      const loaded = new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = (e) => reject(e);
-      });
-      img.src = url;
-      await loaded;
-      const c = document.createElement("canvas");
-      c.width = size;
-      c.height = size;
-      const ctx = c.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, size, size);
-      return c.toDataURL("image/png");
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  };
-
-  const makeQrPng = async (text: string, size: number) => {
-    const lib = await loadQrModule();
-    try {
-      const png = await lib.toDataURL(text, { width: size, errorCorrectionLevel: "M", margin: 1 });
-      if (png && png.startsWith("data:image")) return png;
-    } catch {}
-    if (typeof lib.toCanvas === "function") {
-      try {
-        const c = document.createElement("canvas");
-        await lib.toCanvas!(c, text, { width: size, errorCorrectionLevel: "M", margin: 1 });
-        return c.toDataURL("image/png");
-      } catch {}
-    }
-    if (typeof lib.toString === "function") {
-      try {
-        const svg = await lib.toString!(text, { type: "svg", errorCorrectionLevel: "M", margin: 1 });
-        const png = await svgStringToPngDataUrl(svg, size);
-        return png;
-      } catch {}
-    }
-    return null;
-  };
-
-  const downloadPdfCard = async () => {
-    if (!user) return;
-    try {
-      const [{ jsPDF }, qrLibReady] = await Promise.all([loadJsPdfModule(), loadQrModule()]);
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [360, 210] });
-      doc.setFillColor(242, 246, 255);
-      doc.rect(0, 0, 360, 210, "F");
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(230, 235, 245);
-      doc.roundedRect(22, 22, 360 - 44, 210 - 44, 12, 12, "FD");
-
-      const padX = 42;
-      const padY = 38;
-      const contentW = 360 - padX * 2;
-      const leftW = Math.round(contentW * 0.62);
-      const rightX = padX + leftW;
-
-      const isStudent = user.role === "student";
-      const instituteLine = isStudent ? user.institute || "" : user.department || "";
-      const programOrTitleLine = isStudent ? user.program || user.track || user.status || "Студент" : user.position || user.status || "";
-      const emailText = user.email || "";
-      const tg = user.telegram || "";
-
-      const avatarBox = 72;
-      const nameTop = padY + avatarBox + 14;
-
-      const fitSize = (text: string, max: number, base: number, step = 1, min = 10, font: "bold" | "normal" = "bold") => {
-        let s = base;
-        doc.setFont("helvetica", font === "bold" ? "bold" : "normal");
-        while (s > min) {
-          doc.setFontSize(s);
-          if (doc.getTextWidth(text) <= max) break;
-          s -= step;
-        }
-        return s;
-      };
-
-      doc.setTextColor(17, 17, 17);
-      const nameSize = fitSize(user.full_name || "", leftW, 34);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(nameSize);
-      doc.text(user.full_name || "", padX, nameTop);
-
-      let y = nameTop + nameSize + 8;
-      const lineH = 18;
-      const blockGap = 8;
-
-      if (isStudent) {
-        if (instituteLine) {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(14);
-          doc.setTextColor(102, 102, 102);
-          doc.text(String(instituteLine), padX, y);
-          y += lineH + blockGap;
-        }
-        const progSize = fitSize(String(programOrTitleLine || ""), leftW, 16, 1, 10, "normal");
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(progSize);
-        if (programOrTitleLine) {
-          doc.setTextColor(68, 68, 68);
-          doc.text(String(programOrTitleLine), padX, y);
-          y += Math.round(progSize + 6) + blockGap;
-        }
-      } else {
-        const titleSize = fitSize(String(programOrTitleLine || ""), leftW, 16, 1, 10, "normal");
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(titleSize);
-        if (programOrTitleLine) {
-          doc.setTextColor(68, 68, 68);
-          doc.text(String(programOrTitleLine), padX, y);
-          y += Math.round(titleSize + 6) + blockGap;
-        }
-        if (instituteLine) {
-          doc.setFontSize(14);
-          doc.setTextColor(102, 102, 102);
-          doc.text(String(instituteLine), padX, y);
-          y += lineH + blockGap;
-        }
-      }
-
-      doc.setTextColor(51, 51, 51);
-      if (emailText) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(14);
-        doc.text(String(emailText), padX, y);
-        y += lineH + blockGap;
-      }
-      if (tg) {
-        doc.text(String(tg), padX, y);
-        y += lineH + blockGap;
-      }
-
-      const qrSidePt = 118;
-      const qrX = rightX + Math.round((contentW - leftW - qrSidePt) / 2);
-      const qrY = padY + 10;
-      let qrDataUrl = null as string | null;
-      try {
-        qrDataUrl = await makeQrPng(buildVCard(), 640);
-      } catch {}
-      if (!qrDataUrl) {
-        setSnack({ text: "Не удалось встроить QR в PDF", sev: "warning" });
-      } else {
-        try {
-          doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSidePt, qrSidePt);
-        } catch {
-          try {
-            const jpegQr = await new Promise<string>((resolve, reject) => {
-              const img = new Image();
-              img.onload = () => {
-                const c = document.createElement("canvas");
-                c.width = 640;
-                c.height = 640;
-                const ctx = c.getContext("2d")!;
-                ctx.fillStyle = "#fff";
-                ctx.fillRect(0, 0, 640, 640);
-                ctx.drawImage(img, 0, 0);
-                resolve(c.toDataURL("image/jpeg", 0.95));
-              };
-              img.onerror = reject;
-              img.src = qrDataUrl!;
-            });
-            doc.addImage(jpegQr, "JPEG", qrX, qrY, qrSidePt, qrSidePt);
-          } catch {}
-        }
-      }
-
-      const avatarResolved = resolveMediaUrl(user.avatar_url || "", BACKEND_ORIGIN);
-      const avatarSrc = avatarResolved ? `${avatarResolved}?v=${avatarVersion}` : null;
-      if (avatarSrc) {
-        try {
-          const dataUrl = await fetchAsDataUrl(avatarSrc);
-          try {
-            doc.addImage(dataUrl, "JPEG", padX, padY, avatarBox, avatarBox);
-          } catch {
-            doc.addImage(dataUrl, "PNG", padX, padY, avatarBox, avatarBox);
-          }
-        } catch {}
-      } else {
-        doc.setFillColor(229, 231, 235);
-        doc.circle(padX + avatarBox / 2, padY + avatarBox / 2, avatarBox / 2, "F");
-        doc.setTextColor(17, 24, 39);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(Math.round(avatarBox * 0.42));
-        const ch = (user.full_name?.[0] || "").toUpperCase();
-        const tw = doc.getTextWidth(ch);
-        const tx = padX + avatarBox / 2 - tw / 2;
-        const ty = padY + avatarBox / 2 + Math.round(avatarBox * 0.16);
-        doc.text(ch, tx, ty);
-      }
-
-      try {
-        const logoUrl = typeof guuLogo === "string" ? guuLogo : String(guuLogo as any);
-        const logoData = await fetchAsDataUrl(logoUrl);
-        const maxW = Math.round((contentW - leftW) * 0.95);
-        const maxH = 80;
-        const lw = maxW;
-        const lh = Math.min(maxH, Math.round(maxW * 0.35));
-        const lx = rightX + Math.round((contentW - leftW - lw) / 2);
-        const lyTop = padY + 160;
-        const ly = Math.min(lyTop, 210 - 22 - lh - 12);
-        try {
-          doc.addImage(logoData, "PNG", lx, ly, lw, lh);
-        } catch {
-          doc.addImage(logoData, "JPEG", lx, ly, lw, lh);
-        }
-      } catch {}
-
-      const fname = (user.full_name || "contact").replace(/\s+/g, "_") + ".pdf";
-      doc.save(fname);
-    } catch (e) {
-      console.error(e);
-      setSnack({ text: "Не удалось подготовить PDF визитку", sev: "error" });
-    }
-  };
+  const openQrModal = useCallback(() => setQrOpen(true), []);
+  const closeQrModal = useCallback(() => setQrOpen(false), []);
 
   const telegramHref = useMemo(() => {
     const t = user?.telegram || "";
@@ -893,15 +578,8 @@ export default function Profile() {
   const avatarFloat = Math.round(avatarPx * 0.55);
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`;
   const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`;
-  const infoOffsetMargin = `${avatarFloat + 36}px`;
 
   const isDark = theme.palette.mode === "dark";
-  const glassPanelBg = alpha(theme.palette.background.paper, isDark ? 0.28 : 0.66);
-  const glassRaisedBg = alpha(theme.palette.background.paper, isDark ? 0.18 : 0.78);
-  const glassBorder = isDark ? alpha(theme.palette.common.white, 0.24) : alpha(theme.palette.common.black, 0.12);
-  const surfaceShadow = isDark ? `0 40px 72px -38px ${alpha(theme.palette.common.black, 0.7)}` : `0 24px 48px -36px ${alpha(theme.palette.common.black, 0.25)}`;
-  const subtleRing = alpha(theme.palette.primary.light, isDark ? 0.2 : 0.35);
-  const textPrimary = theme.palette.text.primary;
   const textSecondary = theme.palette.text.secondary;
 
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean;
@@ -923,36 +601,40 @@ export default function Profile() {
             content: '""',
             position: "absolute",
             inset: 0,
-            background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.82)}, ${alpha(theme.palette.secondary.dark, 0.78)})`,
+            background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.66)}, ${alpha(theme.palette.secondary.dark, 0.6)})`,
             mixBlendMode: "multiply",
           },
           "&::after": {
             content: '""',
             position: "absolute",
             inset: 0,
-            background: `radial-gradient(circle at 25% 20%, ${alpha(theme.palette.primary.light, 0.22)}, transparent 60%), radial-gradient(circle at 80% 25%, ${alpha(
-              theme.palette.secondary.light,
-              0.18
-            )}, transparent 55%), radial-gradient(circle at 50% 85%, ${alpha(theme.palette.info.light, 0.16)}, transparent 65%)`,
-            opacity: 0.9,
+            background: `radial-gradient(1600px 800px at 50% 0%, ${alpha(theme.palette.primary.light, 0.08)} 0%, transparent 60%)`,
+            opacity: 0.6,
           },
         }}
       />
-      <Box component="main" sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
-        <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
-          <Fade in timeout={reduceMotion ? 0 : 900}>
-            <Paper
+
+      <motion.div
+        initial={{ opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 460, damping: 34 }}
+      >
+        <Box component="main" className="profile-page" sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
+          <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
+            <MotionPaper
               ref={containerRef}
+              className="glass profile-card"
+              initial={{ opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.9 }}
               sx={{
                 px: { xs: 2.6, sm: 3.6, md: 4.6, lg: 5.6 },
                 py: { xs: 3.6, sm: 4.2, md: 5 },
                 borderRadius: { xs: 3, md: 4 },
-                border: `1px solid ${glassBorder}`,
-                background: glassPanelBg,
-                backdropFilter: "blur(34px)",
-                boxShadow: surfaceShadow,
                 position: "relative",
                 overflow: "hidden",
+                ["--glass-alpha" as any]: ".02",
+                ["--glass-highlight" as any]: "rgba(255,255,255,0)",
               }}
             >
               <Box
@@ -966,6 +648,7 @@ export default function Profile() {
               >
                 <Stack spacing={{ xs: 3.2, md: 4 }} alignItems="stretch">
                   <Box
+                    className="glass"
                     sx={{
                       position: "relative",
                       borderRadius: { xs: 3, md: 4 },
@@ -975,8 +658,9 @@ export default function Profile() {
                       alignItems: "flex-end",
                       justifyContent: "center",
                       pb: heroPaddingBottom,
-                      background: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.1)}, ${alpha(theme.palette.secondary.dark, 0.08)})`,
-                      boxShadow: `0 36px 80px -44px ${alpha(theme.palette.common.black, isDark ? 0.72 : 0.25)}`,
+                      boxShadow: `0 28px 70px -44px ${alpha(theme.palette.common.black, isDark ? 0.58 : 0.2)}`,
+                      ["--glass-alpha" as any]: ".018",
+                      ["--glass-highlight" as any]: "rgba(255,255,255,0)",
                     }}
                   >
                     <Box
@@ -987,11 +671,11 @@ export default function Profile() {
                         backgroundPosition: "center",
                         backgroundSize: "cover",
                         transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-                        transition: reduceMotion ? "none" : "transform 1400ms cubic-bezier(0.33, 1, 0.68, 1)",
+                        transition: reduceMotion ? "none" : "transform 1200ms cubic-bezier(.33,1,.68,1)",
+                        filter: "saturate(1) contrast(1.02) brightness(0.98)",
                       }}
                     />
-                    <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(185deg, rgba(6,9,20,0) 45%, rgba(6,9,20,0.92) 100%)" }} />
-                    <Box sx={{ position: "absolute", inset: "-25% -25% 35%", background: "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.18), transparent 60%)", opacity: 0.6 }} />
+                    <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(185deg, rgba(6,9,20,0) 40%, rgba(6,9,20,0.9) 100%)" }} />
                     <Box
                       sx={{
                         position: "absolute",
@@ -1004,27 +688,11 @@ export default function Profile() {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        background: `linear-gradient(140deg, ${alpha(theme.palette.primary.light, 0.72)}, ${alpha(theme.palette.secondary.light, 0.62)})`,
                         p: "4px",
-                        boxShadow: `0 28px 64px -26px ${alpha(theme.palette.common.black, isDark ? 0.76 : 0.3)}`,
-                        animation: reduceMotion ? "none" : `${auraPulse} 12s ease-in-out infinite`,
+                        animation: reduceMotion ? "none" : `${auraPulse} 14s ease-in-out infinite`,
                       }}
                     >
-                      <Box
-                        sx={{
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: "50%",
-                          p: "4px",
-                          background: alpha(theme.palette.common.white, 0.16),
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          position: "relative",
-                          overflow: "hidden",
-                          boxShadow: `inset 0 0 0 1px ${subtleRing}`,
-                        }}
-                      >
+                      <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
                         <Avatar
                           src={getAvatarSrc()}
                           alt={user?.full_name}
@@ -1033,7 +701,6 @@ export default function Profile() {
                             height: "100%",
                             borderRadius: "50%",
                             fontSize: "clamp(28px, 6vw, 64px)",
-                            border: `1px solid ${alpha(theme.palette.common.white, 0.38)}`,
                             backgroundColor: alpha(theme.palette.common.white, 0.12),
                             color: alpha(theme.palette.common.white, 0.92),
                           }}
@@ -1052,12 +719,12 @@ export default function Profile() {
                             height: `${statusSize}px`,
                             borderRadius: "50%",
                             backgroundColor: "#22c55e",
-                            boxShadow: `0 0 0 2px ${alpha(theme.palette.background.paper, 0.9)}, 0 4px 10px ${alpha("#22c55e", 0.45)}`,
+                            boxShadow: `0 0 0 2px rgba(0,0,0,.18), 0 4px 10px rgba(34,197,94,.45)`,
                             zIndex: 3,
                             pointerEvents: "none",
                           }}
                         >
-                          {!reduceMotion && (
+                          {!reduced && (
                             <Box
                               sx={{
                                 position: "absolute",
@@ -1085,17 +752,12 @@ export default function Profile() {
                       }}
                     >
                       <Box>
-                        <Typography variant="h3" sx={{ fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)", fontWeight: 800, lineHeight: 1.1, color: alpha(theme.palette.common.white, 0.96), textShadow: `0 6px 18px ${alpha(theme.palette.common.black, isDark ? 0.52 : 0.28)}` }}>
+                        <Typography className="profile-name" variant="h3" sx={{ fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)", fontWeight: 900, lineHeight: 1.08 }}>
                           {user!.full_name}
                         </Typography>
                         {!!user?.position && user?.role === "teacher" && (
-                          <Typography variant="subtitle1" sx={{ mt: 0.9, color: alpha(theme.palette.common.white, 0.78), fontWeight: 500, letterSpacing: 0.3 }}>
+                          <Typography className="profile-subtitle" variant="subtitle1" sx={{ mt: 0.9, fontWeight: 600 }}>
                             {user.position}
-                          </Typography>
-                        )}
-                        {!!user?.status && user?.role !== "teacher" && (
-                          <Typography variant="subtitle1" sx={{ mt: 0.9, color: alpha(theme.palette.common.white, 0.78), fontWeight: 500, letterSpacing: 0.3 }}>
-                            {user.status}
                           </Typography>
                         )}
                       </Box>
@@ -1105,25 +767,16 @@ export default function Profile() {
                           ...(user!.role === "student" && user!.course ? [`Курс ${user!.course}`] : []),
                           ...(user!.institute ? [user!.institute] : []),
                         ].map((chip, idx) => (
-                          <Grow in key={`${chip}-${idx}`} timeout={reduceMotion ? 0 : 620} style={{ transitionDelay: reduceMotion ? "0ms" : `${idx * 110}ms` }}>
+                          <Grow in key={`${chip}-${idx}`} timeout={reduced ? 0 : 560} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
                             <Chip
                               size="small"
                               label={chip}
+                              className="glass--chip"
                               sx={{
                                 borderRadius: 999,
-                                px: 0,
-                                border: `1px solid ${alpha(theme.palette.common.white, 0.28)}`,
-                                background: alpha(theme.palette.background.paper, 0.18),
-                                backdropFilter: "blur(18px)",
-                                color: alpha(theme.palette.common.white, 0.92),
-                                animation: reduceMotion ? "none" : `${chipHighlight} 12s ease-in-out infinite`,
-                                animationDelay: reduceMotion ? "0ms" : `${idx * 90}ms`,
-                                "& .MuiChip-label": { px: 1.6, py: 0.62, lineHeight: 1.28 },
-                                "&:hover": {
-                                  borderColor: alpha(theme.palette.primary.light, 0.6),
-                                  boxShadow: `0 12px 24px -14px ${alpha(theme.palette.common.black, isDark ? 0.64 : 0.28)}`,
-                                  transform: reduceMotion ? "none" : "translateY(-2px)",
-                                },
+                                "& .MuiChip-label": { px: 1.6, py: 0.62, lineHeight: 1.28, fontWeight: 700, letterSpacing: ".01em" },
+                                animation: reduced ? "none" : `${chipHighlight} 12s ease-in-out infinite`,
+                                animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
                               }}
                             />
                           </Grow>
@@ -1134,16 +787,15 @@ export default function Profile() {
 
                   <Paper
                     elevation={0}
+                    className="glass profile-card"
                     sx={{
                       p: { xs: 2.6, sm: 3 },
                       borderRadius: 3,
-                      border: `1px solid ${glassBorder}`,
-                      background: alpha(theme.palette.background.paper, isDark ? 0.18 : 0.78),
-                      backdropFilter: "blur(22px)",
-                      boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, isDark ? 0.66 : 0.25)}`,
                       display: "flex",
                       flexDirection: "column",
                       gap: { xs: 2.6, md: 3 },
+                      ["--glass-alpha" as any]: ".02",
+                      ["--glass-highlight" as any]: "rgba(255,255,255,0)",
                     }}
                   >
                     <Stack spacing={1.3} alignItems="stretch">
@@ -1151,35 +803,19 @@ export default function Profile() {
                         size="large"
                         variant="contained"
                         color="secondary"
+                        className="glass--btn"
                         onClick={openQrModal}
-                        sx={{ width: "100%", borderRadius: 2, py: 1.05, fontWeight: 600, letterSpacing: 0.24 }}
+                        sx={{ width: "100%", borderRadius: 2, py: 1.05, fontWeight: 800, letterSpacing: 0.24 }}
                       >
                         Показать QR
                       </Button>
-                      <Button
-                        size="large"
-                        variant="outlined"
-                        onClick={downloadPdfCard}
-                        sx={{
-                          width: "100%",
-                          borderRadius: 2,
-                          py: 1.05,
-                          fontWeight: 600,
-                          letterSpacing: 0.24,
-                          borderColor: glassBorder,
-                          color: textPrimary,
-                          "&:hover": { borderColor: alpha(theme.palette.primary.light, 0.7), backgroundColor: alpha(theme.palette.primary.light, isDark ? 0.12 : 0.08) },
-                        }}
-                      >
-                        PDF визитка
-                      </Button>
                     </Stack>
-                    <Divider sx={{ borderColor: isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.12) }} />
-                    <Stack spacing={1.8}>
+                    <Divider />
+                    <Stack spacing={1.8} className="contact-links">
                       <Stack direction="row" spacing={1.4} alignItems="center" sx={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                          <EmailIcon aria-hidden sx={{ fontSize: 22, color: theme.palette.primary.main }} />
-                          <Typography sx={{ fontWeight: 600, color: textPrimary, wordBreak: "break-word", flex: 1 }}>
+                          <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
+                          <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
                             <a href={`mailto:${user!.email}`} style={{ color: "inherit", textDecoration: "none" }}>
                               {user!.email}
                             </a>
@@ -1188,17 +824,12 @@ export default function Profile() {
                         <Tooltip title="Скопировать email">
                           <IconButton
                             size="small"
+                            className="glass--btn"
                             onClick={(e) => copy(user!.email, e)}
                             aria-label="Скопировать email"
                             sx={{
-                              color: textSecondary,
-                              transition: reduceMotion ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": {
-                                transform: reduceMotion ? "none" : "translateY(-1px) scale(1.05)",
-                                boxShadow: `0 8px 16px -12px ${alpha(theme.palette.common.black, isDark ? 0.6 : 0.25)}`,
-                                color: theme.palette.primary.main,
-                              },
-                              "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.light, 0.8)}`, outlineOffset: 2 },
+                              transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
+                              "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
                             }}
                           >
                             <ContentCopyIcon fontSize="small" />
@@ -1209,8 +840,8 @@ export default function Profile() {
                       {!!user!.telegram && (
                         <Stack direction="row" spacing={1.4} alignItems="center" sx={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                            <TelegramIcon aria-hidden sx={{ fontSize: 22, color: theme.palette.secondary.main }} />
-                            <Typography sx={{ fontWeight: 600, color: textPrimary, wordBreak: "break-word", flex: 1 }}>
+                            <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
+                            <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
                               <a href={telegramHref} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
                                 {user!.telegram}
                               </a>
@@ -1219,17 +850,12 @@ export default function Profile() {
                           <Tooltip title="Скопировать ник">
                             <IconButton
                               size="small"
+                              className="glass--btn"
                               onClick={(e) => copy(user!.telegram!, e)}
                               aria-label="Скопировать ник в Telegram"
                               sx={{
-                                color: textSecondary,
-                                transition: reduceMotion ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                                "&:hover": {
-                                  transform: reduceMotion ? "none" : "translateY(-1px) scale(1.05)",
-                                  boxShadow: `0 8px 16px -12px ${alpha(theme.palette.common.black, isDark ? 0.6 : 0.25)}`,
-                                  color: theme.palette.secondary.main,
-                                },
-                                "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.secondary.light, 0.8)}`, outlineOffset: 2 },
+                                transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
+                                "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
                               }}
                             >
                               <ContentCopyIcon fontSize="small" />
@@ -1241,7 +867,7 @@ export default function Profile() {
                   </Paper>
 
                   {spotifyConnected && nowPlaying && (
-                    <Fade in timeout={reduceMotion ? 0 : 720}>
+                    <Fade in timeout={reduced ? 0 : 720}>
                       <Stack spacing={1.4}>
                         <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
                           Сейчас играет
@@ -1252,18 +878,17 @@ export default function Profile() {
                   )}
                 </Stack>
 
-                <Box sx={{ width: "100%", position: "relative", mt: { xs: infoOffsetMargin, md: 0 } }}>
+                <Box sx={{ width: "100%", position: "relative", mt: { xs: `${Math.round(avatarPx * 0.55) + 36}px`, md: 0 } }}>
                   {edit ? (
                     <Paper
                       elevation={0}
+                      className="glass profile-card profile-edit"
                       sx={{
                         width: "100%",
                         borderRadius: 3,
-                        border: `1px solid ${glassBorder}`,
-                        background: glassPanelBg,
-                        backdropFilter: "blur(26px)",
-                        boxShadow: `0 32px 64px -42px ${alpha(theme.palette.common.black, isDark ? 0.68 : 0.25)}`,
                         p: { xs: 2.6, sm: 3, md: 3.4 },
+                        ["--glass-alpha" as any]: ".02",
+                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
                       }}
                     >
                       <Stack spacing={2.2}>
@@ -1290,10 +915,10 @@ export default function Profile() {
                           </>
                         )}
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ alignItems: { xs: "stretch", sm: "center" } }}>
-                          <Button onClick={handleSave} variant="contained" disabled={saving} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                          <Button onClick={handleSave} variant="contained" disabled={saving} className="glass--btn" sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}>
                             {saving ? "СОХРАНЯЕМ..." : "СОХРАНИТЬ"}
                           </Button>
-                          <Button onClick={handleCancel} variant="outlined" sx={{ width: { xs: "100%", sm: "auto" } }}>
+                          <Button onClick={handleCancel} variant="outlined" className="glass--btn" sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}>
                             ОТМЕНА
                           </Button>
                         </Stack>
@@ -1303,35 +928,35 @@ export default function Profile() {
                     <>
                       <Paper
                         elevation={0}
+                        className="glass profile-card"
                         sx={{
                           width: "100%",
                           borderRadius: 3,
-                          border: `1px solid ${glassBorder}`,
-                          background: glassPanelBg,
-                          backdropFilter: "blur(26px)",
-                          boxShadow: `0 32px 64px -42px ${alpha(theme.palette.common.black, isDark ? 0.68 : 0.25)}`,
                           p: { xs: 2.6, sm: 3, md: 3.4 },
+                          ["--glass-alpha" as any]: ".02",
+                          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
                         }}
                       >
-                        <Typography variant="h5" sx={{ fontWeight: 700, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, color: textPrimary }}>
+                        <Typography variant="h5" sx={{ fontWeight: 900, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, letterSpacing: "-.01em" }}>
                           Сведения
                         </Typography>
                         <Accordion
                           disableGutters
                           defaultExpanded
+                          className="glass"
                           sx={{
-                            background: "transparent",
-                            border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.16) : alpha(theme.palette.common.black, 0.12)}`,
                             borderRadius: 3,
                             boxShadow: "none",
                             "&::before": { display: "none" },
+                            ["--glass-alpha" as any]: ".016",
+                            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
                           }}
                         >
                           <AccordionSummary
                             expandIcon={<ExpandMoreIcon />}
-                            sx={{ px: 2.2, py: 1.4, borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.08)}`, color: textPrimary }}
+                            sx={{ px: 2.2, py: 1.4, borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.08)}` }}
                           >
-                            <Typography fontWeight={700}>Детали профиля</Typography>
+                            <Typography fontWeight={900}>Детали профиля</Typography>
                           </AccordionSummary>
                           <AccordionDetails sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}>
                             {(() => {
@@ -1361,7 +986,7 @@ export default function Profile() {
                             })()}
                             {achievementsList.length > 0 && (
                               <Box sx={{ mt: 2.4 }}>
-                                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.4, color: textPrimary }}>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1.4 }}>
                                   Достижения
                                 </Typography>
                                 <Box
@@ -1372,7 +997,7 @@ export default function Profile() {
                                   }}
                                 >
                                   {achievementsList.map((ach, idx) => (
-                                    <Grow in key={ach.key} timeout={reduceMotion ? 0 : 520} style={{ transitionDelay: reduceMotion ? "0ms" : `${idx * 90}ms` }}>
+                                    <Grow in key={ach.key} timeout={reduced ? 0 : 500} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
                                       <Chip
                                         label={ach.name}
                                         clickable
@@ -1384,22 +1009,13 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
+                                        className="glass--chip"
                                         sx={{
                                           borderRadius: 2,
-                                          textAlign: "left",
-                                          background: alpha(theme.palette.background.paper, isDark ? 0.22 : 0.66),
-                                          border: `1px solid ${glassBorder}`,
-                                          backdropFilter: "blur(18px)",
-                                          color: textPrimary,
                                           alignSelf: "stretch",
-                                          animation: reduceMotion ? "none" : `${chipHighlight} 14s ease-in-out infinite`,
-                                          animationDelay: reduceMotion ? "0ms" : `${idx * 120}ms`,
-                                          "& .MuiChip-label": { display: "block", whiteSpace: "normal", lineHeight: 1.3, px: 1.6, py: 1.1 },
-                                          "&:hover": {
-                                            borderColor: alpha(theme.palette.primary.light, 0.7),
-                                            boxShadow: `0 12px 28px -16px ${alpha(theme.palette.common.black, isDark ? 0.62 : 0.25)}`,
-                                            transform: reduceMotion ? "none" : "translateY(-2px)",
-                                          },
+                                          "& .MuiChip-label": { display: "block", whiteSpace: "normal", lineHeight: 1.3, px: 1.6, py: 1.1, fontWeight: 700 },
+                                          animation: reduced ? "none" : `${chipHighlight} 14s ease-in-out infinite`,
+                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
                                         }}
                                       />
                                     </Grow>
@@ -1414,15 +1030,15 @@ export default function Profile() {
                   )}
                 </Box>
               </Box>
-            </Paper>
-          </Fade>
-        </Container>
+            </MotionPaper>
+          </Container>
 
-        <canvas
-          ref={confettiRef}
-          style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }}
-        />
-      </Box>
+          <canvas
+            ref={confettiRef}
+            style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }}
+          />
+        </Box>
+      </motion.div>
 
       <Dialog
         open={qrOpen}
@@ -1430,53 +1046,79 @@ export default function Profile() {
         maxWidth="xs"
         fullWidth
         PaperProps={{
+          className: "glass",
           sx: {
             borderRadius: 3,
-            border: `1px solid ${glassBorder}`,
-            background: glassPanelBg,
-            backdropFilter: "blur(18px)",
-            boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, isDark ? 0.66 : 0.25)}`,
+            ["--glass-alpha" as any]: ".02",
+            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
           },
         }}
       >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 700 }}>QR визитки</DialogTitle>
-        <DialogContent sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 280 }}>
-          <Box sx={{ background: "#fff", p: 1.5, borderRadius: 2 }}>
-            <QRCodeSVG value={buildVCard()} size={280} level="M" includeMargin />
+        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>QR-код</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1.2, minHeight: 320 }}>
+          <Box
+            sx={{
+              background: "#fff",
+              p: 2,
+              borderRadius: 3,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
+              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`,
+            }}
+          >
+            <QRCodeSVG
+              value={buildVCard()}
+              size={300}
+              level="H"
+              includeMargin
+              bgColor="#ffffff"
+              fgColor={theme.palette.primary.dark}
+              imageSettings={{
+                src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
+                height: 56,
+                width: 56,
+                excavate: true,
+              }}
+            />
           </Box>
+          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+            Наведите камеру — контакт добавится автоматически
+          </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
-          <Button onClick={closeQrModal}>Готово</Button>
+          <Button onClick={closeQrModal} className="glass--btn" variant="contained" sx={{ fontWeight: 800 }}>
+            Готово
+          </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog
         open={!!achOpen}
         onClose={() => setAchOpen(null)}
-        maxWidth="sm"
+        maxWidth="xs"
         fullWidth
         PaperProps={{
+          className: "glass",
           sx: {
             borderRadius: 3,
-            border: `1px solid ${glassBorder}`,
-            background: glassPanelBg,
-            backdropFilter: "blur(18px)",
-            boxShadow: `0 26px 52px -36px ${alpha(theme.palette.common.black, isDark ? 0.66 : 0.25)}`,
+            ["--glass-alpha" as any]: ".02",
+            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 700, textAlign: "center" }}>{achOpen?.name}</DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.4 }}>
-          {!!achOpen?.issuer && <Typography><b>Выдано:</b> {achOpen.issuer}</Typography>}
-          {!!achOpen?.date && <Typography><b>Дата:</b> {achOpen.date}</Typography>}
-          {!!achOpen?.url && (
-            <Typography>
-              <b>Подтверждение:</b> <a href={achOpen.url} target="_blank" rel="noreferrer">{achOpen.url}</a>
-            </Typography>
+        <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
+        <DialogContent sx={{ display: "grid", gap: 1.2 }}>
+          {achOpen?.issuer && <Typography>Организатор: {achOpen.issuer}</Typography>}
+          {achOpen?.date && <Typography>Дата: {achOpen.date}</Typography>}
+          {achOpen?.url && (
+            <Button variant="outlined" className="glass--btn" href={achOpen.url} target="_blank" rel="noreferrer" sx={{ fontWeight: 800 }}>
+              Открыть ссылку
+            </Button>
           )}
         </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
-          <Button onClick={() => setAchOpen(null)}>Закрыть</Button>
+        <DialogActions>
+          <Button onClick={() => setAchOpen(null)} className="glass--btn" variant="contained" sx={{ fontWeight: 800 }}>
+            Закрыть
+          </Button>
         </DialogActions>
       </Dialog>
 
