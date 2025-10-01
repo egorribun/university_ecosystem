@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { type JSX, useState } from "react"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
@@ -9,7 +9,7 @@ describe("ErrorBoundary", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     const dispatchSpy = vi.spyOn(window, "dispatchEvent")
 
-    const Problem = () => {
+    const Problem = (): JSX.Element => {
       throw new Error("Boom")
     }
 
@@ -62,7 +62,7 @@ describe("ErrorBoundary", () => {
       )
     }
 
-    function Problem() {
+    function Problem(): JSX.Element {
       throw new Error("Controlled failure")
     }
 

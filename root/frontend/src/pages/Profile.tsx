@@ -118,37 +118,44 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
   const href = data.track_url || "https://open.spotify.com";
 
   return (
-    <MotionPaper
+    <Box
       component="a"
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={data.track_name ? `Открыть в Spotify: ${data.track_name}` : "Открыть Spotify"}
-      elevation={0}
-      className="nowplaying--spotify"
-      initial={isTest ? false : { y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
-      animate={{ y: 0, opacity: 1, scale: 1 }}
-      whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
-      whileTap={reduced ? {} : { scale: 0.997 }}
-      transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
       sx={{
-        width: "100%",
-        display: "grid",
-        gridTemplateColumns: "auto 1fr",
-        alignItems: "center",
-        columnGap: 2,
-        rowGap: 1,
-        px: 2,
-        py: 1.8,
-        borderRadius: 3,
-        position: "relative",
-        overflow: "hidden",
-        border: `1px solid ${borderCol}`,
+        display: "block",
         textDecoration: "none",
-        ["--glass-alpha" as any]: ".018",
-        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+        width: "100%",
       }}
     >
+      <MotionPaper
+        elevation={0}
+        className="nowplaying--spotify"
+        initial={isTest ? false : { y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
+        whileTap={reduced ? {} : { scale: 0.997 }}
+        transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
+        sx={{
+          width: "100%",
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          alignItems: "center",
+          columnGap: 2,
+          rowGap: 1,
+          px: 2,
+          py: 1.8,
+          borderRadius: 3,
+          position: "relative",
+          overflow: "hidden",
+          border: `1px solid ${borderCol}`,
+          textDecoration: "none",
+          ["--glass-alpha" as any]: ".018",
+          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+        }}
+      >
       <Box
         sx={{
           position: "relative",
@@ -187,7 +194,8 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
           </Typography>
         </Box>
       </Box>
-    </MotionPaper>
+      </MotionPaper>
+    </Box>
   );
 });
 
