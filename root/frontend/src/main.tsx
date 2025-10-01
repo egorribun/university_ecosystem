@@ -4,6 +4,7 @@ import { CssBaseline } from "@mui/material"
 import { CssVarsProvider, useColorScheme } from "@mui/material/styles"
 import { registerSW } from "virtual:pwa-register"
 import App from "./App"
+import ErrorBoundary from "./app/ErrorBoundary"
 import theme from "./theme"
 import "./assets/themes.css"
 import "dayjs/locale/ru"
@@ -47,7 +48,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     >
       <CssBaseline enableColorScheme />
       <BodyColorSchemeSync />
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </CssVarsProvider>
   </React.StrictMode>
 )

@@ -11,6 +11,7 @@ import useMediaQuery from "@mui/material/useMediaQuery"
 import { registerServiceWorker } from "./push/register-sw"
 import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
+import ErrorBoundary from "./app/ErrorBoundary"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
@@ -135,9 +136,11 @@ export default function App() {
   return (
     <AuthProvider>
       <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ru">
-        <Router>
-          <AppContent />
-        </Router>
+        <ErrorBoundary>
+          <Router>
+            <AppContent />
+          </Router>
+        </ErrorBoundary>
       </LocalizationProvider>
     </AuthProvider>
   )
