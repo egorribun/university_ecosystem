@@ -15,6 +15,7 @@ from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
+from app.core.rate_limit import RateLimitMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import shutdown_cache
 from app.routers.schedule import router as schedule_router
@@ -56,6 +57,18 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+
+rate_limit_url = settings.rate_limit_storage_uri.strip()
+if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
+    ("redis://", "rediss://")
+):
+    app.add_middleware(
+        RateLimitMiddleware,
+        redis_url=rate_limit_url,
+        limit=60,
+        window_seconds=60,
+        headers_enabled=settings.rate_limit_headers_enabled,
+    )
 
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list

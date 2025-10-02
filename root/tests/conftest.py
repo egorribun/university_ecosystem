@@ -34,8 +34,9 @@ os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("STATIC_DIR", "app/test-static")
 os.environ.setdefault("ENVIRONMENT", "testing")
-os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
 os.environ.setdefault("RATE_LIMIT_SENSITIVE", "")
+os.environ.setdefault("RATE_LIMIT_STORAGE_URI", "redis://test")
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 
 try:
@@ -69,6 +70,7 @@ security_headers_module.SecurityHeadersMiddleware = _NoopSecurityHeadersMiddlewa
 from app import main
 from app.core.config import settings
 from app.core.database import Base, async_session, engine
+from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
 
@@ -99,6 +101,27 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
         await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+
+@pytest.fixture(scope="session")
+def _rate_limit_redis_client() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
+    fake = fakeredis.aioredis.FakeRedis(encoding="utf-8", decode_responses=False)
+    set_rate_limit_client_factory(lambda url: fake)
+    try:
+        yield fake
+    finally:
+        set_rate_limit_client_factory(None)
+
+
+@pytest.fixture(autouse=True)
+async def configure_rate_limit(
+    _rate_limit_redis_client: fakeredis.aioredis.FakeRedis,
+) -> AsyncIterator[None]:
+    await _rate_limit_redis_client.flushall()
+    try:
+        yield
+    finally:
+        await _rate_limit_redis_client.flushall()
 
 
 @pytest.fixture
