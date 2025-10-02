@@ -4,6 +4,7 @@ import { Box, Paper, Typography, TextField, Button, Stack, InputAdornment, IconB
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { useParams, useSearchParams, Link } from "react-router-dom";
+import { evaluatePasswordStrength } from "../utils/passwordStrength";
 
 const RESET_URL = "/password/reset";
 
@@ -59,8 +60,7 @@ export default function ResetPassword() {
       return;
     }
     try {
-      const { default: zxcvbn } = await import("zxcvbn");
-      const res = zxcvbn(v);
+      const res = await evaluatePasswordStrength(v);
       setStrength(res.score);
       const tips = (res.feedback?.warning || "") + (res.feedback?.suggestions?.length ? (" · " + res.feedback.suggestions.join(" · ")) : "");
       setFeedback(tips);

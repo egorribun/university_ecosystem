@@ -4,6 +4,7 @@ import api from "../api/axios";
 import { Box, Paper, Typography, TextField, Button, Stack, Select, MenuItem, InputLabel, FormControl, useMediaQuery, CircularProgress, InputAdornment, IconButton, LinearProgress, Chip, Tooltip } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import { evaluatePasswordStrength } from "../utils/passwordStrength";
 
 function levenshtein(a: string, b: string) {
   const m = a.length, n = b.length;
@@ -84,8 +85,7 @@ const Register = () => {
       return;
     }
     try {
-      const { default: zxcvbn } = await import("zxcvbn");
-      const score = zxcvbn(v).score;
+      const score = (await evaluatePasswordStrength(v)).score;
       setStrength(score);
     } catch {
       setStrength(null);

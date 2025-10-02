@@ -270,10 +270,36 @@ export default defineConfig(({ mode }) => {
 
             if (!normalized.includes("node_modules")) return
             if (normalized.includes("framer-motion")) return "motion"
-            if (normalized.includes("@mui")) return "mui"
+            if (normalized.includes("@mui/material")) {
+              const esmMatch = normalized.match(/@mui\/material\/esm\/([^/]+)/)
+              if (esmMatch) {
+                const component = esmMatch[1]
+                if (component === "styles") return "mui-styles"
+                if (component[0] === component[0]?.toLowerCase()) return "mui-material"
+                return `mui-${component.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`
+              }
+              const match = normalized.match(/@mui\/material\/([^/]+)/)
+              if (match) {
+                const segment = match[1]
+                if (segment === "styles") return "mui-styles"
+                if (segment[0] === segment[0]?.toLowerCase()) return "mui-material"
+                return `mui-${segment.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`
+              }
+              return "mui-material"
+            }
+            if (normalized.includes("@mui/icons-material")) {
+              const match = normalized.match(/@mui\/icons-material\/([^/]+)/)
+              if (match) {
+                const icon = match[1]
+                if (icon[0] === icon[0]?.toLowerCase()) return "mui-icons"
+                return `mui-icon-${icon.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`
+              }
+              return "mui-icons"
+            }
+            if (normalized.includes("@mui/x-date-pickers")) return "mui-date-pickers"
             if (normalized.includes("react-router")) return "router"
             if (normalized.includes("dayjs")) return "dayjs"
-            if (normalized.includes("zxcvbn")) return "zxcvbn"
+            if (normalized.includes("@zxcvbn-ts")) return "password-strength"
             if (normalized.includes("jspdf")) return "pdf"
           },
         },

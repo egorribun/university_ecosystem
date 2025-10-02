@@ -5,14 +5,18 @@ import { vi } from "vitest";
 import ResetPassword from "../ResetPassword";
 import api from "../../api/axios";
 
+const evaluatePasswordStrengthMock = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ score: 3, feedback: { warning: "", suggestions: [] } }))
+);
+
 vi.mock("../../api/axios", () => ({
   default: {
     post: vi.fn(),
   },
 }));
 
-vi.mock("zxcvbn", () => ({
-  default: () => ({ score: 3, feedback: { warning: "", suggestions: [] } }),
+vi.mock("../../utils/passwordStrength", () => ({
+  evaluatePasswordStrength: evaluatePasswordStrengthMock,
 }));
 
 describe("ResetPassword", () => {
@@ -21,6 +25,7 @@ describe("ResetPassword", () => {
 
   beforeEach(() => {
     mockedPost.mockReset();
+    evaluatePasswordStrengthMock.mockClear();
     digestMock.mockClear();
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, text: () => Promise.resolve("") }) as any));
     if (globalThis.crypto && globalThis.crypto.subtle) {
