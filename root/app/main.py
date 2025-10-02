@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
 
 try:
@@ -86,4 +87,5 @@ app.include_router(auth_router)
 app.include_router(spotify_router)
 app.include_router(notifications_router)
 app.include_router(push_router)
+app.include_router(schedule_router)
 app.include_router(main_router)

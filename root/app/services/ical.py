@@ -1,0 +1,171 @@
+"""Utilities for generating iCalendar exports."""
+
+from __future__ import annotations
+
+from datetime import date, datetime, time, timedelta, timezone
+from typing import Iterable, Sequence
+
+from app.models import models
+
+_WEEKDAY_ALIASES: dict[str, int] = {
+    "monday": 0,
+    "mon": 0,
+    "понедельник": 0,
+    "tuesday": 1,
+    "tue": 1,
+    "вторник": 1,
+    "wednesday": 2,
+    "wed": 2,
+    "среда": 2,
+    "thursday": 3,
+    "thu": 3,
+    "четверг": 3,
+    "friday": 4,
+    "fri": 4,
+    "пятница": 4,
+    "saturday": 5,
+    "sat": 5,
+    "суббота": 5,
+    "sunday": 6,
+    "sun": 6,
+    "воскресенье": 6,
+}
+
+
+def _weekday_index(value: str | None) -> int | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    return _WEEKDAY_ALIASES.get(normalized)
+
+
+def _ensure_time(value: datetime | time | None) -> time | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.timetz() if value.tzinfo else value.time()
+    return value
+
+
+def _escape(value: str | None) -> str:
+    if not value:
+        return ""
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
+
+
+def _format_dt(dt: datetime) -> str:
+    if dt.tzinfo is timezone.utc:
+        return dt.strftime("%Y%m%dT%H%M%SZ")
+    if dt.tzinfo:
+        aware = dt.astimezone(timezone.utc)
+        return aware.strftime("%Y%m%dT%H%M%SZ")
+    return dt.strftime("%Y%m%dT%H%M%S")
+
+
+def _iter_lesson_dates(
+    weekday_idx: int,
+    parity: str,
+    weeks: int,
+    *,
+    start_monday: date,
+    current_week_parity: str,
+) -> Iterable[date]:
+    step = 1
+    offset = 0
+    parity_normalized = parity.lower()
+    if parity_normalized in {"odd", "even"}:
+        step = 2
+        if parity_normalized != current_week_parity:
+            offset = 1
+    for week in range(offset, weeks, step):
+        yield start_monday + timedelta(days=weekday_idx + week * 7)
+
+
+def generate_schedule_ics(
+    group: models.Group,
+    lessons: Sequence[models.Schedule],
+    *,
+    weeks: int = 16,
+) -> str:
+    """Generate an iCalendar representation for the provided schedule."""
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    start_monday = today - timedelta(days=today.weekday())
+    current_week_number = today.isocalendar()[1]
+    current_week_parity = "odd" if current_week_number % 2 else "even"
+
+    calendar_name = f"Расписание {group.name}" if getattr(group, "name", None) else "Расписание"
+
+    lines: list[str] = [
+        "BEGIN:VCALENDAR",
+        "PRODID:-//University Ecosystem//Schedule//RU",
+        "VERSION:2.0",
+        "CALSCALE:GREGORIAN",
+        f"NAME:{_escape(calendar_name)}",
+        f"X-WR-CALNAME:{_escape(calendar_name)}",
+    ]
+
+    dtstamp = _format_dt(now)
+    for lesson in lessons:
+        weekday_idx = _weekday_index(getattr(lesson, "weekday", None))
+        start_time = _ensure_time(getattr(lesson, "start_time", None))
+        end_time = _ensure_time(getattr(lesson, "end_time", None))
+
+        if weekday_idx is None or start_time is None or end_time is None:
+            continue
+
+        parity = getattr(lesson, "parity", "both") or "both"
+        subject = getattr(lesson, "subject", "Занятие") or "Занятие"
+        lesson_type = getattr(lesson, "lesson_type", None)
+        summary = subject if not lesson_type else f"{subject} ({lesson_type})"
+        teacher = getattr(lesson, "teacher", None)
+        room = getattr(lesson, "room", None)
+
+        for lesson_date in _iter_lesson_dates(
+            weekday_idx,
+            parity,
+            weeks,
+            start_monday=start_monday,
+            current_week_parity=current_week_parity,
+        ):
+            start_dt = datetime.combine(lesson_date, start_time)
+            end_dt = datetime.combine(lesson_date, end_time)
+            uid = f"lesson-{getattr(lesson, 'id', 'x')}-{lesson_date.strftime('%Y%m%d')}@university-ecosystem"
+            description_parts = []
+            if teacher:
+                description_parts.append(f"Преподаватель: {teacher}")
+            if room:
+                description_parts.append(f"Аудитория: {room}")
+            if parity and parity.lower() in {"odd", "even"}:
+                description_parts.append(
+                    "Нечётные недели" if parity.lower() == "odd" else "Чётные недели"
+                )
+            description = "\\n".join(description_parts) if description_parts else ""
+
+            lines.extend(
+                [
+                    "BEGIN:VEVENT",
+                    f"UID:{uid}",
+                    f"DTSTAMP:{dtstamp}",
+                    f"SUMMARY:{_escape(summary)}",
+                    f"DTSTART:{_format_dt(start_dt)}",
+                    f"DTEND:{_format_dt(end_dt)}",
+                ]
+            )
+
+            if room:
+                lines.append(f"LOCATION:{_escape(room)}")
+            if description:
+                lines.append(f"DESCRIPTION:{_escape(description)}")
+
+            lines.append("END:VEVENT")
+
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"

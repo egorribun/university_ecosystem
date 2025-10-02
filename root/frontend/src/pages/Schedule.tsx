@@ -54,6 +54,12 @@ const dayShort = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
 dayjs.extend(isoWeek)
 dayjs.locale("ru")
 
+const API_BASE = (() => {
+  const raw = (api.defaults.baseURL as string | undefined) || (import.meta.env.VITE_BACKEND_ORIGIN || "/api")
+  if (!raw) return "/api"
+  return raw.endsWith("/") ? raw.slice(0, -1) : raw
+})()
+
 type LessonParity = "odd" | "even" | "both"
 type LessonWeekday = (typeof days)[number] | string
 
@@ -176,6 +182,14 @@ export default function Schedule() {
     return () => clearInterval(id)
   }, [])
   const minutesNow = useMemo(() => nowTick.hour() * 60 + nowTick.minute(), [nowTick])
+
+  const exportHref = useMemo(() => {
+    const groupValue = selectedGroup ?? user?.group_id
+    if (!groupValue && groupValue !== 0) return null
+    const value = typeof groupValue === "number" ? groupValue.toString() : String(groupValue)
+    if (!value) return null
+    return `${API_BASE}/schedule/ics?group=${encodeURIComponent(value)}`
+  }, [selectedGroup, user])
 
   const cachedGetGroups = useCallback(async () => {
     try {
@@ -415,6 +429,24 @@ export default function Schedule() {
       >
         Чётная
       </Button>
+      <Tooltip
+        title={exportHref ? "" : "Выберите группу"}
+        disableHoverListener={!!exportHref}
+        placement="top"
+      >
+        <span>
+          <Button
+            component="a"
+            href={exportHref ?? undefined}
+            variant="outlined"
+            startIcon={<CalendarMonthIcon />}
+            disabled={!exportHref}
+            download={exportHref ? "" : undefined}
+          >
+            Экспорт в календарь
+          </Button>
+        </span>
+      </Tooltip>
     </Stack>
   )
 
