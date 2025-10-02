@@ -153,8 +153,7 @@ export default defineConfig(({ mode }) => {
             },
           },
           {
-            urlPattern: ({ sameOrigin, url }) =>
-              sameOrigin && url.pathname.startsWith("/api/news"),
+            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith("/api/news"),
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "news-data",
