@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# Allow all crawlers to index the preview build.

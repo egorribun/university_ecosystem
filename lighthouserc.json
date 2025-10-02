@@ -5,7 +5,8 @@
       "numberOfRuns": 2,
       "isSinglePageApplication": true,
       "url": [
-        "/index.html"
+        "/index.html",
+        "/dashboard"
       ],
       "settings": {
         "preset": "desktop",

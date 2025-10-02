@@ -33,6 +33,9 @@ jobs:
       - name: Build preview bundle
         run: npm run build
 
+      - name: Clean previous Lighthouse reports
+        run: rm -rf .lighthouseci
+
       - name: Run Lighthouse CI
         run: npx lhci autorun --config=../../lighthouserc.json
 
