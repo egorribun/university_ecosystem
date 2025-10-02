@@ -58,6 +58,11 @@ const mockSchedule = [
   },
 ];
 
+const mockGroups = [
+  { id: 1, name: "ИУ-21", course: 1, faculty: "ИТ" },
+  { id: 2, name: "БИ-22", course: 2, faculty: "Бизнес" },
+];
+
 export async function useMockApi(page: Page) {
   const state: MockState = {
     loggedIn: false,
@@ -173,11 +178,43 @@ export async function useMockApi(page: Page) {
       return;
     }
 
+    if (pathname.startsWith("api/schedule/ics")) {
+      const body = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "BEGIN:VEVENT",
+        "SUMMARY:Математика",
+        "DTSTART:20240101T090000",
+        "DTEND:20240101T103000",
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\r\n");
+
+      await route.fulfill({
+        status: 200,
+        contentType: "text/calendar",
+        headers: {
+          "content-disposition": "attachment; filename=\"schedule-iu-21.ics\"",
+        },
+        body,
+      });
+      return;
+    }
+
     if (pathname.startsWith("api/schedule")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(mockSchedule),
+      });
+      return;
+    }
+
+    if (pathname === "api/groups") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockGroups),
       });
       return;
     }
