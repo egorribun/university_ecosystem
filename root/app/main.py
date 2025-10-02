@@ -18,6 +18,7 @@ from app.core.observability import configure_observability, shutdown_observabili
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
+from app.deps.cache import shutdown_cache
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
     finally:
         if stop_scheduler is not None:
             await stop_scheduler()
+        await shutdown_cache()
         shutdown_observability()
 
 

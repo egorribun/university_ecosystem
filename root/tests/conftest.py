@@ -5,6 +5,8 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
+import fakeredis.aioredis
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -65,7 +67,9 @@ class _NoopSecurityHeadersMiddleware:
 security_headers_module.SecurityHeadersMiddleware = _NoopSecurityHeadersMiddleware
 
 from app import main
+from app.core.config import settings
 from app.core.database import Base, async_session, engine
+from app.deps import cache as cache_module
 from app.models import models
 
 
@@ -132,6 +136,33 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+class _TestingRedisCache(cache_module.RedisCache):
+    async def _get_client(self):  # type: ignore[override]
+        if self._client is None:
+            self._client = fakeredis.aioredis.FakeRedis(
+                encoding="utf-8", decode_responses=True
+            )
+        return self._client
+
+
+@pytest.fixture
+async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
+    original_enabled = settings.cache_enabled
+    settings.cache_enabled = True
+    cache_module.set_cache_backend(None)
+    cache = _TestingRedisCache(
+        url=settings.cache_redis_url,
+        default_ttl=settings.cache_default_ttl_seconds,
+    )
+    cache_module.set_cache_backend(cache)
+    try:
+        yield cache
+    finally:
+        await cache.close()
+        cache_module.set_cache_backend(None)
+        settings.cache_enabled = original_enabled
+
+
 @pytest.fixture
 async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
     async def _factory(**kwargs) -> models.User:
@@ -151,6 +182,6 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
     return _factory
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def anyio_backend() -> str:
     return "asyncio"
