@@ -1,0 +1,32 @@
+{
+  "ci": {
+    "collect": {
+      "staticDistDir": "root/frontend/dist",
+      "numberOfRuns": 2,
+      "isSinglePageApplication": true,
+      "url": [
+        "/index.html"
+      ],
+      "settings": {
+        "preset": "desktop",
+        "formFactor": "desktop"
+      }
+    },
+    "assert": {
+      "preset": "lighthouse:no-pwa",
+      "assertions": {
+        "categories:pwa": [
+          "warn",
+          {
+            "minScore": 0.8
+          }
+        ]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "root/frontend/.lighthouseci",
+      "reportFilenamePattern": "%%PATHNAME%%-%%DATETIME%%.%%EXTENSION%%"
+    }
+  }
+}
