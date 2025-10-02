@@ -1,7 +1,7 @@
 {
   "ci": {
     "collect": {
-      "staticDistDir": "./dist",
+      "staticDistDir": "./root/frontend/dist",
       "numberOfRuns": 2,
       "isSinglePageApplication": true,
       "url": [
@@ -49,7 +49,7 @@
     },
     "upload": {
       "target": "filesystem",
-      "outputDir": "./.lighthouseci",
+      "outputDir": "./root/frontend/.lighthouseci",
       "reportFilenamePattern": "%%PATHNAME%%-%%DATETIME%%.%%EXTENSION%%"
     }
   }
