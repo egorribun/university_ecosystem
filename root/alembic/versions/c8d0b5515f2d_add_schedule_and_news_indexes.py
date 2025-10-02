@@ -3,6 +3,7 @@
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -53,7 +54,9 @@ def upgrade() -> None:
             """
         )
     else:
-        raise RuntimeError("Expected news timestamp column for index creation was not found.")
+        raise RuntimeError(
+            "Expected news timestamp column for index creation was not found."
+        )
 
 
 def downgrade() -> None:
