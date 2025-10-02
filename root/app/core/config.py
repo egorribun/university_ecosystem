@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     security_referrer_policy: str = "no-referrer"
     security_x_content_type_options: str = "nosniff"
     enable_strict_security_headers: bool | None = None
+    cache_enabled: bool = False
+    cache_redis_url: str = "redis://127.0.0.1:6379/0"
+    cache_default_ttl_seconds: int = 300
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),

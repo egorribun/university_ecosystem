@@ -17,12 +17,15 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
+    Header,
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
@@ -32,6 +35,7 @@ from app.api.deps import get_current_user
 from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.database import get_db
+from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
 
@@ -39,6 +43,17 @@ router = APIRouter()
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
+
+def _news_item_cache_key(news_id: int) -> str:
+    return f"news:item:{news_id}"
+
+
+def _schedule_cache_key(group_id: int) -> str:
+    return f"schedule:group:{group_id}"
+
+
+_NEWS_LIST_CACHE_KEY = "news:list"
 
 
 def _hash_token(token: str) -> str:
@@ -318,12 +333,41 @@ async def add_schedule(
 ):
     if user.role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="forbidden")
-    return await crud.create_schedule(db, data)
+    result = await crud.create_schedule(db, data)
+    cache = get_cache()
+    await cache.invalidate(_schedule_cache_key(result.group_id))
+    return result
 
 
 @router.get("/schedule/{group_id}", response_model=List[schemas.ScheduleOut])
-async def get_schedule(group_id: int, db: AsyncSession = Depends(get_db)):
-    return await crud.get_schedule_by_group(db, group_id)
+async def get_schedule(
+    group_id: int,
+    response: Response,
+    if_none_match: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    cache = get_cache()
+    cache_key = _schedule_cache_key(group_id)
+    if cache.enabled:
+        cached = await cache.get(cache_key)
+        if cached:
+            etag_header = format_etag(cached.etag)
+            if etag_matches(cached.etag, if_none_match):
+                return Response(
+                    status_code=status.HTTP_304_NOT_MODIFIED,
+                    headers={"ETag": etag_header},
+                )
+            response.headers["ETag"] = etag_header
+            return cached.payload
+
+    rows = await crud.get_schedule_by_group(db, group_id)
+    models_out = [schemas.ScheduleOut.model_validate(item) for item in rows]
+    payload = jsonable_encoder(models_out)
+
+    if cache.enabled:
+        entry = await cache.set(cache_key, payload)
+        response.headers["ETag"] = format_etag(entry.etag)
+    return payload
 
 
 @router.patch("/schedule/{schedule_id}", response_model=schemas.ScheduleOut)
@@ -338,10 +382,16 @@ async def update_schedule(
     sched = await db.get(models.Schedule, schedule_id)
     if not sched:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    previous_group = sched.group_id
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(sched, field, value)
     await db.commit()
     await db.refresh(sched)
+    cache = get_cache()
+    await cache.invalidate(
+        _schedule_cache_key(previous_group),
+        _schedule_cache_key(sched.group_id),
+    )
     return sched
 
 
@@ -356,8 +406,11 @@ async def delete_schedule(
     sched = await db.get(models.Schedule, schedule_id)
     if not sched:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    group_id = sched.group_id
     await db.delete(sched)
     await db.commit()
+    cache = get_cache()
+    await cache.invalidate(_schedule_cache_key(group_id))
     return {"ok": True}
 
 
@@ -758,20 +811,70 @@ async def create_news(
 ):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
-    return await crud.create_news(db, data)
+    record = await crud.create_news(db, data)
+    cache = get_cache()
+    await cache.invalidate(_NEWS_LIST_CACHE_KEY)
+    return record
 
 
 @router.get("/news", response_model=List[schemas.NewsOut])
-async def news_list(db: AsyncSession = Depends(get_db)):
-    return await crud.get_news_list(db)
+async def news_list(
+    response: Response,
+    if_none_match: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    cache = get_cache()
+    if cache.enabled:
+        cached = await cache.get(_NEWS_LIST_CACHE_KEY)
+        if cached:
+            etag_header = format_etag(cached.etag)
+            if etag_matches(cached.etag, if_none_match):
+                return Response(
+                    status_code=status.HTTP_304_NOT_MODIFIED,
+                    headers={"ETag": etag_header},
+                )
+            response.headers["ETag"] = etag_header
+            return cached.payload
+
+    rows = await crud.get_news_list(db)
+    models_out = [schemas.NewsOut.model_validate(item) for item in rows]
+    payload = jsonable_encoder(models_out)
+
+    if cache.enabled:
+        entry = await cache.set(_NEWS_LIST_CACHE_KEY, payload)
+        response.headers["ETag"] = format_etag(entry.etag)
+    return payload
 
 
 @router.get("/news/{id}", response_model=schemas.NewsOut)
-async def get_news(id: int, db: AsyncSession = Depends(get_db)):
+async def get_news(
+    id: int,
+    response: Response,
+    if_none_match: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    cache = get_cache()
+    cache_key = _news_item_cache_key(id)
+    if cache.enabled:
+        cached = await cache.get(cache_key)
+        if cached:
+            etag_header = format_etag(cached.etag)
+            if etag_matches(cached.etag, if_none_match):
+                return Response(
+                    status_code=status.HTTP_304_NOT_MODIFIED,
+                    headers={"ETag": etag_header},
+                )
+            response.headers["ETag"] = etag_header
+            return cached.payload
     q = await db.get(models.News, id)
     if not q:
         raise HTTPException(status_code=404, detail="Новость не найдена")
-    return q
+    model_out = schemas.NewsOut.model_validate(q)
+    payload = jsonable_encoder(model_out)
+    if cache.enabled:
+        entry = await cache.set(cache_key, payload)
+        response.headers["ETag"] = format_etag(entry.etag)
+    return payload
 
 
 @router.patch("/news/{id}", response_model=schemas.NewsOut)
@@ -790,6 +893,8 @@ async def update_news(
         setattr(news, field, value)
     await db.commit()
     await db.refresh(news)
+    cache = get_cache()
+    await cache.invalidate(_NEWS_LIST_CACHE_KEY, _news_item_cache_key(id))
     return news
 
 
@@ -806,6 +911,8 @@ async def delete_news(
         raise HTTPException(status_code=403, detail="forbidden")
     await db.delete(news)
     await db.commit()
+    cache = get_cache()
+    await cache.invalidate(_NEWS_LIST_CACHE_KEY, _news_item_cache_key(id))
     return {"ok": True}
 
 
