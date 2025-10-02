@@ -34,7 +34,8 @@ jobs:
         run: npm run build
 
       - name: Clean previous Lighthouse reports
-        run: rm -rf .lighthouseci
+        run: rm -rf .lighthouseci root/frontend/.lighthouseci
+        working-directory: .
 
       - name: Run Lighthouse CI
         run: npx lhci autorun --config=../../lighthouserc.json

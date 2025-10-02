@@ -197,3 +197,4 @@ root/frontend/public/maskable-icon-192.png
 root/frontend/public/maskable-icon-512.png
 # Lighthouse CI artifacts
 .lighthouseci/
+root/frontend/.lighthouseci/
