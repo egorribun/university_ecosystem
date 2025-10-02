@@ -1,0 +1,37 @@
+# Global ignores
+.git
+.gitignore
+.gitattributes
+.devcontainer
+.husky
+.vscode
+ruff.toml
+start-dev.ps1
+**/__pycache__
+**/*.py[cod]
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Environment files and local databases
+.env
+.env.*
+root/dev.db
+
+# Node artifacts
+root/node_modules
+root/frontend/node_modules
+root/frontend/dist
+
+# Python virtual environments and caches
+.venv
+venv
+env
+pip-wheel-metadata
+.pytest_cache
+.mypy_cache
+
+# Docker build outputs (if present)
+Dockerfile

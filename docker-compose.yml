@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: root/backend.Dockerfile
+      target: runtime
     env_file:
       - root/.env
     environment:
@@ -21,6 +22,7 @@ services:
     build:
       context: .
       dockerfile: root/frontend.Dockerfile
+      target: development
     environment:
       VITE_BACKEND_ORIGIN: http://localhost:8000
     depends_on:

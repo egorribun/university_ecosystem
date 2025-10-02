@@ -5,7 +5,7 @@ WORKDIR /app
 
 FROM base AS deps
 COPY root/frontend/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM base AS development
 COPY --from=deps /app/node_modules ./node_modules
