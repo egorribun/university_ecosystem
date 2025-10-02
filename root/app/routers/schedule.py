@@ -40,4 +40,6 @@ async def download_schedule_ics(
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-cache",
     }
-    return Response(content=ics_body, media_type="text/calendar; charset=utf-8", headers=headers)
+    return Response(
+        content=ics_body, media_type="text/calendar; charset=utf-8", headers=headers
+    )

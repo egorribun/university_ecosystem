@@ -101,7 +101,9 @@ def generate_schedule_ics(
     current_week_number = today.isocalendar()[1]
     current_week_parity = "odd" if current_week_number % 2 else "even"
 
-    calendar_name = f"Расписание {group.name}" if getattr(group, "name", None) else "Расписание"
+    calendar_name = (
+        f"Расписание {group.name}" if getattr(group, "name", None) else "Расписание"
+    )
 
     lines: list[str] = [
         "BEGIN:VCALENDAR",
