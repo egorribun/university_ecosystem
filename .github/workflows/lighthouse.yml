@@ -43,5 +43,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report
-          path: .lighthouseci
+          path: root/frontend/.lighthouseci
           if-no-files-found: error
