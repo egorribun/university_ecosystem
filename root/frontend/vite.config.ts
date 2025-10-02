@@ -32,9 +32,7 @@ const performanceBudget = (limitKB: number) => ({
         .map(({ fileName, size }) => `  ${fileName}: ${(size / 1024).toFixed(2)}KB`)
         .join("\n")
 
-      this.error(
-        `[performance-budget] The following chunks exceed ${limitKB}KB:\n${details}`
-      )
+      this.error(`[performance-budget] The following chunks exceed ${limitKB}KB:\n${details}`)
     }
   },
 })
