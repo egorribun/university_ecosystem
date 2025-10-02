@@ -36,10 +36,22 @@ const ensureMaskableIcons = () => {
 
 ensureMaskableIcons()
 
+const loadManifest = () => {
+  const manifestPath = resolve(publicDir, "manifest.webmanifest")
+  try {
+    const raw = readFileSync(manifestPath, "utf-8")
+    return JSON.parse(raw)
+  } catch (error) {
+    console.warn(`⚠️  Unable to read manifest at ${manifestPath}:`, error)
+    return undefined
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   const target = (env.VITE_BACKEND_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "")
   const analyze = mode === "analyze" || process.env.ANALYZE === "1"
+  const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
     target,
@@ -69,41 +81,7 @@ export default defineConfig(({ mode }) => {
         "maskable-icon-192.png",
         "maskable-icon-512.png",
       ],
-      manifest: {
-        name: "Экосистема ГУУ",
-        short_name: "ГУУ",
-        description: "Экосистема ГУУ — личный кабинет со расписанием, событиями и уведомлениями.",
-        theme_color: "#0b63f4",
-        background_color: "#0b0d11",
-        display: "standalone",
-        lang: "ru",
-        start_url: "/",
-        scope: "/",
-        icons: [
-          {
-            src: "/guu_logo.png",
-            sizes: "192x192",
-            type: "image/png",
-          },
-          {
-            src: "/maskable-icon-192.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "maskable any",
-          },
-          {
-            src: "/guu_logo.png",
-            sizes: "512x512",
-            type: "image/png",
-          },
-          {
-            src: "/maskable-icon-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable any",
-          },
-        ],
-      },
+      ...(manifest ? { manifest } : {}),
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
         navigateFallback: "/offline.html",
@@ -158,6 +136,47 @@ export default defineConfig(({ mode }) => {
                 maxAgeSeconds: 60 * 60 * 24 * 30,
               },
               cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ sameOrigin, url }) =>
+              sameOrigin && url.pathname.startsWith("/api/schedule"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "schedule-data",
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
+              },
+            },
+          },
+          {
+            urlPattern: ({ sameOrigin, url }) =>
+              sameOrigin && url.pathname.startsWith("/api/news"),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "news-data",
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 60 * 60 * 24 * 3,
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.origin === "https://yandex.ru" &&
+              (/^\/map-widget\//.test(url.pathname) || /^\/maps\//.test(url.pathname)),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "map-tiles",
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 60 * 60 * 24 * 14,
+              },
             },
           },
           {
