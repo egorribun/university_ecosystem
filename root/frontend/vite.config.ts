@@ -5,10 +5,39 @@ import { defineConfig, loadEnv } from "vite"
 import react from "@vitejs/plugin-react"
 import { VitePWA } from "vite-plugin-pwa"
 import { visualizer } from "rollup-plugin-visualizer"
+import type { OutputBundle, OutputChunk, PluginContext } from "rollup"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 
 const srcDir = fileURLToPath(new URL("./src", import.meta.url))
 const publicDir = fileURLToPath(new URL("./public", import.meta.url))
+
+const normalizePath = (value: string) => value.replace(/\\/g, "/")
+const srcDirNormalized = normalizePath(srcDir)
+
+const performanceBudget = (limitKB: number) => ({
+  name: "performance-budget",
+  apply: "build" as const,
+  generateBundle(this: PluginContext, _options: unknown, bundle: OutputBundle) {
+    const limit = limitKB * 1024
+    const oversized = Object.values(bundle)
+      .filter((output): output is OutputChunk => output.type === "chunk")
+      .map((chunk) => ({
+        fileName: chunk.fileName,
+        size: Buffer.byteLength(chunk.code, "utf8"),
+      }))
+      .filter(({ size }) => size > limit)
+
+    if (oversized.length > 0) {
+      const details = oversized
+        .map(({ fileName, size }) => `  ${fileName}: ${(size / 1024).toFixed(2)}KB`)
+        .join("\n")
+
+      this.error(
+        `[performance-budget] The following chunks exceed ${limitKB}KB:\n${details}`
+      )
+    }
+  },
+})
 
 const ensureMaskableIcons = () => {
   for (const [filename, base64] of Object.entries(MASKABLE_ICON_BASE64)) {
@@ -40,6 +69,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   const target = (env.VITE_BACKEND_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "")
   const analyze = mode === "analyze" || process.env.ANALYZE === "1"
+  const chunkSizeLimitKB = 250
 
   const mk = (rewrite = false) => ({
     target,
@@ -194,6 +224,7 @@ export default defineConfig(({ mode }) => {
         ],
       },
     }),
+    performanceBudget(chunkSizeLimitKB),
   ]
   if (analyze) {
     plugins.push(
@@ -226,17 +257,26 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       sourcemap: true,
-      chunkSizeWarningLimit: 1024,
+      cssCodeSplit: true,
+      reportCompressedSize: true,
+      chunkSizeWarningLimit: chunkSizeLimitKB,
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (!id.includes("node_modules")) return
-            if (id.includes("framer-motion")) return "motion"
-            if (id.includes("@mui")) return "mui"
-            if (id.includes("react-router")) return "router"
-            if (id.includes("dayjs")) return "dayjs"
-            if (id.includes("zxcvbn")) return "zxcvbn"
-            if (id.includes("jspdf")) return "pdf"
+            const normalized = normalizePath(id)
+
+            if (normalized.includes(`${srcDirNormalized}/pages/News`)) return "page-news"
+            if (normalized.includes(`${srcDirNormalized}/components/NewsDetail`))
+              return "page-news-detail"
+            if (normalized.includes(`${srcDirNormalized}/pages/Map`)) return "page-map"
+
+            if (!normalized.includes("node_modules")) return
+            if (normalized.includes("framer-motion")) return "motion"
+            if (normalized.includes("@mui")) return "mui"
+            if (normalized.includes("react-router")) return "router"
+            if (normalized.includes("dayjs")) return "dayjs"
+            if (normalized.includes("zxcvbn")) return "zxcvbn"
+            if (normalized.includes("jspdf")) return "pdf"
           },
         },
       },
