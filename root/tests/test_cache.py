@@ -1,6 +1,5 @@
-import pytest
-
 import fakeredis.aioredis
+import pytest
 
 from app.deps.cache import NullCache, RedisCache, etag_matches, format_etag
 

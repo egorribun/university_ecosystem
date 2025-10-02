@@ -16,9 +16,9 @@ from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.deps.cache import shutdown_cache
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
-from app.deps.cache import shutdown_cache
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware

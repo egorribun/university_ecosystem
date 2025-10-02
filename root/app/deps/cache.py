@@ -44,7 +44,9 @@ class NullCache(BaseCache):
     async def get(self, key: str) -> CacheEntry | None:  # noqa: ARG002
         return None
 
-    async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:  # noqa: ARG002
+    async def set(
+        self, key: str, payload: Any, ttl: int | None = None
+    ) -> CacheEntry:  # noqa: ARG002
         return CacheEntry(etag="", payload=payload)
 
     async def invalidate(self, *keys: str) -> None:  # noqa: ARG002
@@ -106,7 +108,9 @@ class RedisCache(BaseCache):
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized_payload, serialized = _normalize_payload(payload)
         etag = hashlib.sha256(serialized).hexdigest()
-        envelope = json.dumps({"etag": etag, "payload": normalized_payload}, ensure_ascii=False)
+        envelope = json.dumps(
+            {"etag": etag, "payload": normalized_payload}, ensure_ascii=False
+        )
         try:
             client = await self._get_client()
             expire = self._resolve_ttl(ttl)
@@ -126,7 +130,9 @@ class RedisCache(BaseCache):
             client = await self._get_client()
             await client.delete(*filtered)
         except (RedisError, OSError):
-            logger.warning("Redis cache invalidate failed for keys %s", filtered, exc_info=True)
+            logger.warning(
+                "Redis cache invalidate failed for keys %s", filtered, exc_info=True
+            )
 
     def _resolve_ttl(self, ttl: int | None) -> int:
         if ttl is None:
@@ -190,7 +196,7 @@ def format_etag(etag: str) -> str:
     if not etag:
         return etag
     etag = etag.strip()
-    if etag.startswith("\"") and etag.endswith("\""):
+    if etag.startswith('"') and etag.endswith('"'):
         return etag
     return f'"{etag}"'
 
@@ -208,7 +214,7 @@ def etag_matches(etag: str, header_value: str | None) -> bool:
             return True
         if item.startswith("W/"):
             item = item[2:].strip()
-        if item.startswith("\"") and item.endswith("\""):
+        if item.startswith('"') and item.endswith('"'):
             item = item[1:-1]
         if item == candidate:
             return True
