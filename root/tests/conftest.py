@@ -69,8 +69,8 @@ security_headers_module.SecurityHeadersMiddleware = _NoopSecurityHeadersMiddlewa
 
 from app import main
 from app.core.config import settings
-from app.core.rate_limit import set_rate_limit_client_factory
 from app.core.database import Base, async_session, engine
+from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
 
@@ -114,7 +114,9 @@ def _rate_limit_redis_client() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture(autouse=True)
-async def configure_rate_limit(_rate_limit_redis_client: fakeredis.aioredis.FakeRedis) -> AsyncIterator[None]:
+async def configure_rate_limit(
+    _rate_limit_redis_client: fakeredis.aioredis.FakeRedis,
+) -> AsyncIterator[None]:
     await _rate_limit_redis_client.flushall()
     try:
         yield

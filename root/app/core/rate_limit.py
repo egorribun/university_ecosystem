@@ -48,7 +48,9 @@ return {1, remaining, 0}
 
 
 def _create_redis_pool(url: str) -> Redis:
-    return Redis.from_url(url, encoding="utf-8", decode_responses=False, health_check_interval=30)
+    return Redis.from_url(
+        url, encoding="utf-8", decode_responses=False, health_check_interval=30
+    )
 
 
 _RedisFactory = Callable[[str], Redis]
@@ -78,7 +80,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._redis_url = redis_url.strip()
         self._limit = max(int(limit), 0)
         self._window_ms = max(int(window_seconds * 1000), 0)
-        self._enabled = enabled and bool(self._redis_url) and self._limit > 0 and self._window_ms > 0
+        self._enabled = (
+            enabled
+            and bool(self._redis_url)
+            and self._limit > 0
+            and self._window_ms > 0
+        )
         self._headers_enabled = headers_enabled
         self._client: Redis | None = None
         self._client_lock = asyncio.Lock()

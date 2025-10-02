@@ -21,5 +21,7 @@ async def test_rate_limit_per_token(async_client):
     blocked = await async_client.get("/healthz", headers=headers)
     assert blocked.status_code == 429
 
-    other = await async_client.get("/healthz", headers={"Authorization": "Bearer token-b"})
+    other = await async_client.get(
+        "/healthz", headers={"Authorization": "Bearer token-b"}
+    )
     assert other.status_code == 200

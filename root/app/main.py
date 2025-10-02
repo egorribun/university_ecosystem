@@ -59,7 +59,9 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
 rate_limit_url = settings.rate_limit_storage_uri.strip()
-if settings.rate_limit_enabled and rate_limit_url.lower().startswith(("redis://", "rediss://")):
+if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
+    ("redis://", "rediss://")
+):
     app.add_middleware(
         RateLimitMiddleware,
         redis_url=rate_limit_url,
