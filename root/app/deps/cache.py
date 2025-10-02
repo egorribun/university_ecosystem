@@ -41,15 +41,16 @@ class BaseCache:
 class NullCache(BaseCache):
     enabled = False
 
-    async def get(self, key: str) -> CacheEntry | None:  # noqa: ARG002
+    async def get(self, key: str) -> CacheEntry | None:
+        _ = key
         return None
 
-    async def set(
-        self, key: str, payload: Any, ttl: int | None = None
-    ) -> CacheEntry:  # noqa: ARG002
+    async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
+        _ = (key, ttl)
         return CacheEntry(etag="", payload=payload)
 
-    async def invalidate(self, *keys: str) -> None:  # noqa: ARG002
+    async def invalidate(self, *keys: str) -> None:
+        _ = keys
         return None
 
 
