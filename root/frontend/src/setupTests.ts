@@ -21,9 +21,10 @@ dispatchEvent: () => false,
 }),
 });
 }
-if (!window.scrollTo) {
-// @ts-expect-error jsdom polyfill
-window.scrollTo = () => {};
+type ScrollToFunction = (options?: ScrollToOptions | number, y?: number) => void;
+const windowWithScroll = window as typeof window & { scrollTo?: ScrollToFunction };
+if (!windowWithScroll.scrollTo) {
+windowWithScroll.scrollTo = () => undefined;
 }
 vi.mock('qrcode.react', () => ({
 QRCodeSVG: () => null,
