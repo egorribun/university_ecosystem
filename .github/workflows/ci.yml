@@ -477,9 +477,14 @@ jobs:
           path: root/frontend/.lighthouseci
         continue-on-error: true
       - name: Verify Lighthouse results artifact
-        if: steps.download_lighthouse_results.outcome == 'failure'
+        if: steps.download_lighthouse_results.outcome != 'success'
+        env:
+          DOWNLOAD_OUTCOME: ${{ steps.download_lighthouse_results.outcome }}
+        shell: bash
         run: |
-          echo '::error::Lighthouse results artifact not found. Check the "Lighthouse CI" job for upload issues.'
+          echo "::error::Lighthouse results artifact not found. Check the 'Lighthouse CI' job for upload issues."
+          echo "Expected to download the 'lighthouse-results' artifact produced by the Lighthouse CI job, but the download step reported: ${DOWNLOAD_OUTCOME}."
           exit 1
       - name: Enforce Lighthouse thresholds
+        if: steps.download_lighthouse_results.outcome == 'success'
         run: npx lhci assert --config=../.lighthouserc.js
