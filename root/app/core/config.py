@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import cached_property
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -81,22 +82,23 @@ class Settings(BaseSettings):
     rate_limit_headers_enabled: bool = True
     security_csp: str = (
         "default-src 'self'; "
-        "base-uri 'none'; "
+        "base-uri 'self'; "
         "frame-ancestors 'none'; "
         "form-action 'self'; "
-        "script-src 'self'; "
+        "script-src 'self' 'nonce-{nonce}'; "
         "style-src 'self'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
         "font-src 'self'; "
-        "object-src 'none'"
+        "object-src 'none'; "
+        "upgrade-insecure-requests"
     )
-    security_csp_report_only: bool = True
+    security_csp_report_only: bool = False
     security_csp_report_uri: str = ""
     security_hsts_enabled: bool = True
     security_hsts_max_age: int = 31536000
     security_hsts_include_subdomains: bool = True
-    security_hsts_preload: bool = False
+    security_hsts_preload: bool = True
     security_x_frame_options: str = "DENY"
     security_permissions_policy: str = "geolocation=(), microphone=(), camera=()"
     security_referrer_policy: str = "no-referrer"
@@ -136,7 +138,8 @@ class Settings(BaseSettings):
         _extend(self.frontend_origins)
         _extend(self.frontend_origin)
         _extend(self.app_base_url)
-        raw.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
+        if self.is_development:
+            raw.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
         seen: set[str] = set()
         result: list[str] = []
         for origin in raw:
@@ -146,6 +149,46 @@ class Settings(BaseSettings):
                 seen.add(key)
                 result.append(normalized)
         return result
+
+    @cached_property
+    def cors_allow_origins_list(self) -> list[str]:
+        allowed: list[str] = []
+        seen: set[str] = set()
+        for origin in self.frontend_origins_list:
+            candidate = origin.strip()
+            if not candidate or candidate == "*":
+                continue
+            parsed = urlparse(candidate)
+            scheme = parsed.scheme.lower()
+            hostname = (parsed.hostname or "").lower()
+            if self.strict_security_headers_enabled and hostname not in {
+                "localhost",
+                "127.0.0.1",
+            }:
+                if scheme != "https":
+                    continue
+            key = candidate.lower()
+            if key not in seen:
+                seen.add(key)
+                allowed.append(candidate)
+        return allowed
+
+    @cached_property
+    def cors_allow_credentials_effective(self) -> bool:
+        if not self.cors_allow_credentials:
+            return False
+        if not self.cors_allow_origins_list:
+            return False
+        if self.strict_security_headers_enabled:
+            for origin in self.cors_allow_origins_list:
+                parsed = urlparse(origin)
+                scheme = parsed.scheme.lower()
+                hostname = (parsed.hostname or "").lower()
+                if hostname in {"localhost", "127.0.0.1"}:
+                    continue
+                if scheme != "https":
+                    return False
+        return True
 
     @cached_property
     def trusted_hosts_list(self) -> list[str]:
@@ -212,16 +255,19 @@ class Settings(BaseSettings):
 
     @cached_property
     def strict_security_csp(self) -> str:
-        policy = self.security_csp.strip()
+        directives = [
+            part.strip() for part in self.security_csp.split(";") if part.strip()
+        ]
+        policy = "; ".join(directives)
         if not policy:
             policy = "default-src 'self'"
-        normalized = policy.rstrip("; ")
-        if "default-src" not in normalized.lower():
-            normalized = f"default-src 'self'; {normalized}".rstrip("; ")
+        if "default-src" not in policy.lower():
+            policy = f"default-src 'self'; {policy}"
+        policy = policy.rstrip("; ")
         report_uri = self.security_csp_report_uri.strip()
         if report_uri:
-            normalized = f"{normalized}; report-uri {report_uri}".rstrip("; ")
-        return normalized
+            policy = f"{policy}; report-uri {report_uri}".rstrip("; ")
+        return policy
 
 
 settings = Settings()

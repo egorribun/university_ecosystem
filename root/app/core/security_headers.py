@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
@@ -16,15 +18,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:  # type: ignore[override]
+        nonce: str | None = None
+        if self._settings.strict_security_headers_enabled:
+            nonce = secrets.token_urlsafe(16)
+            request.state.csp_nonce = nonce
         response = await call_next(request)
         if not self._settings.strict_security_headers_enabled:
             return response
         self._apply_hsts(response)
-        self._apply_csp(response)
+        self._apply_csp(response, nonce=nonce)
         self._apply_frame_options(response)
         self._apply_permissions_policy(response)
         self._apply_content_type_options(response)
         self._apply_referrer_policy(response)
+        self._apply_cross_origin_policies(response)
         return response
 
     def _apply_hsts(self, response: Response) -> None:
@@ -42,19 +49,29 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             value += "; preload"
         headers["Strict-Transport-Security"] = value
 
-    def _apply_csp(self, response: Response) -> None:
+    def _apply_csp(self, response: Response, *, nonce: str | None) -> None:
         headers = response.headers
-        base = "default-src 'self'"
-        extra = (self._settings.strict_security_csp or "").strip()
-        if extra:
-            policy = extra if "default-src" in extra else f"{base}; {extra}"
-        else:
-            policy = base
+        policy = (self._settings.strict_security_csp or "").strip()
+        if "{nonce}" in policy:
+            if nonce:
+                policy = policy.replace("{nonce}", nonce)
+            else:
+                policy = policy.replace("'nonce-{nonce}'", "").replace("  ", " ")
+        if policy:
+            segments = [
+                segment.strip() for segment in policy.split(";") if segment.strip()
+            ]
+            policy = "; ".join(segments)
         headers["Content-Security-Policy"] = policy
         try:
             del headers["Content-Security-Policy-Report-Only"]
         except KeyError:
             pass
+
+    def _apply_cross_origin_policies(self, response: Response) -> None:
+        headers = response.headers
+        headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        headers["Cross-Origin-Embedder-Policy"] = "require-corp"
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers

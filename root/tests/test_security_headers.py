@@ -37,12 +37,71 @@ async def test_strict_security_headers_enabled(monkeypatch):
             response = await client.get("/")
 
     headers = response.headers
-    assert headers.get("Strict-Transport-Security")
+    hsts = headers.get("Strict-Transport-Security", "")
+    assert "max-age=" in hsts
+    assert "includeSubDomains" in hsts
+    assert "preload" in hsts
     assert headers.get("X-Content-Type-Options") == "nosniff"
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
     assert (
         headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
     )
+    assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
+    assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
     csp = headers.get("Content-Security-Policy", "")
     assert "default-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert "upgrade-insecure-requests" in csp
+    assert "img-src 'self' data:" in csp
+    assert "script-src 'self' 'nonce-" in csp
+    assert "'unsafe-inline'" not in csp
+    assert "Content-Security-Policy-Report-Only" not in headers
+
+
+def _reset_security_env(monkeypatch):
+    for key in (
+        "FRONTEND_ORIGINS",
+        "CORS_ALLOW_CREDENTIALS",
+        "ENABLE_STRICT_SECURITY_HEADERS",
+        "ENVIRONMENT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("FRONTEND_ORIGIN", "")
+    monkeypatch.setenv("APP_BASE_URL", "")
+
+
+def test_cors_hardening_filters_insecure_origins(monkeypatch):
+    _reset_security_env(monkeypatch)
+    monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv(
+        "FRONTEND_ORIGINS",
+        "https://app.example.com, http://example.com, *",
+    )
+    monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
+    settings = Settings()
+    assert settings.cors_allow_origins_list == ["https://app.example.com"]
+    assert settings.cors_allow_credentials_effective is True
+
+
+def test_cors_credentials_disabled_for_insecure_hosts(monkeypatch):
+    _reset_security_env(monkeypatch)
+    monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("FRONTEND_ORIGINS", "http://example.com")
+    monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
+    settings = Settings()
+    assert settings.cors_allow_origins_list == []
+    assert settings.cors_allow_credentials_effective is False
+
+
+def test_cors_allows_localhost_when_strict(monkeypatch):
+    _reset_security_env(monkeypatch)
+    monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("FRONTEND_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
+    settings = Settings()
+    assert settings.cors_allow_origins_list == ["http://localhost:5173"]
+    assert settings.cors_allow_credentials_effective is True
