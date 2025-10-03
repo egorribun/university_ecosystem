@@ -1,0 +1,34 @@
+# VCS
+.git
+.gitmodules
+.gitignore
+
+# Python cache
+__pycache__
+**/__pycache__
+*.py[cod]
+*.pyo
+
+# Node/npm artifacts
+node_modules
+root/node_modules
+root/frontend/node_modules
+root/frontend/.vite
+root/frontend/dist
+
+# Virtual environments & tooling caches
+.venv
+root/.venv
+root/.mypy_cache
+root/.pytest_cache
+root/.ruff_cache
+
+# Local databases and secrets
+root/dev.db
+.env
+*.env
+
+# IDE files
+.vscode
+.idea
+.DS_Store

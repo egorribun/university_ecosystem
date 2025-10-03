@@ -20,38 +20,41 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Determine diff range
-        id: diff
+      - name: Run pre-commit (apply fixes)
+        id: precommit_apply
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files
+        continue-on-error: true
+      - name: Detect changes from pre-commit
+        id: changes
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-            head="${{ github.sha }}"
-          elif [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ]; then
-            base="${{ github.event.before }}"
-            head="${{ github.sha }}"
-          elif git rev-parse HEAD^ >/dev/null 2>&1; then
-            base="$(git rev-parse HEAD^)"
-            head="$(git rev-parse HEAD)"
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            base=""
-            head="$(git rev-parse HEAD)"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "$base" = "0000000000000000000000000000000000000000" ]; then
-            base=""
-          fi
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-          echo "head=$head" >> "$GITHUB_OUTPUT"
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: root/requirements.txt
-      - name: Install Python dependencies
+      - name: Commit pre-commit fixes
+        if: ${{ steps.changes.outputs.changed == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install -r root/requirements.txt
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: pre-commit autofix"
+          git pull --rebase origin "$branch" || true
+          git push --force-with-lease origin "HEAD:$branch"
+      - name: Fail if fixes were needed and cannot push (fork PR)
+        if: ${{ steps.changes.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Run 'pre-commit run --all-files' locally and push the changes."
+          exit 1
+      - name: Run pre-commit (verify clean)
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -61,34 +64,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: root/frontend
         run: npm ci
-      - name: Run pre-commit (apply fixes)
-        shell: bash
-        run: |
-          pre-commit run --all-files --show-diff-on-failure --color always || true
-          git add -A
-      - name: Commit pre-commit fixes
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        shell: bash
-        run: |
-          if ! git diff --cached --quiet; then
-            branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "chore: pre-commit autofix"
-            git pull --rebase origin "$branch" || true
-            git push --force-with-lease origin "HEAD:$branch"
-          fi
-      - name: Fail if fixes were needed and cannot push (fork PR)
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: |
-          if ! git diff --cached --quiet; then
-            echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Pull and commit the fixes locally."
-            exit 1
-          fi
-      - name: Run pre-commit (verify clean)
-        shell: bash
-        run: |
-          pre-commit run --hook-stage manual --all-files --show-diff-on-failure --color always
       - name: Run ESLint and Prettier
         working-directory: root/frontend
         run: |
