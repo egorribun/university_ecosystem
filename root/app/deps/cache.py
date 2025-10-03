@@ -44,9 +44,12 @@ class NullCache(BaseCache):
     async def get(self, key: str) -> CacheEntry | None:  # noqa: ARG002
         return None
 
-    async def set(
-        self, key: str, payload: Any, ttl: int | None = None
-    ) -> CacheEntry:  # noqa: ARG002
+    async def set(  # noqa: ARG002
+        self,
+        key: str,
+        payload: Any,
+        ttl: int | None = None,
+    ) -> CacheEntry:
         return CacheEntry(etag="", payload=payload)
 
     async def invalidate(self, *keys: str) -> None:  # noqa: ARG002
