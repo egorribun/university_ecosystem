@@ -279,79 +279,98 @@ jobs:
           const fs = require('node:fs');
           const path = require('node:path');
 
+          const marker = '<!-- lhci-report -->';
+          const summaryPath = path.resolve('lighthouse-summary.md');
           const manifestPath = path.resolve('.lighthouseci/manifest.json');
+
+          const buildFallbackSummary = (message) => {
+            return [
+              marker,
+              '### Lighthouse CI',
+              '',
+              message,
+            ].join('\n');
+          };
+
+          let summaryContent;
+
           if (!fs.existsSync(manifestPath)) {
-            throw new Error(`Manifest not found at ${manifestPath}`);
-          }
+            console.warn(`Manifest not found at ${manifestPath}`);
+            summaryContent = buildFallbackSummary(
+              '_No Lighthouse manifest was produced. Check the collect/upload steps for details._',
+            );
+          } else {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            if (!Array.isArray(manifest) || manifest.length === 0) {
+              console.warn('Lighthouse manifest is empty.');
+              summaryContent = buildFallbackSummary(
+                '_Lighthouse did not report any runs. Check the collect/upload steps for details._',
+              );
+            } else {
+              const metrics = [
+                {
+                  key: 'performance',
+                  label: 'Performance score',
+                  formatter: (value) => `${Math.round(value * 100)}`,
+                  budget: '≥ 90',
+                },
+                {
+                  key: 'largest-contentful-paint',
+                  label: 'Largest Contentful Paint (ms)',
+                  formatter: (value) => `${Math.round(value)}`,
+                  budget: '≤ 3,500',
+                },
+                {
+                  key: 'total-blocking-time',
+                  label: 'Total Blocking Time (ms)',
+                  formatter: (value) => `${Math.round(value)}`,
+                  budget: '≤ 300',
+                },
+                {
+                  key: 'cumulative-layout-shift',
+                  label: 'Cumulative Layout Shift',
+                  formatter: (value) => value.toFixed(3),
+                  budget: '≤ 0.10',
+                },
+              ];
 
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          if (!Array.isArray(manifest) || manifest.length === 0) {
-            throw new Error('No Lighthouse runs found in manifest');
-          }
-
-          const metrics = [
-            {
-              key: 'performance',
-              label: 'Performance score',
-              formatter: (value) => `${Math.round(value * 100)}`,
-              budget: '≥ 90',
-            },
-            {
-              key: 'largest-contentful-paint',
-              label: 'Largest Contentful Paint (ms)',
-              formatter: (value) => `${Math.round(value)}`,
-              budget: '≤ 3,500',
-            },
-            {
-              key: 'total-blocking-time',
-              label: 'Total Blocking Time (ms)',
-              formatter: (value) => `${Math.round(value)}`,
-              budget: '≤ 300',
-            },
-            {
-              key: 'cumulative-layout-shift',
-              label: 'Cumulative Layout Shift',
-              formatter: (value) => value.toFixed(3),
-              budget: '≤ 0.10',
-            },
-          ];
-
-          const totals = new Map();
-          for (const run of manifest) {
-            const summary = run.summary || {};
-            for (const metric of metrics) {
-              const value = summary[metric.key];
-              if (typeof value === 'number' && Number.isFinite(value)) {
-                totals.set(metric.key, (totals.get(metric.key) || 0) + value);
+              const totals = new Map();
+              for (const run of manifest) {
+                const summary = run.summary || {};
+                for (const metric of metrics) {
+                  const value = summary[metric.key];
+                  if (typeof value === 'number' && Number.isFinite(value)) {
+                    totals.set(metric.key, (totals.get(metric.key) || 0) + value);
+                  }
+                }
               }
+
+              const runs = manifest.length;
+              const tableLines = metrics.map((metric) => {
+                const total = totals.get(metric.key);
+                const average = typeof total === 'number' ? total / runs : Number.NaN;
+                const formatted = Number.isFinite(average) ? metric.formatter(average) : 'n/a';
+                return `| ${metric.label} | ${formatted} | ${metric.budget} |`;
+              });
+
+              const targetUrl = process.env.TARGET_URL ? `Target URL: ${process.env.TARGET_URL}` : '';
+              const lines = [
+                marker,
+                `### Lighthouse CI (${runs} run${runs === 1 ? '' : 's'})`,
+                '',
+                targetUrl,
+                targetUrl ? '' : undefined,
+                '| Metric | Average | Budget |',
+                '| --- | --- | --- |',
+                ...tableLines,
+                '',
+                '_Thresholds: Performance ≥ 90, LCP ≤ 3,500 ms, TBT ≤ 300 ms, CLS ≤ 0.10, JS ≤ 350 KB, CSS ≤ 120 KB._',
+              ].filter(Boolean);
+
+              summaryContent = lines.join('\n');
             }
           }
 
-          const runs = manifest.length;
-          const tableLines = metrics.map((metric) => {
-            const total = totals.get(metric.key);
-            const average = typeof total === 'number' ? total / runs : Number.NaN;
-            const formatted = Number.isFinite(average) ? metric.formatter(average) : 'n/a';
-            return `| ${metric.label} | ${formatted} | ${metric.budget} |`;
-          });
-
-          const marker = '<!-- lhci-report -->';
-          const targetUrl = process.env.TARGET_URL ? `Target URL: ${process.env.TARGET_URL}` : '';
-          const lines = [
-            marker,
-            `### Lighthouse CI (${runs} run${runs === 1 ? '' : 's'})`,
-            '',
-            targetUrl,
-            targetUrl ? '' : undefined,
-            '| Metric | Average | Budget |',
-            '| --- | --- | --- |',
-            ...tableLines,
-            '',
-            '_Thresholds: Performance ≥ 90, LCP ≤ 3,500 ms, TBT ≤ 300 ms, CLS ≤ 0.10, JS ≤ 350 KB, CSS ≤ 120 KB._',
-          ].filter(Boolean);
-
-          const summaryContent = lines.join('\n');
-          const summaryPath = path.resolve('lighthouse-summary.md');
           fs.writeFileSync(summaryPath, summaryContent, 'utf8');
 
           const outputPath = process.env.GITHUB_OUTPUT;
