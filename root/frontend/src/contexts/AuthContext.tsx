@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import type { AxiosError } from "axios"
 import api from "../api/axios"
 
 type AuthContextType = {
@@ -21,17 +22,69 @@ export const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext)
 
+const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
+
+const readCachedUser = () => {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === "object" && "data" in parsed) {
+      return (parsed as { data: unknown }).data
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+const persistUserToCache = (value: any) => {
+  try {
+    if (value) {
+      localStorage.setItem(
+        PROFILE_CACHE_KEY,
+        JSON.stringify({ data: value, savedAt: new Date().toISOString() })
+      )
+    } else {
+      localStorage.removeItem(PROFILE_CACHE_KEY)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUserState] = useState<any>(() => readCachedUser())
   const [loading, setLoading] = useState(true)
-  const [isAuth, setIsAuth] = useState<boolean>(!!localStorage.getItem("token"))
+  const [isAuth, setIsAuth] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem("token")
+    } catch {
+      return false
+    }
+  })
+
+  const setUser = useCallback(
+    (value: any) => {
+      setUserState((prev) => {
+        const next = typeof value === "function" ? value(prev) : value
+        persistUserToCache(next)
+        return next
+      })
+    },
+    []
+  )
 
   const applyToken = (token?: string | null) => {
     if (token) {
-      localStorage.setItem("token", token)
+      try {
+        localStorage.setItem("token", token)
+      } catch {}
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`
     } else {
-      localStorage.removeItem("token")
+      try {
+        localStorage.removeItem("token")
+      } catch {}
       delete api.defaults.headers.common["Authorization"]
     }
   }
@@ -42,15 +95,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(res.data)
       setIsAuth(true)
       return res.data
-    } catch {
-      setUser(null)
+    } catch (error) {
+      const status = (error as AxiosError | undefined)?.response?.status
+      if (status === 401) {
+        setUser(null)
+        setIsAuth(false)
+        return null
+      }
+
+      const cached = readCachedUser()
+      if (cached) {
+        setUser(cached)
+        let tokenExists = true
+        try {
+          tokenExists = !!localStorage.getItem("token")
+        } catch {
+          tokenExists = true
+        }
+        setIsAuth(tokenExists)
+        return cached
+      }
+
       setIsAuth(false)
+      setUser(null)
       return null
     }
   }
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
+    let token: string | null = null
+    try {
+      token = localStorage.getItem("token")
+    } catch {}
     if (token) api.defaults.headers.common["Authorization"] = `Bearer ${token}`
     fetchMe().finally(() => setLoading(false))
   }, [])
@@ -86,7 +162,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsAuth(false)
   }
 
-  const value = useMemo(() => ({ isAuth, login, logout, user, loading, setUser }), [isAuth, user, loading])
+  const value = useMemo(
+    () => ({ isAuth, login, logout, user, loading, setUser }),
+    [isAuth, login, logout, user, loading, setUser]
+  )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
