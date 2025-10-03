@@ -4,7 +4,11 @@
   "service": "backend",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "postCreateCommand": "pip install --no-cache-dir -r root/requirements.txt && npm install --prefix root/frontend",
+  "mounts": [
+    "source=devcontainer-pip-cache,target=/home/vscode/.cache/pip,type=volume",
+    "source=devcontainer-npm-cache,target=/home/vscode/.npm,type=volume"
+  ],
+  "postCreateCommand": "pip install -r root/requirements.txt -r root/requirements-dev.txt && npm ci --prefix root/frontend",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -17,7 +21,48 @@
       "settings": {
         "python.analysis.typeCheckingMode": "basic",
         "python.defaultInterpreterPath": "/usr/local/bin/python"
-      }
+      },
+      "tasks": [
+        {
+          "label": "Run API",
+          "type": "shell",
+          "command": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --env-file root/.env",
+          "options": {
+            "cwd": "${workspaceFolder}/root"
+          },
+          "presentation": {
+            "reveal": "always",
+            "panel": "dedicated"
+          },
+          "problemMatcher": []
+        },
+        {
+          "label": "Run Web",
+          "type": "shell",
+          "command": "npm run dev -- --host 0.0.0.0 --port 5173",
+          "options": {
+            "cwd": "${workspaceFolder}/root/frontend"
+          },
+          "presentation": {
+            "reveal": "always",
+            "panel": "dedicated"
+          },
+          "problemMatcher": []
+        },
+        {
+          "label": "Test All",
+          "type": "shell",
+          "command": "pytest && npm --prefix frontend test",
+          "options": {
+            "cwd": "${workspaceFolder}/root"
+          },
+          "presentation": {
+            "reveal": "always",
+            "panel": "dedicated"
+          },
+          "problemMatcher": []
+        }
+      ]
     }
   },
   "forwardPorts": [8000, 5173],
