@@ -4,7 +4,11 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.security import create_access_token, get_password_hash, verify_password
+from app.auth.security import (
+    create_access_token,
+    get_password_hash,
+    verify_and_update_password,
+)
 from app.core.database import get_db
 from app.models.models import User
 from app.schemas.schemas import Token, UserCreate
@@ -25,7 +29,17 @@ async def login(
     email = form_data.username.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный email или пароль",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    verified, new_hash = verify_and_update_password(
+        form_data.password, user.hashed_password
+    )
+    if not verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
@@ -37,7 +51,11 @@ async def login(
             detail="Пользователь деактивирован",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token = create_access_token(str(user.id))
+    user_id = user.id
+    if new_hash:
+        user.hashed_password = new_hash
+        await db.commit()
+    token = create_access_token(str(user_id))
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -46,7 +64,17 @@ async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
     email = payload.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный email или пароль",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    verified, new_hash = verify_and_update_password(
+        payload.password, user.hashed_password
+    )
+    if not verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
@@ -58,7 +86,11 @@ async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
             detail="Пользователь деактивирован",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token = create_access_token(str(user.id))
+    user_id = user.id
+    if new_hash:
+        user.hashed_password = new_hash
+        await db.commit()
+    token = create_access_token(str(user_id))
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -71,7 +103,10 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь с таким email уже существует",
         )
-    hashed_password = get_password_hash(user.password)
+    try:
+        hashed_password = get_password_hash(user.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     new_user = User(
         email=email,
         full_name=user.full_name,
