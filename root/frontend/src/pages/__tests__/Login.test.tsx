@@ -1,80 +1,84 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
-import { vi } from "vitest";
-import Login from "../Login";
-import api from "../../api/axios";
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { axe } from 'jest-axe';
+import Login from '../Login';
+import { server } from '@/tests/mocks/server';
 
-vi.mock("../../api/axios", () => ({
-  default: {
-    post: vi.fn(),
-  },
-}));
+const renderLogin = () =>
+  render(
+    <MemoryRouter initialEntries={['/login']}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
 
-const mockLogin = vi.fn();
-const mockNavigate = vi.fn();
-
-vi.mock("../../contexts/AuthContext", () => ({
-  useAuth: () => ({ login: mockLogin }),
-}));
-
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
-  return {
-    ...actual,
-    useNavigate: () => mockNavigate,
-  };
-});
-
-describe("Login", () => {
-  const mockedPost = vi.mocked(api.post);
-
+describe('Login page', () => {
   beforeEach(() => {
-    mockedPost.mockReset();
-    mockLogin.mockReset();
-    mockNavigate.mockReset();
     localStorage.clear();
   });
 
-  it("shows validation error for invalid email", async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
-
-    await user.type(screen.getByRole("textbox", { name: /email/i }), "invalid");
-    await user.type(screen.getByLabelText(/^пароль/i), "secret123");
-    await user.click(screen.getByRole("button", { name: /войти/i }));
-
-    expect(await screen.findByText("Введите корректный email")).toBeInTheDocument();
-    expect(mockedPost).not.toHaveBeenCalled();
+  afterEach(() => {
+    localStorage.clear();
   });
 
-  it("submits credentials and navigates on success", async () => {
+  it('blocks submission for invalid email', async () => {
     const user = userEvent.setup();
-    let resolvePost: (value: any) => void = () => {};
-    mockedPost.mockImplementation(() => new Promise((resolve) => { resolvePost = resolve; }) as any);
+    renderLogin();
 
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
+    await user.type(screen.getByRole('textbox', { name: /email/i }), 'invalid');
+    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    await user.click(screen.getByRole('button', { name: /войти/i }));
+
+    expect(await screen.findByText('Введите корректный email')).toBeInTheDocument();
+  });
+
+  it('submits credentials and redirects on success', async () => {
+    const captured: Array<{ username: string | null; password: string | null }> = [];
+    server.use(
+      http.post('*/auth/login', async ({ request }) => {
+        const body = await request.text();
+        const params = new URLSearchParams(body);
+        captured.push({ username: params.get('username'), password: params.get('password') });
+        return HttpResponse.json({ access_token: 'token-123' });
+      }),
     );
 
-    await user.type(screen.getByRole("textbox", { name: /email/i }), "user@example.com");
-    await user.type(screen.getByLabelText(/^пароль/i), "secret123");
+    const user = userEvent.setup();
+    renderLogin();
 
-    const submitButton = screen.getByRole("button", { name: /войти/i });
-    await user.click(submitButton);
+    await user.type(screen.getByRole('textbox', { name: /email/i }), 'user@example.com');
+    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    await user.click(screen.getByLabelText('Показать пароль'));
+    await user.click(screen.getByLabelText('Показать пароль'));
+    await user.click(screen.getByRole('button', { name: /войти/i }));
 
-    expect(submitButton).toBeDisabled();
+    await waitFor(() => expect(screen.getByText('Добро пожаловать!')).toBeInTheDocument());
+    expect(captured).toEqual([{ username: 'user@example.com', password: 'secret123' }]);
+  });
 
-    resolvePost({ data: { access_token: "token123" } });
+  it('returns server errors to the user', async () => {
+    server.use(
+      http.post('*/auth/login', () => HttpResponse.json({ detail: 'Неверные данные для входа' }, { status: 401 })),
+    );
 
-    await waitFor(() => expect(mockLogin).toHaveBeenCalledWith("token123"));
-    expect(mockNavigate).toHaveBeenCalledWith("/dashboard");
-    expect(submitButton).not.toBeDisabled();
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.type(screen.getByRole('textbox', { name: /email/i }), 'user@example.com');
+    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    await user.click(screen.getByRole('button', { name: /войти/i }));
+
+    expect(await screen.findByText('Неверные данные для входа')).toBeInTheDocument();
+  });
+
+  it('meets basic accessibility requirements', async () => {
+    const { container } = renderLogin();
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });
