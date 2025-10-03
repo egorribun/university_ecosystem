@@ -18,7 +18,7 @@ class ForgotPasswordIn(BaseModel):
 
 class ResetPasswordIn(BaseModel):
     token: str
-    password: str
+    password: str = Field(min_length=8, max_length=200)
 
 
 class UserBase(BaseModel):
@@ -45,7 +45,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(min_length=8, max_length=200)
     invite_code: Optional[str] = None
 
 

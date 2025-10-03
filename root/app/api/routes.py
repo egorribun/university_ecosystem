@@ -181,7 +181,10 @@ async def reset_password(
         )
     from app.auth.security import get_password_hash
 
-    user.hashed_password = get_password_hash(payload.password)
+    try:
+        user.hashed_password = get_password_hash(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     rec.used = True
     await db.execute(
         update(models.PasswordResetToken)
