@@ -8,7 +8,7 @@
     "source=devcontainer-pip-cache,target=/home/vscode/.cache/pip,type=volume",
     "source=devcontainer-npm-cache,target=/home/vscode/.npm,type=volume"
   ],
-  "postCreateCommand": "pip install -r root/requirements.txt && pip install -r root/requirements-dev.txt && npm ci --prefix root/frontend",
+  "postCreateCommand": "pip install -r root/requirements.txt -r root/requirements-dev.txt && npm ci --prefix root/frontend",
   "customizations": {
     "vscode": {
       "extensions": [
