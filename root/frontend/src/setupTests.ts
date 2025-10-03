@@ -2,7 +2,15 @@
 import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'node:util';
 import { webcrypto } from 'node:crypto';
-import { vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
+import { toHaveNoViolations } from 'jest-axe';
+import { server } from './tests/mocks/server';
+
+expect.extend(toHaveNoViolations);
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder;
 if (!(globalThis as any).TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any;
 if (!(globalThis as any).crypto) (globalThis as any).crypto = webcrypto;

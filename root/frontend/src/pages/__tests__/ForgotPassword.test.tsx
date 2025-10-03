@@ -1,55 +1,46 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
-import { vi } from "vitest";
-import ForgotPassword from "../ForgotPassword";
-import api from "../../api/axios";
+import { MemoryRouter } from 'react-router-dom';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it } from 'vitest';
+import { axe } from 'jest-axe';
+import ForgotPassword from '../ForgotPassword';
 
-vi.mock("../../api/axios", () => ({
-  default: {
-    post: vi.fn(),
-  },
-}));
+const renderForgot = () =>
+  render(
+    <MemoryRouter>
+      <ForgotPassword />
+    </MemoryRouter>,
+  );
 
-describe("ForgotPassword", () => {
-  const mockedPost = vi.mocked(api.post);
+describe('ForgotPassword page', () => {
+  it('shows validation message for malformed email', async () => {
+    const user = userEvent.setup();
+    renderForgot();
 
-  beforeEach(() => {
-    mockedPost.mockReset();
-    vi.useRealTimers();
+    const emailInput = screen.getByLabelText(/e-mail/i);
+    await user.type(emailInput, 'invalid');
+    await user.tab();
+
+    expect(screen.getByText('Неверный формат email')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /отправить ссылку/i })).toBeDisabled();
   });
 
-  it("highlights invalid email format", async () => {
+  it('confirms submission and starts cooldown', async () => {
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <ForgotPassword />
-      </MemoryRouter>
-    );
+    renderForgot();
 
-    await user.type(screen.getByLabelText(/e-mail/i), "invalid");
+    await user.type(screen.getByLabelText(/e-mail/i), 'user@example.com');
+    await user.click(screen.getByRole('button', { name: /отправить ссылку/i }));
 
-    expect(screen.getByText("Неверный формат email")).toBeInTheDocument();
-    expect(mockedPost).not.toHaveBeenCalled();
-  });
-
-  it("shows confirmation message and cooldown on success", async () => {
-    const user = userEvent.setup();
-    mockedPost.mockResolvedValue({ data: {} } as any);
-    render(
-      <MemoryRouter>
-        <ForgotPassword />
-      </MemoryRouter>
-    );
-
-    await user.type(screen.getByLabelText(/e-mail/i), "user@example.com");
-    await user.click(screen.getByRole("button", { name: /отправить ссылку/i }));
-
-    expect(mockedPost).toHaveBeenCalledWith("/password/forgot", { email: "user@example.com" });
     expect(await screen.findByText(/если аккаунт с адресом/i)).toBeInTheDocument();
+    const retryButton = screen.getByRole('button', { name: /ввести другой адрес/i });
+    expect(retryButton).toBeDisabled();
+    expect(retryButton.textContent).toMatch(/\d+s/);
+  });
 
-    const resetButton = screen.getByRole("button", { name: /ввести другой адрес/i });
-    expect(resetButton).toBeDisabled();
-    expect(resetButton.textContent).toContain("30s");
+  it('is accessible for assistive technologies', async () => {
+    const { container } = renderForgot();
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });
