@@ -114,4 +114,3 @@ async def test_login_migrates_legacy_hash(async_client, user_factory, db_session
     await db_session.refresh(user)
     assert user.hashed_password.startswith("$argon2id$")
     assert verify_password(password, user.hashed_password)
-

@@ -30,9 +30,7 @@ pwd_context = CryptContext(
 def _validate_password_policy(password: str) -> None:
     length = len(password)
     if length < PASSWORD_MIN_LENGTH or length > PASSWORD_MAX_LENGTH:
-        raise ValueError(
-            "Пароль должен содержать от 8 до 200 символов."
-        )
+        raise ValueError("Пароль должен содержать от 8 до 200 символов.")
 
 
 def _truncate_for_bcrypt(password: str) -> str:
@@ -51,7 +49,9 @@ def verify_and_update_password(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:
     try:
-        verified, new_hash = pwd_context.verify_and_update(plain_password, hashed_password)
+        verified, new_hash = pwd_context.verify_and_update(
+            plain_password, hashed_password
+        )
     except ValueError:
         return False, None
     return verified, new_hash
