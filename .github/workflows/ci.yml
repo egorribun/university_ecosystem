@@ -280,7 +280,8 @@ jobs:
           const path = require('node:path');
 
           const marker = '<!-- lhci-report -->';
-          const summaryPath = path.resolve('lighthouse-summary.md');
+          const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+          const summaryPath = path.resolve(workspace, 'lighthouse-summary.md');
           const manifestPath = path.resolve('.lighthouseci/manifest.json');
 
           const buildFallbackSummary = (message) => {
@@ -383,12 +384,25 @@ jobs:
       - name: Comment Lighthouse summary
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          SUMMARY_PATH: ${{ steps.lighthouse_summary.outputs.summary_path }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const core = require('@actions/core');
             const fs = require('node:fs');
+            const path = require('node:path');
             const marker = '<!-- lhci-report -->';
-            const body = fs.readFileSync('lighthouse-summary.md', 'utf8');
+            const summaryPath = process.env.SUMMARY_PATH
+              ? path.resolve(process.env.SUMMARY_PATH)
+              : path.resolve('lighthouse-summary.md');
+
+            if (!fs.existsSync(summaryPath)) {
+              core.warning(`Lighthouse summary not found at ${summaryPath}. Skipping PR comment.`);
+              return;
+            }
+
+            const body = fs.readFileSync(summaryPath, 'utf8');
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
