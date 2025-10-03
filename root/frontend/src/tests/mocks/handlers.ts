@@ -1,5 +1,15 @@
 import { HttpResponse, http } from 'msw';
 
+type NewUserPayload = {
+  email?: string;
+  [key: string]: unknown;
+};
+
+type ResetPasswordPayload = {
+  token?: string;
+  [key: string]: unknown;
+};
+
 export const testUser = {
   id: 'user-1',
   full_name: 'Тестовый Пользователь',
@@ -10,8 +20,8 @@ export const testUser = {
 export const handlers = [
   http.get('*/users/me', () => HttpResponse.json(testUser)),
   http.post('*/users', async ({ request }) => {
-    const body = await request.json();
-    if (body?.email === 'taken@example.com') {
+    const body = (await request.json()) as NewUserPayload;
+    if (body.email === 'taken@example.com') {
       return HttpResponse.json({ detail: 'Email already used' }, { status: 400 });
     }
     return HttpResponse.json({ id: 'user-2', ...body }, { status: 201 });
@@ -30,8 +40,8 @@ export const handlers = [
   }),
   http.post('*/password/forgot', async () => HttpResponse.json({ ok: true })),
   http.post('*/password/reset', async ({ request }) => {
-    const body = await request.json();
-    if (body?.token === 'expired-token') {
+    const body = (await request.json()) as ResetPasswordPayload;
+    if (body.token === 'expired-token') {
       return HttpResponse.json({ detail: 'Ссылка устарела' }, { status: 400 });
     }
     return HttpResponse.json({ ok: true });
