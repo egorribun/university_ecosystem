@@ -389,7 +389,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const core = require('@actions/core');
             const fs = require('node:fs');
             const path = require('node:path');
             const marker = '<!-- lhci-report -->';
