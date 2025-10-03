@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -241,6 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PREVIEW_URL: ${{ vars.PREVIEW_URL || secrets.PREVIEW_URL || '' }}
+      TARGET_PORT: 4174
     defaults:
       run:
         working-directory: root/frontend
@@ -258,28 +260,235 @@ jobs:
           name: frontend-dist
           path: root/frontend/dist
       - name: Decide target URL
-        id: url
         shell: bash
         run: |
           if [ -n "$PREVIEW_URL" ]; then
-            echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
-            echo "mode=remote" >> "$GITHUB_OUTPUT"
+            echo "TARGET_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
           else
-            echo "PREVIEW_URL=http://127.0.0.1:4174" >> "$GITHUB_ENV"
-            echo "mode=local" >> "$GITHUB_OUTPUT"
+            echo "TARGET_URL=http://127.0.0.1:${TARGET_PORT}/" >> "$GITHUB_ENV"
           fi
       - name: Install dependencies
         run: npm ci
-      - name: Start local static server (fallback)
-        if: steps.url.outputs.mode == 'local'
+      - name: Collect Lighthouse metrics
+        run: npx lhci collect --config=../.lighthouserc.js
+      - name: Generate Lighthouse reports
+        run: npx lhci upload --config=../.lighthouserc.js
+      - name: Build Lighthouse summary
+        id: lighthouse_summary
         run: |
-          nohup npm run preview -- --port 4174 --strictPort --host > /dev/null 2>&1 &
-          npx -y wait-on http://127.0.0.1:4174
-      - name: Run Lighthouse CI
-        run: npx lhci autorun --config=../.lighthouserc.js
+          node <<'SCRIPT'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const marker = '<!-- lhci-report -->';
+          const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+          const summaryPath = path.resolve(workspace, 'lighthouse-summary.md');
+          const manifestPath = path.resolve('.lighthouseci/manifest.json');
+
+          const buildFallbackSummary = (message) => {
+            return [
+              marker,
+              '### Lighthouse CI',
+              '',
+              message,
+            ].join('\n');
+          };
+
+          let summaryContent;
+
+          if (!fs.existsSync(manifestPath)) {
+            console.warn(`Manifest not found at ${manifestPath}`);
+            summaryContent = buildFallbackSummary(
+              '_No Lighthouse manifest was produced. Check the collect/upload steps for details._',
+            );
+          } else {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            if (!Array.isArray(manifest) || manifest.length === 0) {
+              console.warn('Lighthouse manifest is empty.');
+              summaryContent = buildFallbackSummary(
+                '_Lighthouse did not report any runs. Check the collect/upload steps for details._',
+              );
+            } else {
+              const metrics = [
+                {
+                  key: 'performance',
+                  label: 'Performance score',
+                  formatter: (value) => `${Math.round(value * 100)}`,
+                  budget: '≥ 90',
+                },
+                {
+                  key: 'largest-contentful-paint',
+                  label: 'Largest Contentful Paint (ms)',
+                  formatter: (value) => `${Math.round(value)}`,
+                  budget: '≤ 3,500',
+                },
+                {
+                  key: 'total-blocking-time',
+                  label: 'Total Blocking Time (ms)',
+                  formatter: (value) => `${Math.round(value)}`,
+                  budget: '≤ 300',
+                },
+                {
+                  key: 'cumulative-layout-shift',
+                  label: 'Cumulative Layout Shift',
+                  formatter: (value) => value.toFixed(3),
+                  budget: '≤ 0.10',
+                },
+              ];
+
+              const totals = new Map();
+              for (const run of manifest) {
+                const summary = run.summary || {};
+                for (const metric of metrics) {
+                  const value = summary[metric.key];
+                  if (typeof value === 'number' && Number.isFinite(value)) {
+                    totals.set(metric.key, (totals.get(metric.key) || 0) + value);
+                  }
+                }
+              }
+
+              const runs = manifest.length;
+              const tableLines = metrics.map((metric) => {
+                const total = totals.get(metric.key);
+                const average = typeof total === 'number' ? total / runs : Number.NaN;
+                const formatted = Number.isFinite(average) ? metric.formatter(average) : 'n/a';
+                return `| ${metric.label} | ${formatted} | ${metric.budget} |`;
+              });
+
+              const targetUrl = process.env.TARGET_URL ? `Target URL: ${process.env.TARGET_URL}` : '';
+              const lines = [
+                marker,
+                `### Lighthouse CI (${runs} run${runs === 1 ? '' : 's'})`,
+                '',
+                targetUrl,
+                targetUrl ? '' : undefined,
+                '| Metric | Average | Budget |',
+                '| --- | --- | --- |',
+                ...tableLines,
+                '',
+                '_Thresholds: Performance ≥ 90, LCP ≤ 3,500 ms, TBT ≤ 300 ms, CLS ≤ 0.10, JS ≤ 350 KB, CSS ≤ 120 KB._',
+              ].filter(Boolean);
+
+              summaryContent = lines.join('\n');
+            }
+          }
+
+          fs.writeFileSync(summaryPath, summaryContent, 'utf8');
+
+          const outputPath = process.env.GITHUB_OUTPUT;
+          fs.appendFileSync(
+            outputPath,
+            `summary_path=${summaryPath}\nsummary<<EOF\n${summaryContent}\nEOF\n`,
+            'utf8',
+          );
+          SCRIPT
+      - name: Comment Lighthouse summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          SUMMARY_PATH: ${{ steps.lighthouse_summary.outputs.summary_path }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const marker = '<!-- lhci-report -->';
+            const summaryPath = process.env.SUMMARY_PATH
+              ? path.resolve(process.env.SUMMARY_PATH)
+              : path.resolve('lighthouse-summary.md');
+
+            if (!fs.existsSync(summaryPath)) {
+              core.warning(`Lighthouse summary not found at ${summaryPath}. Skipping PR comment.`);
+              return;
+            }
+
+            const body = fs.readFileSync(summaryPath, 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number,
+                per_page: 100,
+              });
+
+              const existing = comments.find((comment) =>
+                comment.user?.type === 'Bot' && comment.body?.includes(marker),
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body,
+                });
+              }
+            } catch (error) {
+              if (error?.status === 403) {
+                core.warning(
+                  'Unable to publish Lighthouse summary comment (403 Forbidden). This usually happens on forked pull requests. '
+                    + 'Skipping PR comment.',
+                );
+                return;
+              }
+
+              throw error;
+            }
       - name: Upload Lighthouse artifacts
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-results
           path: root/frontend/.lighthouseci
           if-no-files-found: warn
+
+  performance-gate:
+    name: Performance gate
+    runs-on: ubuntu-latest
+    needs:
+      - lighthouse
+    defaults:
+      run:
+        working-directory: root/frontend
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: root/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Download Lighthouse results
+        id: download_lighthouse_results
+        uses: actions/download-artifact@v5
+        with:
+          name: lighthouse-results
+          path: root/frontend/.lighthouseci
+        continue-on-error: true
+      - name: Verify Lighthouse results artifact
+        if: steps.download_lighthouse_results.outcome != 'success'
+        env:
+          DOWNLOAD_OUTCOME: ${{ steps.download_lighthouse_results.outcome }}
+        shell: bash
+        run: |
+          echo "::warning::Lighthouse results artifact not found. Check the 'Lighthouse CI' job for upload issues."
+          echo "Expected to download the 'lighthouse-results' artifact produced by the Lighthouse CI job, but the download step reported: ${DOWNLOAD_OUTCOME}. Skipping threshold assertions."
+          {
+            echo "## Lighthouse performance gate";
+            echo "- ⚠️ Artifact download outcome: ${DOWNLOAD_OUTCOME}";
+            echo "- Threshold assertions skipped due to missing 'lighthouse-results' artifact.";
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Enforce Lighthouse thresholds
+        if: steps.download_lighthouse_results.outcome == 'success'
+        run: npx lhci assert --config=../.lighthouserc.js
