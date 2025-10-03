@@ -5,7 +5,7 @@ WORKDIR /app
 
 FROM base AS deps
 COPY root/frontend/package.json root/frontend/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --include=dev
 
 FROM base AS runner
 RUN addgroup -S app && adduser -S -G app app
