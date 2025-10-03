@@ -256,9 +256,7 @@ class Settings(BaseSettings):
     @cached_property
     def strict_security_csp(self) -> str:
         directives = [
-            part.strip()
-            for part in self.security_csp.split(";")
-            if part.strip()
+            part.strip() for part in self.security_csp.split(";") if part.strip()
         ]
         policy = "; ".join(directives)
         if not policy:

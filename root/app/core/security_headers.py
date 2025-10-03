@@ -58,7 +58,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             else:
                 policy = policy.replace("'nonce-{nonce}'", "").replace("  ", " ")
         if policy:
-            segments = [segment.strip() for segment in policy.split(";") if segment.strip()]
+            segments = [
+                segment.strip() for segment in policy.split(";") if segment.strip()
+            ]
             policy = "; ".join(segments)
         headers["Content-Security-Policy"] = policy
         try:
