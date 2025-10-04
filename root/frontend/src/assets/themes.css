@@ -136,6 +136,30 @@ button:not(.MuiButtonBase-root),
 .burger-btn,
 .bottom-nav__item { min-height: 44px; min-width: 44px }
 
+.skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 50%;
+  transform: translate(-50%, -150%);
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  padding: 0.75rem 1.25rem;
+  border-radius: 0 0 var(--ue-radius-md) var(--ue-radius-md);
+  text-decoration: none;
+  font-weight: 700;
+  z-index: calc(var(--ue-z-index-nav) + 10);
+  box-shadow: var(--shadow-1);
+  opacity: 0;
+  transition: transform var(--anim-med), opacity var(--anim-med);
+}
+
+.skip-link:focus-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  outline: none;
+  box-shadow: var(--ue-focus-ring);
+}
+
 button:not(.MuiButtonBase-root),
 .menu-link,
 .menu-btn-settings,

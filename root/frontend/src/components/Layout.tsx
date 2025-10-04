@@ -7,6 +7,8 @@ type LayoutProps = {
 
 const Layout = ({ children }: LayoutProps) => (
   <Box
+    component="main"
+    id="main"
     sx={{
       minHeight: "100vh",
       bgcolor: "var(--page-bg)",
