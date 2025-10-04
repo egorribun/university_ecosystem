@@ -75,12 +75,7 @@ export default defineConfig(({ mode }) => {
       registerType: "autoUpdate",
       injectRegister: "auto",
       strategies: "generateSW",
-      includeAssets: [
-        "guu_logo.png",
-        "offline.html",
-        "maskable-icon-192.png",
-        "maskable-icon-512.png",
-      ],
+      includeAssets: ["offline.html"],
       ...(manifest ? { manifest } : {}),
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
@@ -92,135 +87,24 @@ export default defineConfig(({ mode }) => {
         clientsClaim: true,
         runtimeCaching: [
           {
-            urlPattern: ({ sameOrigin, url }) =>
-              sameOrigin && (url.pathname === "/" || url.pathname === "/login"),
-            handler: "NetworkFirst",
+            urlPattern: /\/api\/(news|schedule)/,
+            handler: "StaleWhileRevalidate",
             options: {
-              cacheName: "app-shell",
-              networkTimeoutSeconds: 5,
-              plugins: [
-                {
-                  handlerDidError: async () => {
-                    const cacheStorage = globalThis.caches
-                    if (!cacheStorage) return undefined
-                    const appShell = await cacheStorage.match("/index.html")
-                    if (appShell) return appShell
-                    return cacheStorage.match("/offline.html")
-                  },
-                },
-              ],
-            },
-          },
-          {
-            urlPattern: ({ request }) => request.mode === "navigate",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "html-cache",
-              networkTimeoutSeconds: 5,
-            },
-          },
-          {
-            urlPattern: ({ request }) =>
-              ["style", "script", "worker", "font"].includes(request.destination),
-            handler: "CacheFirst",
-            options: {
-              cacheName: "static-resources",
-              cacheableResponse: { statuses: [0, 200] },
+              cacheName: "api-cache",
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 3600,
+              },
             },
           },
           {
             urlPattern: ({ request }) => request.destination === "image",
             handler: "CacheFirst",
             options: {
-              cacheName: "image-assets",
+              cacheName: "img-cache",
               expiration: {
-                maxEntries: 60,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname === "/api/users/me",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "profile-data",
-              networkTimeoutSeconds: 3,
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: {
-                maxEntries: 1,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-            },
-          },
-          {
-            urlPattern: ({ sameOrigin, url }) =>
-              sameOrigin && url.pathname.startsWith("/api/schedule"),
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "schedule-data",
-              networkTimeoutSeconds: 5,
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 7,
-              },
-            },
-          },
-          {
-            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith("/api/news"),
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "news-data",
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: {
-                maxEntries: 30,
-                maxAgeSeconds: 60 * 60 * 24 * 3,
-              },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
-              url.origin === "https://yandex.ru" &&
-              (/^\/map-widget\//.test(url.pathname) || /^\/maps\//.test(url.pathname)),
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "map-tiles",
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: {
-                maxEntries: 60,
-                maxAgeSeconds: 60 * 60 * 24 * 14,
-              },
-            },
-          },
-          {
-            urlPattern: ({ request, sameOrigin, url }) =>
-              sameOrigin &&
-              request.method === "GET" &&
-              url.pathname.startsWith("/api") &&
-              (/\b(list|lists|catalog|all)\b/.test(url.pathname) ||
-                url.searchParams.has("page") ||
-                url.searchParams.has("limit")),
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "api-lists",
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith("/auth"),
-            handler: "NetworkOnly",
-          },
-          {
-            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/api"),
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
-              cacheableResponse: {
-                statuses: [0, 200],
+                maxEntries: 200,
+                maxAgeSeconds: 604800,
               },
             },
           },

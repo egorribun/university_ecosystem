@@ -7,6 +7,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import App from "./App"
 import ErrorBoundary from "./app/ErrorBoundary"
 import { lazyDevtools, queryClient } from "./app/queryClient"
+import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "./app/pwaEvents"
 import theme from "./theme"
 import "./assets/themes.css"
 import "dayjs/locale/ru"
@@ -14,7 +15,14 @@ import "dayjs/locale/ru"
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    void updateSW(true)
+    const detail: ServiceWorkerUpdateEventDetail = {
+      update: () => updateSW(true),
+    }
+    window.dispatchEvent(
+      new CustomEvent<ServiceWorkerUpdateEventDetail>(PWA_REFRESH_EVENT, {
+        detail,
+      })
+    )
   },
   onOfflineReady() {
     console.info("Экосистема ГУУ готова работать офлайн")
