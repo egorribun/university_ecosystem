@@ -89,41 +89,18 @@ export default defineConfig(({ mode }) => {
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
-      strategies: "generateSW",
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       includeAssets: ["offline.html"],
       ...(manifest ? { manifest } : {}),
-      workbox: {
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-        navigateFallback: "/offline.html",
-        navigateFallbackAllowlist: [/^\/[^_].*/],
-        navigationPreload: true,
-        cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true,
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\/(news|schedule)/,
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "api-cache",
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 3600,
-              },
-            },
-          },
-          {
-            urlPattern: ({ request }) => request.destination === "image",
-            handler: "CacheFirst",
-            options: {
-              cacheName: "img-cache",
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 604800,
-              },
-            },
-          },
-        ],
+      },
+      devOptions: {
+        enabled: true,
+        suppressWarnings: true,
+        type: "module",
       },
     }),
     withStrictCspNonce(),
