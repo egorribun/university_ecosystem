@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react"
+import { useEffect, useMemo, useState, useCallback, type KeyboardEvent } from "react"
 import Layout from "../components/Layout"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
@@ -282,12 +282,18 @@ export default function Dashboard() {
   const focusRing = "0 0 0 3px #2563eb33, 0 0 0 6px #2563eb1f"
   const btnSx = { borderRadius: 2, fontWeight: 700, px: 1.8, py: 0.5, whiteSpace: "nowrap", transition: "background .16s,color .16s,border-color .16s,box-shadow .16s, transform .16s", "&:hover": { background: "linear-gradient(100deg,#1976d2 20%,#449aff 100%)", color: "#fff", borderColor: "transparent", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&:focus-visible": { boxShadow: focusRing, outline: "none" } }
 
-  const prefetchNewsPage = () => import("../pages/News").catch(() => {})
-  const prefetchEventsPage = () => import("../pages/Events").catch(() => {})
-  const prefetchSchedulePage = () => import("../pages/Schedule").catch(() => {})
+  const warmNewsPage = () => import("../pages/News").catch(() => {})
+  const warmEventsPage = () => import("../pages/Events").catch(() => {})
+  const warmSchedulePage = () => import("../pages/Schedule").catch(() => {})
   const prefetchData = (type: "news" | "events") => {
     if (type === "news") axios.get("/news").then(r => setCache("prefetch:news", r.data)).catch(() => {})
     if (type === "events") axios.get("/events", { params: { is_active: true } }).then(r => setCache("prefetch:events", r.data)).catch(() => {})
+  }
+
+  const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      callback()
+    }
   }
 
   const newsLikeHover = {
@@ -404,8 +410,8 @@ export default function Dashboard() {
                   variant="outlined"
                   sx={{ ...btnSx, px: 3, py: 0.9 }}
                   aria-label="Перейти к полному расписанию"
-                  onMouseEnter={prefetchSchedulePage}
-                  onFocus={prefetchSchedulePage}
+                  onPointerDown={warmSchedulePage}
+                  onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
                 >
                   Полное расписание
                 </Button>
@@ -484,8 +490,13 @@ export default function Dashboard() {
                 variant="outlined"
                 sx={btnSx}
                 aria-label="Смотреть все новости"
-                onMouseEnter={() => { prefetchNewsPage(); prefetchData("news") }}
-                onFocus={() => { prefetchNewsPage(); prefetchData("news") }}
+                onPointerDown={() => { warmNewsPage(); prefetchData("news") }}
+                onKeyDown={(event) => {
+                  prepareOnKey(event, () => {
+                    warmNewsPage()
+                    prefetchData("news")
+                  })
+                }}
               >
                 Смотреть все
               </Button>
@@ -550,8 +561,13 @@ export default function Dashboard() {
                 variant="outlined"
                 sx={btnSx}
                 aria-label="Смотреть все события"
-                onMouseEnter={() => { prefetchEventsPage(); prefetchData("events") }}
-                onFocus={() => { prefetchEventsPage(); prefetchData("events") }}
+                onPointerDown={() => { warmEventsPage(); prefetchData("events") }}
+                onKeyDown={(event) => {
+                  prepareOnKey(event, () => {
+                    warmEventsPage()
+                    prefetchData("events")
+                  })
+                }}
               >
                 Смотреть все
               </Button>

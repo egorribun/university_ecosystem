@@ -19,9 +19,9 @@ module.exports = {
       ...(useRemotePreview
         ? {}
         : {
-            startServerCommand:
-              `npm run preview -- --host 0.0.0.0 --port ${LOCAL_PREVIEW_PORT} --strictPort`,
-            startServerReadyPattern: 'Local:',
+            beforeAllScript: 'npm run build',
+            startServerCommand: `node root/frontend/scripts/lhci-preview.mjs`,
+            startServerReadyPattern: 'LHCI_READY',
             startServerReadyTimeout: 120000,
           }),
     },
