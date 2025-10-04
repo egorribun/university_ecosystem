@@ -1,5 +1,18 @@
 import { QueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
+import { lazy } from "react"
+
+// TanStack Query Devtools are recommended only for development usage:
+// https://tanstack.com/query/latest/docs/framework/react/devtools#only-in-dev
+export const lazyDevtools = () => {
+  if (!import.meta.env.DEV) return null
+
+  return lazy(() =>
+    import("@tanstack/react-query-devtools").then((module) => ({
+      default: module.ReactQueryDevtools,
+    })),
+  )
+}
 
 const retryDelay = (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000)
 
