@@ -185,12 +185,19 @@ export default defineConfig(({ mode }) => {
               }
             }
             if (!normalizedId.includes("node_modules")) return
-            if (/[\\/]react(?:-dom)?[\\/]/.test(normalizedId)) return "react"
-            if (normalizedId.includes("scheduler")) return "react"
+
+            const uiMatchers = [
+              /[\\/]react(?:-dom)?[\\/]/,
+              /[\\/]scheduler[\\/]/,
+              /@emotion/,
+              /@mui/,
+            ] as const
+            if (uiMatchers.some((pattern) => pattern.test(normalizedId))) {
+              return "ui"
+            }
+
             if (normalizedId.includes("@tanstack")) return "react-query"
-            if (normalizedId.includes("@emotion")) return "mui"
             if (normalizedId.includes("framer-motion")) return "motion"
-            if (normalizedId.includes("@mui")) return "mui"
             if (normalizedId.includes("react-router")) return "router"
             if (normalizedId.includes("dayjs")) return "dayjs"
             if (normalizedId.includes("zxcvbn")) return "zxcvbn"

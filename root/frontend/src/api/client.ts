@@ -8,13 +8,14 @@ const prodBase = import.meta.env.VITE_BACKEND_ORIGIN || "/api";
 const api = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
   withCredentials: true,
+  timeout: 8000,
   xsrfCookieName: "XSRF-TOKEN",
   xsrfHeaderName: "X-XSRF-TOKEN",
   headers: {
-    "Accept": "application/json",
+    Accept: "application/json",
     "Content-Type": "application/json",
-    "X-Requested-With": "XMLHttpRequest"
-  }
+    "X-Requested-With": "XMLHttpRequest",
+  },
 });
 
 export function setAuthToken(token?: string) {
