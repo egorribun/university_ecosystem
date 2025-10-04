@@ -1,7 +1,6 @@
 import { render } from "@testing-library/react";
 import { configureAxe } from "jest-axe";
 import type { ReactElement } from "react";
-import type { RunOptions } from "axe-core";
 
 const axe = configureAxe({
   rules: {
@@ -14,14 +13,16 @@ const axe = configureAxe({
 type RenderConfig = Parameters<typeof render>[1];
 type RenderWrapper = RenderConfig extends { wrapper?: infer W } ? W : never;
 
+type AxeRunOptions = Parameters<typeof axe>[1];
+
 type RenderWithAxeOptions = {
-  axeOptions?: RunOptions;
+  axeOptions?: AxeRunOptions;
   wrapper?: RenderWrapper;
 };
 
 export async function checkA11y(
   container: HTMLElement,
-  options?: RunOptions,
+  options?: AxeRunOptions,
 ) {
   const results = await axe(container, options);
   expect(results).toHaveNoViolations();
