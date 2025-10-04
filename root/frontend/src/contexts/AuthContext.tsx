@@ -2,13 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { AxiosError } from "axios"
 import api from "../api/axios"
 
+type SetUserArg = any | ((prev: any) => any)
+
 type AuthContextType = {
   isAuth: boolean
   login: (token: string) => Promise<void>
   logout: () => void
   user: any
   loading: boolean
-  setUser: (user: any) => void
+  setUser: (user: SetUserArg) => void
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -65,9 +67,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   })
 
   const setUser = useCallback(
-    (value: any) => {
-      setUserState((prev) => {
-        const next = typeof value === "function" ? value(prev) : value
+    (value: any | ((prev: any) => any)) => {
+      setUserState((prev: any) => {
+        const next =
+          typeof value === "function" ? (value as (prev: any) => any)(prev) : value
         persistUserToCache(next)
         return next
       })
