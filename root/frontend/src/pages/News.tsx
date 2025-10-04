@@ -1,7 +1,7 @@
 import Layout from "../components/Layout"
 import NewsCard from "../components/NewsCard"
 import { useEffect, useState, useRef, useCallback, useDeferredValue, startTransition } from "react"
-import axios from "../api/axios"
+import axios from "../api/client"
 import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent, Stack, TextField, useMediaQuery
 } from "@mui/material"

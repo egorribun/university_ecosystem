@@ -2,17 +2,18 @@ import { Suspense, lazy, useEffect, type ReactElement } from "react"
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
-import { AuthProvider, useAuth } from "./contexts/AuthContext"
+import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import MotionPresence from "./components/MotionPresence"
-import api from "./api/axios"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import { registerServiceWorker } from "./push/register-sw"
 import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
 import ErrorBoundary from "./app/ErrorBoundary"
 import InstallPrompt from "./components/InstallPrompt"
+import { useQueryClient } from "@tanstack/react-query"
+import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
@@ -49,7 +50,7 @@ function AdminRoute({ children }: RouteGuardProps) {
 
 function AppContent() {
   const location = useLocation()
-  const { setUser } = useAuth()
+  const queryClient = useQueryClient()
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const hideNavbar =
@@ -67,15 +68,13 @@ function AppContent() {
     const s = sp.get("spotify")
     if (!s) return
     if (s === "connected") {
-      api
-        .get("/users/me")
-        .then((r) => setUser(r.data))
-        .catch(() => {})
+      void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
+      void queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey })
     }
     sp.delete("spotify")
     const next = location.pathname + (sp.toString() ? "?" + sp : "")
     window.history.replaceState({}, "", next)
-  }, [location.pathname, location.search, setUser])
+  }, [location.pathname, location.search, queryClient])
 
   const wrap = (node: ReactElement) => {
     if (reduceMotion || hideNavbar) return node

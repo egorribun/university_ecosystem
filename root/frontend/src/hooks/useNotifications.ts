@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import api from "@/api/axios";
+import api from "@/api/client";
 
 export type AppNotification = {
   id: number | string;

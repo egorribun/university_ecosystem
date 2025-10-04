@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback, ChangeEvent } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import api from "@/api/axios";
+import { useQueryClient } from "@tanstack/react-query";
+import api from "../api/client";
 import {
   Box,
   Paper,
@@ -50,6 +51,7 @@ const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 export default function Settings() {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
 
@@ -90,8 +92,11 @@ export default function Settings() {
   const disconnectSpotify = async () => {
     try {
       await api.post("/spotify/disconnect");
-      const me = await api.get("/users/me");
-      setUser(me.data);
+      const me = await queryClient.fetchQuery({
+        queryKey: currentUserQueryKey,
+        queryFn: fetchCurrentUser,
+      });
+      setUser(me);
       setSnack({ text: "Spotify отключён", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось отключить Spotify", sev: "error" });
@@ -133,8 +138,11 @@ export default function Settings() {
       const fd = new FormData();
       fd.append("file", file);
       await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const me = await api.get("/users/me");
-      setUser(me.data);
+      const me = await queryClient.fetchQuery({
+        queryKey: currentUserQueryKey,
+        queryFn: fetchCurrentUser,
+      });
+      setUser(me);
       setSnack({ text: "Аватар обновлён", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось загрузить аватар", sev: "error" });
@@ -147,8 +155,11 @@ export default function Settings() {
     try {
       setAvatarBusy(true);
       await api.delete("/users/me/avatar");
-      const me = await api.get("/users/me");
-      setUser(me.data);
+      const me = await queryClient.fetchQuery({
+        queryKey: currentUserQueryKey,
+        queryFn: fetchCurrentUser,
+      });
+      setUser(me);
       setSnack({ text: "Аватар удалён", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось удалить аватар", sev: "error" });
@@ -165,8 +176,11 @@ export default function Settings() {
       const fd = new FormData();
       fd.append("file", file);
       await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const me = await api.get("/users/me");
-      setUser(me.data);
+      const me = await queryClient.fetchQuery({
+        queryKey: currentUserQueryKey,
+        queryFn: fetchCurrentUser,
+      });
+      setUser(me);
       setSnack({ text: "Обложка обновлена", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось загрузить обложку", sev: "error" });

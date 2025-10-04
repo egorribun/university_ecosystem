@@ -1,4 +1,4 @@
-import api from "@/api/axios"
+import api from "@/api/client"
 import { registerServiceWorker } from "./register-sw"
 
 function urlBase64ToUint8Array(base64String: string) {

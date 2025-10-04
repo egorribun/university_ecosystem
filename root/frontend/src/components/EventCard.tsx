@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "../api/axios"
+import axios from "../api/client"
 import {
   Typography, Button, Box, Stack, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions,
