@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: root/backend.Dockerfile
+      target: runtime
     env_file:
       - root/.env
     environment:

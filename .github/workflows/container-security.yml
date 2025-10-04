@@ -1,0 +1,136 @@
+name: Container security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: container-security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: university-ecosystem-backend
+  IMAGE_TAG: scan
+  TRIVY_FAIL_SEVERITIES: ${{ vars.TRIVY_FAIL_SEVERITIES || 'HIGH,CRITICAL' }}
+
+jobs:
+  trivy:
+    name: Build and scan backend image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    env:
+      IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+      TRIVY_SEVERITY: ${{ env.TRIVY_FAIL_SEVERITIES }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image (no push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: root/backend.Dockerfile
+          tags: ${{ env.IMAGE_REF }}
+          pull: true
+          load: true
+          provenance: false
+
+      - name: Capture image size
+        id: image_size
+        run: |
+          set -euo pipefail
+          size_bytes=$(docker image inspect ${{ env.IMAGE_REF }} --format='{{.Size}}')
+          size_human=$(SIZE_BYTES="$size_bytes" python - <<'PY2'
+import math
+import os
+size = int(os.environ["SIZE_BYTES"])
+units = ["B", "KiB", "MiB", "GiB", "TiB"]
+idx = 0
+while size >= 1024 and idx < len(units) - 1:
+    size /= 1024
+    idx += 1
+print(f"{size:.2f} {units[idx]}")
+PY2
+)
+          printf 'bytes=%s\n' "$size_bytes" >> "$GITHUB_OUTPUT"
+          printf 'human=%s\n' "$size_human" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy image scan
+        id: trivy_image
+        uses: aquasecurity/trivy-action@0.18.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REF }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: ${{ env.TRIVY_SEVERITY }}
+          vuln-type: 'os,library'
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Trivy filesystem scan
+        id: trivy_fs
+        uses: aquasecurity/trivy-action@0.18.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: ${{ env.TRIVY_SEVERITY }}
+          ignore-unfixed: true
+          security-checks: 'vuln,config,secret'
+          skip-dirs: 'node_modules,root/node_modules,root/frontend/node_modules'
+          exit-code: '1'
+
+      - name: Upload SARIF (image)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Upload SARIF (filesystem)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Upload raw reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: |
+            trivy-image.sarif
+            trivy-fs.sarif
+
+      - name: Job summary
+        if: always()
+        run: |
+          cat <<'SUMMARY' >> "$GITHUB_STEP_SUMMARY"
+          ## Container security
+          - Image: `${{ env.IMAGE_REF }}`
+          - Size: ${{ steps.image_size.outputs.human }}
+          - Image scan: ${{ steps.trivy_image.outcome }}
+          - Filesystem scan: ${{ steps.trivy_fs.outcome }}
+          - Failing severities: `${{ env.TRIVY_SEVERITY }}`
+          SUMMARY
+
+      - name: Fail if Trivy found blocking issues
+        if: ${{ steps.trivy_image.outcome == 'failure' || steps.trivy_fs.outcome == 'failure' }}
+        run: |
+          echo "::error::Trivy detected ${{ env.TRIVY_SEVERITY }} vulnerabilities. See SARIF reports for details."
+          exit 1
