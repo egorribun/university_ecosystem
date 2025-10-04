@@ -1,13 +1,12 @@
-import React, { useEffect } from "react"
+import React, { Suspense, useEffect } from "react"
 import ReactDOM from "react-dom/client"
 import { CssBaseline } from "@mui/material"
 import { CssVarsProvider, useColorScheme } from "@mui/material/styles"
 import { registerSW } from "virtual:pwa-register"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import App from "./App"
 import ErrorBoundary from "./app/ErrorBoundary"
-import { queryClient } from "./app/queryClient"
+import { lazyDevtools, queryClient } from "./app/queryClient"
 import theme from "./theme"
 import "./assets/themes.css"
 import "dayjs/locale/ru"
@@ -41,6 +40,8 @@ function BodyColorSchemeSync() {
   return null
 }
 
+const ReactQueryDevtools = lazyDevtools()
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
@@ -56,7 +57,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <App />
         </ErrorBoundary>
       </CssVarsProvider>
-      {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
+      {ReactQueryDevtools ? (
+        <Suspense fallback={null}>
+          <ReactQueryDevtools buttonPosition="bottom-left" />
+        </Suspense>
+      ) : null}
     </QueryClientProvider>
   </React.StrictMode>
 )
