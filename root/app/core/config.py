@@ -83,14 +83,13 @@ class Settings(BaseSettings):
     security_csp: str = (
         "default-src 'self'; "
         "base-uri 'self'; "
-        "frame-ancestors 'none'; "
-        "form-action 'self'; "
-        "script-src 'self' 'nonce-{nonce}'; "
-        "style-src 'self'; "
-        "img-src 'self' data:; "
-        "connect-src 'self'; "
-        "font-src 'self'; "
         "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "img-src 'self' data: https:; "
+        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self' https://api.spotify.com https://*.push.service; "
+        "font-src 'self' data:; "
         "upgrade-insecure-requests"
     )
     security_csp_report_only: bool = False

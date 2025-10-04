@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig, loadEnv, PluginOption } from "vite"
 import react from "@vitejs/plugin-react"
 import { VitePWA } from "vite-plugin-pwa"
 import { visualizer } from "rollup-plugin-visualizer"
@@ -47,6 +47,21 @@ const loadManifest = () => {
   }
 }
 
+const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
+
+const withStrictCspNonce = (): PluginOption => ({
+  name: "strict-csp-nonce",
+  enforce: "post",
+  transformIndexHtml(html) {
+    return html.replace(/<script\b(?![^>]*\bnonce=)[^>]*>/gi, (tag) => {
+      const insertion = tag.indexOf("<script") + "<script".length
+      const before = tag.slice(0, insertion)
+      const after = tag.slice(insertion)
+      return `${before} nonce="${CSP_NONCE_PLACEHOLDER}"${after}`
+    })
+  },
+})
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   const target = (env.VITE_BACKEND_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "")
@@ -69,7 +84,7 @@ export default defineConfig(({ mode }) => {
     "/push": mk(),
   }
 
-  const plugins = [
+  const plugins: PluginOption[] = [
     react(),
     VitePWA({
       registerType: "autoUpdate",
@@ -111,6 +126,7 @@ export default defineConfig(({ mode }) => {
         ],
       },
     }),
+    withStrictCspNonce(),
   ]
   if (analyze) {
     plugins.push(
