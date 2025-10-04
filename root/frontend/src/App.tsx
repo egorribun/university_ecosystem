@@ -1,5 +1,12 @@
 import { Suspense, lazy, useEffect, type ReactElement } from "react"
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router-dom"
+import type { FutureConfig as RouterFutureConfig } from "@remix-run/router"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
@@ -140,7 +147,7 @@ export const routerFutureFlags = {
   v7_fetcherPersist: true,
   v7_normalizeFormMethod: true,
   v7_skipActionErrorRevalidation: true,
-} as const
+} satisfies Partial<RouterFutureConfig>
 
 export default function App() {
   return (
