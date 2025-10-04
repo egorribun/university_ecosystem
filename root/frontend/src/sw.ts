@@ -31,20 +31,21 @@ const navigationHandler = createHandlerBoundToURL(OFFLINE_URL)
 registerRoute(
   new NavigationRoute(async (options) => {
     const { event, request, url } = options
+    const fetchEvent = event as FetchEvent
 
     if (!/^\/[^_].*/.test(url.pathname)) {
       return fetch(request)
     }
 
     try {
-      const preload = await event.preloadResponse
+      const preload = "preloadResponse" in fetchEvent ? await fetchEvent.preloadResponse : undefined
       if (preload) {
         return preload
       }
 
       return await fetch(request)
     } catch (error) {
-      return navigationHandler({ request, event })
+      return navigationHandler(options)
     }
   }, { allowlist: [/^\/[^_].*/] })
 )
@@ -72,6 +73,12 @@ registerRoute(
 type NotificationData = {
   url?: string
   [key: string]: unknown
+}
+
+type NotificationAction = {
+  action: string
+  title: string
+  icon?: string
 }
 
 type PushPayload = {
@@ -117,12 +124,31 @@ self.addEventListener("push", (event) => {
     badge: payload.badge || payload.icon || DEFAULT_ICON,
     tag: payload.tag,
     data,
-    renotify: payload.renotify,
     requireInteraction: payload.requireInteraction,
     silent: payload.silent,
-    timestamp: payload.timestamp,
-    vibrate: payload.vibrate,
-    actions: payload.actions,
+  }
+
+  const extendedOptions = options as NotificationOptions & {
+    renotify?: boolean
+    timestamp?: number
+    vibrate?: number[]
+    actions?: NotificationAction[]
+  }
+
+  if (payload.renotify !== undefined) {
+    extendedOptions.renotify = payload.renotify
+  }
+
+  if (payload.timestamp !== undefined) {
+    extendedOptions.timestamp = payload.timestamp
+  }
+
+  if (payload.vibrate) {
+    extendedOptions.vibrate = payload.vibrate
+  }
+
+  if (payload.actions) {
+    extendedOptions.actions = payload.actions
   }
 
   event.waitUntil(self.registration.showNotification(title, options))
