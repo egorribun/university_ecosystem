@@ -14,7 +14,6 @@ import {
   CircularProgress,
   IconButton,
   Snackbar,
-  Tooltip,
   Chip,
   Alert,
   LinearProgress,
@@ -569,9 +568,9 @@ export default function Profile() {
       >
         <Box
           component="main"
+          id="main"
           className="profile-page"
           data-testid="profile-root"
-          role="region"
           aria-label="Профиль"
           sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
         >
@@ -793,21 +792,20 @@ export default function Profile() {
                             </a>
                           </Typography>
                         </Stack>
-                        <Tooltip title="Скопировать email">
-                          <IconButton
-                            size="small"
-                            className="glass--btn"
-                            onClick={(e) => copy(user!.email, e)}
-                            aria-label="Скопировать email"
-                            data-testid="copy-email"
-                            sx={{
-                              transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
-                            }}
-                          >
-                            <ContentCopyIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <IconButton
+                          size="small"
+                          className="glass--btn"
+                          onClick={(e) => copy(user!.email, e)}
+                          aria-label="Скопировать email"
+                          title="Скопировать email"
+                          data-testid="copy-email"
+                          sx={{
+                            transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
+                            "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
+                          }}
+                        >
+                          <ContentCopyIcon fontSize="small" />
+                        </IconButton>
                       </Stack>
 
                       {!!user!.telegram && (
@@ -827,21 +825,20 @@ export default function Profile() {
                               </a>
                             </Typography>
                           </Stack>
-                          <Tooltip title="Скопировать ник">
-                            <IconButton
-                              size="small"
-                              className="glass--btn"
-                              onClick={(e) => copy(user!.telegram!, e)}
-                              aria-label="Скопировать ник в Telegram"
-                              data-testid="copy-telegram"
-                              sx={{
-                                transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                                "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
-                              }}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+                          <IconButton
+                            size="small"
+                            className="glass--btn"
+                            onClick={(e) => copy(user!.telegram!, e)}
+                            aria-label="Скопировать ник в Telegram"
+                            title="Скопировать ник в Telegram"
+                            data-testid="copy-telegram"
+                            sx={{
+                              transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
+                              "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
+                            }}
+                          >
+                            <ContentCopyIcon fontSize="small" />
+                          </IconButton>
                         </Stack>
                       )}
                     </Stack>
@@ -918,7 +915,11 @@ export default function Profile() {
                           ["--glass-highlight" as any]: "rgba(255,255,255,0)",
                         }}
                       >
-                        <Typography variant="h5" sx={{ fontWeight: 900, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, letterSpacing: "-.01em" }}>
+                        <Typography
+                          variant="h5"
+                          component="h2"
+                          sx={{ fontWeight: 900, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, letterSpacing: "-.01em" }}
+                        >
                           Сведения
                         </Typography>
                         <Accordion
@@ -967,7 +968,7 @@ export default function Profile() {
                             })()}
                             {achievementsList.length > 0 && (
                               <Box sx={{ mt: 2.4 }}>
-                                <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1.4 }}>
+                                <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 800, mb: 1.4 }}>
                                   Достижения
                                 </Typography>
                                 <Box

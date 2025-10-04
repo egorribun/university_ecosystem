@@ -148,14 +148,19 @@ export const routerFutureFlags = {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ru">
-        <ErrorBoundary>
-          <Router future={routerFutureFlags}>
-            <AppContent />
-          </Router>
-        </ErrorBoundary>
-      </LocalizationProvider>
-    </AuthProvider>
+    <>
+      <a href="#main" className="skip-link">
+        Перейти к содержанию
+      </a>
+      <AuthProvider>
+        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ru">
+          <ErrorBoundary>
+            <Router future={routerFutureFlags}>
+              <AppContent />
+            </Router>
+          </ErrorBoundary>
+        </LocalizationProvider>
+      </AuthProvider>
+    </>
   )
 }
