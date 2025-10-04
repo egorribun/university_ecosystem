@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import type { NowPlaying } from "@/types/spotify"
@@ -42,12 +43,12 @@ const computeInterval = (data?: NowPlaying | null) => {
   return 15000
 }
 
-export const useNowPlaying = (enabled: boolean) =>
-  useQuery<NowPlaying | null>({
+export const useNowPlaying = (enabled: boolean) => {
+  const query = useQuery<NowPlaying | null, Error, NowPlaying | null, typeof nowPlayingQueryKey>({
     queryKey: nowPlayingQueryKey,
     queryFn: fetchNowPlaying,
     enabled,
-    placeholderData: (previous: NowPlaying | null | undefined) => {
+    placeholderData: previous => {
       if (previous !== undefined) return previous ?? null
       const cached = readCachedNowPlaying()
       return cached ?? null
@@ -63,7 +64,12 @@ export const useNowPlaying = (enabled: boolean) =>
       return computeInterval(data)
     },
     refetchIntervalInBackground: true,
-    onSuccess: data => {
-      persistNowPlaying(data ?? null)
-    },
   })
+
+  useEffect(() => {
+    if (!query.isSuccess) return
+    persistNowPlaying(query.data ?? null)
+  }, [query.data, query.isSuccess])
+
+  return query
+}

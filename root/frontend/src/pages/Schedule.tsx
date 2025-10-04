@@ -57,6 +57,9 @@ dayjs.locale("ru")
 
 const scheduleGroupsQueryKey = ["schedule", "groups"] as const
 const scheduleQueryKey = (groupId: number) => ["schedule", "group", groupId] as const
+type ScheduleGroupsQueryKey = typeof scheduleGroupsQueryKey
+type InactiveScheduleQueryKey = readonly ["schedule", "group", "none"]
+type ActiveScheduleQueryKey = ReturnType<typeof scheduleQueryKey>
 
 const groupsStorageKey = "sched:groups"
 const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
@@ -111,6 +114,23 @@ type AddLessonFields = {
   startTime: string
   endTime: string
   parity: LessonParity
+}
+
+type ScheduleGroup = {
+  id: number
+  name: string
+  [key: string]: unknown
+}
+
+const groupsPlaceholder = (previous?: ScheduleGroup[]) => {
+  if (previous !== undefined) return previous
+  return readFromStorage<ScheduleGroup[]>(groupsStorageKey)
+}
+
+const schedulePlaceholder = (groupId: number | null, previous?: Lesson[]) => {
+  if (previous !== undefined) return previous
+  if (groupId == null) return previous
+  return readFromStorage<Lesson[]>(scheduleStorageKey(groupId))
 }
 
 const lessonTypeColor: Record<string, string> = {
@@ -217,54 +237,50 @@ export default function Schedule() {
     return `${API_BASE}/schedule/ics?group=${encodeURIComponent(value)}`
   }, [selectedGroup, user])
 
-  const groupsQuery = useQuery<any[]>({
+  const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
     queryKey: scheduleGroupsQueryKey,
     queryFn: async () => {
       const res = await api.get("/groups")
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: Boolean(user),
-    placeholderData: (previous: any[] | undefined) => {
-      if (previous !== undefined) return previous
-      return readFromStorage<any[]>(groupsStorageKey)
-    },
+    placeholderData: groupsPlaceholder,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
     retry: 1,
-    onSuccess: data => {
-      writeToStorage(groupsStorageKey, data)
-    },
   })
   const groups = groupsQuery.data ?? []
+
+  useEffect(() => {
+    if (!groupsQuery.isSuccess) return
+    writeToStorage(groupsStorageKey, groupsQuery.data)
+  }, [groupsQuery.data, groupsQuery.isSuccess])
 
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
 
-  const scheduleQuery = useQuery<Lesson[]>({
-    queryKey: scheduleKey ?? ["schedule", "group", "none"],
+  const scheduleQuery = useQuery<Lesson[], Error, Lesson[], ActiveScheduleQueryKey | InactiveScheduleQueryKey>({
+    queryKey: (scheduleKey ?? ["schedule", "group", "none"]) as ActiveScheduleQueryKey | InactiveScheduleQueryKey,
     queryFn: async () => {
       if (activeGroupId == null) return []
       const res = await api.get(`/schedule/${activeGroupId}`)
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: activeGroupId != null,
-    placeholderData: (previous: Lesson[] | undefined) => {
-      if (previous !== undefined) return previous
-      if (activeGroupId == null) return previous
-      return readFromStorage<Lesson[]>(scheduleStorageKey(activeGroupId))
-    },
+    placeholderData: previous => schedulePlaceholder(activeGroupId, previous),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
     retry: 1,
-    onSuccess: data => {
-      if (activeGroupId != null) {
-        writeToStorage(scheduleStorageKey(activeGroupId), data)
-      }
-    },
   })
   const groupSchedule = scheduleQuery.data ?? []
+
+  useEffect(() => {
+    if (!scheduleQuery.isSuccess) return
+    if (activeGroupId == null) return
+    writeToStorage(scheduleStorageKey(activeGroupId), scheduleQuery.data)
+  }, [scheduleQuery.data, scheduleQuery.isSuccess, activeGroupId])
 
   const applyScheduleUpdate = (updater: (prev: Lesson[]) => Lesson[]) => {
     if (!scheduleKey || activeGroupId == null) return
