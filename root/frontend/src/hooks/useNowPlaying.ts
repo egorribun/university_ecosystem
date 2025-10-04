@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import type { NowPlaying } from "@/types/spotify"
@@ -5,6 +6,28 @@ import type { NowPlaying } from "@/types/spotify"
 export const nowPlayingQueryKey = ["spotify", "now-playing"] as const
 
 const isTestEnv = typeof process !== "undefined" && process.env.NODE_ENV === "test"
+
+const STORAGE_KEY = "spotify:now-playing:last"
+
+const readCachedNowPlaying = (): NowPlaying | null | undefined => {
+  if (typeof window === "undefined") return undefined
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return undefined
+    return JSON.parse(raw) as NowPlaying | null
+  } catch {
+    return undefined
+  }
+}
+
+const persistNowPlaying = (value: NowPlaying | null) => {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  } catch {
+    /* noop */
+  }
+}
 
 export const fetchNowPlaying = async () => {
   const res = await api.get<NowPlaying>("/spotify/now-playing")
@@ -20,14 +43,20 @@ const computeInterval = (data?: NowPlaying | null) => {
   return 15000
 }
 
-export const useNowPlaying = (enabled: boolean) =>
-  useQuery<NowPlaying | null>({
+export const useNowPlaying = (enabled: boolean) => {
+  const query = useQuery<NowPlaying | null, Error, NowPlaying | null, typeof nowPlayingQueryKey>({
     queryKey: nowPlayingQueryKey,
     queryFn: fetchNowPlaying,
     enabled,
-    placeholderData: (previous: NowPlaying | null | undefined) => previous ?? null,
-    staleTime: 15000,
-    gcTime: 5 * 60 * 1000,
+    placeholderData: previous => {
+      if (previous !== undefined) return previous ?? null
+      const cached = readCachedNowPlaying()
+      return cached ?? null
+    },
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    networkMode: "online",
+    retry: 1,
     refetchOnWindowFocus: enabled,
     refetchInterval: (query: { state: { data: NowPlaying | null | undefined } }) => {
       if (!enabled || isTestEnv) return false
@@ -36,3 +65,11 @@ export const useNowPlaying = (enabled: boolean) =>
     },
     refetchIntervalInBackground: true,
   })
+
+  useEffect(() => {
+    if (!query.isSuccess) return
+    persistNowPlaying(query.data ?? null)
+  }, [query.data, query.isSuccess])
+
+  return query
+}
