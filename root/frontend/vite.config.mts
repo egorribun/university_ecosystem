@@ -180,7 +180,7 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = toPosix(id)
             for (const chunk of routeChunks) {
-              if (chunk.patterns.some(pattern => normalizedId.startsWith(pattern))) {
+              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern))) {
                 return chunk.name
               }
             }
