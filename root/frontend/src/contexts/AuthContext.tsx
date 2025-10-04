@@ -67,8 +67,15 @@ const readStoredToken = () => {
 }
 
 export const fetchCurrentUser = async () => {
-  const res = await api.get("/users/me")
-  return res.data
+  try {
+    const res = await api.get("/users/me")
+    return res.data
+  } catch (error) {
+    if (!isAxiosError(error) || error.response) {
+      throw error
+    }
+    return null
+  }
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
