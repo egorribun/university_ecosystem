@@ -1,6 +1,7 @@
 {
   "name": "frontend",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -9,8 +10,8 @@
     "lint": "eslint --max-warnings=0 src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx",
     "lint:all": "eslint \"src/**/*.{ts,tsx}\"",
     "lint:fix": "npm run lint -- --fix",
-    "format": "prettier --write src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx vite.config.ts",
-    "format:check": "prettier --check src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx vite.config.ts",
+    "format": "prettier --write src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx vite.config.mts",
+    "format:check": "prettier --check src/components/MotionPresence.tsx src/components/PageTransition.tsx src/pages/Activity.tsx src/App.tsx src/main.tsx vite.config.mts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=vitest-report.xml",

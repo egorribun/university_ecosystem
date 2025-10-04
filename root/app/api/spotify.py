@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -18,14 +18,14 @@ from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 router = APIRouter(prefix="/spotify", tags=["spotify"])
 
 
-def _now_naive() -> datetime:
-    return datetime.utcnow().replace(tzinfo=None)
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
 
 
-def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
-    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+    return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def _b64(s: str) -> str:
@@ -43,7 +43,7 @@ async def _save_tokens(
     user.spotify_access_token = access
     if refresh:
         user.spotify_refresh_token = refresh
-    user.spotify_token_expires_at = _now_naive() + timedelta(seconds=expires_in - 10)
+    user.spotify_token_expires_at = _now_utc() + timedelta(seconds=expires_in - 10)
     user.spotify_scope = scope or ""
     user.spotify_is_connected = True
     await db.commit()
@@ -53,8 +53,8 @@ async def _save_tokens(
 async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
     if not user.spotify_access_token or not user.spotify_refresh_token:
         return None
-    exp = _as_naive_utc(user.spotify_token_expires_at)
-    if exp and exp > _now_naive():
+    exp = _ensure_utc(user.spotify_token_expires_at)
+    if exp and exp > _now_utc():
         return user.spotify_access_token
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
@@ -151,7 +151,7 @@ async def now_playing(
 ):
     token = await _ensure_access_token(db, user)
     if not token:
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_naive())
+        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             "https://api.spotify.com/v1/me/player/currently-playing",
@@ -159,11 +159,11 @@ async def now_playing(
         )
     if r.status_code == 204:
         user.spotify_is_playing = False
-        user.spotify_last_checked_at = _now_naive()
+        user.spotify_last_checked_at = _now_utc()
         await db.commit()
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_naive())
+        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
     if r.status_code != 200:
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_naive())
+        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
     j = r.json()
     item = j.get("item") or {}
     artists = [a.get("name") for a in item.get("artists", []) if a.get("name")]
@@ -173,7 +173,7 @@ async def now_playing(
     url = item.get("external_urls", {}).get("spotify")
     preview = item.get("preview_url")
     user.spotify_is_playing = bool(j.get("is_playing"))
-    user.spotify_last_checked_at = _now_naive()
+    user.spotify_last_checked_at = _now_utc()
     user.spotify_last_track_id = item.get("id")
     user.spotify_last_track_name = item.get("name")
     user.spotify_last_artist_name = ", ".join(artists) if artists else None
@@ -192,7 +192,7 @@ async def now_playing(
         album_image_url=img,
         track_url=url,
         preview_url=preview,
-        fetched_at=_now_naive(),
+        fetched_at=_now_utc(),
     )
 
 

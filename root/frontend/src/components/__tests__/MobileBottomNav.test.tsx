@@ -2,11 +2,12 @@ import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import MobileBottomNav from "../MobileBottomNav";
+import { routerFutureFlags } from "../../App";
 
 describe("MobileBottomNav", () => {
   it("does not render on auth pages", () => {
     render(
-      <MemoryRouter initialEntries={["/login"]}>
+      <MemoryRouter future={routerFutureFlags} initialEntries={["/login"]}>
         <MobileBottomNav />
       </MemoryRouter>
     );
@@ -16,7 +17,7 @@ describe("MobileBottomNav", () => {
 
   it("renders links for main sections", () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/dashboard"]}>
+      <MemoryRouter future={routerFutureFlags} initialEntries={["/dashboard"]}>
         <MobileBottomNav />
       </MemoryRouter>
     );

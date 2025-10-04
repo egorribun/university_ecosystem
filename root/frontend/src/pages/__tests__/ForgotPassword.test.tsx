@@ -4,10 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { axe } from 'jest-axe';
 import ForgotPassword from '../ForgotPassword';
+import { routerFutureFlags } from '../../App';
 
 const renderForgot = () =>
   render(
-    <MemoryRouter>
+    <MemoryRouter future={routerFutureFlags}>
       <ForgotPassword />
     </MemoryRouter>,
   );

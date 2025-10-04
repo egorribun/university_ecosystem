@@ -17,7 +17,7 @@ const securityConfig = {
 
 export default tseslint.config(
   {
-    ignores: ["dist", "node_modules", "public", "vite.config.ts"],
+    ignores: ["dist", "node_modules", "public", "vite.config.mts"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -6,10 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { axe } from 'jest-axe';
 import Register from '../Register';
 import { server } from '@/tests/mocks/server';
+import { routerFutureFlags } from '../../App';
 
 const renderRegister = () =>
   render(
-    <MemoryRouter initialEntries={['/register']}>
+    <MemoryRouter future={routerFutureFlags} initialEntries={['/register']}>
       <Routes>
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<div>Страница входа</div>} />

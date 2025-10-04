@@ -55,6 +55,7 @@ async def login(
     if new_hash:
         user.hashed_password = new_hash
         await db.commit()
+        await db.refresh(user)
     token = create_access_token(str(user_id))
     return {"access_token": token, "token_type": "bearer"}
 
@@ -90,6 +91,7 @@ async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
     if new_hash:
         user.hashed_password = new_hash
         await db.commit()
+        await db.refresh(user)
     token = create_access_token(str(user_id))
     return {"access_token": token, "token_type": "bearer"}
 
