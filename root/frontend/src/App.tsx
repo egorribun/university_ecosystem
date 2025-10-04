@@ -1,11 +1,5 @@
 import { Suspense, lazy, useEffect, type ReactElement } from "react"
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-} from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import type { FutureConfig as RouterFutureConfig } from "@remix-run/router"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
