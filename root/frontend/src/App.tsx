@@ -12,6 +12,7 @@ import { registerServiceWorker } from "./push/register-sw"
 import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
 import ErrorBoundary from "./app/ErrorBoundary"
+import InstallPrompt from "./components/InstallPrompt"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
@@ -128,6 +129,7 @@ function AppContent() {
       {!hideNavbar && <BackToTop />}
       {!hideNavbar && <Footer />}
       {!hideNavbar && <MobileBottomNav />}
+      {!hideNavbar && <InstallPrompt />}
     </>
   )
 }

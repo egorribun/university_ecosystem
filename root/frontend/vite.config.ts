@@ -88,6 +88,8 @@ export default defineConfig(({ mode }) => {
         navigateFallbackAllowlist: [/^\/[^_].*/],
         navigationPreload: true,
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: ({ sameOrigin, url }) =>
@@ -136,6 +138,19 @@ export default defineConfig(({ mode }) => {
                 maxAgeSeconds: 60 * 60 * 24 * 30,
               },
               cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname === "/api/users/me",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "profile-data",
+              networkTimeoutSeconds: 3,
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 1,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
             },
           },
           {

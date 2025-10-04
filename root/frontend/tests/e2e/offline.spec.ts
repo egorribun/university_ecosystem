@@ -35,4 +35,36 @@ test.describe("PWA offline support", () => {
       await context.setOffline(false);
     }
   });
+
+  test("profile data stays available offline after it was cached", async ({ page, context }) => {
+    const mock = await useMockApi(page);
+    await mock.login(page);
+
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      await navigator.serviceWorker?.ready;
+    });
+
+    let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller));
+    if (!controlled) {
+      await page.reload({ waitUntil: "networkidle" });
+      await page.evaluate(async () => {
+        await navigator.serviceWorker?.ready;
+      });
+      controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller));
+    }
+
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    await expect(page).toHaveURL(/\/profile/);
+    await expect(page.getByText("Иван Иванов")).toBeVisible();
+
+    await context.setOffline(true);
+    try {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page).toHaveURL(/\/profile/);
+      await expect(page.getByText("Иван Иванов")).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+    }
+  });
 });
