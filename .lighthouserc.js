@@ -20,7 +20,7 @@ module.exports = {
         ? {}
         : {
             startServerCommand:
-              `npm run preview -- --host 0.0.0.0 --port ${LOCAL_PREVIEW_PORT} --strictPort`,
+              `npm run build && npm run preview -- --host 0.0.0.0 --port ${LOCAL_PREVIEW_PORT} --strictPort`,
             startServerReadyPattern: 'Local:',
             startServerReadyTimeout: 120000,
           }),

@@ -1,20 +1,26 @@
+const LOCAL_PREVIEW_PORT = 4174
 const base = process.env.PREVIEW_URL || process.env.LHCI_URL || ""
-const explicitUrls = base ? [base, `${base}/login`] : undefined
+const useRemotePreview = Boolean(base)
 
 const collect = {
   numberOfRuns: 3,
-  url: explicitUrls ?? ["/", "/login"],
-  staticDistDir: "dist",
-  isSinglePageApplication: true,
+  url: useRemotePreview
+    ? [base, `${base}/login`]
+    : [
+        `http://127.0.0.1:${LOCAL_PREVIEW_PORT}/`,
+        `http://127.0.0.1:${LOCAL_PREVIEW_PORT}/login`,
+      ],
   settings: {
     preset: "desktop",
     chromeFlags: "--no-sandbox --disable-dev-shm-usage",
   },
 }
 
-if (explicitUrls) {
-  delete collect.isSinglePageApplication
-  collect.staticDistDir = undefined
+if (!useRemotePreview) {
+  collect.startServerCommand =
+    `npm run build && npm run preview -- --host 0.0.0.0 --port ${LOCAL_PREVIEW_PORT} --strictPort`
+  collect.startServerReadyPattern = "Local:"
+  collect.startServerReadyTimeout = 120000
 }
 
 const config = {
