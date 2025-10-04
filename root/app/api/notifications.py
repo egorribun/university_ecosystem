@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,8 +13,13 @@ from app.schemas.schemas import NotificationOut, NotificationsListOut
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
 def _encode_cursor(dt: datetime, nid: int) -> str:
-    return f"{int(dt.timestamp() * 1000)}:{nid}"
+    aware = _ensure_utc(dt)
+    return f"{int(aware.timestamp() * 1000)}:{nid}"
 
 
 def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
@@ -22,7 +27,7 @@ def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
         return None
     try:
         ms_s, id_s = value.split(":", 1)
-        return datetime.utcfromtimestamp(int(ms_s) / 1000.0), int(id_s)
+        return datetime.fromtimestamp(int(ms_s) / 1000.0, UTC), int(id_s)
     except Exception:
         return None
 
@@ -40,6 +45,7 @@ async def list_notifications(
         if not parsed:
             raise HTTPException(status_code=400, detail="bad cursor")
         c_dt, c_id = parsed
+        c_dt = _ensure_utc(c_dt)
         where.append(
             or_(
                 Notification.created_at < c_dt,
@@ -63,7 +69,7 @@ async def list_notifications(
     unread = (await db.execute(q_unread)).scalar_one() or 0
 
     next_cursor = (
-        _encode_cursor(items[-1].created_at, items[-1].id)
+        _encode_cursor(_ensure_utc(items[-1].created_at), items[-1].id)
         if items and has_more
         else None
     )
@@ -114,7 +120,7 @@ async def check_schedule_and_generate(
     if not user.group_id:
         return await list_notifications(db=db, user=user, limit=20, cursor=None)
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     soon = now + timedelta(minutes=lookahead_minutes)
 
     q = (

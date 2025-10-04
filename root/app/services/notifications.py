@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+from datetime import UTC
 from typing import Awaitable, Callable, Optional, Sequence
 
 from sqlalchemy import and_, insert, select
@@ -20,7 +21,7 @@ async def create_notifications_for_users(
     url: Optional[str] = None,
     user_ids: Sequence[int],
 ) -> int:
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(UTC)
     uids = list({int(uid) for uid in user_ids})
     if not uids:
         return 0
@@ -67,7 +68,7 @@ async def create_notifications_for_users(
 async def generate_schedule_reminders(
     db: AsyncSession, *, window_minutes: int = 6
 ) -> int:
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(UTC)
     soon = now + dt.timedelta(minutes=window_minutes)
     q = select(Schedule).where(
         and_(Schedule.start_time >= now, Schedule.start_time <= soon)

@@ -1,13 +1,19 @@
 import pytest
+from passlib.hash import bcrypt
 
 from app.auth.security import (
     LEGACY_BCRYPT_MAX_BYTES,
-    LEGACY_SCHEME,
     _truncate_for_bcrypt,
     get_password_hash,
     verify_and_update_password,
     verify_password,
 )
+
+
+def _make_legacy_hash(password: str) -> str:
+    prepared = _truncate_for_bcrypt(password)
+    # Directly call the legacy handler to avoid deprecated CryptContext APIs
+    return bcrypt.hash(prepared)
 
 
 def test_get_password_hash_uses_argon2id_by_default():
@@ -37,7 +43,7 @@ def test_password_policy_allows_limits():
 
 def test_verify_and_update_password_migrates_bcrypt():
     password = "LegacySecur3!"
-    legacy_hash = get_password_hash(password, scheme=LEGACY_SCHEME)
+    legacy_hash = _make_legacy_hash(password)
 
     assert legacy_hash.startswith("$2")
 
@@ -51,7 +57,7 @@ def test_verify_and_update_password_migrates_bcrypt():
 
 def test_verify_and_update_password_invalid_password():
     password = "ValidPassw0rd!"
-    legacy_hash = get_password_hash(password, scheme=LEGACY_SCHEME)
+    legacy_hash = _make_legacy_hash(password)
 
     verified, new_hash = verify_and_update_password("wrong", legacy_hash)
 
@@ -79,7 +85,7 @@ def test_unicode_password_hashing():
 
 def test_legacy_bcrypt_truncation_behavior():
     long_password = "a" * 80
-    legacy_hash = get_password_hash(long_password, scheme=LEGACY_SCHEME)
+    legacy_hash = _make_legacy_hash(long_password)
 
     truncated = _truncate_for_bcrypt(long_password)
     assert len(truncated.encode("utf-8")) == LEGACY_BCRYPT_MAX_BYTES
@@ -96,7 +102,7 @@ def test_legacy_bcrypt_truncation_behavior():
 @pytest.mark.anyio
 async def test_login_migrates_legacy_hash(async_client, user_factory, db_session):
     password = "LegacyLog1n!"
-    legacy_hash = get_password_hash(password, scheme=LEGACY_SCHEME)
+    legacy_hash = _make_legacy_hash(password)
 
     user = await user_factory(hashed_password=legacy_hash, is_active=True)
 

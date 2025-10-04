@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -12,7 +12,7 @@ async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache
     await db_session.commit()
     await db_session.refresh(group)
 
-    start = datetime.utcnow().replace(microsecond=0)
+    start = datetime.now(UTC).replace(microsecond=0)
     lesson = models.Schedule(
         group_id=group.id,
         subject="Math",

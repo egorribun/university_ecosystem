@@ -1,4 +1,3 @@
-import datetime
 import secrets
 
 from sqlalchemy import (
@@ -12,6 +11,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import relationship
 
@@ -48,12 +48,12 @@ class User(Base):
     spotify_user_id = Column(String, unique=True, index=True)
     spotify_access_token = Column(String)
     spotify_refresh_token = Column(String)
-    spotify_token_expires_at = Column(DateTime, index=True)
+    spotify_token_expires_at = Column(DateTime(timezone=True), index=True)
     spotify_scope = Column(String)
     spotify_display_name = Column(String)
     spotify_is_connected = Column(Boolean, default=False, index=True)
     spotify_is_playing = Column(Boolean, default=False, index=True)
-    spotify_last_checked_at = Column(DateTime, index=True)
+    spotify_last_checked_at = Column(DateTime(timezone=True), index=True)
     spotify_last_track_id = Column(String, index=True)
     spotify_last_track_name = Column(String)
     spotify_last_artist_name = Column(String)
@@ -101,8 +101,8 @@ class Schedule(Base):
     teacher = Column(String)
     room = Column(String)
     weekday = Column(String, index=True, nullable=False)
-    start_time = Column(DateTime, index=True, nullable=False)
-    end_time = Column(DateTime, index=True, nullable=False)
+    start_time = Column(DateTime(timezone=True), index=True, nullable=False)
+    end_time = Column(DateTime(timezone=True), index=True, nullable=False)
     parity = Column(String, default="both", index=True)
     lesson_type = Column(String, default="Лекция")
 
@@ -120,12 +120,12 @@ class Event(Base):
     description = Column(Text)
     location = Column(String)
     event_type = Column(String, index=True)
-    starts_at = Column(DateTime, nullable=False, index=True)
-    ends_at = Column(DateTime, nullable=False, index=True)
+    starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at = Column(DateTime(timezone=True), nullable=False, index=True)
     created_by = Column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_active = Column(Boolean, default=True, index=True)
     speaker = Column(String)
     image_url = Column(String)
@@ -145,7 +145,9 @@ class EventAttendance(Base):
         index=True,
         nullable=False,
     )
-    registered_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    registered_at = Column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
     qr_code = Column(String)
 
     __table_args__ = (
@@ -172,7 +174,7 @@ class News(Base):
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     image_url = Column(String)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class InviteCode(Base):
@@ -183,7 +185,7 @@ class InviteCode(Base):
     role = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, index=True)
     is_used = Column(Boolean, default=False, index=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     used_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
 
 
@@ -195,9 +197,9 @@ class PasswordResetToken(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash = Column(String, unique=True, index=True, nullable=False)
-    expires_at = Column(DateTime, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     used = Column(Boolean, nullable=False, default=False, index=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("User")
 
@@ -217,9 +219,9 @@ class Notification(Base):
     body = Column(Text)
     type = Column(String, index=True)
     url = Column(String)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     read = Column(Boolean, default=False, index=True)
-    read_at = Column(DateTime, index=True)
+    read_at = Column(DateTime(timezone=True), index=True)
 
     user = relationship("User", back_populates="notifications")
     deliveries = relationship(
@@ -247,7 +249,9 @@ class NotificationDelivery(Base):
     )
     channel = Column(String, nullable=False, default="inapp", index=True)
     status = Column(String, nullable=False, default="delivered", index=True)
-    delivered_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    delivered_at = Column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     notification = relationship("Notification", back_populates="deliveries")
 
@@ -265,11 +269,11 @@ class PushSubscription(Base):
     auth = Column(String(200), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(
-        DateTime,
-        default=datetime.datetime.utcnow,
-        onupdate=datetime.datetime.utcnow,
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         index=True,
     )
 

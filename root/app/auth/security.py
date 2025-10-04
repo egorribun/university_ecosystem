@@ -19,7 +19,7 @@ LEGACY_SCHEME = "bcrypt"
 pwd_context = CryptContext(
     schemes=[DEFAULT_SCHEME, LEGACY_SCHEME],
     default=DEFAULT_SCHEME,
-    deprecated=[LEGACY_SCHEME],
+    deprecated="auto",
     argon2__type="ID",
     argon2__memory_cost=ARGON2_MEMORY_COST_KIB,
     argon2__time_cost=ARGON2_TIME_COST,
@@ -57,13 +57,9 @@ def verify_and_update_password(
     return verified, new_hash
 
 
-def get_password_hash(password: str, *, scheme: str | None = None) -> str:
+def get_password_hash(password: str) -> str:
     _validate_password_policy(password)
-    target_scheme = scheme or DEFAULT_SCHEME
-    prepared_password = (
-        _truncate_for_bcrypt(password) if target_scheme == LEGACY_SCHEME else password
-    )
-    return pwd_context.hash(prepared_password, scheme=target_scheme)
+    return pwd_context.hash(password)
 
 
 def create_access_token(

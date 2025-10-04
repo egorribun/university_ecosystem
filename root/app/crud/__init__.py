@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy import and_, func, or_, select
@@ -16,6 +16,10 @@ async def get_user_auth(db: AsyncSession, login: str):
     stmt = select(models.User).where(func.lower(models.User.email) == login_norm)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
@@ -137,7 +141,7 @@ async def get_all_events(
     is_active: bool = True,
 ):
     q = select(models.Event)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC)
 
     if search:
         q = q.where(
@@ -200,14 +204,8 @@ async def get_all_events(
 
 
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
-    starts_at = (
-        event.starts_at.replace(tzinfo=None)
-        if event.starts_at.tzinfo
-        else event.starts_at
-    )
-    ends_at = (
-        event.ends_at.replace(tzinfo=None) if event.ends_at.tzinfo else event.ends_at
-    )
+    starts_at = _ensure_utc(event.starts_at)
+    ends_at = _ensure_utc(event.ends_at)
     record = models.Event(
         title=event.title,
         description=event.description,
@@ -323,14 +321,8 @@ async def get_schedule_by_group(db: AsyncSession, group_id: int):
 
 
 async def create_schedule(db: AsyncSession, data: schemas.ScheduleCreate):
-    start_time = (
-        data.start_time.replace(tzinfo=None)
-        if data.start_time.tzinfo
-        else data.start_time
-    )
-    end_time = (
-        data.end_time.replace(tzinfo=None) if data.end_time.tzinfo else data.end_time
-    )
+    start_time = _ensure_utc(data.start_time)
+    end_time = _ensure_utc(data.end_time)
     record = models.Schedule(
         group_id=data.group_id,
         subject=data.subject,

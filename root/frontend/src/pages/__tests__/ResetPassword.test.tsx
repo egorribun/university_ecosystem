@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ResetPassword from '../ResetPassword';
 import { server } from '@/tests/mocks/server';
+import { routerFutureFlags } from '../../App';
 
 vi.mock('zxcvbn', () => ({
   default: () => ({ score: 3, feedback: { warning: '', suggestions: [] } }),
@@ -12,7 +13,7 @@ vi.mock('zxcvbn', () => ({
 
 const renderWithToken = () =>
   render(
-    <MemoryRouter initialEntries={['/reset/token123']}>
+    <MemoryRouter future={routerFutureFlags} initialEntries={['/reset/token123']}>
       <Routes>
         <Route path="/reset/:token" element={<ResetPassword />} />
       </Routes>

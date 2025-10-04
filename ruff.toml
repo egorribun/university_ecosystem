@@ -3,7 +3,7 @@ target-version = "py312"
 src = ["root"]
 
 [lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "DTZ", "UP"]
 fixable = ["ALL"]
 
 [lint.per-file-ignores]
