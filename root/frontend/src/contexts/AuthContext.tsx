@@ -96,28 +96,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthToken(token ?? undefined)
   }, [token])
 
-  const userQuery = useQuery({
+  const userQuery = useQuery<any>({
     queryKey: currentUserQueryKey,
     queryFn: fetchCurrentUser,
     enabled: hasToken,
     initialData: readCachedUser,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous: any) => previous,
     staleTime: 5 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
-    retry(failureCount, error) {
+    retry(failureCount: number, error: unknown) {
       if (isAxiosError(error) && error.response?.status === 401) return false
       return failureCount < 3
     },
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30_000),
-    onSuccess: (data) => {
-      persistUserToCache(data ?? null)
-    },
-    onError: (error) => {
-      if (isAxiosError(error) && error.response?.status === 401) {
-        handleUnauthorized()
-      }
-    },
+    retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
   })
+
+  const { data: userData, isSuccess, isError, error, isPending } = userQuery
+
+  useEffect(() => {
+    if (isSuccess) {
+      persistUserToCache(userData ?? null)
+    }
+  }, [isSuccess, userData])
+
+  useEffect(() => {
+    if (isError && isAxiosError(error) && error.response?.status === 401) {
+      handleUnauthorized()
+    }
+  }, [error, handleUnauthorized, isError])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -144,8 +150,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
   }, [handleUnauthorized])
 
-  const user = userQuery.data ?? null
-  const loading = hasToken && userQuery.isPending
+  const user = userData ?? null
+  const loading = hasToken && isPending
   const isAuth = Boolean(hasToken && user)
 
   const setUser = useCallback(

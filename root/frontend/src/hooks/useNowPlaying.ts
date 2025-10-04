@@ -21,18 +21,18 @@ const computeInterval = (data?: NowPlaying | null) => {
 }
 
 export const useNowPlaying = (enabled: boolean) =>
-  useQuery({
+  useQuery<NowPlaying | null>({
     queryKey: nowPlayingQueryKey,
     queryFn: fetchNowPlaying,
     enabled,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous: NowPlaying | null | undefined) => previous ?? null,
     staleTime: 15000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: enabled,
-    refetchInterval: (query) => {
+    refetchInterval: (query: { state: { data: NowPlaying | null | undefined } }) => {
       if (!enabled || isTestEnv) return false
-      const data = query.state.data as NowPlaying | undefined
-      return computeInterval(data ?? null)
+      const data = query.state.data ?? null
+      return computeInterval(data)
     },
     refetchIntervalInBackground: true,
   })
