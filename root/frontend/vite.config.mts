@@ -140,6 +140,20 @@ export default defineConfig(({ mode }) => {
     )
   }
 
+  const toPosix = (value: string) => value.replace(/\\/g, "/")
+  const routeChunks = [
+    { name: "map", patterns: [toPosix(resolve(srcDir, "pages/Map.tsx"))] },
+    { name: "schedule", patterns: [toPosix(resolve(srcDir, "pages/Schedule.tsx"))] },
+    {
+      name: "news",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/News.tsx")),
+        toPosix(resolve(srcDir, "components/NewsCard.tsx")),
+        toPosix(resolve(srcDir, "components/NewsDetail.tsx")),
+      ],
+    },
+  ] as const
+
   return {
     plugins,
     resolve: { alias: { "@": srcDir } },
@@ -157,19 +171,26 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       exclude: ["jspdf", "qrcode", "zxcvbn"],
     },
+    modulepreload: { polyfill: false },
     build: {
       sourcemap: true,
       chunkSizeWarningLimit: 1024,
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (!id.includes("node_modules")) return
-            if (id.includes("framer-motion")) return "motion"
-            if (id.includes("@mui")) return "mui"
-            if (id.includes("react-router")) return "router"
-            if (id.includes("dayjs")) return "dayjs"
-            if (id.includes("zxcvbn")) return "zxcvbn"
-            if (id.includes("jspdf")) return "pdf"
+            const normalizedId = toPosix(id)
+            for (const chunk of routeChunks) {
+              if (chunk.patterns.some(pattern => normalizedId.startsWith(pattern))) {
+                return chunk.name
+              }
+            }
+            if (!normalizedId.includes("node_modules")) return
+            if (normalizedId.includes("framer-motion")) return "motion"
+            if (normalizedId.includes("@mui")) return "mui"
+            if (normalizedId.includes("react-router")) return "router"
+            if (normalizedId.includes("dayjs")) return "dayjs"
+            if (normalizedId.includes("zxcvbn")) return "zxcvbn"
+            if (normalizedId.includes("jspdf")) return "pdf"
           },
         },
       },
