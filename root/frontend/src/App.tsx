@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, type ReactElement } from "react"
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
-import type { FutureConfig as RouterFutureConfig } from "@remix-run/router"
+import type { FutureConfig as RouterDataFutureConfig } from "@remix-run/router"
+import type { FutureConfig as RouterComponentFutureConfig } from "react-router"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
@@ -134,6 +135,8 @@ function AppContent() {
   )
 }
 
+type RouterFutureFlags = Partial<RouterDataFutureConfig> & Partial<RouterComponentFutureConfig>
+
 export const routerFutureFlags = {
   v7_startTransition: true,
   v7_relativeSplatPath: true,
@@ -141,7 +144,7 @@ export const routerFutureFlags = {
   v7_fetcherPersist: true,
   v7_normalizeFormMethod: true,
   v7_skipActionErrorRevalidation: true,
-} satisfies Partial<RouterFutureConfig>
+} satisfies RouterFutureFlags
 
 export default function App() {
   return (
