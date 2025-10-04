@@ -19,9 +19,9 @@ module.exports = {
       ...(useRemotePreview
         ? {}
         : {
-            startServerCommand:
-              `npm run build && npm run preview -- --host 0.0.0.0 --port ${LOCAL_PREVIEW_PORT} --strictPort`,
-            startServerReadyPattern: 'Local:',
+            beforeAllScript: 'npm run build',
+            startServerCommand: `npm run preview -- --host 127.0.0.1 --port ${LOCAL_PREVIEW_PORT} --strictPort`,
+            startServerReadyPattern: `127\\.0\\.0\\.1:${LOCAL_PREVIEW_PORT}`,
             startServerReadyTimeout: 120000,
           }),
     },

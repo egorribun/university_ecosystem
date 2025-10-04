@@ -17,9 +17,10 @@ const collect = {
 }
 
 if (!useRemotePreview) {
+  collect.beforeAllScript = "npm run build"
   collect.startServerCommand =
-    `npm run build && npm run preview -- --host 0.0.0.0 --port ${LOCAL_PREVIEW_PORT} --strictPort`
-  collect.startServerReadyPattern = "Local:"
+    `npm run preview -- --host 127.0.0.1 --port ${LOCAL_PREVIEW_PORT} --strictPort`
+  collect.startServerReadyPattern = `127\\.0\\.0\\.1:${LOCAL_PREVIEW_PORT}`
   collect.startServerReadyTimeout = 120000
 }
 
