@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import secrets
 
+from pathlib import Path
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.types import ASGIApp
 
 from app.core.config import Settings
@@ -25,6 +27,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         if not self._settings.strict_security_headers_enabled:
             return response
+        if nonce:
+            response = self._inject_nonce_into_html(response, nonce)
         self._apply_hsts(response)
         self._apply_csp(response, nonce=nonce)
         self._apply_frame_options(response)
@@ -51,22 +55,86 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_csp(self, response: Response, *, nonce: str | None) -> None:
         headers = response.headers
-        policy = (self._settings.strict_security_csp or "").strip()
-        if "{nonce}" in policy:
-            if nonce:
-                policy = policy.replace("{nonce}", nonce)
-            else:
-                policy = policy.replace("'nonce-{nonce}'", "").replace("  ", " ")
-        if policy:
-            segments = [
-                segment.strip() for segment in policy.split(";") if segment.strip()
-            ]
-            policy = "; ".join(segments)
+        policy_template = (
+            "default-src 'self'; "
+            "base-uri 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "img-src 'self' data: https:; "
+            "script-src 'self' 'nonce-{nonce}' 'strict-dynamic'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "connect-src 'self' https://api.spotify.com https://*.push.service; "
+            "font-src 'self' data:; "
+            "upgrade-insecure-requests"
+        )
+        policy = policy_template
+        if nonce:
+            policy = policy.replace("{nonce}", nonce)
+        else:
+            policy = (
+                policy.replace("'nonce-{nonce}'", "")
+                .replace("  ", " ")
+                .replace(" ;", ";")
+                .strip(" ;")
+            )
+        report_uri = self._settings.security_csp_report_uri.strip()
+        if report_uri:
+            policy = f"{policy}; report-uri {report_uri}".strip(" ;")
         headers["Content-Security-Policy"] = policy
         try:
             del headers["Content-Security-Policy-Report-Only"]
         except KeyError:
             pass
+
+    def _inject_nonce_into_html(self, response: Response, nonce: str) -> Response:
+        content_type = response.headers.get("content-type", "")
+        if "text/html" not in content_type.lower():
+            return response
+        body_bytes: bytes | None = None
+        if isinstance(response, FileResponse):
+            path = Path(response.path)
+            try:
+                body_bytes = path.read_bytes()
+            except OSError:
+                return response
+            charset = getattr(response, "charset", "utf-8") or "utf-8"
+        else:
+            body = getattr(response, "body", b"")
+            if isinstance(body, memoryview):
+                body_bytes = body.tobytes()
+            elif isinstance(body, bytes):
+                body_bytes = body
+            else:
+                body_bytes = bytes(body or b"")
+            charset = getattr(response, "charset", "utf-8") or "utf-8"
+        if not body_bytes:
+            return response
+        placeholder = "__CSP_NONCE__"
+        try:
+            html = body_bytes.decode(charset)
+        except (LookupError, UnicodeDecodeError):
+            return response
+        if placeholder not in html:
+            return response
+        updated_html = html.replace(placeholder, nonce)
+        if updated_html == html:
+            return response
+        updated_body = updated_html.encode(charset)
+        media_type = content_type or response.media_type or "text/html"
+        new_response = Response(
+            content=updated_body,
+            status_code=response.status_code,
+            media_type=media_type,
+            background=response.background,
+        )
+        new_response.charset = charset
+        raw_headers = [
+            (name, value)
+            for name, value in getattr(response, "raw_headers", [])
+            if name.lower() not in {b"content-length", b"content-type"}
+        ]
+        new_response.raw_headers.extend(raw_headers)
+        return new_response
 
     def _apply_cross_origin_policies(self, response: Response) -> None:
         headers = response.headers

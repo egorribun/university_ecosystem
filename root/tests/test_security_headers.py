@@ -55,7 +55,8 @@ async def test_strict_security_headers_enabled(monkeypatch):
     assert "upgrade-insecure-requests" in csp
     assert "img-src 'self' data:" in csp
     assert "script-src 'self' 'nonce-" in csp
-    assert "'unsafe-inline'" not in csp
+    assert "style-src 'self' 'unsafe-inline'" in csp
+    assert "connect-src 'self' https://api.spotify.com https://*.push.service" in csp
     assert "Content-Security-Policy-Report-Only" not in headers
 
 
