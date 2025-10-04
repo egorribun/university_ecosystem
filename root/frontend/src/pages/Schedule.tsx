@@ -1,7 +1,7 @@
 import Layout from "../components/Layout"
 import { useAuth } from "../contexts/AuthContext"
 import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, startTransition } from "react"
-import api from "../api/axios"
+import api from "../api/client"
 import {
   Box,
   Typography,

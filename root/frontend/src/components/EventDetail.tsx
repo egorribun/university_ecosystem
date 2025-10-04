@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from 'react'
-import api from '../api/axios'
+import api from '../api/client'
 import {
   Box, Typography, Paper, CircularProgress, Stack, Chip, Button, Divider,
   IconButton, TextField, useMediaQuery, Snackbar

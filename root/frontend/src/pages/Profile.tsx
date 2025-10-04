@@ -1,7 +1,8 @@
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth, currentUserQueryKey } from "../contexts/AuthContext";
 import React, { useEffect, useMemo, useState, useRef, useCallback, memo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import api from "../api/axios";
+import { useQueryClient } from "@tanstack/react-query";
+import api from "../api/client";
 import profileBg from "../assets/background.jpg";
 import guuLogo from "../assets/guu_logo.png";
 import {
@@ -41,22 +42,10 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
+import { useNowPlaying } from "@/hooks/useNowPlaying";
+import type { NowPlaying } from "@/types/spotify";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
-
-type NowPlaying = {
-  is_playing: boolean;
-  progress_ms?: number;
-  duration_ms?: number;
-  track_id?: string;
-  track_name?: string;
-  artists?: string[];
-  album_name?: string;
-  album_image_url?: string;
-  track_url?: string;
-  preview_url?: string;
-  fetched_at: string | number | Date;
-};
 
 const auraPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
@@ -257,12 +246,10 @@ export default function Profile() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
-  const endTimerRef = useRef<number | null>(null);
-  const pollRef = useRef<number | null>(null);
-  const fetchingRef = useRef(false);
-
+  const queryClient = useQueryClient();
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
+  const nowPlayingQuery = useNowPlaying(spotifyConnected);
+  const nowPlaying = nowPlayingQuery.data ?? null;
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -324,7 +311,7 @@ export default function Profile() {
     const s = sp.get("spotify");
     if (s !== null) {
       if (s !== "error") {
-        api.get("/users/me").then((r) => setUser(r.data)).catch(() => {});
+        void queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
         setSnack({ text: "Spotify подключён", sev: "success" });
       } else {
         setSnack({ text: "Ошибка подключения Spotify", sev: "error" });
@@ -333,59 +320,7 @@ export default function Profile() {
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "");
       window.history.replaceState({}, "", next);
     }
-  }, [setUser]);
-
-  const fetchNowPlaying = useCallback(async () => {
-    if (!spotifyConnected || fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
-      const r = await api.get<NowPlaying>("/spotify/now-playing");
-      setNowPlaying(r.data);
-      if (endTimerRef.current) {
-        window.clearTimeout(endTimerRef.current);
-        endTimerRef.current = null;
-      }
-      if (r.data?.is_playing && r.data.duration_ms && r.data.progress_ms != null) {
-        const remain = Math.max(0, r.data.duration_ms - r.data.progress_ms);
-        endTimerRef.current = window.setTimeout(() => {
-          fetchNowPlaying();
-        }, Math.min(remain + 400, 20000));
-      }
-    } catch {
-    } finally {
-      fetchingRef.current = false;
-    }
-  }, [spotifyConnected]);
-
-  useEffect(() => {
-    if (!spotifyConnected) return;
-    fetchNowPlaying();
-    const startPoll = () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
-      if (isTest) {
-        pollRef.current = null;
-        return;
-      }
-      pollRef.current = window.setInterval(fetchNowPlaying, 15000);
-    };
-    startPoll();
-    const onVis = () => {
-      if (document.hidden) {
-        if (pollRef.current) window.clearInterval(pollRef.current);
-      } else {
-        fetchNowPlaying();
-        startPoll();
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
-      if (endTimerRef.current) window.clearTimeout(endTimerRef.current);
-      document.removeEventListener("visibilitychange", onVis);
-      pollRef.current = null;
-      endTimerRef.current = null;
-    };
-  }, [spotifyConnected, fetchNowPlaying]);
+  }, [queryClient]);
 
   if (loading)
     return (

@@ -3,8 +3,11 @@ import ReactDOM from "react-dom/client"
 import { CssBaseline } from "@mui/material"
 import { CssVarsProvider, useColorScheme } from "@mui/material/styles"
 import { registerSW } from "virtual:pwa-register"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import App from "./App"
 import ErrorBoundary from "./app/ErrorBoundary"
+import { queryClient } from "./app/queryClient"
 import theme from "./theme"
 import "./assets/themes.css"
 import "dayjs/locale/ru"
@@ -40,17 +43,20 @@ function BodyColorSchemeSync() {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <CssVarsProvider
-      theme={theme}
-      defaultMode="system"
-      modeStorageKey="theme"
-      disableTransitionOnChange
-    >
-      <CssBaseline enableColorScheme />
-      <BodyColorSchemeSync />
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </CssVarsProvider>
+    <QueryClientProvider client={queryClient}>
+      <CssVarsProvider
+        theme={theme}
+        defaultMode="system"
+        modeStorageKey="theme"
+        disableTransitionOnChange
+      >
+        <CssBaseline enableColorScheme />
+        <BodyColorSchemeSync />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </CssVarsProvider>
+      {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
+    </QueryClientProvider>
   </React.StrictMode>
 )

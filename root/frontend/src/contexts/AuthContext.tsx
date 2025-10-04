@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
-import type { AxiosError } from "axios"
-import api from "../api/axios"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { isAxiosError } from "axios"
+import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
 
 type SetUserArg = any | ((prev: any) => any)
 
@@ -24,25 +25,27 @@ export const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext)
 
+export const currentUserQueryKey = ["users", "me"] as const
+
 const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
 
-const readCachedUser = () => {
+const readCachedUser = (): any | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_KEY)
-    if (!raw) return null
+    if (!raw) return undefined
     const parsed = JSON.parse(raw)
     if (parsed && typeof parsed === "object" && "data" in parsed) {
       return (parsed as { data: unknown }).data
     }
     return parsed
   } catch {
-    return null
+    return undefined
   }
 }
 
-const persistUserToCache = (value: any) => {
+const persistUserToCache = (value: any | null) => {
   try {
-    if (value) {
+    if (value != null) {
       localStorage.setItem(
         PROFILE_CACHE_KEY,
         JSON.stringify({ data: value, savedAt: new Date().toISOString() })
@@ -55,115 +58,121 @@ const persistUserToCache = (value: any) => {
   }
 }
 
+const readStoredToken = () => {
+  try {
+    return localStorage.getItem("token")
+  } catch {
+    return null
+  }
+}
+
+export const fetchCurrentUser = async () => {
+  const res = await api.get("/users/me")
+  return res.data
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUserState] = useState<any>(() => readCachedUser())
-  const [loading, setLoading] = useState(true)
-  const [isAuth, setIsAuth] = useState<boolean>(() => {
-    try {
-      return !!localStorage.getItem("token")
-    } catch {
-      return false
-    }
-  })
+  const queryClient = useQueryClient()
+  const [token, setToken] = useState<string | null>(() => readStoredToken())
+  const hasToken = Boolean(token)
 
-  const setUser = useCallback(
-    (value: any | ((prev: any) => any)) => {
-      setUserState((prev: any) => {
-        const next =
-          typeof value === "function" ? (value as (prev: any) => any)(prev) : value
-        persistUserToCache(next)
-        return next
-      })
-    },
-    []
-  )
-
-  const applyToken = (token?: string | null) => {
-    if (token) {
-      try {
-        localStorage.setItem("token", token)
-      } catch {}
-      api.defaults.headers.common["Authorization"] = `Bearer ${token}`
-    } else {
-      try {
-        localStorage.removeItem("token")
-      } catch {}
-      delete api.defaults.headers.common["Authorization"]
-    }
-  }
-
-  const fetchMe = async () => {
-    try {
-      const res = await api.get("/users/me")
-      setUser(res.data)
-      setIsAuth(true)
-      return res.data
-    } catch (error) {
-      const status = (error as AxiosError | undefined)?.response?.status
-      if (status === 401) {
-        setUser(null)
-        setIsAuth(false)
-        return null
-      }
-
-      const cached = readCachedUser()
-      if (cached) {
-        setUser(cached)
-        let tokenExists = true
-        try {
-          tokenExists = !!localStorage.getItem("token")
-        } catch {
-          tokenExists = true
-        }
-        setIsAuth(tokenExists)
-        return cached
-      }
-
-      setIsAuth(false)
-      setUser(null)
-      return null
-    }
-  }
-
-  useEffect(() => {
-    let token: string | null = null
-    try {
-      token = localStorage.getItem("token")
-    } catch {}
-    if (token) api.defaults.headers.common["Authorization"] = `Bearer ${token}`
-    fetchMe().finally(() => setLoading(false))
+  const applyToken = useCallback((value: string | null) => {
+    setToken(value)
+    setAuthToken(value ?? undefined)
   }, [])
 
+  const clearProfile = useCallback(() => {
+    persistUserToCache(null)
+    queryClient.setQueryData(currentUserQueryKey, null)
+  }, [queryClient])
+
+  const handleUnauthorized = useCallback(() => {
+    void queryClient.cancelQueries({ queryKey: currentUserQueryKey })
+    applyToken(null)
+    clearProfile()
+  }, [applyToken, clearProfile, queryClient])
+
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "token") {
-        const t = localStorage.getItem("token")
-        if (t) {
-          api.defaults.headers.common["Authorization"] = `Bearer ${t}`
-          fetchMe()
+    setAuthToken(token ?? undefined)
+  }, [token])
+
+  const userQuery = useQuery({
+    queryKey: currentUserQueryKey,
+    queryFn: fetchCurrentUser,
+    enabled: hasToken,
+    initialData: readCachedUser,
+    placeholderData: (previous) => previous,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    retry(failureCount, error) {
+      if (isAxiosError(error) && error.response?.status === 401) return false
+      return failureCount < 3
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30_000),
+    onSuccess: (data) => {
+      persistUserToCache(data ?? null)
+    },
+    onError: (error) => {
+      if (isAxiosError(error) && error.response?.status === 401) {
+        handleUnauthorized()
+      }
+    },
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "token") {
+        const stored = readStoredToken()
+        if (stored) {
+          applyToken(stored)
+          void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
         } else {
-          delete api.defaults.headers.common["Authorization"]
-          setUser(null)
-          setIsAuth(false)
+          handleUnauthorized()
         }
       }
     }
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
-  }, [])
+  }, [applyToken, handleUnauthorized, queryClient])
 
-  const login = async (token: string) => {
-    applyToken(token)
-    setLoading(true)
-    await fetchMe()
-    setLoading(false)
-  }
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onUnauthorized = () => handleUnauthorized()
+    window.addEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
+    return () =>
+      window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
+  }, [handleUnauthorized])
 
-  const logout = () => {
-    applyToken(null)
-    setUser(null)
-    setIsAuth(false)
-  }
+  const user = userQuery.data ?? null
+  const loading = hasToken && userQuery.isPending
+  const isAuth = Boolean(hasToken && user)
+
+  const setUser = useCallback(
+    (value: SetUserArg) => {
+      queryClient.setQueryData(currentUserQueryKey, (prev: any) => {
+        const previous = prev ?? null
+        const next =
+          typeof value === "function" ? (value as (prev: any) => any)(previous) : value
+        persistUserToCache(next ?? null)
+        return next ?? null
+      })
+    },
+    [queryClient]
+  )
+
+  const login = useCallback(
+    async (nextToken: string) => {
+      applyToken(nextToken)
+      await queryClient.cancelQueries({ queryKey: currentUserQueryKey })
+      await queryClient.fetchQuery({ queryKey: currentUserQueryKey, queryFn: fetchCurrentUser })
+    },
+    [applyToken, queryClient]
+  )
+
+  const logout = useCallback(() => {
+    handleUnauthorized()
+  }, [handleUnauthorized])
 
   const value = useMemo(
     () => ({ isAuth, login, logout, user, loading, setUser }),

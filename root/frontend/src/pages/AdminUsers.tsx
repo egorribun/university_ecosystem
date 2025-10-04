@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import api from "../api/axios"
+import api from "../api/client"
 import Layout from "../components/Layout"
 import {
   Box, Typography, Avatar, Select, MenuItem, TextField, InputLabel, FormControl,

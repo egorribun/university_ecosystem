@@ -1,4 +1,4 @@
-import axios from "@/api/axios"
+import axios from "@/api/client"
 
 export async function fetchNotifications(limit = 20, offset = 0) {
   const r = await axios.get("/notifications", { params: { limit, offset } })

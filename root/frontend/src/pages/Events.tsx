@@ -1,7 +1,7 @@
 import Layout from "../components/Layout"
 import EventCard from "../components/EventCard"
 import { useEffect, useState, useCallback, type SyntheticEvent } from "react"
-import axios from "../api/axios"
+import axios from "../api/client"
 import {
   Box, Tabs, Tab, TextField, Typography, Button,
   Dialog, DialogTitle, DialogContent, Stack, useMediaQuery,

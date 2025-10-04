@@ -1,5 +1,7 @@
 import axios from "axios";
 
+export const API_UNAUTHORIZED_EVENT = "auth:unauthorized";
+
 const devBase = "/api";
 const prodBase = import.meta.env.VITE_BACKEND_ORIGIN || "/api";
 
@@ -42,6 +44,9 @@ api.interceptors.response.use(
   (err) => {
     if (err?.response?.status === 401) {
       setAuthToken(undefined);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT));
+      }
     }
     return Promise.reject(err);
   }

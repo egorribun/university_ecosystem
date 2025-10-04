@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react"
 import Layout from "../components/Layout"
 import { useAuth } from "../contexts/AuthContext"
-import axios from "../api/axios"
+import axios from "../api/client"
 import {
   Box,
   Typography,

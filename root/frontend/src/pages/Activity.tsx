@@ -1,5 +1,5 @@
 import Layout from "../components/Layout"
-import axios from "../api/axios"
+import axios from "../api/client"
 import { useEffect, useState, useCallback, useMemo } from "react"
 import {
   Box,
