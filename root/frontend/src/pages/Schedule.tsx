@@ -1,6 +1,6 @@
 import Layout from "../components/Layout"
 import { useAuth } from "../contexts/AuthContext"
-import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, startTransition } from "react"
+import { useState, useEffect, useMemo, useRef, useDeferredValue, startTransition } from "react"
 import api from "../api/client"
 import {
   Box,
@@ -39,6 +39,7 @@ import useMediaQuery from "@mui/material/useMediaQuery"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 const days = [
   "Понедельник",
@@ -53,6 +54,32 @@ const dayShort = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
 
 dayjs.extend(isoWeek)
 dayjs.locale("ru")
+
+const scheduleGroupsQueryKey = ["schedule", "groups"] as const
+const scheduleQueryKey = (groupId: number) => ["schedule", "group", groupId] as const
+
+const groupsStorageKey = "sched:groups"
+const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
+
+const readFromStorage = <T,>(key: string): T | undefined => {
+  if (typeof window === "undefined") return undefined
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return undefined
+    return JSON.parse(raw) as T
+  } catch {
+    return undefined
+  }
+}
+
+const writeToStorage = (key: string, value: unknown) => {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* noop */
+  }
+}
 
 const API_BASE = (() => {
   const raw = (api.defaults.baseURL as string | undefined) || (import.meta.env.VITE_BACKEND_ORIGIN || "/api")
@@ -147,9 +174,8 @@ const toDayjs = (s?: string | null) => {
 
 export default function Schedule() {
   const { user, loading } = useAuth()
-  const [groups, setGroups] = useState<any[]>([])
+  const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null)
-  const [groupSchedule, setGroupSchedule] = useState<Lesson[]>([])
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
   const [snack, setSnack] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
@@ -191,65 +217,78 @@ export default function Schedule() {
     return `${API_BASE}/schedule/ics?group=${encodeURIComponent(value)}`
   }, [selectedGroup, user])
 
-  const cachedGetGroups = useCallback(async () => {
-    try {
+  const groupsQuery = useQuery<any[]>({
+    queryKey: scheduleGroupsQueryKey,
+    queryFn: async () => {
       const res = await api.get("/groups")
-      setGroups(Array.isArray(res.data) ? res.data : [])
-      return res.data
-    } catch {
-      setGroups([])
-      return []
-    }
-  }, [])
+      return Array.isArray(res.data) ? res.data : []
+    },
+    enabled: Boolean(user),
+    placeholderData: (previous: any[] | undefined) => {
+      if (previous !== undefined) return previous
+      return readFromStorage<any[]>(groupsStorageKey)
+    },
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    networkMode: "online",
+    retry: 1,
+    onSuccess: data => {
+      writeToStorage(groupsStorageKey, data)
+    },
+  })
+  const groups = groupsQuery.data ?? []
 
-  const cacheKey = (gid: number) => `sched:${gid}`
-  const etagKey = (gid: number) => `sched:${gid}:etag`
+  const activeGroupId = selectedGroup
+  const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
 
-  const loadScheduleWithCache = useCallback(async (gid: number) => {
-    try {
-      const etag = localStorage.getItem(etagKey(gid)) || ""
-      const res = await api.get(`/schedule/${gid}`, {
-        headers: etag ? { "If-None-Match": etag } : {},
-        validateStatus: s => s === 200 || s === 304
-      })
-      if (res.status === 304) {
-        const cached = localStorage.getItem(cacheKey(gid))
-        setGroupSchedule(cached ? JSON.parse(cached) : [])
-      } else {
-        setGroupSchedule(Array.isArray(res.data) ? res.data : [])
-        const newTag = (res.headers?.etag as string) || ""
-        localStorage.setItem(cacheKey(gid), JSON.stringify(res.data))
-        if (newTag) localStorage.setItem(etagKey(gid), newTag)
+  const scheduleQuery = useQuery<Lesson[]>({
+    queryKey: scheduleKey ?? ["schedule", "group", "none"],
+    queryFn: async () => {
+      if (activeGroupId == null) return []
+      const res = await api.get(`/schedule/${activeGroupId}`)
+      return Array.isArray(res.data) ? res.data : []
+    },
+    enabled: activeGroupId != null,
+    placeholderData: (previous: Lesson[] | undefined) => {
+      if (previous !== undefined) return previous
+      if (activeGroupId == null) return previous
+      return readFromStorage<Lesson[]>(scheduleStorageKey(activeGroupId))
+    },
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    networkMode: "online",
+    retry: 1,
+    onSuccess: data => {
+      if (activeGroupId != null) {
+        writeToStorage(scheduleStorageKey(activeGroupId), data)
       }
-    } catch {
-      const cached = localStorage.getItem(cacheKey(gid))
-      setGroupSchedule(cached ? JSON.parse(cached) : [])
-    }
-  }, [])
+    },
+  })
+  const groupSchedule = scheduleQuery.data ?? []
+
+  const applyScheduleUpdate = (updater: (prev: Lesson[]) => Lesson[]) => {
+    if (!scheduleKey || activeGroupId == null) return
+    queryClient.setQueryData<Lesson[]>(scheduleKey, prev => {
+      const base = Array.isArray(prev) ? [...prev] : []
+      const next = updater(base)
+      writeToStorage(scheduleStorageKey(activeGroupId), next)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!user) return
     if (user.role === "student" && user.group_id) {
-      setSelectedGroup(user.group_id)
-      loadScheduleWithCache(user.group_id)
-      cachedGetGroups()
-      return
+      setSelectedGroup(prev => (prev ?? user.group_id))
     }
-    if (user.role === "teacher" || user.role === "admin") {
-      cachedGetGroups().then(gs => {
-        const firstGroup = gs?.length > 0 ? gs[0].id : null
-        setSelectedGroup(firstGroup)
-        if (firstGroup) loadScheduleWithCache(firstGroup)
-        else setGroupSchedule([])
-      })
-    }
-  }, [user, cachedGetGroups, loadScheduleWithCache])
+  }, [user])
 
   useEffect(() => {
-    if (selectedGroup && (user?.role === "teacher" || user?.role === "admin")) {
-      loadScheduleWithCache(selectedGroup)
+    if (!user) return
+    if ((user.role === "teacher" || user.role === "admin") && groups.length > 0) {
+      setSelectedGroup(prev => (prev ?? groups[0]?.id ?? null))
     }
-  }, [selectedGroup, user, loadScheduleWithCache])
+  }, [user, groups])
 
   const filteredSchedule = useMemo(
     () => groupSchedule.filter(l => l.parity === "both" || l.parity === currentParity),
@@ -971,8 +1010,9 @@ export default function Schedule() {
                     onClick={async () => {
                       if (!editLesson) return
                       const optimisticId = editLesson.id
-                      const backup = groupSchedule
-                      setGroupSchedule(prev => prev.map(l => l.id === optimisticId ? editLesson : l))
+                      const backup = groupSchedule.map(l => ({ ...l }))
+                      const updatedLesson: Lesson = { ...editLesson }
+                      applyScheduleUpdate(prev => prev.map(l => (l.id === optimisticId ? updatedLesson : l)))
                       try {
                         await api.patch(`/schedule/${optimisticId}`, {
                           subject: editLesson.subject,
@@ -987,10 +1027,10 @@ export default function Schedule() {
                         setSnack("Изменения сохранены")
                         setEditing(false)
                         setOpenDialog(false)
-                        if (selectedGroup) await loadScheduleWithCache(selectedGroup)
+                        await scheduleQuery.refetch().catch(() => {})
                       } catch {
                         setSnack("Ошибка при сохранении")
-                        setGroupSchedule(backup)
+                        applyScheduleUpdate(() => backup)
                       }
                     }}
                   >
@@ -1068,7 +1108,7 @@ export default function Schedule() {
       end_time: dayjs().format("YYYY-MM-DDT") + endTime + ":00",
       parity
     }
-    setGroupSchedule(prev => [...prev, optimistic])
+    applyScheduleUpdate(prev => [...prev, optimistic])
     try {
       await api.post("/schedule", {
         group_id: selectedGroup,
@@ -1084,23 +1124,24 @@ export default function Schedule() {
       setSnack("Занятие добавлено")
       setAddFields({ subject: "", teacher: "", room: "", lessonType: "Лекция", startTime: "", endTime: "", parity: "both" })
       setAddDialogOpen(false)
-      if (selectedGroup) await loadScheduleWithCache(selectedGroup)
+      await scheduleQuery.refetch().catch(() => {})
     } catch {
       setSnack("Ошибка при добавлении")
-      setGroupSchedule(prev => prev.filter(l => l.id !== optimistic.id))
+      applyScheduleUpdate(prev => prev.filter(l => l.id !== optimistic.id))
     }
   }
 
   async function handleDeleteLesson(id: number) {
-    const backup = groupSchedule
-    setGroupSchedule(prev => prev.filter(l => l.id !== id))
+    const backup = groupSchedule.map(l => ({ ...l }))
+    applyScheduleUpdate(prev => prev.filter(l => l.id !== id))
     try {
       await api.delete(`/schedule/${id}`)
-      if (selectedGroup) await loadScheduleWithCache(selectedGroup)
+      await scheduleQuery.refetch().catch(() => {})
       setSnack("Занятие удалено")
     } catch {
       setSnack("Ошибка при удалении")
-      setGroupSchedule(backup)
+      applyScheduleUpdate(() => backup)
     }
   }
 }
+

@@ -6,6 +6,28 @@ export const nowPlayingQueryKey = ["spotify", "now-playing"] as const
 
 const isTestEnv = typeof process !== "undefined" && process.env.NODE_ENV === "test"
 
+const STORAGE_KEY = "spotify:now-playing:last"
+
+const readCachedNowPlaying = (): NowPlaying | null | undefined => {
+  if (typeof window === "undefined") return undefined
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return undefined
+    return JSON.parse(raw) as NowPlaying | null
+  } catch {
+    return undefined
+  }
+}
+
+const persistNowPlaying = (value: NowPlaying | null) => {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  } catch {
+    /* noop */
+  }
+}
+
 export const fetchNowPlaying = async () => {
   const res = await api.get<NowPlaying>("/spotify/now-playing")
   return res.data
@@ -25,9 +47,15 @@ export const useNowPlaying = (enabled: boolean) =>
     queryKey: nowPlayingQueryKey,
     queryFn: fetchNowPlaying,
     enabled,
-    placeholderData: (previous: NowPlaying | null | undefined) => previous ?? null,
-    staleTime: 15000,
-    gcTime: 5 * 60 * 1000,
+    placeholderData: (previous: NowPlaying | null | undefined) => {
+      if (previous !== undefined) return previous ?? null
+      const cached = readCachedNowPlaying()
+      return cached ?? null
+    },
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    networkMode: "online",
+    retry: 1,
     refetchOnWindowFocus: enabled,
     refetchInterval: (query: { state: { data: NowPlaying | null | undefined } }) => {
       if (!enabled || isTestEnv) return false
@@ -35,4 +63,7 @@ export const useNowPlaying = (enabled: boolean) =>
       return computeInterval(data)
     },
     refetchIntervalInBackground: true,
+    onSuccess: data => {
+      persistNowPlaying(data ?? null)
+    },
   })
