@@ -135,9 +135,7 @@ async def create_notifications_for_users(
             prepared_payload = prepare_push_payload_for_user(
                 base_payload, getattr(s, "user", None), now_time=now_time
             )
-            asyncio.create_task(
-                asyncio.to_thread(send_web_push, s, prepared_payload)
-            )
+            asyncio.create_task(asyncio.to_thread(send_web_push, s, prepared_payload))
     return len(rows)
 
 

@@ -90,9 +90,7 @@ class UserProfileUpdate(BaseModel):
         start = values.dnd_start
         end = values.dnd_end
         if enabled and (start is None or end is None):
-            raise ValueError(
-                "Укажите время начала и окончания режима \"Не беспокоить\""
-            )
+            raise ValueError('Укажите время начала и окончания режима "Не беспокоить"')
         return values
 
 

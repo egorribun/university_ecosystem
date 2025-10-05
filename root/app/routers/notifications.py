@@ -315,9 +315,7 @@ async def send_test(
         prepared = prepare_push_payload_for_user(
             payload, getattr(sub, "user", None), now_time=now_time
         )
-        result: WebPushResult = await run_in_threadpool(
-            send_web_push, sub, prepared
-        )
+        result: WebPushResult = await run_in_threadpool(send_web_push, sub, prepared)
         if result.status == "sent":
             sent += 1
         elif result.status == "gone":
