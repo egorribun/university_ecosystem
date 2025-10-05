@@ -40,6 +40,21 @@ export function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
+async function fingerprintVapidKey(key: string): Promise<string | null> {
+  try {
+    if (typeof window === "undefined") return null
+    const encoder = new TextEncoder()
+    const data = encoder.encode(key)
+    if (!window.crypto?.subtle) return null
+    const digest = await window.crypto.subtle.digest("SHA-256", data)
+    const hashArray = Array.from(new Uint8Array(digest))
+    const hashString = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+    return hashString
+  } catch {
+    return null
+  }
+}
+
 export async function ensurePushSubscription(
   vapidPublicKey?: string,
   registration?: ServiceWorkerRegistration,
@@ -71,6 +86,8 @@ export async function ensurePushSubscription(
     return null
   }
 
+  const hashedKey = await fingerprintVapidKey(key)
+
   const storedKey = (() => {
     try {
       return localStorage.getItem(VAPID_STORAGE_KEY) || ""
@@ -80,11 +97,15 @@ export async function ensurePushSubscription(
   })()
 
   let sub = await reg.pushManager.getSubscription()
-  if (sub && storedKey && storedKey !== key) {
+  if (sub && storedKey && hashedKey && storedKey !== hashedKey) {
     try {
       await sub.unsubscribe()
     } catch {}
     sub = null
+  } else if (!hashedKey && storedKey) {
+    try {
+      localStorage.removeItem(VAPID_STORAGE_KEY)
+    } catch {}
   }
 
   if (!sub) {
@@ -92,11 +113,17 @@ export async function ensurePushSubscription(
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key),
     })
+  } else if (storedKey) {
+    try {
+      localStorage.removeItem(VAPID_STORAGE_KEY)
+    } catch {}
   }
 
-  try {
-    localStorage.setItem(VAPID_STORAGE_KEY, key)
-  } catch {}
+  if (hashedKey) {
+    try {
+      localStorage.setItem(VAPID_STORAGE_KEY, hashedKey)
+    } catch {}
+  }
 
   type Payload = Parameters<typeof saveSubscription>[0]
   try {
