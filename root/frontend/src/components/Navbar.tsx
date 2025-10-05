@@ -5,7 +5,6 @@ import guuLogo from "../assets/guu_logo.png";
 import defaultAvatar from "../assets/default_avatar.png";
 import { resolveMediaUrl } from "@/utils/media";
 import NotificationsBell from "@/components/NotificationsBell";
-import "@/push/register-sw";
 
 const navTextColor = "var(--nav-text)";
 const navBgColor = "var(--nav-bg)";
