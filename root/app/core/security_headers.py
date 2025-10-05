@@ -54,18 +54,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_csp(self, response: Response, *, nonce: str | None) -> None:
         headers = response.headers
-        policy_template = (
-            "default-src 'self'; "
-            "base-uri 'self'; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "img-src 'self' data: https:; "
-            "script-src 'self' 'nonce-{nonce}' 'strict-dynamic'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "connect-src 'self' https://api.spotify.com https://*.push.service; "
-            "font-src 'self' data:; "
-            "upgrade-insecure-requests"
-        )
+        policy_template = self._settings.strict_security_csp
         policy = policy_template
         if nonce:
             policy = policy.replace("{nonce}", nonce)
@@ -76,12 +65,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 .replace(" ;", ";")
                 .strip(" ;")
             )
-        report_uri = self._settings.security_csp_report_uri.strip()
-        if report_uri:
-            policy = f"{policy}; report-uri {report_uri}".strip(" ;")
-        headers["Content-Security-Policy"] = policy
+        header_name = "Content-Security-Policy"
+        if self._settings.security_csp_report_only:
+            header_name = "Content-Security-Policy-Report-Only"
+            try:
+                del headers["Content-Security-Policy"]
+            except KeyError:
+                pass
+        headers[header_name] = policy
+        other_header = (
+            "Content-Security-Policy"
+            if header_name == "Content-Security-Policy-Report-Only"
+            else "Content-Security-Policy-Report-Only"
+        )
         try:
-            del headers["Content-Security-Policy-Report-Only"]
+            del headers[other_header]
         except KeyError:
             pass
 

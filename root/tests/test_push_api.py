@@ -1,6 +1,14 @@
 import pytest
+from fastapi import HTTPException
+from sqlalchemy import select
 
-from app.api.push import NotifyBody, broadcast, send_test
+from app.api.push import (
+    DisableUserPushRequest,
+    NotifyBody,
+    broadcast,
+    disable_user_push,
+    send_test,
+)
 from app.models.models import PushSubscription
 from app.services.webpush import WebPushResult
 
@@ -107,3 +115,68 @@ async def test_push_broadcast_reports_failures(
         "failed": 2,
         "detail": "Не удалось отправить уведомления",
     }
+
+
+@pytest.mark.anyio
+async def test_admin_disable_user_push_removes_subscriptions(
+    db_session, user_factory
+) -> None:
+    admin = await user_factory(role="admin")
+    target = await user_factory()
+    other_user = await user_factory()
+    subscriptions = [
+        PushSubscription(
+            endpoint=f"https://example.com/target-{idx}",
+            p256dh=f"key-{idx}",
+            auth=f"auth-{idx}",
+            user_id=target.id,
+            topics=["news"],
+        )
+        for idx in range(2)
+    ] + [
+        PushSubscription(
+            endpoint="https://example.com/other",
+            p256dh="key-other",
+            auth="auth-other",
+            user_id=other_user.id,
+            topics=["news"],
+        )
+    ]
+    db_session.add_all(subscriptions)
+    await db_session.commit()
+
+    payload = DisableUserPushRequest(user_id=target.id)
+    response = await disable_user_push(payload=payload, session=db_session, user=admin)
+
+    assert response == {"ok": True, "removed": 2}
+    remaining = (
+        await db_session.execute(
+            select(PushSubscription).where(PushSubscription.user_id == target.id)
+        )
+    ).scalars().all()
+    assert remaining == []
+    others = (
+        await db_session.execute(
+            select(PushSubscription).where(PushSubscription.user_id == other_user.id)
+        )
+    ).scalars().all()
+    assert len(others) == 1
+
+
+@pytest.mark.anyio
+async def test_admin_disable_user_push_requires_admin(db_session, user_factory) -> None:
+    requester = await user_factory()
+    target = await user_factory()
+    payload = DisableUserPushRequest(user_id=target.id)
+    with pytest.raises(HTTPException) as exc:
+        await disable_user_push(payload=payload, session=db_session, user=requester)
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_disable_user_push_missing_user(db_session, user_factory) -> None:
+    admin = await user_factory(role="admin")
+    payload = DisableUserPushRequest(user_id=9999)
+    with pytest.raises(HTTPException) as exc:
+        await disable_user_push(payload=payload, session=db_session, user=admin)
+    assert exc.value.status_code == 404

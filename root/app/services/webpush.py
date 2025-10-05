@@ -7,7 +7,9 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+from hashlib import sha256
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import create_engine, delete, select, update
@@ -62,8 +64,26 @@ def json_dumps(obj):
     return json.dumps(obj, ensure_ascii=False)
 
 
+def _mask_endpoint(endpoint: str | None) -> str | None:
+    if not endpoint:
+        return None
+    value = endpoint.strip()
+    if not value:
+        return None
+    digest = sha256(value.encode("utf-8")).hexdigest()[:10]
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        parsed = None
+    if parsed and parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}/…#{digest}"
+    return f"…#{digest}"
+
+
 def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
     extra = {key: value for key, value in fields.items() if value is not None}
+    if "endpoint" in extra:
+        extra["endpoint"] = _mask_endpoint(str(extra["endpoint"]))
     extra["event"] = event
     logger.log(level, "webpush.%s", event, extra=extra)
 
@@ -479,7 +499,8 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             status="error",
         )
         logger.exception(
-            "webpush.send", extra={"user_id": user_id, "endpoint": sub.endpoint}
+            "webpush.send",
+            extra={"user_id": user_id, "endpoint": _mask_endpoint(sub.endpoint)},
         )
         return WebPushResult(
             subscription_id=sub.id,

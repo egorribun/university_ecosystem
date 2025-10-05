@@ -26,3 +26,12 @@ Our FastAPI middleware enables a strict set of transport and browser security he
 - Existing headers remain in place: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()`.
 
 Cross-Origin Resource Sharing (CORS) is also tightened: wildcard origins are rejected, non-local HTTP origins are ignored in strict mode, and cookies/credentials are only permitted for HTTPS origins or localhost during development/testing. Configure additional trusted origins via `FRONTEND_ORIGINS` if external dashboards need access.
+
+## Push Subscription Hygiene
+
+- VAPID `subject` **must** be configured as a valid `mailto:` address or HTTPS URL. Invalid values will raise a configuration error at startup; use `VAPID_SUBJECT=mailto:security@example.com` (or an HTTPS URL under your control) in production. Plain HTTP origins are only accepted for local development hosts (`localhost`, `127.0.0.1`).
+- Subscription identifiers are masked in logs and cryptographic keys are never logged to avoid leaking Web Push credentials.
+- To revoke all push subscriptions for a user (e.g., during account deletion or in response to a compromise):
+  1. Authenticate as an administrator.
+  2. Call `POST /push/admin/disable-user` with the target `user_id`. The endpoint removes every `PushSubscription` row for that account and returns the number of deleted entries.
+  3. Confirm the user no longer has active subscriptions before finalising account removal.

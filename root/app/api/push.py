@@ -67,6 +67,10 @@ class NotifyBody(BaseModel):
         return normalize_topic(value)
 
 
+class DisableUserPushRequest(BaseModel):
+    user_id: int = Field(..., ge=1, description="ID пользователя, для которого нужно отключить push")
+
+
 @router.get("/public-key")
 async def public_key():
     return {"key": settings.VAPID_PUBLIC_KEY}
@@ -163,6 +167,35 @@ def _aggregate_results(results: list[WebPushResult]) -> PushSendResponse:
         failed=failed,
         detail=detail,
     )
+
+
+@router.post("/admin/disable-user")
+async def disable_user_push(
+    payload: DisableUserPushRequest,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="forbidden")
+    target = await session.get(User, payload.user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    existing = (
+        await session.execute(
+            select(PushSubscription.id).where(PushSubscription.user_id == target.id)
+        )
+    ).scalars().all()
+    if not existing:
+        return {"ok": True, "removed": 0}
+    await session.execute(
+        delete(PushSubscription).where(PushSubscription.user_id == target.id)
+    )
+    await session.commit()
+    logger.info(
+        "push.admin.disable_all",
+        extra={"user_id": user.id, "target_user_id": target.id, "removed": len(existing)},
+    )
+    return {"ok": True, "removed": len(existing)}
 
 
 @router.post("/test", response_model=PushSendResponse)
