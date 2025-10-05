@@ -81,11 +81,16 @@ const createMockSubscription = (): MutableSubscription => {
   }
   return {
     endpoint: payload.endpoint!,
-    options: { applicationServerKey: new Uint8Array([1, 2, 3]) } as any,
+    expirationTime: null,
+    options: {
+      applicationServerKey: new Uint8Array([1, 2, 3]),
+      userVisibleOnly: true,
+    },
     toJSON: vi.fn(() => payload),
     unsubscribe: vi.fn(async () => true),
+    getKey: vi.fn(() => new ArrayBuffer(0)),
     __payload: payload,
-  } as MutableSubscription
+  } as unknown as MutableSubscription
 }
 
 type MockRegistration = ServiceWorkerRegistration & {
