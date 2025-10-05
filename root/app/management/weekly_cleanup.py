@@ -21,16 +21,21 @@ STALE_SUBSCRIPTION_DAYS = 180
 
 async def _delete_orphaned_subscriptions(session: AsyncSession) -> int:
     orphaned = (
-        await session.execute(
-            delete(PushSubscription)
-            .where(~PushSubscription.user_id.in_(select(User.id)))
-            .returning(PushSubscription.id)
+        (
+            await session.execute(
+                delete(PushSubscription)
+                .where(~PushSubscription.user_id.in_(select(User.id)))
+                .returning(PushSubscription.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if orphaned:
         await session.commit()
         logger.info(
-            "weekly_cleanup.deleted_orphaned_subscriptions", extra={"count": len(orphaned)}
+            "weekly_cleanup.deleted_orphaned_subscriptions",
+            extra={"count": len(orphaned)},
         )
     return len(orphaned)
 
@@ -38,15 +43,19 @@ async def _delete_orphaned_subscriptions(session: AsyncSession) -> int:
 async def _delete_stale_subscriptions(session: AsyncSession) -> int:
     cutoff = datetime.now(UTC) - timedelta(days=STALE_SUBSCRIPTION_DAYS)
     stale = (
-        await session.execute(
-            delete(PushSubscription)
-            .where(
-                (PushSubscription.last_seen_at.is_(None))
-                | (PushSubscription.last_seen_at < cutoff)
+        (
+            await session.execute(
+                delete(PushSubscription)
+                .where(
+                    (PushSubscription.last_seen_at.is_(None))
+                    | (PushSubscription.last_seen_at < cutoff)
+                )
+                .returning(PushSubscription.id)
             )
-            .returning(PushSubscription.id)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if stale:
         await session.commit()
         logger.info(
