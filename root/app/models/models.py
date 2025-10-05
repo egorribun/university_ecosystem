@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -45,6 +46,10 @@ class User(Base):
     achievements = Column(String)
     department = Column(String)
     position = Column(String)
+
+    dnd_enabled = Column(Boolean, default=False, nullable=False)
+    dnd_start = Column(Time(timezone=False))
+    dnd_end = Column(Time(timezone=False))
 
     spotify_user_id = Column(String, unique=True, index=True)
     spotify_access_token = Column(String)

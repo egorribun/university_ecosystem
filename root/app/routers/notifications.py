@@ -12,12 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User
+from app.services.notifications import prepare_push_payload_for_user
 from app.services.webpush import WebPushResult, send_web_push
 
 logger = logging.getLogger(__name__)
@@ -286,7 +288,9 @@ async def send_test(
     subscriptions = (
         (
             await db.execute(
-                select(PushSubscription).where(PushSubscription.user_id == user.id)
+                select(PushSubscription)
+                .options(selectinload(PushSubscription.user))
+                .where(PushSubscription.user_id == user.id)
             )
         )
         .scalars()
@@ -306,8 +310,14 @@ async def send_test(
     sent = 0
     removed = 0
     failed = 0
+    now_time = datetime.now().astimezone().time()
     for sub in subscriptions:
-        result: WebPushResult = await run_in_threadpool(send_web_push, sub, payload)
+        prepared = prepare_push_payload_for_user(
+            payload, getattr(sub, "user", None), now_time=now_time
+        )
+        result: WebPushResult = await run_in_threadpool(
+            send_web_push, sub, prepared
+        )
         if result.status == "sent":
             sent += 1
         elif result.status == "gone":

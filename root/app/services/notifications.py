@@ -5,11 +5,59 @@ from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 
 from sqlalchemy import and_, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.models import Notification, PushSubscription, Schedule, User
 from app.services.webpush import send_web_push
+
+
+def _current_local_time() -> dt.time:
+    return dt.datetime.now().astimezone().time()
+
+
+def is_user_in_quiet_hours(
+    user: User | None, *, now_time: dt.time | None = None
+) -> bool:
+    if not user or not getattr(user, "dnd_enabled", False):
+        return False
+    start = getattr(user, "dnd_start", None)
+    end = getattr(user, "dnd_end", None)
+    if now_time is None:
+        now_time = _current_local_time()
+    if start is None or end is None:
+        return True
+    if start == end:
+        return True
+    if start < end:
+        return start <= now_time < end
+    return now_time >= start or now_time < end
+
+
+def prepare_push_payload_for_user(
+    payload: Mapping[str, Any],
+    user: User | None,
+    *,
+    now_time: dt.time | None = None,
+) -> dict[str, Any]:
+    base: dict[str, Any] = dict(payload)
+    data_section = base.get("data")
+    if isinstance(data_section, Mapping):
+        base["data"] = dict(data_section)
+    if is_user_in_quiet_hours(user, now_time=now_time):
+        base["silent"] = True
+        base["vibrate"] = []
+        base["renotify"] = False
+        base["requireInteraction"] = False
+        data_payload = base.get("data")
+        if isinstance(data_payload, dict):
+            data_payload = dict(data_payload)
+        else:
+            data_payload = {}
+        data_payload["dnd_suppressed"] = True
+        base["data"] = data_payload
+    return base
 
 
 async def create_notifications_for_users(
@@ -47,24 +95,26 @@ async def create_notifications_for_users(
         subs = (
             (
                 await db.execute(
-                    select(PushSubscription).where(PushSubscription.user_id.in_(uids))
+                    select(PushSubscription)
+                    .options(selectinload(PushSubscription.user))
+                    .where(PushSubscription.user_id.in_(uids))
                 )
             )
             .scalars()
             .all()
         )
-        payload: dict[str, Any] = {
+        base_payload: dict[str, Any] = {
             "title": title,
             "body": body or "",
             "url": url or "/",
             "type": type or None,
         }
         if badge:
-            payload["badge"] = badge
+            base_payload["badge"] = badge
         if tag:
-            payload["tag"] = tag
+            base_payload["tag"] = tag
         if payload_data:
-            payload["data"] = dict(payload_data)
+            base_payload["data"] = dict(payload_data)
         if actions:
             normalized_actions: list[dict[str, Any]] = []
             for action in actions:
@@ -79,9 +129,15 @@ async def create_notifications_for_users(
                     continue
                 normalized_actions.append(normalized)
             if normalized_actions:
-                payload["actions"] = normalized_actions
+                base_payload["actions"] = normalized_actions
+        now_time = _current_local_time()
         for s in subs:
-            asyncio.create_task(asyncio.to_thread(send_web_push, s, payload))
+            prepared_payload = prepare_push_payload_for_user(
+                base_payload, getattr(s, "user", None), now_time=now_time
+            )
+            asyncio.create_task(
+                asyncio.to_thread(send_web_push, s, prepared_payload)
+            )
     return len(rows)
 
 

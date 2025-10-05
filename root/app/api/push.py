@@ -5,11 +5,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import PushSubscription, User
+from app.services.notifications import prepare_push_payload_for_user
 from app.services.webpush import send_web_push
 
 router = APIRouter(prefix="/push", tags=["push"])
@@ -132,9 +134,9 @@ async def send_test(
         bg = BackgroundTasks()
 
     res = await session.execute(
-        select(PushSubscription).where(
-            PushSubscription.user_id == user.id,
-        )
+        select(PushSubscription)
+        .options(selectinload(PushSubscription.user))
+        .where(PushSubscription.user_id == user.id)
     )
     subs = res.scalars().all()
     if not subs:
@@ -145,8 +147,12 @@ async def send_test(
         "body": (data.body if data and data.body else "Проверка доставки"),
         "url": (data.url if data and data.url else "/"),
     }
+    now_time = datetime.now().astimezone().time()
     for s in subs:
-        bg.add_task(send_web_push, s, payload)
+        prepared = prepare_push_payload_for_user(
+            payload, getattr(s, "user", None), now_time=now_time
+        )
+        bg.add_task(send_web_push, s, prepared)
     return {"count": len(subs)}
 
 
@@ -159,8 +165,15 @@ async def broadcast(
 ):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
-    res = await session.execute(select(PushSubscription))
+    res = await session.execute(
+        select(PushSubscription).options(selectinload(PushSubscription.user))
+    )
     subs = res.scalars().all()
+    payload = data.model_dump()
+    now_time = datetime.now().astimezone().time()
     for s in subs:
-        bg.add_task(send_web_push, s, data.model_dump())
+        prepared = prepare_push_payload_for_user(
+            payload, getattr(s, "user", None), now_time=now_time
+        )
+        bg.add_task(send_web_push, s, prepared)
     return {"count": len(subs)}

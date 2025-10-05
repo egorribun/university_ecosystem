@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useCallback, ChangeEvent, useMemo } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  ChangeEvent,
+  FocusEvent,
+  useMemo
+} from "react";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,6 +42,7 @@ import {
   FormHelperText
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
+import TextField from "@mui/material/TextField";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -44,6 +53,8 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
+import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
 import { resolveMediaUrl } from "@/utils/media";
@@ -73,6 +84,29 @@ const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
   system: true
 };
 
+const DEFAULT_DND_START = "22:00";
+const DEFAULT_DND_END = "07:00";
+
+const toInputTime = (value: unknown): string => {
+  if (!value) return "";
+  const str = String(value);
+  const match = str.match(/^(\d{2}:\d{2})/);
+  return match ? match[1] : "";
+};
+
+const toServerTime = (value: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed}:00`;
+  }
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed;
+};
+
 export default function Settings() {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
@@ -94,6 +128,19 @@ export default function Settings() {
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushInitializing, setPushInitializing] = useState(true);
+  const [dndEnabled, setDndEnabled] = useState(false);
+  const [dndStart, setDndStart] = useState("");
+  const [dndEnd, setDndEnd] = useState("");
+  const [dndSaving, setDndSaving] = useState(false);
+
+  const syncDndFromUser = useCallback((value: any) => {
+    const enabled = Boolean(value?.dnd_enabled);
+    const start = toInputTime(value?.dnd_start);
+    const end = toInputTime(value?.dnd_end);
+    setDndEnabled(enabled);
+    setDndStart(start || (enabled ? DEFAULT_DND_START : ""));
+    setDndEnd(end || (enabled ? DEFAULT_DND_END : ""));
+  }, []);
 
   const selectedTopics = useMemo(() => {
     return topicKeys.filter(key => topicState[key]);
@@ -116,6 +163,113 @@ export default function Settings() {
   }, [selectedTopics]);
 
   const notificationsEnabled = !!pushSubscription;
+
+  const persistDnd = useCallback(
+    async (nextEnabled: boolean, nextStart: string | null, nextEnd: string | null) => {
+      if (dndSaving) return;
+      const normalizedStart = nextStart ? nextStart.trim() : null;
+      const normalizedEnd = nextEnd ? nextEnd.trim() : null;
+      const prevEnabled = Boolean((user as any)?.dnd_enabled);
+      const prevStart = toInputTime((user as any)?.dnd_start);
+      const prevEnd = toInputTime((user as any)?.dnd_end);
+      if (
+        nextEnabled === prevEnabled &&
+        (!nextEnabled ||
+          (normalizedStart && normalizedEnd && normalizedStart === prevStart && normalizedEnd === prevEnd))
+      ) {
+        return;
+      }
+      if (nextEnabled && (!normalizedStart || !normalizedEnd)) {
+        setSnack({ text: "Укажите время начала и окончания режима \"Не беспокоить\"", sev: "warning" });
+        syncDndFromUser(user);
+        return;
+      }
+      setDndSaving(true);
+      try {
+        const payload: Record<string, any> = { dnd_enabled: nextEnabled };
+        if (nextEnabled) {
+          payload.dnd_start = toServerTime(normalizedStart);
+          payload.dnd_end = toServerTime(normalizedEnd);
+        } else {
+          payload.dnd_start = null;
+          payload.dnd_end = null;
+        }
+        const res = await api.put("/users/me", payload);
+        setUser(res.data);
+        syncDndFromUser(res.data);
+        const wasEnabled = prevEnabled;
+        let message: string;
+        if (nextEnabled && !wasEnabled) message = 'Режим "Не беспокоить" включён';
+        else if (!nextEnabled && wasEnabled) message = 'Режим "Не беспокоить" выключен';
+        else message = 'Настройки режима "Не беспокоить" обновлены';
+        setSnack({ text: message, sev: "success" });
+      } catch (error: any) {
+        console.error("Failed to update quiet mode", error);
+        let message = 'Не удалось обновить настройки режима "Не беспокоить"';
+        const detail = error?.response?.data?.detail;
+        if (typeof detail === "string") message = detail;
+        else if (Array.isArray(detail)) {
+          const collected = detail
+            .map((item: any) => (item?.msg ? String(item.msg) : ""))
+            .filter(Boolean)
+            .join("; ");
+          if (collected) message = collected;
+        }
+        setSnack({ text: message, sev: "error" });
+        syncDndFromUser(user);
+      } finally {
+        setDndSaving(false);
+      }
+    },
+    [dndSaving, setUser, setSnack, syncDndFromUser, user]
+  );
+
+  const handleDndToggle = useCallback(
+    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      if (dndSaving) return;
+      const nextStart = checked ? dndStart || DEFAULT_DND_START : dndStart;
+      const nextEnd = checked ? dndEnd || DEFAULT_DND_END : dndEnd;
+      if (checked) {
+        setDndStart(nextStart);
+        setDndEnd(nextEnd);
+      }
+      setDndEnabled(checked);
+      void persistDnd(checked, checked ? nextStart : null, checked ? nextEnd : null);
+    },
+    [dndSaving, dndEnd, dndStart, persistDnd]
+  );
+
+  const handleDndStartChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setDndStart(event.target.value);
+  }, []);
+
+  const handleDndStartBlur = useCallback(
+    (event: FocusEvent<HTMLInputElement>) => {
+      if (!dndEnabled || dndSaving) return;
+      const value = (event.currentTarget.value || "").trim();
+      setDndStart(value);
+      void persistDnd(true, value || null, dndEnd || null);
+    },
+    [dndEnabled, dndEnd, dndSaving, persistDnd]
+  );
+
+  const handleDndEndChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setDndEnd(event.target.value);
+  }, []);
+
+  const handleDndEndBlur = useCallback(
+    (event: FocusEvent<HTMLInputElement>) => {
+      if (!dndEnabled || dndSaving) return;
+      const value = (event.currentTarget.value || "").trim();
+      setDndEnd(value);
+      void persistDnd(true, dndStart || null, value || null);
+    },
+    [dndEnabled, dndSaving, dndStart, persistDnd]
+  );
+
+  useEffect(() => {
+    syncDndFromUser(user);
+  }, [syncDndFromUser, user]);
 
   const applyServerTopics = useCallback(
     (topics?: string[] | null) => {
@@ -666,6 +820,72 @@ export default function Settings() {
                       Разрешите уведомления в настройках браузера, чтобы получать оповещения.
                     </Alert>
                   )}
+
+                  <Divider sx={{ my: 1.2 }} />
+
+                  <Stack spacing={1.2}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                      <DoNotDisturbOnIcon fontSize="small" />
+                      <Typography variant="subtitle1" sx={{ color: "var(--page-text)" }}>
+                        Режим «Не беспокоить»
+                      </Typography>
+                    </Stack>
+
+                    <FormControl component="fieldset" variant="standard">
+                      <FormGroup>
+                        <FormControlLabel
+                          control={
+                            <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
+                          }
+                          label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
+                        />
+                      </FormGroup>
+                      <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                        Уведомления будут доставляться без звука в указанный интервал.
+                      </FormHelperText>
+                    </FormControl>
+
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1.5}
+                      alignItems={{ sm: "center" }}
+                    >
+                      <TextField
+                        type="time"
+                        label="С"
+                        value={dndStart}
+                        onChange={handleDndStartChange}
+                        onBlur={handleDndStartBlur}
+                        disabled={!dndEnabled || dndSaving}
+                        size="small"
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                      />
+                      <TextField
+                        type="time"
+                        label="До"
+                        value={dndEnd}
+                        onChange={handleDndEndChange}
+                        onBlur={handleDndEndBlur}
+                        disabled={!dndEnabled || dndSaving}
+                        size="small"
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                      />
+                    </Stack>
+
+                    <FormHelperText sx={{ ml: 0, color: "var(--page-text)" }}>
+                      Интервал задаётся в часовом поясе устройства и может пересекать полночь.
+                    </FormHelperText>
+
+                    <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ color: "var(--page-text)" }}>
+                      <InfoOutlinedIcon fontSize="small" sx={{ mt: 0.3 }} />
+                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                        На iOS при установке веб-приложения как PWA уведомления часто приходят без звука —
+                        это ограничение системы.
+                      </Typography>
+                    </Stack>
+                  </Stack>
 
                   <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                     {notificationsEnabled
