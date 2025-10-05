@@ -264,12 +264,12 @@ export async function useMockApi(page: Page) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [], unread_count: 0, has_more: false }),
+        body: JSON.stringify({ items: [], unread_count: 0, has_more: false, next_cursor: null }),
       });
       return;
     }
 
-    if (pathname === "api/notifications/mark-read" || pathname === "api/notifications/mark-all-read") {
+    if (/^api\/notifications\/\d+\/read$/.test(pathname) || pathname === "api/notifications/read-all") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

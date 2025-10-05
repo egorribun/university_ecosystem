@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import api from "@/api/client";
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type NotificationListResponse,
+} from "@/api/notifications";
 
 export type AppNotification = {
   id: number | string;
@@ -8,97 +13,152 @@ export type AppNotification = {
   type?: string;
   url?: string;
   created_at: string;
-  read?: boolean;
+  read: boolean;
+  read_at?: string;
   avatar_url?: string;
   icon?: string;
 };
 
-type Page = {
-  items: AppNotification[];
-  unread_count: number;
-  has_more: boolean;
-};
-
-async function fetchPage(limit: number, offset: number): Promise<Page> {
-  const r = await api.get("/notifications", { params: { limit, offset } });
-  return r.data;
-}
-
-async function markReadApi(ids: Array<number | string>) {
-  await api.post("/notifications/mark-read", { ids });
-}
-
-async function markAllReadApi() {
-  await api.post("/notifications/mark-all-read");
-}
-
 const PAGE_SIZE = 20;
+
+type LoadMode = "reset" | "append";
+
+function normalizeItem(item: NotificationListResponse["items"][number]): AppNotification {
+  return {
+    id: item.id,
+    title: item.title,
+    body: item.body ?? undefined,
+    type: item.type ?? undefined,
+    url: item.url ?? undefined,
+    created_at: item.created_at,
+    read: Boolean(item.read),
+    read_at: item.read_at ?? undefined,
+  };
+}
 
 export function useNotifications() {
   const [items, setItems] = useState<AppNotification[]>([]);
-  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const unreadFromServer = useRef(0);
   const seenIds = useRef<Set<string | number>>(new Set());
+  const nextCursorRef = useRef<string | null>(null);
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(false);
+  const initializedRef = useRef(false);
 
   const unreadCount = useMemo(() => {
     const local = items.reduce((acc, n) => acc + (n.read ? 0 : 1), 0);
     return Math.max(local, unreadFromServer.current);
   }, [items]);
 
-  const load = useCallback(
-    async (reset = false) => {
+  const load = useCallback(async (mode: LoadMode = "reset") => {
+    if (mode === "append" && (loadingRef.current || !hasMoreRef.current)) {
+      return;
+    }
+
+    loadingRef.current = true;
+    setFetching(true);
+    const showLoader = !initializedRef.current || mode === "reset";
+    if (showLoader) {
       setLoading(true);
-      try {
-        const curOffset = reset ? 0 : offset;
-        const page = await fetchPage(PAGE_SIZE, curOffset);
-        unreadFromServer.current = page.unread_count ?? 0;
-        setItems(prev => {
-          const base = reset ? [] : prev;
-          const next: AppNotification[] = [];
-          for (const n of page.items) {
-            if (!seenIds.current.has(n.id)) {
-              seenIds.current.add(n.id);
-              next.push(n);
-            }
+    }
+
+    try {
+      const cursor = mode === "append" ? nextCursorRef.current : null;
+      const page = await fetchNotifications({ limit: PAGE_SIZE, cursor });
+      unreadFromServer.current = page.unread_count ?? 0;
+      setHasMore(Boolean(page.has_more));
+      hasMoreRef.current = Boolean(page.has_more);
+      nextCursorRef.current = page.next_cursor ?? null;
+
+      const mapped = page.items.map(normalizeItem);
+
+      setItems(prev => {
+        if (mode === "reset") {
+          seenIds.current = new Set();
+        }
+
+        const map = new Map<string | number, AppNotification>();
+        if (mode !== "reset") {
+          for (const it of prev) {
+            map.set(it.id, it);
           }
-          return [...base, ...next];
+        }
+
+        for (const it of mapped) {
+          map.set(it.id, it);
+          seenIds.current.add(it.id);
+        }
+
+        const next = Array.from(map.values());
+        next.sort((a, b) => {
+          const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          if (diff !== 0) return diff;
+          const aId = typeof a.id === "number" ? a.id : Number.parseInt(String(a.id), 10);
+          const bId = typeof b.id === "number" ? b.id : Number.parseInt(String(b.id), 10);
+          if (Number.isFinite(aId) && Number.isFinite(bId)) return bId - aId;
+          return String(b.id).localeCompare(String(a.id));
         });
-        setHasMore(Boolean(page.has_more));
-        setOffset(curOffset + page.items.length);
-      } finally {
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to load notifications", error);
+      if (mode === "append") {
+        setHasMore(false);
+        hasMoreRef.current = false;
+      }
+    } finally {
+      loadingRef.current = false;
+      setFetching(false);
+      if (showLoader) {
         setLoading(false);
+      }
+      if (!initializedRef.current) {
+        initializedRef.current = true;
         setInitialized(true);
       }
-    },
-    [offset]
-  );
+    }
+  }, []);
 
   const loadMore = useCallback(async () => {
-    if (!hasMore || loading) return;
-    await load(false);
-  }, [hasMore, loading, load]);
+    await load("append");
+  }, [load]);
 
   const markRead = useCallback(async (id: number | string) => {
-    setItems(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    const nowIso = new Date().toISOString();
+    setItems(prev =>
+      prev.map(n => (n.id === id ? { ...n, read: true, read_at: n.read_at ?? nowIso } : n))
+    );
     if (unreadFromServer.current > 0) unreadFromServer.current -= 1;
-    try {
-      await markReadApi([id]);
-    } catch {}
+    if (typeof id === "number") {
+      try {
+        await markNotificationRead(id);
+      } catch (error) {
+        console.error("Failed to mark notification read", error);
+      }
+    }
   }, []);
 
   const markAllRead = useCallback(async () => {
-    setItems(prev => prev.map(n => ({ ...n, read: true })));
+    const nowIso = new Date().toISOString();
+    setItems(prev => prev.map(n => ({ ...n, read: true, read_at: n.read_at ?? nowIso })));
     unreadFromServer.current = 0;
     try {
-      await markAllReadApi();
-    } catch {}
+      await markAllNotificationsRead();
+    } catch (error) {
+      console.error("Failed to mark all notifications read", error);
+    }
   }, []);
 
+  const refresh = useCallback(async () => {
+    await load("reset");
+  }, [load]);
+
   useEffect(() => {
-    load(true);
+    void load("reset");
   }, [load]);
 
   useEffect(() => {
@@ -116,33 +176,25 @@ export function useNotifications() {
     const onMsg = (e: MessageEvent) => {
       const msg: any = e.data ?? {};
       if (msg?.type === "PUSH_NOTIFICATION") {
-        const n = msg.payload;
-        const id = n?.data?.id ?? n?.id ?? crypto.randomUUID();
-        if (!seenIds.current.has(id)) {
-          const at = new Date(n?.timestamp || Date.now()).toISOString();
-          const next: AppNotification = {
-            id,
-            title: n.title || "Уведомление",
-            body: n.body || "",
-            url: n.data?.url || n.url || "/",
-            type: n.data?.type || n.type,
-            created_at: at,
-            read: false,
-            icon: n.icon
-          };
-          seenIds.current.add(id);
-          setItems(prev => [next, ...prev]);
-          unreadFromServer.current += 1;
-        }
+        void refresh();
       }
       if (msg?.type === "NOTIFICATION_MARK_READ" && msg.id != null) {
-        setItems(prev => prev.map(n => (n.id === msg.id ? { ...n, read: true } : n)));
-        markRead(msg.id);
+        void markRead(msg.id);
       }
     };
     navigator.serviceWorker.addEventListener("message", onMsg);
     return () => navigator.serviceWorker.removeEventListener("message", onMsg);
-  }, [markRead]);
+  }, [markRead, refresh]);
 
-  return { items, loading: loading && !initialized, unreadCount, hasMore, loadMore, markRead, markAllRead };
+  return {
+    items,
+    loading: loading && !initialized,
+    unreadCount,
+    hasMore,
+    loadMore,
+    markRead,
+    markAllRead,
+    refresh,
+    fetching,
+  };
 }

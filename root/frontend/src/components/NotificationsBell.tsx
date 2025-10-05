@@ -218,6 +218,19 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
         </Box>
         <Divider />
         <Box ref={scrollBoxRef} sx={{ maxHeight: 444, overflow: "auto" }}>{content}</Box>
+        <Divider />
+        <Box sx={{ p: 1 }}>
+          <Button
+            fullWidth
+            variant="text"
+            onClick={() => {
+              setOpen(false)
+              navigate("/notifications")
+            }}
+          >
+            Открыть центр уведомлений
+          </Button>
+        </Box>
       </Popover>
     </>
   );

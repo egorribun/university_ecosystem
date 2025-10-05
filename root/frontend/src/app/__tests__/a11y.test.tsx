@@ -28,6 +28,8 @@ vi.mock("@/hooks/useNotifications", () => ({
     loadMore: vi.fn(),
     markRead: vi.fn(),
     markAllRead: vi.fn(),
+    refresh: vi.fn(),
+    fetching: false,
   }),
 }));
 

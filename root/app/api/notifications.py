@@ -82,18 +82,23 @@ async def list_notifications(
     )
 
 
-@router.post("/{notif_id}/read")
+@router.patch("/{notif_id}/read")
 async def mark_read_single(
     notif_id: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await db.execute(
-        update(Notification)
-        .where(and_(Notification.user_id == user.id, Notification.id == notif_id))
-        .values(read=True)
-    )
+    notif = await db.get(Notification, notif_id)
+    if not notif or notif.user_id != user.id:
+        raise HTTPException(status_code=404, detail="notification not found")
+
+    if notif.read:
+        return {"ok": True}
+
+    notif.read = True
+    notif.read_at = datetime.now(UTC)
     await db.commit()
+
     return {"ok": True}
 
 
@@ -102,13 +107,15 @@ async def mark_all_read(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await db.execute(
+    now = datetime.now(UTC)
+    result = await db.execute(
         update(Notification)
         .where(and_(Notification.user_id == user.id, Notification.read.is_(False)))
-        .values(read=True)
+        .values(read=True, read_at=now)
     )
     await db.commit()
-    return {"ok": True}
+    updated = result.rowcount or 0
+    return {"ok": True, "updated": int(updated)}
 
 
 @router.post("/check-schedule", response_model=NotificationsListOut)
