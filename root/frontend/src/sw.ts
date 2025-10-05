@@ -5,6 +5,11 @@ import { clientsClaim } from "workbox-core"
 import { registerRoute, NavigationRoute } from "workbox-routing"
 import { StaleWhileRevalidate, CacheFirst } from "workbox-strategies"
 import { ExpirationPlugin } from "workbox-expiration"
+import {
+  NotificationData,
+  buildNotificationDetails,
+  parsePushEventData,
+} from "@/push/notification-helpers"
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis
 
@@ -70,124 +75,10 @@ registerRoute(
   })
 )
 
-type NotificationData = {
-  url?: string
-  actionUrls?: Record<string, string>
-  [key: string]: unknown
-}
-
-type NotificationActionPayload = {
-  action: string
-  title: string
-  icon?: string
-  url?: string
-}
-
-type NotificationActionOption = {
-  action: string
-  title: string
-  icon?: string
-}
-
-type PushPayload = {
-  title?: string
-  body?: string
-  icon?: string
-  badge?: string
-  tag?: string
-  url?: string
-  data?: Record<string, unknown>
-  renotify?: boolean
-  requireInteraction?: boolean
-  silent?: boolean
-  timestamp?: number
-  vibrate?: number[]
-  actions?: NotificationActionPayload[]
-}
-
-const DEFAULT_TITLE = "Экосистема ГУУ"
-const DEFAULT_ICON = "/maskable-icon-192.png"
-
 self.addEventListener("push", (event) => {
   const handlePush = async () => {
-    const payload = (() => {
-      if (!event.data) {
-        return {}
-      }
-      try {
-        return event.data.json() as PushPayload
-      } catch (error) {
-        return { body: event.data.text() } as PushPayload
-      }
-    })()
-
-    const rawData =
-      payload.data && typeof payload.data === "object" ? (payload.data as Record<string, unknown>) : undefined
-
-    const title = payload.title || DEFAULT_TITLE
-    const data: NotificationData = {
-      url: payload.url || "/",
-      ...(rawData ?? {}),
-    }
-
-    const options: NotificationOptions = {
-      body: payload.body,
-      icon: payload.icon || DEFAULT_ICON,
-      badge: payload.badge || payload.icon || DEFAULT_ICON,
-      tag: payload.tag,
-      data,
-      requireInteraction: payload.requireInteraction,
-      silent: payload.silent,
-    }
-
-    const extendedOptions = options as NotificationOptions & {
-      renotify?: boolean
-      timestamp?: number
-      vibrate?: number[]
-      actions?: NotificationActionOption[]
-    }
-
-    if (payload.renotify !== undefined) {
-      extendedOptions.renotify = payload.renotify
-    }
-
-    if (payload.timestamp !== undefined) {
-      extendedOptions.timestamp = payload.timestamp
-    }
-
-    if (payload.vibrate) {
-      extendedOptions.vibrate = payload.vibrate
-    }
-
-    if (payload.actions?.length) {
-      const actionUrls: Record<string, string> = {}
-      const validActions: NotificationActionOption[] = []
-      for (const action of payload.actions) {
-        if (!action || typeof action !== "object") continue
-        const key = typeof action.action === "string" ? action.action.trim() : ""
-        const actionTitle = typeof action.title === "string" ? action.title.trim() : ""
-        if (!key || !actionTitle) continue
-        const entry: NotificationActionOption = { action: key, title: actionTitle }
-        if (action.icon && typeof action.icon === "string") {
-          entry.icon = action.icon
-        }
-        validActions.push(entry)
-        if (action.url && typeof action.url === "string" && action.url.trim()) {
-          actionUrls[key] = action.url
-        }
-      }
-      if (validActions.length) {
-        extendedOptions.actions = validActions
-        if (Object.keys(actionUrls).length) {
-          data.actionUrls = actionUrls
-        }
-      }
-    }
-
-    const payloadType = (() => {
-      const rawType = rawData && typeof rawData.type === "string" ? rawData.type.trim() : undefined
-      return rawType || undefined
-    })()
+    const payload = parsePushEventData(event.data)
+    const { title, options, data, payloadType } = buildNotificationDetails(payload)
 
     if (payloadType === "in-app") {
       const windowClients = (await self.clients.matchAll({
@@ -207,7 +98,7 @@ self.addEventListener("push", (event) => {
             icon: options.icon,
             tag: options.tag,
             data,
-            timestamp: extendedOptions.timestamp ?? Date.now(),
+            timestamp: options.timestamp ?? Date.now(),
           },
         }
 
