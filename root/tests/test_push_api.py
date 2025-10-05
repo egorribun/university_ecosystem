@@ -150,16 +150,26 @@ async def test_admin_disable_user_push_removes_subscriptions(
 
     assert response == {"ok": True, "removed": 2}
     remaining = (
-        await db_session.execute(
-            select(PushSubscription).where(PushSubscription.user_id == target.id)
+        (
+            await db_session.execute(
+                select(PushSubscription).where(PushSubscription.user_id == target.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert remaining == []
     others = (
-        await db_session.execute(
-            select(PushSubscription).where(PushSubscription.user_id == other_user.id)
+        (
+            await db_session.execute(
+                select(PushSubscription).where(
+                    PushSubscription.user_id == other_user.id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(others) == 1
 
 

@@ -68,7 +68,9 @@ class NotifyBody(BaseModel):
 
 
 class DisableUserPushRequest(BaseModel):
-    user_id: int = Field(..., ge=1, description="ID пользователя, для которого нужно отключить push")
+    user_id: int = Field(
+        ..., ge=1, description="ID пользователя, для которого нужно отключить push"
+    )
 
 
 @router.get("/public-key")
@@ -181,10 +183,14 @@ async def disable_user_push(
     if not target:
         raise HTTPException(status_code=404, detail="user_not_found")
     existing = (
-        await session.execute(
-            select(PushSubscription.id).where(PushSubscription.user_id == target.id)
+        (
+            await session.execute(
+                select(PushSubscription.id).where(PushSubscription.user_id == target.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not existing:
         return {"ok": True, "removed": 0}
     await session.execute(
@@ -193,7 +199,11 @@ async def disable_user_push(
     await session.commit()
     logger.info(
         "push.admin.disable_all",
-        extra={"user_id": user.id, "target_user_id": target.id, "removed": len(existing)},
+        extra={
+            "user_id": user.id,
+            "target_user_id": target.id,
+            "removed": len(existing),
+        },
     )
     return {"ok": True, "removed": len(existing)}
 

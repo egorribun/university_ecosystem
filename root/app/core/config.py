@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from email.utils import parseaddr
 from functools import cached_property
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
-
-from email.utils import parseaddr
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -53,7 +52,9 @@ def _validate_webpush_subject(value: str) -> str:
     if scheme == "http":
         hostname = (parsed.hostname or "").lower()
         if hostname not in {"localhost", "127.0.0.1"}:
-            raise ValueError("Insecure http scheme is only allowed for localhost testing")
+            raise ValueError(
+                "Insecure http scheme is only allowed for localhost testing"
+            )
     return normalized
 
 
