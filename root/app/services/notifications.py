@@ -1,7 +1,7 @@
 import asyncio
 import datetime as dt
 from datetime import UTC
-from typing import Awaitable, Callable, Optional, Sequence
+from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 
 from sqlalchemy import and_, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,10 @@ async def create_notifications_for_users(
     body: Optional[str] = None,
     type: Optional[str] = None,
     url: Optional[str] = None,
+    badge: Optional[str] = None,
+    tag: Optional[str] = None,
+    actions: Optional[Sequence[Mapping[str, Any]]] = None,
+    payload_data: Optional[Mapping[str, Any]] = None,
     user_ids: Sequence[int],
 ) -> int:
     now = dt.datetime.now(UTC)
@@ -49,12 +53,33 @@ async def create_notifications_for_users(
             .scalars()
             .all()
         )
-        payload = {
+        payload: dict[str, Any] = {
             "title": title,
             "body": body or "",
             "url": url or "/",
             "type": type or None,
         }
+        if badge:
+            payload["badge"] = badge
+        if tag:
+            payload["tag"] = tag
+        if payload_data:
+            payload["data"] = dict(payload_data)
+        if actions:
+            normalized_actions: list[dict[str, Any]] = []
+            for action in actions:
+                if not isinstance(action, Mapping):
+                    continue
+                normalized = {
+                    key: value
+                    for key, value in action.items()
+                    if key in {"action", "title", "icon", "url"}
+                }
+                if not normalized.get("action") or not normalized.get("title"):
+                    continue
+                normalized_actions.append(normalized)
+            if normalized_actions:
+                payload["actions"] = normalized_actions
         for s in subs:
             asyncio.create_task(asyncio.to_thread(send_web_push, s, payload))
     return len(rows)
@@ -108,6 +133,14 @@ async def generate_schedule_reminders(
             body=body,
             type="lesson",
             url="/schedule",
+            tag=f"schedule-{sch.id}",
+            actions=[
+                {
+                    "action": "open-schedule",
+                    "title": "Открыть расписание",
+                    "url": "/schedule",
+                }
+            ],
             user_ids=to_notify,
         )
     return total_created

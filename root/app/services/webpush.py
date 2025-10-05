@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import create_engine, delete, update
@@ -37,14 +37,65 @@ class WebPushResult:
     error: str | None = None
 
 
+def _prepare_actions(raw_actions: Any) -> tuple[list[dict[str, str]], dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    action_urls: dict[str, str] = {}
+    if not isinstance(raw_actions, list):
+        return actions, action_urls
+    for item in raw_actions:
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if not action or not title:
+            continue
+        prepared: dict[str, str] = {"action": action, "title": title}
+        icon = item.get("icon")
+        if isinstance(icon, str) and icon.strip():
+            prepared["icon"] = icon.strip()
+        actions.append(prepared)
+        url = item.get("url")
+        if isinstance(url, str) and url.strip():
+            action_urls[action] = url.strip()
+    return actions, action_urls
+
+
 def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
-    payload = {
+    payload: dict[str, Any] = {
         "title": data.get("title") or "Уведомление",
         "body": data.get("body") or "",
         "url": data.get("url") or "/",
         "tag": data.get("tag"),
         "type": data.get("type"),
     }
+    badge = data.get("badge")
+    if isinstance(badge, str) and badge.strip():
+        payload["badge"] = badge.strip()
+    icon = data.get("icon")
+    if isinstance(icon, str) and icon.strip():
+        payload["icon"] = icon.strip()
+    if "renotify" in data:
+        payload["renotify"] = bool(data.get("renotify"))
+    if "requireInteraction" in data:
+        payload["requireInteraction"] = bool(data.get("requireInteraction"))
+    if "silent" in data:
+        payload["silent"] = bool(data.get("silent"))
+    if "timestamp" in data:
+        try:
+            payload["timestamp"] = int(data.get("timestamp"))
+        except (TypeError, ValueError):
+            pass
+    if "vibrate" in data and isinstance(data.get("vibrate"), list):
+        payload["vibrate"] = [int(v) for v in data["vibrate"] if isinstance(v, (int, float))]
+    data_payload = data.get("data")
+    if isinstance(data_payload, dict):
+        payload["data"] = data_payload.copy()
+    actions, action_urls = _prepare_actions(data.get("actions"))
+    if actions:
+        payload["actions"] = actions
+        if action_urls:
+            payload.setdefault("data", {})
+            payload["data"]["actionUrls"] = action_urls
     ttl_val = data.get("ttl")
     ttl = int(ttl_val) if ttl_val is not None else None
     headers = {}
