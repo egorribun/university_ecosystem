@@ -2,35 +2,49 @@ import React, { Suspense, useEffect } from "react"
 import ReactDOM from "react-dom/client"
 import { CssBaseline } from "@mui/material"
 import { CssVarsProvider, useColorScheme } from "@mui/material/styles"
-import { registerSW } from "virtual:pwa-register"
 import { QueryClientProvider } from "@tanstack/react-query"
 import App from "./App"
 import ErrorBoundary from "./app/ErrorBoundary"
 import { lazyDevtools, queryClient } from "./app/queryClient"
-import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "./app/pwaEvents"
 import theme from "./theme"
 import "./assets/themes.css"
 import "dayjs/locale/ru"
+import { registerServiceWorker } from "./push/register-sw"
+import { ensurePushSubscription, hasPushConsent } from "./push/subscribe"
 
-const updateSW = registerSW({
-  immediate: true,
-  onNeedRefresh() {
-    const detail: ServiceWorkerUpdateEventDetail = {
-      update: () => updateSW(true),
+async function setupServiceWorker() {
+  if (!import.meta.env.PROD) return
+  if (!("serviceWorker" in navigator)) return
+
+  try {
+    const registration = await registerServiceWorker("/sw.js")
+    if (!registration) return
+
+    if (!hasPushConsent()) return
+
+    try {
+      await ensurePushSubscription(undefined, registration)
+    } catch (error) {
+      console.error("Failed to ensure push subscription", error)
     }
-    window.dispatchEvent(
-      new CustomEvent<ServiceWorkerUpdateEventDetail>(PWA_REFRESH_EVENT, {
-        detail,
-      })
-    )
-  },
-  onOfflineReady() {
-    console.info("Экосистема ГУУ готова работать офлайн")
-  },
-  onRegisterError(error: Error) {
+  } catch (error) {
     console.error("Service worker registration failed", error)
-  },
-})
+  }
+}
+
+if (typeof window !== "undefined") {
+  if (document.readyState === "complete") {
+    void setupServiceWorker()
+  } else {
+    window.addEventListener(
+      "load",
+      () => {
+        void setupServiceWorker()
+      },
+      { once: true }
+    )
+  }
+}
 
 function BodyColorSchemeSync() {
   const { mode, systemMode } = useColorScheme()

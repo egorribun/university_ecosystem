@@ -9,7 +9,6 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import MotionPresence from "./components/MotionPresence"
 import useMediaQuery from "@mui/material/useMediaQuery"
-import { registerServiceWorker } from "./push/register-sw"
 import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
 import ErrorBoundary from "./app/ErrorBoundary"
@@ -60,10 +59,6 @@ function AppContent() {
     location.pathname === "/register" ||
     location.pathname === "/forgot-password" ||
     location.pathname.startsWith("/reset-password")
-
-  useEffect(() => {
-    void registerServiceWorker()
-  }, [])
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search)

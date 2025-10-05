@@ -42,7 +42,12 @@ import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
 import { resolveMediaUrl } from "@/utils/media";
-import { ensurePushSubscription, unsubscribePush } from "@/utils/push";
+import {
+  ensurePushSubscription,
+  fetchVapidPublicKey,
+  setPushConsent,
+  unsubscribePush,
+} from "@/push/subscribe";
 
 type ThemeMode = "system" | "light" | "dark";
 
@@ -212,12 +217,13 @@ export default function Settings() {
   const enablePush = async () => {
     try {
       setPushBusy(true);
-      const r = await api.get<{ key: string }>("/push/public-key");
-      const key = r.data?.key || "";
+      const key = await fetchVapidPublicKey();
       if (!key) throw new Error("no key");
-      const sub = await ensurePushSubscription(key);
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await ensurePushSubscription(key, reg);
       if (sub) {
         setPushEnabled(true);
+        setPushConsent(true);
         setSnack({ text: "Уведомления включены", sev: "success" });
       } else {
         setSnack({ text: "Не удалось включить уведомления", sev: "error" });

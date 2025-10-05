@@ -1,22 +1,46 @@
+import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
+
+const SKIP_WAITING_MESSAGE = { type: "SKIP_WAITING" } as const
+
+const notifyUpdateAvailable = (registration: ServiceWorkerRegistration) => {
+  const detail: ServiceWorkerUpdateEventDetail = {
+    update: async () => {
+      registration.waiting?.postMessage(SKIP_WAITING_MESSAGE)
+    },
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<ServiceWorkerUpdateEventDetail>(PWA_REFRESH_EVENT, { detail })
+  )
+}
+
 export async function registerServiceWorker(path = "/sw.js") {
   if (!("serviceWorker" in navigator)) return null
+
   try {
-    const reg = await navigator.serviceWorker.register(path, { scope: "/", updateViaCache: "none" })
+    const registration = await navigator.serviceWorker.register(path, {
+      scope: "/",
+      updateViaCache: "none",
+    })
+
     await navigator.serviceWorker.ready
 
-    if (reg.waiting && navigator.serviceWorker.controller) {
-      reg.waiting.postMessage({ type: "SKIP_WAITING" })
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      notifyUpdateAvailable(registration)
     }
 
-    reg.addEventListener("updatefound", () => {
-      const sw = reg.installing
+    registration.addEventListener("updatefound", () => {
+      const sw = registration.installing
       if (!sw) return
-      const onState = () => {
+
+      const onStateChange = () => {
         if (sw.state === "installed" && navigator.serviceWorker.controller) {
-          reg.waiting?.postMessage({ type: "SKIP_WAITING" })
+          notifyUpdateAvailable(registration)
+          sw.removeEventListener("statechange", onStateChange)
         }
       }
-      sw.addEventListener("statechange", onState, { once: false })
+
+      sw.addEventListener("statechange", onStateChange)
     })
 
     let reloaded = false
@@ -26,8 +50,9 @@ export async function registerServiceWorker(path = "/sw.js") {
       window.location.reload()
     })
 
-    return reg
-  } catch {
+    return registration
+  } catch (error) {
+    console.error("Service worker registration failed", error)
     return null
   }
 }
