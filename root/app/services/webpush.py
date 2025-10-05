@@ -86,7 +86,9 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         except (TypeError, ValueError):
             pass
     if "vibrate" in data and isinstance(data.get("vibrate"), list):
-        payload["vibrate"] = [int(v) for v in data["vibrate"] if isinstance(v, (int, float))]
+        payload["vibrate"] = [
+            int(v) for v in data["vibrate"] if isinstance(v, (int, float))
+        ]
     data_payload = data.get("data")
     if isinstance(data_payload, dict):
         payload["data"] = data_payload.copy()
