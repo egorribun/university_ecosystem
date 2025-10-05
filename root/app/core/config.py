@@ -90,6 +90,8 @@ class Settings(BaseSettings):
         "style-src 'self' 'unsafe-inline'; "
         "connect-src 'self' https://api.spotify.com https://*.push.service; "
         "font-src 'self' data:; "
+        "trusted-types dompurify-news; "
+        "require-trusted-types-for 'script'; "
         "upgrade-insecure-requests"
     )
     security_csp_report_only: bool = False

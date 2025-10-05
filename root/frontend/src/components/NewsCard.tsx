@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useRef, useCallback } from "react"
+import { FC, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   Box, Typography, IconButton, Menu, MenuItem,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -15,6 +15,7 @@ import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { resolveMediaUrl } from "@/utils/media"
+import { sanitizeNewsText } from "@/utils/sanitize"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -63,6 +64,8 @@ const NewsCard: FC<NewsCardProps> = ({
 
   const isMobile = useMediaQuery("(max-width:600px)")
   const menuId = `news-card-menu-${id}`
+
+  const sanitizedPreview = useMemo(() => sanitizeNewsText(content), [content])
 
   // preview URL lifecycle
   useEffect(() => {
@@ -300,7 +303,7 @@ const NewsCard: FC<NewsCardProps> = ({
           WebkitBoxOrient: "vertical",
           fontSize: "clamp(0.99rem, 2vw, 1.06rem)"
         }}>
-          {content}
+          {sanitizedPreview}
         </Typography>
 
         <Box flex={1} />

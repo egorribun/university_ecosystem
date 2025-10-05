@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import api from '../api/client'
 import {
   Box, Typography, Paper, CircularProgress, Stack, IconButton, TextField,
@@ -14,6 +14,7 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera'
 import { useAuth } from '../contexts/AuthContext'
 import Layout from "../components/Layout"
 import { resolveMediaUrl } from '@/utils/media'
+import { sanitizeNewsHtml } from "@/utils/sanitize"
 
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -170,6 +171,11 @@ const NewsDetail = () => {
     )
   }
 
+  const sanitizedContent = useMemo(
+    () => sanitizeNewsHtml(news?.content ?? ""),
+    [news?.content]
+  )
+
   if (!news) {
     return (
       <Layout>
@@ -293,12 +299,29 @@ const NewsDetail = () => {
           <Divider sx={{ my: 2 }} />
 
           <Typography
+            component="div"
             variant="body1"
             fontSize="clamp(1.07rem,2.3vw,1.24rem)"
-            sx={{ whiteSpace: "pre-line" }}
-          >
-            {news.content}
-          </Typography>
+            sx={{
+              wordBreak: "break-word",
+              "& p": { marginBlock: 1.2 },
+              "& ul, & ol": { paddingInlineStart: 3, marginBlock: 1.2 },
+              "& li": { marginBlock: 0.4 },
+              "& img": {
+                maxWidth: "100%",
+                height: "auto",
+                borderRadius: 4,
+              },
+              "& a": {
+                color: "primary.main",
+                textDecoration: "underline",
+                textDecorationThickness: "0.08em",
+                textUnderlineOffset: "0.18em",
+                wordBreak: "break-word",
+              },
+            }}
+            dangerouslySetInnerHTML={{ __html: sanitizedContent as unknown as string }}
+          />
         </Stack>
 
         {/* Редактирование */}
