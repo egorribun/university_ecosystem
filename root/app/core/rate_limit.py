@@ -229,7 +229,9 @@ class RateLimitExceeded(Exception):
         self.info = info
 
 
-async def _memory_rate_limit(key: str, limit: int, window_seconds: int) -> RateLimitInfo:
+async def _memory_rate_limit(
+    key: str, limit: int, window_seconds: int
+) -> RateLimitInfo:
     if limit <= 0 or window_seconds <= 0:
         return RateLimitInfo(True, max(limit, 0), 0)
     now = time.time()

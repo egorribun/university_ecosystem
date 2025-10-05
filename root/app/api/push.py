@@ -141,9 +141,7 @@ async def broadcast(
 ):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
-    res = await session.execute(
-        select(PushSubscription)
-    )
+    res = await session.execute(select(PushSubscription))
     subs = res.scalars().all()
     for s in subs:
         bg.add_task(send_web_push, s, data.model_dump())

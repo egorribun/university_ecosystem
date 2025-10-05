@@ -40,7 +40,9 @@ class PushSubscriptionKeys(BaseModel):
 class PushSubscriptionIn(BaseModel):
     endpoint: str = Field(..., description="Push subscription endpoint URL")
     keys: PushSubscriptionKeys
-    topics: list[str] | None = Field(default=None, description="Optional list of topics")
+    topics: list[str] | None = Field(
+        default=None, description="Optional list of topics"
+    )
     user_agent: str | None = Field(default=None, description="User agent override")
 
     @field_validator("endpoint", mode="before")
@@ -99,7 +101,9 @@ class SendTestResponse(BaseModel):
     detail: str | None = None
 
 
-async def _validate_subscription_payload(data: PushSubscriptionIn) -> tuple[str, str, str]:
+async def _validate_subscription_payload(
+    data: PushSubscriptionIn,
+) -> tuple[str, str, str]:
     endpoint = data.endpoint.strip()
     p256dh = data.keys.p256dh.strip()
     auth = data.keys.auth.strip()
@@ -107,7 +111,9 @@ async def _validate_subscription_payload(data: PushSubscriptionIn) -> tuple[str,
     if not endpoint:
         errors.append({"field": "endpoint", "message": "Endpoint is required"})
     if not p256dh:
-        errors.append({"field": "keys.p256dh", "message": "keys.p256dh must not be empty"})
+        errors.append(
+            {"field": "keys.p256dh", "message": "keys.p256dh must not be empty"}
+        )
     if not auth:
         errors.append({"field": "keys.auth", "message": "keys.auth must not be empty"})
     if errors:
@@ -142,14 +148,20 @@ async def subscribe(
         user_agent = user_agent[:512]
 
     existing = (
-        await db.execute(select(PushSubscription).where(PushSubscription.endpoint == endpoint))
+        await db.execute(
+            select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        )
     ).scalar_one_or_none()
 
     def _resolve_topics() -> list[str]:
         raw_topics = payload.topics
         if raw_topics is None:
             if existing and existing.topics:
-                return [str(topic).strip() for topic in existing.topics if str(topic).strip()]
+                return [
+                    str(topic).strip()
+                    for topic in existing.topics
+                    if str(topic).strip()
+                ]
             return []
         unique: list[str] = []
         seen_local: set[str] = set()
@@ -228,7 +240,8 @@ async def unsubscribe(
     existing = (
         await db.execute(
             select(PushSubscription).where(
-                PushSubscription.endpoint == endpoint, PushSubscription.user_id == user.id
+                PushSubscription.endpoint == endpoint,
+                PushSubscription.user_id == user.id,
             )
         )
     ).scalar_one_or_none()
@@ -271,12 +284,18 @@ async def send_test(
         )
 
     subscriptions = (
-        await db.execute(
-            select(PushSubscription).where(PushSubscription.user_id == user.id)
+        (
+            await db.execute(
+                select(PushSubscription).where(PushSubscription.user_id == user.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not subscriptions:
-        return SendTestResponse(sent=0, removed=0, failed=0, detail="No subscriptions found")
+        return SendTestResponse(
+            sent=0, removed=0, failed=0, detail="No subscriptions found"
+        )
 
     payload = {
         "title": "Тестовое веб-push уведомление",

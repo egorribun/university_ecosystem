@@ -68,7 +68,9 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             headers=headers,
             ttl=ttl if ttl is not None else 43200,
         )
-    except WebPushException as exc:  # pragma: no cover - network errors hard to simulate
+    except (
+        WebPushException
+    ) as exc:  # pragma: no cover - network errors hard to simulate
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
         message = str(exc)
         gone = False

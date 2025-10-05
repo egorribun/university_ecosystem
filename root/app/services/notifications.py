@@ -43,9 +43,7 @@ async def create_notifications_for_users(
         subs = (
             (
                 await db.execute(
-                    select(PushSubscription).where(
-                        PushSubscription.user_id.in_(uids)
-                    )
+                    select(PushSubscription).where(PushSubscription.user_id.in_(uids))
                 )
             )
             .scalars()
