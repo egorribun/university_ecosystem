@@ -39,15 +39,12 @@ async def create_notifications_for_users(
     ]
     await db.execute(insert(Notification).values(rows))
     await db.commit()
-    if settings.vapid_private_key and settings.vapid_public_key:
+    if settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY:
         subs = (
             (
                 await db.execute(
                     select(PushSubscription).where(
-                        and_(
-                            PushSubscription.active.is_(True),
-                            PushSubscription.user_id.in_(uids),
-                        )
+                        PushSubscription.user_id.in_(uids)
                     )
                 )
             )

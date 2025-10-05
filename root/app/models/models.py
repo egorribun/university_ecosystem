@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -264,17 +265,20 @@ class PushSubscription(Base):
     __tablename__ = "push_subscriptions"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     endpoint = Column(Text, unique=True, nullable=False, index=True)
     p256dh = Column(String(200), nullable=False)
     auth = Column(String(200), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        index=True,
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
+    user_agent = Column(String(512))
+    last_seen_at = Column(DateTime(timezone=True), index=True)
+    topics = Column(JSON, nullable=False, default=list)
 
     user = relationship("User", back_populates="push_subscriptions")

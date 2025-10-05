@@ -152,6 +152,18 @@ class Settings(BaseSettings):
         return result
 
     @cached_property
+    def VAPID_PUBLIC_KEY(self) -> str:
+        return self.vapid_public_key
+
+    @cached_property
+    def VAPID_PRIVATE_KEY(self) -> str:
+        return self.vapid_private_key
+
+    @cached_property
+    def WEBPUSH_SUBJECT(self) -> str:
+        return self.vapid_subject or "mailto:no-reply@example.com"
+
+    @cached_property
     def cors_allow_origins_list(self) -> list[str]:
         allowed: list[str] = []
         seen: set[str] = set()
