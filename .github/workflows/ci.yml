@@ -459,7 +459,7 @@ jobs:
           path: root/frontend/.lighthouseci
           if-no-files-found: warn
       - name: Fail Lighthouse job on assertion errors
-        if: steps.lighthouse_assert.outcome == 'failure'
+        if: steps.lighthouse_assert.conclusion == 'failure'
         run: |
           echo "::error::Lighthouse assertions failed. See logs above for details."
           exit 1
