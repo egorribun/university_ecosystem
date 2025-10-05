@@ -5,17 +5,41 @@ import type {
   VapidPublicKeyResponse,
 } from "@/types/notifications"
 
-export async function fetchNotifications(limit = 20, offset = 0) {
-  const r = await api.get("/notifications", { params: { limit, offset } })
-  return r.data
+export type NotificationListResponse = {
+  items: Array<{
+    id: number
+    title: string
+    body?: string | null
+    type?: string | null
+    url?: string | null
+    created_at: string
+    read: boolean
+    read_at?: string | null
+  }>
+  unread_count: number
+  has_more: boolean
+  next_cursor?: string | null
 }
 
-export async function markRead(id: number) {
-  await api.post("/notifications/mark-read", { id })
+export async function fetchNotifications({
+  limit = 20,
+  cursor,
+}: {
+  limit?: number
+  cursor?: string | null
+} = {}): Promise<NotificationListResponse> {
+  const params: Record<string, unknown> = { limit }
+  if (cursor) params.cursor = cursor
+  const { data } = await api.get<NotificationListResponse>("/notifications", { params })
+  return data
 }
 
-export async function markAllRead() {
-  await api.post("/notifications/mark-all-read", {})
+export async function markNotificationRead(id: number): Promise<void> {
+  await api.patch(`/notifications/${id}/read`)
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await api.post("/notifications/read-all")
 }
 
 export async function getVapidKey(): Promise<string> {

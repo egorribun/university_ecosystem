@@ -5,6 +5,7 @@ import ArticleIcon from "@mui/icons-material/Article";
 import EventNoteIcon from "@mui/icons-material/EventNote";
 import TodayIcon from "@mui/icons-material/Today";
 import PersonIcon from "@mui/icons-material/Person";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 
 function getScrollRoot(): HTMLElement {
   const cands: (Element | null | Document | HTMLElement)[] = [
@@ -73,6 +74,7 @@ export default function MobileBottomNav() {
     () => [
       { to: "/dashboard", label: "Главная", icon: <DashboardIcon /> },
       { to: "/news", label: "Новости", icon: <ArticleIcon /> },
+      { to: "/notifications", label: "Уведомления", icon: <NotificationsNoneIcon /> },
       { to: "/events", label: "События", icon: <EventNoteIcon /> },
       { to: "/schedule", label: "Расписание", icon: <TodayIcon /> },
       { to: "/profile", label: "Профиль", icon: <PersonIcon /> }
