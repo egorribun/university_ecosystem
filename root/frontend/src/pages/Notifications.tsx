@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Layout from "../components/Layout"
 import {
   Avatar,
@@ -29,6 +29,41 @@ import { useNavigate } from "react-router-dom"
 import { useNotifications, type AppNotification } from "@/hooks/useNotifications"
 
 const rtf = new Intl.RelativeTimeFormat("ru-RU", { numeric: "auto" })
+
+type NavigatorWithBadge = Navigator & {
+  setAppBadge?: (count?: number) => Promise<void> | void
+  clearAppBadge?: () => Promise<void> | void
+}
+
+function updateAppBadge(unread: number) {
+  if (typeof navigator === "undefined") return
+  const nav = navigator as NavigatorWithBadge
+  const hasBadgeApi = typeof nav.setAppBadge === "function" || typeof nav.clearAppBadge === "function"
+  if (!hasBadgeApi) return
+
+  const swallow = (result: void | Promise<void> | undefined) => {
+    if (result && typeof (result as PromiseLike<void>).catch === "function") {
+      ;(result as PromiseLike<void>).catch(() => {})
+    }
+  }
+
+  try {
+    if (unread > 0) {
+      swallow(nav.setAppBadge?.(unread))
+      return
+    }
+
+    if (typeof nav.clearAppBadge === "function") {
+      swallow(nav.clearAppBadge())
+    } else {
+      swallow(nav.setAppBadge?.(0))
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.debug("Failed to update app badge", error)
+    }
+  }
+}
 
 function timeAgo(dateIso: string): string {
   const date = new Date(dateIso)
@@ -207,6 +242,10 @@ function NotificationsCenter() {
   } = useNotifications()
   const [filter, setFilter] = useState<FilterValue>("all")
   const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    updateAppBadge(unreadCount)
+  }, [unreadCount])
 
   const filteredItems = useMemo(() => {
     if (filter === "all") return items
