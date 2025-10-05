@@ -67,4 +67,3 @@ def subscription_supports_topic(
     stored = getattr(subscription, "topics", None)
     normalized_existing = normalize_topics(stored)
     return normalized_topic in normalized_existing
-
