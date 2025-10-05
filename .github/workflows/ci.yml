@@ -273,12 +273,23 @@ jobs:
         run: npx lhci collect --config=../.lighthouserc.js
       - name: Run Lighthouse assertions
         id: lighthouse_assert
-        continue-on-error: true
+        shell: bash
         run: |
+          set +e
           npx lhci assert \
             --config=../.lighthouserc.js \
             --preset=lighthouse:recommended \
             --budgetsFile=../budget.json
+          status=$?
+
+          if [ "$status" -ne 0 ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
       - name: Generate Lighthouse reports
         run: npx lhci upload --config=../.lighthouserc.js
       - name: Build Lighthouse summary
@@ -459,7 +470,7 @@ jobs:
           path: root/frontend/.lighthouseci
           if-no-files-found: warn
       - name: Fail Lighthouse job on assertion errors
-        if: steps.lighthouse_assert.outcome == 'failure'
+        if: steps.lighthouse_assert.outputs.failed == 'true'
         run: |
           echo "::error::Lighthouse assertions failed. See logs above for details."
           exit 1
@@ -504,4 +515,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Enforce Lighthouse thresholds
         if: steps.download_lighthouse_results.outcome == 'success'
-        run: npx lhci assert --config=../.lighthouserc.js
+        run: |
+          npx lhci assert \
+            --config=../.lighthouserc.js \
+            --preset=lighthouse:recommended \
+            --budgetsFile=../budget.json
