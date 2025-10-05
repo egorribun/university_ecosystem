@@ -64,7 +64,12 @@ import {
   setPushConsent,
   urlBase64ToUint8Array
 } from "@/push/subscribe";
-import { deleteSubscription, getVapidKey, saveSubscription } from "@/api/notifications";
+import {
+  deleteSubscription,
+  getVapidKey,
+  saveSubscription,
+  updateSubscriptionTopics
+} from "@/api/notifications";
 
 type ThemeMode = "system" | "light" | "dark";
 
@@ -425,7 +430,6 @@ export default function Settings() {
         if (!isPushSupported()) return;
         setPushBusy(true);
         const topicsToSend = topicKeys.filter(topic => nextState[topic]);
-        type Payload = Parameters<typeof saveSubscription>[0];
         (async () => {
           try {
             const registration = await navigator.serviceWorker.ready;
@@ -435,7 +439,11 @@ export default function Settings() {
               setPushConsent(false);
               return;
             }
-            const saved = await saveSubscription(sub.toJSON() as Payload, topicsToSend);
+            const endpoint = (sub.endpoint || "").trim();
+            type Payload = Parameters<typeof saveSubscription>[0];
+            const saved = endpoint
+              ? await updateSubscriptionTopics(endpoint, topicsToSend)
+              : await saveSubscription(sub.toJSON() as Payload, topicsToSend);
             applyServerTopics(saved?.topics ?? topicsToSend);
             setPushSubscription(sub);
           } catch (error) {
@@ -446,7 +454,16 @@ export default function Settings() {
           }
         })();
       },
-    [applyServerTopics, notificationsEnabled, pushBusy, topicKeys, topicState]
+    [
+      applyServerTopics,
+      notificationsEnabled,
+      pushBusy,
+      setPushConsent,
+      setPushSubscription,
+      setSnack,
+      topicKeys,
+      topicState
+    ]
   );
 
   useEffect(() => {

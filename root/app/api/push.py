@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
+from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import send_web_push
 
 router = APIRouter(prefix="/push", tags=["push"])
@@ -53,6 +54,11 @@ class NotifyBody(BaseModel):
     topic: str | None = None
     actions: list[NotificationAction] | None = None
     data: dict[str, Any] | None = None
+
+    @field_validator("topic", mode="before")
+    @classmethod
+    def _normalize_topic(cls, value):
+        return normalize_topic(value)
 
 
 @router.get("/public-key")
@@ -142,18 +148,25 @@ async def send_test(
     if not subs:
         return {"count": 0}
 
+    requested_topic = normalize_topic(getattr(data, "topic", None) if data else None)
     payload = (data.model_dump(exclude_none=True) if data else {}) | {
         "title": (data.title if data and data.title else "Тестовое уведомление"),
         "body": (data.body if data and data.body else "Проверка доставки"),
         "url": (data.url if data and data.url else "/"),
     }
+    if requested_topic:
+        payload["topic"] = requested_topic
     now_time = datetime.now().astimezone().time()
+    matched = 0
     for s in subs:
+        if not subscription_supports_topic(s, requested_topic):
+            continue
         prepared = prepare_push_payload_for_user(
             payload, getattr(s, "user", None), now_time=now_time
         )
         bg.add_task(send_web_push, s, prepared)
-    return {"count": len(subs)}
+        matched += 1
+    return {"count": matched}
 
 
 @router.post("/broadcast")
@@ -169,11 +182,20 @@ async def broadcast(
         select(PushSubscription).options(selectinload(PushSubscription.user))
     )
     subs = res.scalars().all()
+    topic = normalize_topic(data.topic)
     payload = data.model_dump()
+    if topic:
+        payload["topic"] = topic
+    else:
+        payload.pop("topic", None)
     now_time = datetime.now().astimezone().time()
+    matched = 0
     for s in subs:
+        if not subscription_supports_topic(s, topic):
+            continue
         prepared = prepare_push_payload_for_user(
             payload, getattr(s, "user", None), now_time=now_time
         )
         bg.add_task(send_web_push, s, prepared)
-    return {"count": len(subs)}
+        matched += 1
+    return {"count": matched}
