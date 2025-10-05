@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useCallback, ChangeEvent } from "react";
+import { useEffect, useRef, useState, useCallback, ChangeEvent, useMemo } from "react";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNotifications } from "@/hooks/useNotifications";
 import api from "../api/client";
 import {
   Box,
@@ -26,7 +27,11 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Switch,
+  FormGroup,
+  FormControl,
+  FormHelperText
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -43,31 +48,251 @@ import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
 import { resolveMediaUrl } from "@/utils/media";
 import {
-  ensurePushSubscription,
-  fetchVapidPublicKey,
+  getExistingPushSubscription,
+  isPushSupported,
   setPushConsent,
-  unsubscribePush,
+  urlBase64ToUint8Array
 } from "@/push/subscribe";
+import { deleteSubscription, getVapidKey, saveSubscription } from "@/api/notifications";
 
 type ThemeMode = "system" | "light" | "dark";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 
+type NotificationTopicKey = "news" | "schedule" | "system";
+
+const NOTIFICATION_TOPIC_LABELS: Record<NotificationTopicKey, string> = {
+  news: "Новости",
+  schedule: "Расписание",
+  system: "Системные"
+};
+
+const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
+  news: true,
+  schedule: true,
+  system: true
+};
+
 export default function Settings() {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
   const queryClient = useQueryClient();
+  const { unreadCount } = useNotifications();
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
 
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
 
+  const topicKeys = useMemo(() => Object.keys(NOTIFICATION_TOPIC_LABELS) as NotificationTopicKey[], []);
+  const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(DEFAULT_NOTIFICATION_TOPICS);
+  const [pushSupported, setPushSupported] = useState(() => isPushSupported());
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window === "undefined" || typeof Notification === "undefined") return "default";
+    return Notification.permission;
+  });
+  const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushInitializing, setPushInitializing] = useState(true);
+
+  const selectedTopics = useMemo(() => {
+    return topicKeys.filter(key => topicState[key]);
+  }, [topicKeys, topicState]);
+
+  const permissionText = useMemo(() => {
+    switch (notificationPermission) {
+      case "granted":
+        return "разрешено";
+      case "denied":
+        return "запрещено";
+      default:
+        return "не запрошено";
+    }
+  }, [notificationPermission]);
+
+  const selectedTopicsDescription = useMemo(() => {
+    if (!selectedTopics.length) return "Темы не выбраны";
+    return selectedTopics.map(key => NOTIFICATION_TOPIC_LABELS[key]).join(", ");
+  }, [selectedTopics]);
+
+  const notificationsEnabled = !!pushSubscription;
+
+  const applyServerTopics = useCallback(
+    (topics?: string[] | null) => {
+      if (topics == null) return;
+      const next: Record<NotificationTopicKey, boolean> = {} as Record<NotificationTopicKey, boolean>;
+      for (const key of topicKeys) {
+        next[key] = false;
+      }
+      for (const rawTopic of topics) {
+        if (!rawTopic) continue;
+        const normalized = rawTopic.toString().trim().toLowerCase() as NotificationTopicKey;
+        if ((topicKeys as string[]).includes(normalized)) {
+          next[normalized as NotificationTopicKey] = true;
+        }
+      }
+      setTopicState(next);
+    },
+    [topicKeys]
+  );
+
   const handleThemeChange = useCallback(
     (_: ChangeEvent<HTMLInputElement>, value: string) => {
       setMode(value as ThemeMode);
     },
     [setMode]
+  );
+
+  const enableNotifications = useCallback(async () => {
+    if (!isPushSupported()) {
+      setPushSupported(false);
+      setSnack({ text: "Ваш браузер не поддерживает push-уведомления", sev: "warning" });
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      setSnack({ text: "Браузер не поддерживает уведомления", sev: "warning" });
+      return;
+    }
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission !== "granted") {
+        setSnack({ text: "Разрешите уведомления в настройках браузера", sev: "info" });
+        return;
+      }
+
+      if (!("serviceWorker" in navigator)) {
+        setSnack({ text: "Сервис-воркеры недоступны", sev: "error" });
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let sub = await registration.pushManager.getSubscription();
+
+      if (!sub) {
+        let vapidKey = "";
+        try {
+          vapidKey = (await getVapidKey())?.trim() || "";
+        } catch (error) {
+          console.error("Failed to load VAPID key", error);
+        }
+        if (!vapidKey) {
+          setSnack({ text: "Не удалось получить ключ уведомлений", sev: "error" });
+          return;
+        }
+        const applicationServerKey = urlBase64ToUint8Array(vapidKey);
+        sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey
+        });
+      }
+
+      if (!sub) {
+        setSnack({ text: "Не удалось активировать подписку", sev: "error" });
+        return;
+      }
+
+      type Payload = Parameters<typeof saveSubscription>[0];
+      const saved = await saveSubscription(sub.toJSON() as Payload, selectedTopics);
+      applyServerTopics(saved?.topics ?? selectedTopics);
+      setPushSubscription(sub);
+      setPushConsent(true);
+      setSnack({ text: "Уведомления включены", sev: "success" });
+    } catch (error) {
+      console.error("Failed to enable notifications", error);
+      setSnack({ text: "Не удалось включить уведомления", sev: "error" });
+    } finally {
+      setPushBusy(false);
+      setPushInitializing(false);
+    }
+  }, [applyServerTopics, selectedTopics]);
+
+  const disableNotifications = useCallback(async () => {
+    if (!isPushSupported()) {
+      setPushSubscription(null);
+      setPushConsent(false);
+      return;
+    }
+    setPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const sub = await registration.pushManager.getSubscription();
+      if (!sub) {
+        setPushSubscription(null);
+        setPushConsent(false);
+        setSnack({ text: "Уведомления выключены", sev: "success" });
+        return;
+      }
+      const endpoint = sub.endpoint;
+      let unsubscribed = false;
+      try {
+        unsubscribed = await sub.unsubscribe();
+      } catch (error) {
+        console.error("Failed to unsubscribe push", error);
+      }
+      if (endpoint) {
+        try {
+          await deleteSubscription(endpoint);
+        } catch (error) {
+          console.warn("Не удалось удалить подписку на сервере", error);
+        }
+      }
+      setPushSubscription(null);
+      setPushConsent(false);
+      if (unsubscribed || !endpoint) {
+        setSnack({ text: "Уведомления выключены", sev: "success" });
+      } else {
+        setSnack({ text: "Уведомления отключены локально", sev: "info" });
+      }
+    } catch (error) {
+      console.error("Failed to disable notifications", error);
+      setSnack({ text: "Не удалось выключить уведомления", sev: "error" });
+    } finally {
+      setPushBusy(false);
+    }
+  }, []);
+
+  const handleNotificationsToggle = useCallback(
+    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      if (pushBusy || pushInitializing) return;
+      if (checked) void enableNotifications();
+      else void disableNotifications();
+    },
+    [disableNotifications, enableNotifications, pushBusy, pushInitializing]
+  );
+
+  const handleTopicToggle = useCallback(
+    (key: NotificationTopicKey) =>
+      (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+        const nextState = { ...topicState, [key]: checked };
+        setTopicState(nextState);
+        if (!notificationsEnabled || pushBusy) return;
+        if (!isPushSupported()) return;
+        setPushBusy(true);
+        const topicsToSend = topicKeys.filter(topic => nextState[topic]);
+        type Payload = Parameters<typeof saveSubscription>[0];
+        (async () => {
+          try {
+            const registration = await navigator.serviceWorker.ready;
+            const sub = await registration.pushManager.getSubscription();
+            if (!sub) {
+              setPushSubscription(null);
+              setPushConsent(false);
+              return;
+            }
+            const saved = await saveSubscription(sub.toJSON() as Payload, topicsToSend);
+            applyServerTopics(saved?.topics ?? topicsToSend);
+            setPushSubscription(sub);
+          } catch (error) {
+            console.error("Failed to update topics", error);
+            setSnack({ text: "Не удалось обновить настройки уведомлений", sev: "error" });
+          } finally {
+            setPushBusy(false);
+          }
+        })();
+      },
+    [applyServerTopics, notificationsEnabled, pushBusy, topicKeys, topicState]
   );
 
   useEffect(() => {
@@ -81,6 +306,101 @@ export default function Settings() {
       window.history.replaceState({}, "", next);
     }
   }, []);
+
+  useEffect(() => {
+    setPushSupported(isPushSupported());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let removeListener: (() => void) | undefined;
+
+    const syncPermission = () => {
+      if (typeof Notification === "undefined") {
+        setNotificationPermission("default");
+        return;
+      }
+      setNotificationPermission(Notification.permission);
+    };
+    syncPermission();
+
+    if (typeof navigator !== "undefined" && (navigator as any).permissions?.query) {
+      (navigator as any)
+        .permissions.query({ name: "notifications" as PermissionName })
+        .then((status: PermissionStatus) => {
+          if (cancelled) return;
+          const handler = () => {
+            if (cancelled) return;
+            const state = status.state;
+            if (state === "prompt") setNotificationPermission("default");
+            else setNotificationPermission(state as NotificationPermission);
+          };
+          handler();
+          if (typeof status.addEventListener === "function") {
+            status.addEventListener("change", handler);
+            removeListener = () => {
+              try {
+                status.removeEventListener("change", handler);
+              } catch {}
+            };
+          } else {
+            const statusWithOnChange = status as PermissionStatus & { onchange?: (() => void) | null };
+            statusWithOnChange.onchange = handler;
+            removeListener = () => {
+              if (statusWithOnChange.onchange === handler) {
+                statusWithOnChange.onchange = null;
+              }
+            };
+          }
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+      removeListener?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const detectSubscription = async () => {
+      try {
+        const supported = isPushSupported();
+        if (!active) return;
+        setPushSupported(supported);
+        if (!supported) {
+          setPushSubscription(null);
+          return;
+        }
+        setPushInitializing(true);
+        const sub = await getExistingPushSubscription();
+        if (!active) return;
+        setPushSubscription(sub);
+        if (sub) {
+          setPushConsent(true);
+          type Payload = Parameters<typeof saveSubscription>[0];
+          try {
+            const saved = await saveSubscription(sub.toJSON() as Payload);
+            if (!active) return;
+            applyServerTopics(saved?.topics ?? []);
+          } catch (error) {
+            console.warn("Не удалось получить настройки подписки", error);
+          }
+        }
+      } catch (error) {
+        if (active) {
+          console.warn("Не удалось определить подписку на push", error);
+        }
+      } finally {
+        if (active) setPushInitializing(false);
+      }
+    };
+    void detectSubscription();
+    return () => {
+      active = false;
+    };
+  }, [applyServerTopics]);
 
   const spotifyConnected = Boolean((user as any)?.spotify_connected || (user as any)?.spotify_is_connected);
   const spotifyName = (user as any)?.spotify_display_name || "";
@@ -194,64 +514,6 @@ export default function Settings() {
     }
   };
 
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushBusy, setPushBusy] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    const detect = async () => {
-      try {
-        if (!("serviceWorker" in navigator)) return;
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (!mounted) return;
-        setPushEnabled(!!sub);
-      } catch {}
-    };
-    detect();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const enablePush = async () => {
-    try {
-      setPushBusy(true);
-      const key = await fetchVapidPublicKey();
-      if (!key) throw new Error("no key");
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await ensurePushSubscription(key, reg);
-      if (sub) {
-        setPushEnabled(true);
-        setPushConsent(true);
-        setSnack({ text: "Уведомления включены", sev: "success" });
-      } else {
-        setSnack({ text: "Не удалось включить уведомления", sev: "error" });
-      }
-    } catch {
-      setSnack({ text: "Ошибка включения уведомлений", sev: "error" });
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const disablePush = async () => {
-    try {
-      setPushBusy(true);
-      const ok = await unsubscribePush();
-      if (ok) {
-        setPushEnabled(false);
-        setSnack({ text: "Уведомления выключены", sev: "success" });
-      } else {
-        setSnack({ text: "Не удалось выключить уведомления", sev: "error" });
-      }
-    } catch {
-      setSnack({ text: "Ошибка выключения уведомлений", sev: "error" });
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
   const [confirmLogout, setConfirmLogout] = useState(false);
 
   return (
@@ -342,27 +604,76 @@ export default function Settings() {
               <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
                 Уведомления
               </Typography>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
-                <Button
-                  startIcon={<NotificationsActiveIcon />}
-                  disabled={pushBusy || pushEnabled}
-                  variant="contained"
-                  onClick={enablePush}
-                  sx={{ width: { xs: "100%", sm: "auto" } }}
-                >
-                  Включить уведомления
-                </Button>
-                <Button
-                  startIcon={<NotificationsOffIcon />}
-                  disabled={pushBusy || !pushEnabled}
-                  variant="outlined"
-                  color="error"
-                  onClick={disablePush}
-                  sx={{ width: { xs: "100%", sm: "auto" } }}
-                >
-                  Выключить уведомления
-                </Button>
-              </Stack>
+              {!pushSupported ? (
+                <Alert severity="warning" variant="outlined">
+                  Веб push-уведомления недоступны в вашем браузере.
+                </Alert>
+              ) : (
+                <Stack spacing={1.8}>
+                  <FormControl component="fieldset" variant="standard">
+                    <FormGroup>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={notificationsEnabled}
+                            onChange={handleNotificationsToggle}
+                            disabled={pushBusy || pushInitializing}
+                          />
+                        }
+                        label={
+                          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                            {notificationsEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
+                            <span>Включить уведомления</span>
+                          </Stack>
+                        }
+                      />
+                    </FormGroup>
+                    <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                      Разрешение браузера: {permissionText}
+                    </FormHelperText>
+                  </FormControl>
+
+                  <FormControl
+                    component="fieldset"
+                    variant="standard"
+                    disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                    sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
+                  >
+                    <FormGroup>
+                      {topicKeys.map(key => (
+                        <FormControlLabel
+                          key={key}
+                          control={
+                            <Switch
+                              checked={topicState[key]}
+                              onChange={handleTopicToggle(key)}
+                              disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                            />
+                          }
+                          label={
+                            <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
+                          }
+                        />
+                      ))}
+                    </FormGroup>
+                    <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                      Активные темы: {selectedTopicsDescription}
+                    </FormHelperText>
+                  </FormControl>
+
+                  {notificationPermission === "denied" && (
+                    <Alert severity="error" variant="outlined">
+                      Разрешите уведомления в настройках браузера, чтобы получать оповещения.
+                    </Alert>
+                  )}
+
+                  <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                    {notificationsEnabled
+                      ? `Непрочитанные: ${unreadCount}.`
+                      : "Уведомления сейчас отключены."}
+                  </Typography>
+                </Stack>
+              )}
             </Box>
           </Stack>
         )}
