@@ -109,78 +109,120 @@ const DEFAULT_TITLE = "Экосистема ГУУ"
 const DEFAULT_ICON = "/maskable-icon-192.png"
 
 self.addEventListener("push", (event) => {
-  const payload = (() => {
-    if (!event.data) {
-      return {}
-    }
-    try {
-      return event.data.json() as PushPayload
-    } catch (error) {
-      return { body: event.data.text() } as PushPayload
-    }
-  })()
-
-  const title = payload.title || DEFAULT_TITLE
-  const data: NotificationData = {
-    url: payload.url || "/",
-    ...(payload.data ?? {}),
-  }
-
-  const options: NotificationOptions = {
-    body: payload.body,
-    icon: payload.icon || DEFAULT_ICON,
-    badge: payload.badge || payload.icon || DEFAULT_ICON,
-    tag: payload.tag,
-    data,
-    requireInteraction: payload.requireInteraction,
-    silent: payload.silent,
-  }
-
-  const extendedOptions = options as NotificationOptions & {
-    renotify?: boolean
-    timestamp?: number
-    vibrate?: number[]
-    actions?: NotificationActionOption[]
-  }
-
-  if (payload.renotify !== undefined) {
-    extendedOptions.renotify = payload.renotify
-  }
-
-  if (payload.timestamp !== undefined) {
-    extendedOptions.timestamp = payload.timestamp
-  }
-
-  if (payload.vibrate) {
-    extendedOptions.vibrate = payload.vibrate
-  }
-
-  if (payload.actions?.length) {
-    const actionUrls: Record<string, string> = {}
-    const validActions: NotificationActionOption[] = []
-    for (const action of payload.actions) {
-      if (!action || typeof action !== "object") continue
-      const key = typeof action.action === "string" ? action.action.trim() : ""
-      const title = typeof action.title === "string" ? action.title.trim() : ""
-      if (!key || !title) continue
-      const entry: NotificationActionOption = { action: key, title }
-      if (action.icon && typeof action.icon === "string") {
-        entry.icon = action.icon
+  const handlePush = async () => {
+    const payload = (() => {
+      if (!event.data) {
+        return {}
       }
-      validActions.push(entry)
-      if (action.url && typeof action.url === "string" && action.url.trim()) {
-        actionUrls[key] = action.url
+      try {
+        return event.data.json() as PushPayload
+      } catch (error) {
+        return { body: event.data.text() } as PushPayload
+      }
+    })()
+
+    const rawData =
+      payload.data && typeof payload.data === "object" ? (payload.data as Record<string, unknown>) : undefined
+
+    const title = payload.title || DEFAULT_TITLE
+    const data: NotificationData = {
+      url: payload.url || "/",
+      ...(rawData ?? {}),
+    }
+
+    const options: NotificationOptions = {
+      body: payload.body,
+      icon: payload.icon || DEFAULT_ICON,
+      badge: payload.badge || payload.icon || DEFAULT_ICON,
+      tag: payload.tag,
+      data,
+      requireInteraction: payload.requireInteraction,
+      silent: payload.silent,
+    }
+
+    const extendedOptions = options as NotificationOptions & {
+      renotify?: boolean
+      timestamp?: number
+      vibrate?: number[]
+      actions?: NotificationActionOption[]
+    }
+
+    if (payload.renotify !== undefined) {
+      extendedOptions.renotify = payload.renotify
+    }
+
+    if (payload.timestamp !== undefined) {
+      extendedOptions.timestamp = payload.timestamp
+    }
+
+    if (payload.vibrate) {
+      extendedOptions.vibrate = payload.vibrate
+    }
+
+    if (payload.actions?.length) {
+      const actionUrls: Record<string, string> = {}
+      const validActions: NotificationActionOption[] = []
+      for (const action of payload.actions) {
+        if (!action || typeof action !== "object") continue
+        const key = typeof action.action === "string" ? action.action.trim() : ""
+        const actionTitle = typeof action.title === "string" ? action.title.trim() : ""
+        if (!key || !actionTitle) continue
+        const entry: NotificationActionOption = { action: key, title: actionTitle }
+        if (action.icon && typeof action.icon === "string") {
+          entry.icon = action.icon
+        }
+        validActions.push(entry)
+        if (action.url && typeof action.url === "string" && action.url.trim()) {
+          actionUrls[key] = action.url
+        }
+      }
+      if (validActions.length) {
+        extendedOptions.actions = validActions
+        if (Object.keys(actionUrls).length) {
+          data.actionUrls = actionUrls
+        }
       }
     }
-    if (validActions.length) {
-      extendedOptions.actions = validActions
-      if (Object.keys(actionUrls).length) {
-        data.actionUrls = actionUrls
+
+    const payloadType = (() => {
+      const rawType = rawData && typeof rawData.type === "string" ? rawData.type.trim() : undefined
+      return rawType || undefined
+    })()
+
+    if (payloadType === "in-app") {
+      const windowClients = (await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      })) as WindowClient[]
+
+      const hasVisibleClient = windowClients.some((client) => client.visibilityState === "visible")
+
+      if (hasVisibleClient) {
+        const toastMessage = {
+          type: "PUSH_NOTIFICATION",
+          toast: {
+            title,
+            body: payload.body,
+            url: typeof data.url === "string" ? data.url : undefined,
+            icon: options.icon,
+            tag: options.tag,
+            data,
+            timestamp: extendedOptions.timestamp ?? Date.now(),
+          },
+        }
+
+        for (const client of windowClients) {
+          client.postMessage(toastMessage)
+        }
+
+        return
       }
     }
+
+    await self.registration.showNotification(title, options)
   }
 
-  event.waitUntil(self.registration.showNotification(title, options))
+  event.waitUntil(handlePush())
 })
 
 self.addEventListener("notificationclick", (event) => {
