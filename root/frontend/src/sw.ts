@@ -72,10 +72,18 @@ registerRoute(
 
 type NotificationData = {
   url?: string
+  actionUrls?: Record<string, string>
   [key: string]: unknown
 }
 
-type NotificationAction = {
+type NotificationActionPayload = {
+  action: string
+  title: string
+  icon?: string
+  url?: string
+}
+
+type NotificationActionOption = {
   action: string
   title: string
   icon?: string
@@ -94,7 +102,7 @@ type PushPayload = {
   silent?: boolean
   timestamp?: number
   vibrate?: number[]
-  actions?: NotificationAction[]
+  actions?: NotificationActionPayload[]
 }
 
 const DEFAULT_TITLE = "Экосистема ГУУ"
@@ -132,7 +140,7 @@ self.addEventListener("push", (event) => {
     renotify?: boolean
     timestamp?: number
     vibrate?: number[]
-    actions?: NotificationAction[]
+    actions?: NotificationActionOption[]
   }
 
   if (payload.renotify !== undefined) {
@@ -147,8 +155,29 @@ self.addEventListener("push", (event) => {
     extendedOptions.vibrate = payload.vibrate
   }
 
-  if (payload.actions) {
-    extendedOptions.actions = payload.actions
+  if (payload.actions?.length) {
+    const actionUrls: Record<string, string> = {}
+    const validActions: NotificationActionOption[] = []
+    for (const action of payload.actions) {
+      if (!action || typeof action !== "object") continue
+      const key = typeof action.action === "string" ? action.action.trim() : ""
+      const title = typeof action.title === "string" ? action.title.trim() : ""
+      if (!key || !title) continue
+      const entry: NotificationActionOption = { action: key, title }
+      if (action.icon && typeof action.icon === "string") {
+        entry.icon = action.icon
+      }
+      validActions.push(entry)
+      if (action.url && typeof action.url === "string" && action.url.trim()) {
+        actionUrls[key] = action.url
+      }
+    }
+    if (validActions.length) {
+      extendedOptions.actions = validActions
+      if (Object.keys(actionUrls).length) {
+        data.actionUrls = actionUrls
+      }
+    }
   }
 
   event.waitUntil(self.registration.showNotification(title, options))
@@ -158,7 +187,12 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close()
 
   const data = (event.notification.data || {}) as NotificationData
-  const targetUrl = typeof data.url === "string" && data.url ? data.url : "/"
+  const defaultUrl = typeof data.url === "string" && data.url ? data.url : "/"
+  const actionUrl =
+    event.action && data.actionUrls && typeof data.actionUrls === "object"
+      ? data.actionUrls[event.action]
+      : undefined
+  const targetUrl = typeof actionUrl === "string" && actionUrl ? actionUrl : defaultUrl
 
   event.waitUntil(
     (async () => {

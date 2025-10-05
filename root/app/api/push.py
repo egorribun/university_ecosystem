@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,15 +25,32 @@ class SubPayload(BaseModel):
     keys: SubKeys
 
 
+class NotificationAction(BaseModel):
+    action: str = Field(..., description="Notification action identifier")
+    title: str = Field(..., description="Action button title")
+    url: str | None = Field(default=None, description="Optional URL to open")
+    icon: str | None = Field(default=None, description="Optional icon URL")
+
+    @field_validator("action", "title", mode="before")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+
 class NotifyBody(BaseModel):
     title: str
     body: str | None = None
     url: str | None = None
     tag: str | None = None
+    badge: str | None = None
     type: str | None = None
     ttl: int | None = 43200
     urgency: str | None = "normal"
     topic: str | None = None
+    actions: list[NotificationAction] | None = None
+    data: dict[str, Any] | None = None
 
 
 @router.get("/public-key")
@@ -122,7 +140,7 @@ async def send_test(
     if not subs:
         return {"count": 0}
 
-    payload = (data.model_dump() if data else {}) | {
+    payload = (data.model_dump(exclude_none=True) if data else {}) | {
         "title": (data.title if data and data.title else "Тестовое уведомление"),
         "body": (data.body if data and data.body else "Проверка доставки"),
         "url": (data.url if data and data.url else "/"),
