@@ -52,6 +52,22 @@ export async function deleteSubscription(endpoint: string): Promise<void> {
   await api.delete("/webpush/subscribe", { data: { endpoint } })
 }
 
+export async function updateSubscriptionTopics(
+  endpoint: string,
+  topics: string[]
+): Promise<PushSubscriptionResponse> {
+  const normalizedEndpoint = endpoint?.trim()
+  if (!normalizedEndpoint) {
+    throw new Error("Endpoint is required")
+  }
+  const payload = { endpoint: normalizedEndpoint, topics }
+  const { data } = await api.patch<PushSubscriptionResponse>(
+    "/webpush/subscribe/topics",
+    payload
+  )
+  return data
+}
+
 export async function sendTest(): Promise<SendTestNotificationResponse> {
   const { data } = await api.post<SendTestNotificationResponse>("/webpush/send-test")
   return data

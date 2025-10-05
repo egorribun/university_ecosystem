@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.models import Notification, PushSubscription, Schedule, User
+from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import send_web_push
 
 
@@ -72,6 +73,7 @@ async def create_notifications_for_users(
     actions: Optional[Sequence[Mapping[str, Any]]] = None,
     payload_data: Optional[Mapping[str, Any]] = None,
     user_ids: Sequence[int],
+    topic: Optional[str] = None,
 ) -> int:
     now = dt.datetime.now(UTC)
     uids = list({int(uid) for uid in user_ids})
@@ -109,6 +111,9 @@ async def create_notifications_for_users(
             "url": url or "/",
             "type": type or None,
         }
+        normalized_topic = normalize_topic(topic)
+        if normalized_topic:
+            base_payload["topic"] = normalized_topic
         if badge:
             base_payload["badge"] = badge
         if tag:
@@ -132,6 +137,8 @@ async def create_notifications_for_users(
                 base_payload["actions"] = normalized_actions
         now_time = _current_local_time()
         for s in subs:
+            if not subscription_supports_topic(s, normalized_topic):
+                continue
             prepared_payload = prepare_push_payload_for_user(
                 base_payload, getattr(s, "user", None), now_time=now_time
             )
@@ -196,6 +203,7 @@ async def generate_schedule_reminders(
                 }
             ],
             user_ids=to_notify,
+            topic="schedule",
         )
     return total_created
 

@@ -20,6 +20,12 @@ from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
+from app.services.push_topics import (
+    normalize_topic,
+    normalize_topics,
+    resolve_topics,
+    subscription_supports_topic,
+)
 from app.services.webpush import WebPushResult, send_web_push
 
 logger = logging.getLogger(__name__)
@@ -59,7 +65,7 @@ class PushSubscriptionIn(BaseModel):
     def _normalize_topics(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return None
-        return [str(topic).strip() for topic in value if str(topic).strip()]
+        return normalize_topics(value)
 
 
 class PushSubscriptionOut(BaseModel):
@@ -81,8 +87,27 @@ class PushSubscriptionOut(BaseModel):
         if not value:
             return []
         if isinstance(value, list):
-            return [str(topic) for topic in value if str(topic).strip()]
+            return normalize_topics(value)
         return value
+
+
+class PushSubscriptionTopicsUpdate(BaseModel):
+    endpoint: str
+    topics: list[str] = Field(default_factory=list)
+
+    @field_validator("endpoint", mode="before")
+    @classmethod
+    def _normalize_endpoint(cls, value: str) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    @field_validator("topics", mode="before")
+    @classmethod
+    def _normalize_topics(cls, value):
+        if value is None:
+            return []
+        return normalize_topics(value)
 
 
 class PushSubscriptionDelete(BaseModel):
@@ -156,27 +181,8 @@ async def subscribe(
     ).scalar_one_or_none()
 
     def _resolve_topics() -> list[str]:
-        raw_topics = payload.topics
-        if raw_topics is None:
-            if existing and existing.topics:
-                return [
-                    str(topic).strip()
-                    for topic in existing.topics
-                    if str(topic).strip()
-                ]
-            return []
-        unique: list[str] = []
-        seen_local: set[str] = set()
-        for topic in raw_topics:
-            normalized = topic.strip()
-            if not normalized:
-                continue
-            key = normalized.lower()
-            if key in seen_local:
-                continue
-            seen_local.add(key)
-            unique.append(normalized)
-        return unique
+        existing_topics = existing.topics if existing else None
+        return resolve_topics(payload.topics, existing_topics)
 
     now = datetime.now(UTC)
     try:
@@ -221,6 +227,46 @@ async def subscribe(
             },
         )
 
+    return PushSubscriptionOut.model_validate(subscription)
+
+
+@router.patch("/subscribe/topics", response_model=PushSubscriptionOut)
+async def update_subscription_topics(
+    payload: PushSubscriptionTopicsUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> PushSubscriptionOut:
+    endpoint = payload.endpoint.strip()
+    if not endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_subscription",
+                "message": "Endpoint is required",
+            },
+        )
+
+    subscription = (
+        await db.execute(
+            select(PushSubscription).where(
+                PushSubscription.endpoint == endpoint,
+                PushSubscription.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "subscription_not_found",
+                "message": "Subscription not found",
+            },
+        )
+
+    subscription.topics = normalize_topics(payload.topics)
+    subscription.last_seen_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(subscription)
     return PushSubscriptionOut.model_validate(subscription)
 
 
@@ -301,17 +347,22 @@ async def send_test(
             sent=0, removed=0, failed=0, detail="No subscriptions found"
         )
 
+    topic = normalize_topic("system")
     payload = {
         "title": "Тестовое веб-push уведомление",
         "body": "Проверка доставки уведомлений",
         "url": settings.app_base_url or "/",
     }
+    if topic:
+        payload["topic"] = topic
 
     sent = 0
     removed = 0
     failed = 0
     now_time = datetime.now().astimezone().time()
     for sub in subscriptions:
+        if not subscription_supports_topic(sub, topic):
+            continue
         prepared = prepare_push_payload_for_user(
             payload, getattr(sub, "user", None), now_time=now_time
         )
