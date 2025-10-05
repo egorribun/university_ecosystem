@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from email.utils import parseaddr
 from functools import cached_property
 from pathlib import Path
 from typing import Iterable
@@ -30,6 +31,31 @@ def _coerce_str_list(values: Iterable[str] | str | None) -> list[str]:
     else:
         items = [str(item).strip() for item in values]
     return [item for item in items if item]
+
+
+def _validate_webpush_subject(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("WEBPUSH_SUBJECT must not be empty")
+    lower = normalized.lower()
+    if lower.startswith("mailto:"):
+        _, address = parseaddr(normalized[7:])
+        if address and "@" in address:
+            return f"mailto:{address.lower()}"
+        raise ValueError("WEBPUSH_SUBJECT mailto: value must contain a valid email")
+    parsed = urlparse(normalized)
+    scheme = parsed.scheme.lower()
+    if scheme not in {"https", "http"}:
+        raise ValueError("WEBPUSH_SUBJECT URL must use https or http scheme")
+    if not parsed.netloc:
+        raise ValueError("WEBPUSH_SUBJECT URL must include a host")
+    if scheme == "http":
+        hostname = (parsed.hostname or "").lower()
+        if hostname not in {"localhost", "127.0.0.1"}:
+            raise ValueError(
+                "Insecure http scheme is only allowed for localhost testing"
+            )
+    return normalized
 
 
 class Settings(BaseSettings):
@@ -88,7 +114,11 @@ class Settings(BaseSettings):
         "img-src 'self' data: https:; "
         "script-src 'self' 'nonce-{nonce}' 'strict-dynamic'; "
         "style-src 'self' 'unsafe-inline'; "
-        "connect-src 'self' https://api.spotify.com https://*.push.service; "
+        "connect-src 'self' https://api.spotify.com https://fcm.googleapis.com "
+        "https://fcmregistrations.googleapis.com https://*.push.services.mozilla.com "
+        "https://updates.push.services.mozilla.com https://*.push.apple.com; "
+        "worker-src 'self' blob:; "
+        "manifest-src 'self'; "
         "font-src 'self' data:; "
         "trusted-types dompurify-news; "
         "require-trusted-types-for 'script'; "
@@ -161,7 +191,11 @@ class Settings(BaseSettings):
 
     @cached_property
     def WEBPUSH_SUBJECT(self) -> str:
-        return self.vapid_subject or "mailto:no-reply@example.com"
+        raw_subject = (self.vapid_subject or "").strip()
+        if not raw_subject:
+            return "mailto:no-reply@example.com"
+        subject = _validate_webpush_subject(raw_subject)
+        return subject
 
     @cached_property
     def cors_allow_origins_list(self) -> list[str]:

@@ -56,7 +56,12 @@ async def test_strict_security_headers_enabled(monkeypatch):
     assert "img-src 'self' data:" in csp
     assert "script-src 'self' 'nonce-" in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
-    assert "connect-src 'self' https://api.spotify.com https://*.push.service" in csp
+    assert "https://api.spotify.com" in csp
+    assert "https://fcm.googleapis.com" in csp
+    assert "https://fcmregistrations.googleapis.com" in csp
+    assert "https://*.push.services.mozilla.com" in csp
+    assert "worker-src 'self' blob:" in csp
+    assert "manifest-src 'self'" in csp
     assert "Content-Security-Policy-Report-Only" not in headers
 
 
