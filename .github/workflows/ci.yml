@@ -271,6 +271,14 @@ jobs:
         run: npm ci
       - name: Collect Lighthouse metrics
         run: npx lhci collect --config=../.lighthouserc.js
+      - name: Run Lighthouse assertions
+        id: lighthouse_assert
+        run: |
+          npx lhci assert \
+            --config=../.lighthouserc.js \
+            --preset=lighthouse:recommended \
+            --budgetsFile=../budget.json
+        continue-on-error: true
       - name: Generate Lighthouse reports
         run: npx lhci upload --config=../.lighthouserc.js
       - name: Build Lighthouse summary
@@ -450,6 +458,11 @@ jobs:
           name: lighthouse-results
           path: root/frontend/.lighthouseci
           if-no-files-found: warn
+      - name: Fail Lighthouse job on assertion errors
+        if: steps.lighthouse_assert.conclusion == 'failure'
+        run: |
+          echo "::error::Lighthouse assertions failed. See logs above for details."
+          exit 1
 
   performance-gate:
     name: Performance gate
@@ -491,4 +504,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Enforce Lighthouse thresholds
         if: steps.download_lighthouse_results.outcome == 'success'
-        run: npx lhci assert --config=../.lighthouserc.js
+        run: |
+          npx lhci assert \
+            --config=../.lighthouserc.js \
+            --preset=lighthouse:recommended \
+            --budgetsFile=../budget.json
