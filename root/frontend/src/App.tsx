@@ -13,6 +13,7 @@ import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
 import ErrorBoundary from "./app/ErrorBoundary"
 import InstallPrompt from "./components/InstallPrompt"
+import LivePushToasts from "./components/LivePushToasts"
 import { useQueryClient } from "@tanstack/react-query"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 
@@ -130,6 +131,7 @@ function AppContent() {
       {!hideNavbar && <BackToTop />}
       {!hideNavbar && <Footer />}
       {!hideNavbar && <MobileBottomNav />}
+      <LivePushToasts />
       {!hideNavbar && <InstallPrompt />}
     </>
   )
