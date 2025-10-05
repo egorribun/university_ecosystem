@@ -1,16 +1,9 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-  ChangeEvent,
-  FocusEvent,
-  useMemo
-} from "react";
+import { useEffect, useRef, useState, useCallback, ChangeEvent, FocusEvent } from "react";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "@/hooks/useNotifications";
+import { usePushPreferences, NOTIFICATION_TOPIC_LABELS } from "@/hooks/usePushPreferences";
 import api from "../api/client";
 import {
   Box,
@@ -39,7 +32,8 @@ import {
   Switch,
   FormGroup,
   FormControl,
-  FormHelperText
+  FormHelperText,
+  Link
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import TextField from "@mui/material/TextField";
@@ -58,36 +52,10 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
 import { resolveMediaUrl } from "@/utils/media";
-import {
-  getExistingPushSubscription,
-  isPushSupported,
-  setPushConsent,
-  urlBase64ToUint8Array
-} from "@/push/subscribe";
-import {
-  deleteSubscription,
-  getVapidKey,
-  saveSubscription,
-  updateSubscriptionTopics
-} from "@/api/notifications";
 
 type ThemeMode = "system" | "light" | "dark";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
-
-type NotificationTopicKey = "news" | "schedule" | "system";
-
-const NOTIFICATION_TOPIC_LABELS: Record<NotificationTopicKey, string> = {
-  news: "Новости",
-  schedule: "Расписание",
-  system: "Системные"
-};
-
-const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
-  news: true,
-  schedule: true,
-  system: true
-};
 
 const DEFAULT_DND_START = "22:00";
 const DEFAULT_DND_END = "07:00";
@@ -123,16 +91,22 @@ export default function Settings() {
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
 
-  const topicKeys = useMemo(() => Object.keys(NOTIFICATION_TOPIC_LABELS) as NotificationTopicKey[], []);
-  const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(DEFAULT_NOTIFICATION_TOPICS);
-  const [pushSupported, setPushSupported] = useState(() => isPushSupported());
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
-    if (typeof window === "undefined" || typeof Notification === "undefined") return "default";
-    return Notification.permission;
-  });
-  const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
-  const [pushBusy, setPushBusy] = useState(false);
-  const [pushInitializing, setPushInitializing] = useState(true);
+  const {
+    topicKeys,
+    topicState,
+    pushSupported,
+    notificationPermission,
+    notificationsEnabled,
+    pushBusy,
+    pushInitializing,
+    permissionText,
+    selectedTopicsDescription,
+    enableNotifications,
+    disableNotifications,
+    handleTopicToggle,
+    safariIOS,
+    safariGuideUrl
+  } = usePushPreferences({ onNotify: setSnack });
   const [dndEnabled, setDndEnabled] = useState(false);
   const [dndStart, setDndStart] = useState("");
   const [dndEnd, setDndEnd] = useState("");
@@ -146,28 +120,6 @@ export default function Settings() {
     setDndStart(start || (enabled ? DEFAULT_DND_START : ""));
     setDndEnd(end || (enabled ? DEFAULT_DND_END : ""));
   }, []);
-
-  const selectedTopics = useMemo(() => {
-    return topicKeys.filter(key => topicState[key]);
-  }, [topicKeys, topicState]);
-
-  const permissionText = useMemo(() => {
-    switch (notificationPermission) {
-      case "granted":
-        return "разрешено";
-      case "denied":
-        return "запрещено";
-      default:
-        return "не запрошено";
-    }
-  }, [notificationPermission]);
-
-  const selectedTopicsDescription = useMemo(() => {
-    if (!selectedTopics.length) return "Темы не выбраны";
-    return selectedTopics.map(key => NOTIFICATION_TOPIC_LABELS[key]).join(", ");
-  }, [selectedTopics]);
-
-  const notificationsEnabled = !!pushSubscription;
 
   const persistDnd = useCallback(
     async (nextEnabled: boolean, nextStart: string | null, nextEnd: string | null) => {
@@ -276,196 +228,6 @@ export default function Settings() {
     syncDndFromUser(user);
   }, [syncDndFromUser, user]);
 
-  const applyServerTopics = useCallback(
-    (topics?: string[] | null) => {
-      if (topics == null) return;
-      const next: Record<NotificationTopicKey, boolean> = {} as Record<NotificationTopicKey, boolean>;
-      for (const key of topicKeys) {
-        next[key] = false;
-      }
-      for (const rawTopic of topics) {
-        if (!rawTopic) continue;
-        const normalized = rawTopic.toString().trim().toLowerCase() as NotificationTopicKey;
-        if ((topicKeys as string[]).includes(normalized)) {
-          next[normalized as NotificationTopicKey] = true;
-        }
-      }
-      setTopicState(next);
-    },
-    [topicKeys]
-  );
-
-  const handleThemeChange = useCallback(
-    (_: ChangeEvent<HTMLInputElement>, value: string) => {
-      setMode(value as ThemeMode);
-    },
-    [setMode]
-  );
-
-  const enableNotifications = useCallback(async () => {
-    if (!isPushSupported()) {
-      setPushSupported(false);
-      setSnack({ text: "Ваш браузер не поддерживает push-уведомления", sev: "warning" });
-      return;
-    }
-    if (typeof Notification === "undefined") {
-      setSnack({ text: "Браузер не поддерживает уведомления", sev: "warning" });
-      return;
-    }
-    setPushBusy(true);
-    try {
-      const permission = await Notification.requestPermission();
-      setNotificationPermission(permission);
-      if (permission !== "granted") {
-        setSnack({ text: "Разрешите уведомления в настройках браузера", sev: "info" });
-        return;
-      }
-
-      if (!("serviceWorker" in navigator)) {
-        setSnack({ text: "Сервис-воркеры недоступны", sev: "error" });
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.ready;
-      let sub = await registration.pushManager.getSubscription();
-
-      if (!sub) {
-        let vapidKey = "";
-        try {
-          vapidKey = (await getVapidKey())?.trim() || "";
-        } catch (error) {
-          console.error("Failed to load VAPID key", error);
-        }
-        if (!vapidKey) {
-          setSnack({ text: "Не удалось получить ключ уведомлений", sev: "error" });
-          return;
-        }
-        const applicationServerKey = urlBase64ToUint8Array(vapidKey);
-        sub = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey
-        });
-      }
-
-      if (!sub) {
-        setSnack({ text: "Не удалось активировать подписку", sev: "error" });
-        return;
-      }
-
-      type Payload = Parameters<typeof saveSubscription>[0];
-      const saved = await saveSubscription(sub.toJSON() as Payload, selectedTopics);
-      applyServerTopics(saved?.topics ?? selectedTopics);
-      setPushSubscription(sub);
-      setPushConsent(true);
-      setSnack({ text: "Уведомления включены", sev: "success" });
-    } catch (error) {
-      console.error("Failed to enable notifications", error);
-      setSnack({ text: "Не удалось включить уведомления", sev: "error" });
-    } finally {
-      setPushBusy(false);
-      setPushInitializing(false);
-    }
-  }, [applyServerTopics, selectedTopics]);
-
-  const disableNotifications = useCallback(async () => {
-    if (!isPushSupported()) {
-      setPushSubscription(null);
-      setPushConsent(false);
-      return;
-    }
-    setPushBusy(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const sub = await registration.pushManager.getSubscription();
-      if (!sub) {
-        setPushSubscription(null);
-        setPushConsent(false);
-        setSnack({ text: "Уведомления выключены", sev: "success" });
-        return;
-      }
-      const endpoint = sub.endpoint;
-      let unsubscribed = false;
-      try {
-        unsubscribed = await sub.unsubscribe();
-      } catch (error) {
-        console.error("Failed to unsubscribe push", error);
-      }
-      if (endpoint) {
-        try {
-          await deleteSubscription(endpoint);
-        } catch (error) {
-          console.warn("Не удалось удалить подписку на сервере", error);
-        }
-      }
-      setPushSubscription(null);
-      setPushConsent(false);
-      if (unsubscribed || !endpoint) {
-        setSnack({ text: "Уведомления выключены", sev: "success" });
-      } else {
-        setSnack({ text: "Уведомления отключены локально", sev: "info" });
-      }
-    } catch (error) {
-      console.error("Failed to disable notifications", error);
-      setSnack({ text: "Не удалось выключить уведомления", sev: "error" });
-    } finally {
-      setPushBusy(false);
-    }
-  }, []);
-
-  const handleNotificationsToggle = useCallback(
-    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (pushBusy || pushInitializing) return;
-      if (checked) void enableNotifications();
-      else void disableNotifications();
-    },
-    [disableNotifications, enableNotifications, pushBusy, pushInitializing]
-  );
-
-  const handleTopicToggle = useCallback(
-    (key: NotificationTopicKey) =>
-      (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-        const nextState = { ...topicState, [key]: checked };
-        setTopicState(nextState);
-        if (!notificationsEnabled || pushBusy) return;
-        if (!isPushSupported()) return;
-        setPushBusy(true);
-        const topicsToSend = topicKeys.filter(topic => nextState[topic]);
-        (async () => {
-          try {
-            const registration = await navigator.serviceWorker.ready;
-            const sub = await registration.pushManager.getSubscription();
-            if (!sub) {
-              setPushSubscription(null);
-              setPushConsent(false);
-              return;
-            }
-            const endpoint = (sub.endpoint || "").trim();
-            type Payload = Parameters<typeof saveSubscription>[0];
-            const saved = endpoint
-              ? await updateSubscriptionTopics(endpoint, topicsToSend)
-              : await saveSubscription(sub.toJSON() as Payload, topicsToSend);
-            applyServerTopics(saved?.topics ?? topicsToSend);
-            setPushSubscription(sub);
-          } catch (error) {
-            console.error("Failed to update topics", error);
-            setSnack({ text: "Не удалось обновить настройки уведомлений", sev: "error" });
-          } finally {
-            setPushBusy(false);
-          }
-        })();
-      },
-    [
-      applyServerTopics,
-      notificationsEnabled,
-      pushBusy,
-      setPushConsent,
-      setPushSubscription,
-      setSnack,
-      topicKeys,
-      topicState
-    ]
-  );
-
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const s = sp.get("spotify");
@@ -478,100 +240,21 @@ export default function Settings() {
     }
   }, []);
 
-  useEffect(() => {
-    setPushSupported(isPushSupported());
-  }, []);
+  const handleThemeChange = useCallback(
+    (_: ChangeEvent<HTMLInputElement>, value: string) => {
+      setMode(value as ThemeMode);
+    },
+    [setMode]
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    let removeListener: (() => void) | undefined;
-
-    const syncPermission = () => {
-      if (typeof Notification === "undefined") {
-        setNotificationPermission("default");
-        return;
-      }
-      setNotificationPermission(Notification.permission);
-    };
-    syncPermission();
-
-    if (typeof navigator !== "undefined" && (navigator as any).permissions?.query) {
-      (navigator as any)
-        .permissions.query({ name: "notifications" as PermissionName })
-        .then((status: PermissionStatus) => {
-          if (cancelled) return;
-          const handler = () => {
-            if (cancelled) return;
-            const state = status.state;
-            if (state === "prompt") setNotificationPermission("default");
-            else setNotificationPermission(state as NotificationPermission);
-          };
-          handler();
-          if (typeof status.addEventListener === "function") {
-            status.addEventListener("change", handler);
-            removeListener = () => {
-              try {
-                status.removeEventListener("change", handler);
-              } catch {}
-            };
-          } else {
-            const statusWithOnChange = status as PermissionStatus & { onchange?: (() => void) | null };
-            statusWithOnChange.onchange = handler;
-            removeListener = () => {
-              if (statusWithOnChange.onchange === handler) {
-                statusWithOnChange.onchange = null;
-              }
-            };
-          }
-        })
-        .catch(() => {});
-    }
-
-    return () => {
-      cancelled = true;
-      removeListener?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const detectSubscription = async () => {
-      try {
-        const supported = isPushSupported();
-        if (!active) return;
-        setPushSupported(supported);
-        if (!supported) {
-          setPushSubscription(null);
-          return;
-        }
-        setPushInitializing(true);
-        const sub = await getExistingPushSubscription();
-        if (!active) return;
-        setPushSubscription(sub);
-        if (sub) {
-          setPushConsent(true);
-          type Payload = Parameters<typeof saveSubscription>[0];
-          try {
-            const saved = await saveSubscription(sub.toJSON() as Payload);
-            if (!active) return;
-            applyServerTopics(saved?.topics ?? []);
-          } catch (error) {
-            console.warn("Не удалось получить настройки подписки", error);
-          }
-        }
-      } catch (error) {
-        if (active) {
-          console.warn("Не удалось определить подписку на push", error);
-        }
-      } finally {
-        if (active) setPushInitializing(false);
-      }
-    };
-    void detectSubscription();
-    return () => {
-      active = false;
-    };
-  }, [applyServerTopics]);
+  const handleNotificationsToggle = useCallback(
+    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      if (pushBusy || pushInitializing) return;
+      if (checked) void enableNotifications();
+      else void disableNotifications();
+    },
+    [disableNotifications, enableNotifications, pushBusy, pushInitializing]
+  );
 
   const spotifyConnected = Boolean((user as any)?.spotify_connected || (user as any)?.spotify_is_connected);
   const spotifyName = (user as any)?.spotify_display_name || "";
@@ -781,134 +464,192 @@ export default function Settings() {
                 </Alert>
               ) : (
                 <Stack spacing={1.8}>
-                  <FormControl component="fieldset" variant="standard">
-                    <FormGroup>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={notificationsEnabled}
-                            onChange={handleNotificationsToggle}
-                            disabled={pushBusy || pushInitializing}
-                          />
-                        }
-                        label={
-                          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                            {notificationsEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
-                            <span>Включить уведомления</span>
-                          </Stack>
-                        }
-                      />
-                    </FormGroup>
-                    <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                      Разрешение браузера: {permissionText}
-                    </FormHelperText>
-                  </FormControl>
-
-                  <FormControl
-                    component="fieldset"
-                    variant="standard"
-                    disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                    sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
-                  >
-                    <FormGroup>
-                      {topicKeys.map(key => (
-                        <FormControlLabel
-                          key={key}
-                          control={
-                            <Switch
-                              checked={topicState[key]}
-                              onChange={handleTopicToggle(key)}
-                              disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                            />
-                          }
-                          label={
-                            <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
-                          }
-                        />
-                      ))}
-                    </FormGroup>
-                    <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                      Активные темы: {selectedTopicsDescription}
-                    </FormHelperText>
-                  </FormControl>
-
-                  {notificationPermission === "denied" && (
-                    <Alert severity="error" variant="outlined">
-                      Разрешите уведомления в настройках браузера, чтобы получать оповещения.
-                    </Alert>
-                  )}
-
-                  <Divider sx={{ my: 1.2 }} />
-
-                  <Stack spacing={1.2}>
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <DoNotDisturbOnIcon fontSize="small" />
-                      <Typography variant="subtitle1" sx={{ color: "var(--page-text)" }}>
-                        Режим «Не беспокоить»
-                      </Typography>
-                    </Stack>
-
-                    <FormControl component="fieldset" variant="standard">
-                      <FormGroup>
-                        <FormControlLabel
-                          control={
-                            <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
-                          }
-                          label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
-                        />
-                      </FormGroup>
-                      <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                        Уведомления будут доставляться без звука в указанный интервал.
-                      </FormHelperText>
-                    </FormControl>
-
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={1.5}
-                      alignItems={{ sm: "center" }}
-                    >
-                      <TextField
-                        type="time"
-                        label="С"
-                        value={dndStart}
-                        onChange={handleDndStartChange}
-                        onBlur={handleDndStartBlur}
-                        disabled={!dndEnabled || dndSaving}
-                        size="small"
-                        InputLabelProps={{ shrink: true }}
-                        sx={{ maxWidth: { xs: "100%", sm: 200 } }}
-                      />
-                      <TextField
-                        type="time"
-                        label="До"
-                        value={dndEnd}
-                        onChange={handleDndEndChange}
-                        onBlur={handleDndEndBlur}
-                        disabled={!dndEnabled || dndSaving}
-                        size="small"
-                        InputLabelProps={{ shrink: true }}
-                        sx={{ maxWidth: { xs: "100%", sm: 200 } }}
-                      />
-                    </Stack>
-
-                    <FormHelperText sx={{ ml: 0, color: "var(--page-text)" }}>
-                      Интервал задаётся в часовом поясе устройства и может пересекать полночь.
-                    </FormHelperText>
-
-                    <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ color: "var(--page-text)" }}>
-                      <InfoOutlinedIcon fontSize="small" sx={{ mt: 0.3 }} />
+                  {notificationPermission === "denied" ? (
+                    <Stack spacing={1.5}>
+                      <Alert severity="error" variant="outlined">
+                        Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для
+                        «Экосистема ГУУ».
+                      </Alert>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        На iOS при установке веб-приложения как PWA уведомления часто приходят без звука —
-                        это ограничение системы.
+                        После изменения настроек браузера нажмите «Проверить разрешение», чтобы обновить статус.
                       </Typography>
+                      {safariIOS && (
+                        <Alert severity="info" variant="outlined">
+                          Установите приложение на Домой, затем разрешите уведомления. {" "}
+                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
+                            Инструкция
+                          </Link>
+                          .
+                        </Alert>
+                      )}
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
+                        <Button
+                          variant="contained"
+                          onClick={() => void enableNotifications()}
+                          disabled={pushBusy}
+                        >
+                          Проверить разрешение
+                        </Button>
+                        <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                          Текущее состояние: {permissionText}.
+                        </Typography>
+                      </Stack>
                     </Stack>
-                  </Stack>
+                  ) : notificationPermission === "default" ? (
+                    <Stack spacing={1.5}>
+                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                        Включите уведомления, чтобы первым узнавать о расписании, новостях и важных изменениях.
+                      </Typography>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
+                        <Button
+                          variant="contained"
+                          onClick={() => void enableNotifications()}
+                          disabled={pushBusy || pushInitializing}
+                        >
+                          Разрешить уведомления
+                        </Button>
+                        <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                          Текущее состояние: {permissionText}.
+                        </Typography>
+                      </Stack>
+                      {safariIOS && (
+                        <Alert severity="info" variant="outlined">
+                          Установите приложение на Домой, затем разрешите уведомления. {" "}
+                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
+                            Инструкция
+                          </Link>
+                          .
+                        </Alert>
+                      )}
+                    </Stack>
+                  ) : (
+                    <>
+                      <FormControl component="fieldset" variant="standard">
+                        <FormGroup>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={notificationsEnabled}
+                                onChange={handleNotificationsToggle}
+                                disabled={pushBusy || pushInitializing}
+                              />
+                            }
+                            label={
+                              <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                                {notificationsEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
+                                <span>Включить уведомления</span>
+                              </Stack>
+                            }
+                          />
+                        </FormGroup>
+                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                          Разрешение браузера: {permissionText}
+                        </FormHelperText>
+                      </FormControl>
 
-                  <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                    {notificationsEnabled
-                      ? `Непрочитанные: ${unreadCount}.`
-                      : "Уведомления сейчас отключены."}
-                  </Typography>
+                      <FormControl
+                        component="fieldset"
+                        variant="standard"
+                        disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                        sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
+                      >
+                        <FormGroup>
+                          {topicKeys.map(key => (
+                            <FormControlLabel
+                              key={key}
+                              control={
+                                <Switch
+                                  // Keys originate from a predefined list
+                                  // eslint-disable-next-line security/detect-object-injection
+                                  checked={topicState[key]}
+                                  onChange={handleTopicToggle(key)}
+                                  disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                                />
+                              }
+                              label={
+                                <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
+                              }
+                            />
+                          ))}
+                        </FormGroup>
+                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                          Активные темы: {selectedTopicsDescription}
+                        </FormHelperText>
+                      </FormControl>
+
+                      <Divider sx={{ my: 1.2 }} />
+
+                      <Stack spacing={1.2}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                          <DoNotDisturbOnIcon fontSize="small" />
+                          <Typography variant="subtitle1" sx={{ color: "var(--page-text)" }}>
+                            Режим «Не беспокоить»
+                          </Typography>
+                        </Stack>
+
+                        <FormControl component="fieldset" variant="standard">
+                          <FormGroup>
+                            <FormControlLabel
+                              control={
+                                <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
+                              }
+                              label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
+                            />
+                          </FormGroup>
+                          <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                            Уведомления будут доставляться без звука в указанный интервал.
+                          </FormHelperText>
+                        </FormControl>
+
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          spacing={1.5}
+                          alignItems={{ sm: "center" }}
+                        >
+                          <TextField
+                            type="time"
+                            label="С"
+                            value={dndStart}
+                            onChange={handleDndStartChange}
+                            onBlur={handleDndStartBlur}
+                            disabled={!dndEnabled || dndSaving}
+                            size="small"
+                            InputLabelProps={{ shrink: true }}
+                            sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                          />
+                          <TextField
+                            type="time"
+                            label="До"
+                            value={dndEnd}
+                            onChange={handleDndEndChange}
+                            onBlur={handleDndEndBlur}
+                            disabled={!dndEnabled || dndSaving}
+                            size="small"
+                            InputLabelProps={{ shrink: true }}
+                            sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                          />
+                        </Stack>
+
+                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)" }}>
+                          Интервал задаётся в часовом поясе устройства и может пересекать полночь.
+                        </FormHelperText>
+
+                        <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ color: "var(--page-text)" }}>
+                          <InfoOutlinedIcon fontSize="small" sx={{ mt: 0.3 }} />
+                          <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                            На iOS при установке веб-приложения как PWA уведомления часто приходят без звука — это
+                            ограничение системы.
+                          </Typography>
+                        </Stack>
+                      </Stack>
+
+                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                        {notificationsEnabled
+                          ? `Непрочитанные: ${unreadCount}.`
+                          : "Уведомления сейчас отключены."}
+                      </Typography>
+                    </>
+                  )}
                 </Stack>
               )}
             </Box>
