@@ -42,8 +42,11 @@ function updateAppBadge(unread: number) {
   if (!hasBadgeApi) return
 
   const swallow = (result: void | Promise<void> | undefined) => {
-    if (result && typeof (result as PromiseLike<void>).catch === "function") {
-      ;(result as PromiseLike<void>).catch(() => {})
+    if (
+      result &&
+      typeof (result as PromiseLike<void>).then === "function"
+    ) {
+      ;(result as PromiseLike<void>).then(undefined, () => {})
     }
   }
 
