@@ -1,6 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -35,12 +37,13 @@ class NotifyBody(BaseModel):
 
 @router.get("/public-key")
 async def public_key():
-    return {"key": settings.vapid_public_key}
+    return {"key": settings.VAPID_PUBLIC_KEY}
 
 
 @router.post("/subscribe")
 async def subscribe(
     payload: SubPayload,
+    request: Request,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -49,24 +52,33 @@ async def subscribe(
     auth = payload.keys.auth.strip()
     if not endpoint or not p256dh or not auth:
         raise HTTPException(status_code=400, detail="invalid subscription")
+    user_agent = (request.headers.get("user-agent") or "").strip()
+    if len(user_agent) > 512:
+        user_agent = user_agent[:512]
     res = await session.execute(
         select(PushSubscription).where(PushSubscription.endpoint == endpoint)
     )
     sub = res.scalar_one_or_none()
+    now = datetime.now(UTC)
     if sub:
-        await session.execute(
-            update(PushSubscription)
-            .where(PushSubscription.id == sub.id)
-            .values(active=True, p256dh=p256dh, auth=auth, user_id=user.id)
-        )
+        if sub.user_id != user.id:
+            raise HTTPException(status_code=409, detail="duplicate endpoint")
+        sub.p256dh = p256dh
+        sub.auth = auth
+        sub.user_id = user.id
+        sub.user_agent = user_agent or None
+        sub.last_seen_at = now
+        sub.topics = sub.topics or []
     else:
         session.add(
             PushSubscription(
                 endpoint=endpoint,
                 p256dh=p256dh,
                 auth=auth,
-                active=True,
                 user_id=user.id,
+                user_agent=user_agent or None,
+                last_seen_at=now,
+                topics=[],
             )
         )
     await session.commit()
@@ -80,12 +92,12 @@ async def unsubscribe(
     user: User = Depends(get_current_user),
 ):
     endpoint = payload.endpoint.strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="invalid subscription")
     await session.execute(
-        update(PushSubscription)
-        .where(
+        delete(PushSubscription).where(
             PushSubscription.endpoint == endpoint, PushSubscription.user_id == user.id
         )
-        .values(active=False)
     )
     await session.commit()
     return {"ok": True}
@@ -104,7 +116,6 @@ async def send_test(
     res = await session.execute(
         select(PushSubscription).where(
             PushSubscription.user_id == user.id,
-            PushSubscription.active.is_(True),
         )
     )
     subs = res.scalars().all()
@@ -130,9 +141,7 @@ async def broadcast(
 ):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
-    res = await session.execute(
-        select(PushSubscription).where(PushSubscription.active.is_(True))
-    )
+    res = await session.execute(select(PushSubscription))
     subs = res.scalars().all()
     for s in subs:
         bg.add_task(send_web_push, s, data.model_dump())

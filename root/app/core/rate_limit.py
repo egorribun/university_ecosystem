@@ -4,6 +4,7 @@ import asyncio
 import math
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from fastapi import Request
@@ -55,6 +56,12 @@ def _create_redis_pool(url: str) -> Redis:
 
 _RedisFactory = Callable[[str], Redis]
 _redis_factory: _RedisFactory = _create_redis_pool
+
+
+_shared_clients: dict[str, Redis] = {}
+_shared_client_locks: dict[str, asyncio.Lock] = {}
+_memory_buckets: dict[str, list[float]] = {}
+_memory_lock = asyncio.Lock()
 
 
 def set_rate_limit_client_factory(factory: Optional[_RedisFactory]) -> None:
@@ -186,3 +193,163 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def _redis_key(self, identifier: str) -> str:
         return f"rate-limit:{identifier}"
+
+
+async def _get_shared_client(redis_url: str) -> Redis:
+    client = _shared_clients.get(redis_url)
+    if client is not None:
+        return client
+    lock = _shared_client_locks.setdefault(redis_url, asyncio.Lock())
+    async with lock:
+        client = _shared_clients.get(redis_url)
+        if client is None:
+            client = _redis_factory(redis_url)
+            _shared_clients[redis_url] = client
+    return client
+
+
+def _compose_identifier(namespace: str, identifier: str) -> str:
+    ident = identifier.strip() or "unknown"
+    ns = namespace.strip()
+    return f"{ns}:{ident}" if ns else ident
+
+
+@dataclass(slots=True)
+class RateLimitInfo:
+    allowed: bool
+    remaining: int
+    retry_after: int
+
+
+class RateLimitExceeded(Exception):
+    """Raised when a manual rate limit check fails."""
+
+    def __init__(self, info: RateLimitInfo) -> None:
+        super().__init__("Rate limit exceeded")
+        self.info = info
+
+
+async def _memory_rate_limit(
+    key: str, limit: int, window_seconds: int
+) -> RateLimitInfo:
+    if limit <= 0 or window_seconds <= 0:
+        return RateLimitInfo(True, max(limit, 0), 0)
+    now = time.time()
+    cutoff = now - window_seconds
+    async with _memory_lock:
+        bucket = _memory_buckets.get(key, [])
+        bucket = [timestamp for timestamp in bucket if timestamp > cutoff]
+        if len(bucket) >= limit:
+            retry_after = math.ceil(bucket[0] + window_seconds - now)
+            if retry_after < 0:
+                retry_after = 0
+            _memory_buckets[key] = bucket
+            return RateLimitInfo(False, 0, retry_after)
+        bucket.append(now)
+        _memory_buckets[key] = bucket
+        remaining = limit - len(bucket)
+    return RateLimitInfo(True, max(0, remaining), 0)
+
+
+async def _redis_rate_limit_fallback(
+    client: Redis,
+    redis_key: str,
+    window_ms: int,
+    limit: int,
+    now_ms: int,
+    member: str,
+) -> RateLimitInfo:
+    cutoff = now_ms - window_ms
+    await client.zremrangebyscore(redis_key, 0, cutoff)
+    count = await client.zcard(redis_key)
+    if count >= limit:
+        oldest = await client.zrange(redis_key, 0, 0, withscores=True)
+        retry_after_ms = 0
+        if oldest:
+            retry_after_ms = window_ms - (now_ms - int(float(oldest[0][1])))
+            if retry_after_ms < 0:
+                retry_after_ms = 0
+        retry_after = math.ceil(retry_after_ms / 1000)
+        return RateLimitInfo(False, 0, max(0, retry_after))
+    await client.zadd(redis_key, mapping={member: now_ms})
+    await client.pexpire(redis_key, window_ms)
+    remaining = limit - (count + 1)
+    return RateLimitInfo(True, max(0, remaining), 0)
+
+
+async def _redis_rate_limit(
+    redis_url: str, key: str, limit: int, window_seconds: int
+) -> RateLimitInfo:
+    if limit <= 0 or window_seconds <= 0:
+        return RateLimitInfo(True, max(limit, 0), 0)
+    client = await _get_shared_client(redis_url)
+    now_ms = int(time.time() * 1000)
+    window_ms = max(int(window_seconds * 1000), 1)
+    member = f"{now_ms}:{uuid.uuid4().hex}"
+    redis_key = f"rate-limit:{key}"
+    try:
+        result = await client.eval(
+            _RATE_LIMIT_SCRIPT,
+            1,
+            redis_key,
+            now_ms,
+            window_ms,
+            limit,
+            member,
+        )
+    except RedisError as exc:
+        if "unknown command" not in str(exc).lower():
+            raise
+        info = await _redis_rate_limit_fallback(
+            client, redis_key, window_ms, limit, now_ms, member
+        )
+        return info
+    allowed = bool(int(result[0]))
+    remaining = max(0, int(result[1]))
+    retry_after_ms = int(result[2])
+    retry_after = math.ceil(retry_after_ms / 1000)
+    if retry_after < 0:
+        retry_after = 0
+    return RateLimitInfo(allowed, remaining, retry_after)
+
+
+async def check_rate_limit(
+    *,
+    identifier: str,
+    namespace: str = "",
+    limit: int,
+    window_seconds: int,
+    redis_url: str | None = None,
+) -> RateLimitInfo:
+    """Check a rate limit for an arbitrary identifier."""
+
+    key = _compose_identifier(namespace, identifier)
+    redis_uri = (redis_url or "").strip()
+    if redis_uri.lower().startswith(("redis://", "rediss://")):
+        try:
+            return await _redis_rate_limit(redis_uri, key, limit, window_seconds)
+        except (RedisError, OSError):
+            pass
+    return await _memory_rate_limit(key, limit, window_seconds)
+
+
+async def enforce_rate_limit(
+    *,
+    identifier: str,
+    namespace: str = "",
+    limit: int,
+    window_seconds: int,
+    redis_url: str | None = None,
+) -> RateLimitInfo:
+    """Enforce a rate limit, raising :class:`RateLimitExceeded` if exceeded."""
+
+    info = await check_rate_limit(
+        identifier=identifier,
+        namespace=namespace,
+        limit=limit,
+        window_seconds=window_seconds,
+        redis_url=redis_url,
+    )
+    if not info.allowed:
+        raise RateLimitExceeded(info)
+    return info
