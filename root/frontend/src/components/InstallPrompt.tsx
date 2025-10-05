@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { ChangeEvent } from "react"
 import CloseIcon from "@mui/icons-material/Close"
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive"
+import NotificationsOffIcon from "@mui/icons-material/NotificationsOff"
 import {
   Alert,
   Button,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  FormGroup,
+  FormHelperText,
   IconButton,
+  Link,
   Paper,
   Slide,
   Snackbar,
   Stack,
+  Switch,
   Typography,
 } from "@mui/material"
+import {
+  usePushPreferences,
+  NOTIFICATION_TOPIC_LABELS,
+  type NotificationToast,
+} from "@/hooks/usePushPreferences"
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
 
 interface BeforeInstallPromptEvent extends Event {
@@ -65,10 +80,28 @@ export default function InstallPrompt() {
   const [visible, setVisible] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [updateToastOpen, setUpdateToastOpen] = useState(false)
+  const [feedback, setFeedback] = useState<NotificationToast | null>(null)
   const suppressUntilRef = useRef<number>(0)
   const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
 
   const isEligible = useMemo(() => !isStandalone(), [])
+
+  const {
+    topicKeys,
+    topicState,
+    pushSupported,
+    notificationPermission,
+    notificationsEnabled,
+    pushBusy,
+    pushInitializing,
+    permissionText,
+    selectedTopicsDescription,
+    enableNotifications,
+    disableNotifications,
+    handleTopicToggle,
+    safariIOS,
+    safariGuideUrl,
+  } = usePushPreferences({ onNotify: setFeedback })
 
   useEffect(() => {
     const handleServiceWorkerUpdate = (event: Event) => {
@@ -120,6 +153,14 @@ export default function InstallPrompt() {
     return () => window.removeEventListener("appinstalled", onAppInstalled)
   }, [isEligible])
 
+  useEffect(() => {
+    if (!pushSupported) return
+    if (notificationPermission === "granted") return
+    const now = Date.now()
+    if (suppressUntilRef.current && now < suppressUntilRef.current) return
+    setVisible(true)
+  }, [notificationPermission, pushSupported])
+
   const handleInstall = useCallback(async () => {
     if (!deferredPrompt) return
     setInstalling(true)
@@ -146,11 +187,24 @@ export default function InstallPrompt() {
     }
   }, [deferredPrompt])
 
+  const handleNotificationsToggle = useCallback(
+    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      if (pushBusy || pushInitializing) return
+      if (checked) void enableNotifications()
+      else void disableNotifications()
+    },
+    [disableNotifications, enableNotifications, pushBusy, pushInitializing],
+  )
+
   const handleClose = useCallback(() => {
     suppressUntilRef.current = Date.now() + DISMISS_TTL
     rememberDismiss()
     setVisible(false)
     setDeferredPrompt(null)
+  }, [])
+
+  const handleFeedbackClose = useCallback(() => {
+    setFeedback(null)
   }, [])
 
   const handleUpdateReload = useCallback(() => {
@@ -168,7 +222,12 @@ export default function InstallPrompt() {
 
   return (
     <>
-      <Slide direction="up" in={visible && Boolean(deferredPrompt)} mountOnEnter unmountOnExit>
+      <Slide
+        direction="up"
+        in={visible && (Boolean(deferredPrompt) || (pushSupported && notificationPermission !== "granted"))}
+        mountOnEnter
+        unmountOnExit
+      >
         <Paper
           elevation={8}
           role="dialog"
@@ -188,35 +247,183 @@ export default function InstallPrompt() {
                 : "0px 18px 45px rgba(11, 99, 244, 0.16)",
           }}
         >
-          <Stack spacing={2} alignItems="flex-start">
+          <Stack spacing={2.5} alignItems="flex-start">
             <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
               <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
-                Установить «Экосистема ГУУ»
+                {deferredPrompt ? "Установить «Экосистема ГУУ»" : "Экосистема ГУУ"}
               </Typography>
               <IconButton aria-label="Скрыть предложение" onClick={handleClose} size="small">
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Stack>
-            <Typography variant="body2" sx={{ opacity: 0.85 }}>
-              Добавьте приложение на главный экран, чтобы открывать профиль, расписание и новости без браузера.
-            </Typography>
-            <Stack direction="row" spacing={1.5} sx={{ width: "100%" }}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleInstall}
-                disabled={!deferredPrompt || installing}
-                sx={{ flexGrow: 1 }}
-              >
-                Установить
-              </Button>
-              <Button variant="text" color="inherit" onClick={handleClose}>
-                Позже
-              </Button>
-            </Stack>
+            {deferredPrompt ? (
+              <>
+                <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                  Добавьте приложение на главный экран, чтобы открывать профиль, расписание и новости без браузера.
+                </Typography>
+                <Stack direction="row" spacing={1.5} sx={{ width: "100%" }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleInstall}
+                    disabled={!deferredPrompt || installing}
+                    sx={{ flexGrow: 1 }}
+                  >
+                    Установить
+                  </Button>
+                  <Button variant="text" color="inherit" onClick={handleClose}>
+                    Позже
+                  </Button>
+                </Stack>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                Управляйте уведомлениями, чтобы не пропускать важные обновления.
+              </Typography>
+            )}
+            {(pushSupported || notificationPermission !== "granted") && (
+              <>
+                <Divider sx={{ width: "100%" }} />
+                <Stack spacing={1.2} sx={{ width: "100%" }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                    Уведомления
+                  </Typography>
+                  {!pushSupported ? (
+                    <Alert severity="warning" variant="outlined">
+                      Push-уведомления недоступны в этом браузере.
+                    </Alert>
+                  ) : notificationPermission === "denied" ? (
+                    <Stack spacing={1}>
+                      <Alert severity="error" variant="outlined">
+                        Включите уведомления для «Экосистема ГУУ» в настройках браузера, затем нажмите «Проверить».
+                      </Alert>
+                      {safariIOS && (
+                        <Alert severity="info" variant="outlined">
+                          Установите приложение на Домой, затем разрешите уведомления. {" "}
+                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
+                            Инструкция
+                          </Link>
+                          .
+                        </Alert>
+                      )}
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => void enableNotifications()}
+                          disabled={pushBusy}
+                        >
+                          Проверить
+                        </Button>
+                        <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
+                          Состояние: {permissionText}.
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  ) : notificationPermission === "default" ? (
+                    <Stack spacing={1}>
+                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                        Разрешите уведомления, чтобы получать новости, расписание и важные напоминания.
+                      </Typography>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => void enableNotifications()}
+                          disabled={pushBusy || pushInitializing}
+                        >
+                          Разрешить
+                        </Button>
+                        <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
+                          Состояние: {permissionText}.
+                        </Typography>
+                      </Stack>
+                      {safariIOS && (
+                        <Alert severity="info" variant="outlined">
+                          Установите приложение на Домой, затем разрешите уведомления. {" "}
+                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
+                            Инструкция
+                          </Link>
+                          .
+                        </Alert>
+                      )}
+                    </Stack>
+                  ) : (
+                    <Stack spacing={1.5}>
+                      <FormControl component="fieldset" variant="standard">
+                        <FormGroup>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={notificationsEnabled}
+                                onChange={handleNotificationsToggle}
+                                disabled={pushBusy || pushInitializing}
+                              />
+                            }
+                            label={
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "var(--page-text)" }}>
+                                {notificationsEnabled ? <NotificationsActiveIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
+                                <span>Уведомления</span>
+                              </Stack>
+                            }
+                          />
+                        </FormGroup>
+                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                          Разрешение браузера: {permissionText}
+                        </FormHelperText>
+                      </FormControl>
+                      <FormControl
+                        component="fieldset"
+                        variant="standard"
+                        disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                        sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
+                      >
+                        <FormGroup>
+                          {topicKeys.map(key => (
+                            <FormControlLabel
+                              key={key}
+                              control={
+                                <Switch
+                                  // Keys originate from a predefined list
+                                  // eslint-disable-next-line security/detect-object-injection
+                                  checked={topicState[key]}
+                                  onChange={handleTopicToggle(key)}
+                                  disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                                />
+                              }
+                              label={
+                                <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
+                              }
+                            />
+                          ))}
+                        </FormGroup>
+                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                          Активные темы: {selectedTopicsDescription}
+                        </FormHelperText>
+                      </FormControl>
+                    </Stack>
+                  )}
+                </Stack>
+              </>
+            )}
           </Stack>
         </Paper>
       </Slide>
+      <Snackbar
+        open={Boolean(feedback)}
+        autoHideDuration={4000}
+        onClose={handleFeedbackClose}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          severity={feedback?.sev ?? "info"}
+          variant="filled"
+          onClose={handleFeedbackClose}
+          sx={{ alignItems: "center" }}
+        >
+          {feedback?.text}
+        </Alert>
+      </Snackbar>
       <Snackbar
         open={updateToastOpen}
         onClose={handleCloseUpdateToast}
