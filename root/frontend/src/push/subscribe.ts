@@ -1,6 +1,5 @@
 import { deleteSubscription, getVapidKey, saveSubscription } from "@/api/notifications"
 
-const VAPID_STORAGE_KEY = "vapid:pub"
 export const PUSH_CONSENT_STORAGE_KEY = "push:consent"
 
 export function hasPushConsent(): boolean {
@@ -40,21 +39,6 @@ export function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
-async function fingerprintVapidKey(key: string): Promise<string | null> {
-  try {
-    if (typeof window === "undefined") return null
-    const encoder = new TextEncoder()
-    const data = encoder.encode(key)
-    if (!window.crypto?.subtle) return null
-    const digest = await window.crypto.subtle.digest("SHA-256", data)
-    const hashArray = Array.from(new Uint8Array(digest))
-    const hashString = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
-    return hashString
-  } catch {
-    return null
-  }
-}
-
 export async function ensurePushSubscription(
   vapidPublicKey?: string,
   registration?: ServiceWorkerRegistration,
@@ -86,43 +70,30 @@ export async function ensurePushSubscription(
     return null
   }
 
-  const hashedKey = await fingerprintVapidKey(key)
-
-  const storedKey = (() => {
-    try {
-      return localStorage.getItem(VAPID_STORAGE_KEY) || ""
-    } catch {
-      return ""
-    }
-  })()
+  const desiredKey = urlBase64ToUint8Array(key)
 
   let sub = await reg.pushManager.getSubscription()
-  if (sub && storedKey && hashedKey && storedKey !== hashedKey) {
-    try {
-      await sub.unsubscribe()
-    } catch {}
-    sub = null
-  } else if (!hashedKey && storedKey) {
-    try {
-      localStorage.removeItem(VAPID_STORAGE_KEY)
-    } catch {}
+  if (sub) {
+    const existingKey = sub.options?.applicationServerKey
+    const existingBytes = existingKey ? new Uint8Array(existingKey) : null
+    const matches =
+      !!existingBytes &&
+      existingBytes.length === desiredKey.length &&
+      existingBytes.every((value, index) => value === desiredKey[index])
+
+    if (!matches) {
+      try {
+        await sub.unsubscribe()
+      } catch {}
+      sub = null
+    }
   }
 
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(key),
+      applicationServerKey: desiredKey,
     })
-  } else if (storedKey) {
-    try {
-      localStorage.removeItem(VAPID_STORAGE_KEY)
-    } catch {}
-  }
-
-  if (hashedKey) {
-    try {
-      localStorage.setItem(VAPID_STORAGE_KEY, hashedKey)
-    } catch {}
   }
 
   type Payload = Parameters<typeof saveSubscription>[0]
@@ -151,7 +122,6 @@ export async function unsubscribePush() {
   }
   const ok = await sub.unsubscribe()
   try {
-    localStorage.removeItem(VAPID_STORAGE_KEY)
     localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
   } catch {}
   return ok && (deleted || !endpoint)
