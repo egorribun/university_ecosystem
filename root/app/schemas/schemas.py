@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, time
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class OrmModel(BaseModel):
@@ -42,6 +42,9 @@ class UserBase(BaseModel):
     position: Optional[str] = None
     spotify_connected: bool = False
     spotify_display_name: Optional[str] = None
+    dnd_enabled: bool = False
+    dnd_start: Optional[time] = None
+    dnd_end: Optional[time] = None
 
 
 class UserCreate(UserBase):
@@ -77,6 +80,18 @@ class UserProfileUpdate(BaseModel):
     achievements: Optional[str] = None
     department: Optional[str] = None
     position: Optional[str] = None
+    dnd_enabled: Optional[bool] = None
+    dnd_start: Optional[time] = None
+    dnd_end: Optional[time] = None
+
+    @model_validator(mode="after")
+    def _validate_dnd(cls, values: "UserProfileUpdate") -> "UserProfileUpdate":
+        enabled = values.dnd_enabled
+        start = values.dnd_start
+        end = values.dnd_end
+        if enabled and (start is None or end is None):
+            raise ValueError('Укажите время начала и окончания режима "Не беспокоить"')
+        return values
 
 
 class GroupCreate(BaseModel):
