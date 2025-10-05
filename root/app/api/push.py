@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +17,11 @@ from app.core.database import get_db
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
 from app.services.push_topics import normalize_topic, subscription_supports_topic
-from app.services.webpush import send_web_push
+from app.services.webpush import WebPushResult, send_web_push
 
 router = APIRouter(prefix="/push", tags=["push"])
+
+logger = logging.getLogger(__name__)
 
 
 class SubKeys(BaseModel):
@@ -129,16 +135,42 @@ async def unsubscribe(
     return {"ok": True}
 
 
-@router.post("/test")
+class PushSendResponse(BaseModel):
+    total: int
+    sent: int
+    removed: int
+    failed: int
+    detail: str | None = None
+
+
+async def _deliver_to_subscription(
+    subscription: PushSubscription, payload: dict[str, Any]
+) -> WebPushResult:
+    return await run_in_threadpool(send_web_push, subscription, payload)
+
+
+def _aggregate_results(results: list[WebPushResult]) -> PushSendResponse:
+    sent = sum(1 for r in results if r.status == "sent")
+    removed = sum(1 for r in results if r.status == "gone")
+    failed = sum(1 for r in results if r.status == "error")
+    detail = None
+    if results and sent == 0 and failed:
+        detail = "Не удалось отправить уведомления"
+    return PushSendResponse(
+        total=len(results),
+        sent=sent,
+        removed=removed,
+        failed=failed,
+        detail=detail,
+    )
+
+
+@router.post("/test", response_model=PushSendResponse)
 async def send_test(
     data: NotifyBody | None = None,
-    bg: BackgroundTasks = None,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
-    if bg is None:
-        bg = BackgroundTasks()
-
+) -> PushSendResponse:
     res = await session.execute(
         select(PushSubscription)
         .options(selectinload(PushSubscription.user))
@@ -146,7 +178,7 @@ async def send_test(
     )
     subs = res.scalars().all()
     if not subs:
-        return {"count": 0}
+        return PushSendResponse(total=0, sent=0, removed=0, failed=0)
 
     requested_topic = normalize_topic(getattr(data, "topic", None) if data else None)
     payload = (data.model_dump(exclude_none=True) if data else {}) | {
@@ -157,25 +189,35 @@ async def send_test(
     if requested_topic:
         payload["topic"] = requested_topic
     now_time = datetime.now().astimezone().time()
-    matched = 0
+    results: list[WebPushResult] = []
     for s in subs:
         if not subscription_supports_topic(s, requested_topic):
             continue
         prepared = prepare_push_payload_for_user(
             payload, getattr(s, "user", None), now_time=now_time
         )
-        bg.add_task(send_web_push, s, prepared)
-        matched += 1
-    return {"count": matched}
+        result = await _deliver_to_subscription(s, prepared)
+        results.append(result)
+    response = _aggregate_results(results)
+    logger.info(
+        "push.test.summary",
+        extra={
+            "user_id": user.id,
+            "total": response.total,
+            "sent": response.sent,
+            "removed": response.removed,
+            "failed": response.failed,
+        },
+    )
+    return response
 
 
-@router.post("/broadcast")
+@router.post("/broadcast", response_model=PushSendResponse)
 async def broadcast(
     data: NotifyBody,
-    bg: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> PushSendResponse:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
     res = await session.execute(
@@ -189,13 +231,23 @@ async def broadcast(
     else:
         payload.pop("topic", None)
     now_time = datetime.now().astimezone().time()
-    matched = 0
+    results: list[WebPushResult] = []
     for s in subs:
         if not subscription_supports_topic(s, topic):
             continue
         prepared = prepare_push_payload_for_user(
             payload, getattr(s, "user", None), now_time=now_time
         )
-        bg.add_task(send_web_push, s, prepared)
-        matched += 1
-    return {"count": matched}
+        results.append(await _deliver_to_subscription(s, prepared))
+    response = _aggregate_results(results)
+    logger.info(
+        "push.broadcast.summary",
+        extra={
+            "user_id": user.id,
+            "total": response.total,
+            "sent": response.sent,
+            "removed": response.removed,
+            "failed": response.failed,
+        },
+    )
+    return response

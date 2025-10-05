@@ -1,0 +1,43 @@
+name: Weekly cleanup
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      OTEL_SDK_DISABLED: "true"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            root/requirements.txt
+
+      - name: Install dependencies
+        working-directory: root
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run weekly cleanup
+        if: ${{ env.DATABASE_URL != '' && env.SECRET_KEY != '' }}
+        working-directory: root
+        run: |
+          python -m app.management.weekly_cleanup
+
+      - name: Report missing secrets
+        if: ${{ env.DATABASE_URL == '' || env.SECRET_KEY == '' }}
+        run: |
+          echo "Required secrets DATABASE_URL and SECRET_KEY are not configured; skipping cleanup."
+          exit 0
