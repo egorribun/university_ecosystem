@@ -1,6 +1,5 @@
-import api from "@/api/client"
+import { deleteSubscription, getVapidKey, saveSubscription } from "@/api/notifications"
 
-const VAPID_STORAGE_KEY = "vapid:pub"
 export const PUSH_CONSENT_STORAGE_KEY = "push:consent"
 
 export function hasPushConsent(): boolean {
@@ -23,15 +22,15 @@ export function setPushConsent(consented: boolean): void {
 
 export async function fetchVapidPublicKey(): Promise<string | null> {
   try {
-    const response = await api.get<{ key?: string }>("/push/public-key")
-    const key = response.data?.key?.trim() || ""
-    return key || null
+    const key = await getVapidKey()
+    const normalized = key?.trim() || ""
+    return normalized || null
   } catch {
     return null
   }
 }
 
-function urlBase64ToUint8Array(base64String: string) {
+export function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
   const rawData = atob(base64)
@@ -40,14 +39,10 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
-async function sendSubToServer(sub: PushSubscription) {
-  const data = sub.toJSON() as any
-  await api.post("/push/subscribe", { endpoint: data.endpoint, keys: data.keys })
-}
-
 export async function ensurePushSubscription(
   vapidPublicKey?: string,
-  registration?: ServiceWorkerRegistration
+  registration?: ServiceWorkerRegistration,
+  topics?: string[]
 ) {
   if (
     !("serviceWorker" in navigator) ||
@@ -75,34 +70,38 @@ export async function ensurePushSubscription(
     return null
   }
 
-  const storedKey = (() => {
-    try {
-      return localStorage.getItem(VAPID_STORAGE_KEY) || ""
-    } catch {
-      return ""
-    }
-  })()
+  const desiredKey = urlBase64ToUint8Array(key)
 
   let sub = await reg.pushManager.getSubscription()
-  if (sub && storedKey && storedKey !== key) {
-    try {
-      await sub.unsubscribe()
-    } catch {}
-    sub = null
+  if (sub) {
+    const existingKey = sub.options?.applicationServerKey
+    const existingBytes = existingKey ? new Uint8Array(existingKey) : null
+    const matches =
+      !!existingBytes &&
+      existingBytes.length === desiredKey.length &&
+      existingBytes.every((value, index) => value === desiredKey[index])
+
+    if (!matches) {
+      try {
+        await sub.unsubscribe()
+      } catch {}
+      sub = null
+    }
   }
 
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(key),
+      applicationServerKey: desiredKey,
     })
   }
 
+  type Payload = Parameters<typeof saveSubscription>[0]
   try {
-    localStorage.setItem(VAPID_STORAGE_KEY, key)
-  } catch {}
-
-  await sendSubToServer(sub)
+    await saveSubscription(sub.toJSON() as Payload, topics)
+  } catch (error) {
+    console.error("Failed to persist push subscription", error)
+  }
   return sub
 }
 
@@ -111,12 +110,41 @@ export async function unsubscribePush() {
   const reg = await navigator.serviceWorker.ready
   const sub = await reg.pushManager.getSubscription()
   if (!sub) return true
-  const data = sub.toJSON() as any
-  try { await api.post("/push/unsubscribe", { endpoint: data.endpoint, keys: data.keys }) } catch {}
+  const endpoint = sub.endpoint
+  let deleted = false
+  if (endpoint) {
+    try {
+      await deleteSubscription(endpoint)
+      deleted = true
+    } catch (error) {
+      console.warn("Failed to delete push subscription on server", error)
+    }
+  }
   const ok = await sub.unsubscribe()
   try {
-    localStorage.removeItem(VAPID_STORAGE_KEY)
     localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
   } catch {}
-  return ok
+  return ok && (deleted || !endpoint)
+}
+
+export function isPushSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    typeof Notification !== "undefined"
+  )
+}
+
+export async function getExistingPushSubscription(
+  registration?: ServiceWorkerRegistration
+): Promise<PushSubscription | null> {
+  if (!isPushSupported()) return null
+  const reg = registration ?? (await navigator.serviceWorker.ready)
+  try {
+    const sub = await reg.pushManager.getSubscription()
+    return sub
+  } catch {
+    return null
+  }
 }
