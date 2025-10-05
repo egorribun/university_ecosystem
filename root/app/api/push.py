@@ -55,7 +55,7 @@ class NotifyBody(BaseModel):
     tag: str | None = None
     badge: str | None = None
     type: str | None = None
-    ttl: int | None = 43200
+    ttl: int | None = None
     urgency: str | None = "normal"
     topic: str | None = None
     actions: list[NotificationAction] | None = None

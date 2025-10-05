@@ -45,6 +45,14 @@ _OPTION_KEYS: set[str] = {
 }
 _META_KEYS: set[str] = {"ttl", "topic", "urgency"}
 
+_DEFAULT_TTL_SECONDS = 60 * 60  # 1 hour
+_TTL_BY_URGENCY: dict[str, int] = {
+    "high": 5 * 60,
+    "normal": 60 * 60,
+    "low": 12 * 60 * 60,
+    "very-low": 24 * 60 * 60,
+}
+
 _USER_RATE_LIMIT = 60
 _TOPIC_RATE_LIMIT = 300
 _RATE_LIMIT_WINDOW_SECONDS = 60
@@ -246,6 +254,25 @@ def _normalize_payload(
     return payload, meta
 
 
+def _resolve_ttl(meta: Mapping[str, Any]) -> int:
+    raw_ttl = meta.get("ttl")
+    ttl_value: int | None = None
+    if isinstance(raw_ttl, int):
+        ttl_value = raw_ttl
+    elif raw_ttl is not None:
+        try:
+            ttl_value = int(raw_ttl)
+        except (TypeError, ValueError):
+            ttl_value = None
+    if ttl_value is not None and ttl_value > 0:
+        return ttl_value
+    urgency = str(meta.get("urgency") or "").strip().lower()
+    mapped_ttl = _TTL_BY_URGENCY.get(urgency)
+    if mapped_ttl is not None and mapped_ttl > 0:
+        return mapped_ttl
+    return _DEFAULT_TTL_SECONDS
+
+
 def _compose_payload(
     payload: Mapping[str, Any], meta: Mapping[str, Any] | None
 ) -> dict[str, Any]:
@@ -375,8 +402,8 @@ def build_payload(
 
 def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
     normalized_payload, meta = _normalize_payload(data)
-    ttl = meta.get("ttl") if isinstance(meta.get("ttl"), int) else None
-    headers = {}
+    ttl = _resolve_ttl(meta)
+    headers = {"TTL": str(ttl)}
     urgency = meta.get("urgency")
     if urgency:
         headers["Urgency"] = str(urgency)
@@ -395,7 +422,7 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             vapid_private_key=settings.VAPID_PRIVATE_KEY,
             vapid_claims={"sub": settings.WEBPUSH_SUBJECT},
             headers=headers,
-            ttl=ttl if ttl is not None else 43200,
+            ttl=ttl,
         )
     except (
         WebPushException
