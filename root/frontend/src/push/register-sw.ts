@@ -4,7 +4,7 @@ const SKIP_WAITING_MESSAGE = { type: "SKIP_WAITING" } as const
 
 const notifyUpdateAvailable = (registration: ServiceWorkerRegistration) => {
   const detail: ServiceWorkerUpdateEventDetail = {
-    update: () => {
+    update: async () => {
       registration.waiting?.postMessage(SKIP_WAITING_MESSAGE)
     },
   }
