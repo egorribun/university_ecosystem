@@ -139,9 +139,7 @@ def _normalize_payload(
     else:
         payload_options = {}
     if isinstance(raw.get("data"), Mapping):
-        payload_data = {
-            key: deepcopy(value) for key, value in raw["data"].items()
-        }
+        payload_data = {key: deepcopy(value) for key, value in raw["data"].items()}
     else:
         payload_data = {}
     meta: dict[str, Any] = {}
@@ -248,7 +246,9 @@ def _normalize_payload(
     return payload, meta
 
 
-def _compose_payload(payload: Mapping[str, Any], meta: Mapping[str, Any] | None) -> dict[str, Any]:
+def _compose_payload(
+    payload: Mapping[str, Any], meta: Mapping[str, Any] | None
+) -> dict[str, Any]:
     result = {
         "title": str(payload.get("title") or "Уведомление"),
         "options": deepcopy(payload.get("options", {})),
@@ -311,7 +311,9 @@ async def _check_rate_limit(
         return exc.info
 
 
-def build_payload(notification_type: str, data: Mapping[str, Any] | None) -> dict[str, Any]:
+def build_payload(
+    notification_type: str, data: Mapping[str, Any] | None
+) -> dict[str, Any]:
     source: Mapping[str, Any]
     if isinstance(data, Mapping):
         source = data
@@ -320,9 +322,9 @@ def build_payload(notification_type: str, data: Mapping[str, Any] | None) -> dic
     title = str(source.get("title") or "Уведомление")
     payload_data: dict[str, Any] = {}
     if isinstance(source.get("data"), Mapping):
-        payload_data.update({
-            key: deepcopy(value) for key, value in source["data"].items()
-        })
+        payload_data.update(
+            {key: deepcopy(value) for key, value in source["data"].items()}
+        )
     url = source.get("url")
     if isinstance(url, str) and url.strip():
         payload_data.setdefault("url", url.strip())
@@ -412,7 +414,11 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
                 )
                 session.commit()
             _log_event(
-                "send", user_id=user_id, endpoint=sub.endpoint, status="gone", status_code=status_code
+                "send",
+                user_id=user_id,
+                endpoint=sub.endpoint,
+                status="gone",
+                status_code=status_code,
             )
             return WebPushResult(
                 subscription_id=sub.id,
@@ -445,7 +451,9 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             endpoint=sub.endpoint,
             status="error",
         )
-        logger.exception("webpush.send", extra={"user_id": user_id, "endpoint": sub.endpoint})
+        logger.exception(
+            "webpush.send", extra={"user_id": user_id, "endpoint": sub.endpoint}
+        )
         return WebPushResult(
             subscription_id=sub.id,
             endpoint=sub.endpoint,
@@ -520,7 +528,9 @@ async def send_to_user(
         if not subscription_supports_topic(sub, effective_topic):
             continue
         prepared = _prepare_delivery_payload(
-            payload, topic=normalized_topic or payload_topic, user=getattr(sub, "user", None)
+            payload,
+            topic=normalized_topic or payload_topic,
+            user=getattr(sub, "user", None),
         )
         tasks.append(asyncio.to_thread(send_web_push, sub, prepared))
     if not tasks:
