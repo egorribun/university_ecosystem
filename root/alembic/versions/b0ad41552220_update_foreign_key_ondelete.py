@@ -1,5 +1,10 @@
 from alembic import op
 
+
+def _is_sqlite() -> bool:
+    bind = op.get_bind()
+    return bind.dialect.name == "sqlite"
+
 revision = "change_foreign_keys_ondelete"
 down_revision = "7ea701e08870"
 branch_labels = None
@@ -7,6 +12,8 @@ depends_on = None
 
 
 def upgrade():
+    if _is_sqlite():
+        return
     # Удаляем старые ограничения
     op.drop_constraint("users_group_id_fkey", "users", type_="foreignkey")
     op.drop_constraint(
@@ -82,6 +89,8 @@ def upgrade():
 
 
 def downgrade():
+    if _is_sqlite():
+        return
     op.drop_constraint("users_group_id_fkey", "users", type_="foreignkey")
     op.drop_constraint(
         "event_attendance_user_id_fkey", "event_attendance", type_="foreignkey"

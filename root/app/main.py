@@ -87,7 +87,7 @@ if ProxyHeadersMiddleware:
 
 static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 @app.get("/")

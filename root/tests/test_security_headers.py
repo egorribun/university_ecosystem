@@ -13,6 +13,10 @@ async def test_security_headers_production_mode(monkeypatch):
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
+    monkeypatch.setenv("ENABLE_COOP", "true")
+    monkeypatch.setenv("ENABLE_COEP", "true")
+    monkeypatch.setenv("COEP_VALUE", "require-corp")
+    monkeypatch.setenv("SECURITY_CSP_REPORT_ONLY", "false")
     settings = Settings()
     assert settings.strict_security_headers_enabled
     spec = importlib_util.find_spec("app.core.security_headers")
@@ -101,10 +105,15 @@ async def test_security_headers_development_report_only(monkeypatch):
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
     assert "default-src 'self'" in report_only
     assert (
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'"
+        in report_only
+    )
+    assert (
         "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
     )
     assert "require-trusted-types-for 'script'" not in report_only
     assert "http://localhost:5173" in report_only
+    assert "http://127.0.0.1:8000" in report_only
     assert "ws://localhost:5173" in report_only
     assert "Cross-Origin-Opener-Policy" not in headers
     assert "Cross-Origin-Embedder-Policy" not in headers

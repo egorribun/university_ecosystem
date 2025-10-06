@@ -12,8 +12,10 @@ async def test_static_file_served_with_cache_control(async_client):
 
     response = await async_client.get("/static/avatars/demo.txt")
     assert response.status_code == 200
+    assert response.headers.get("content-type", "").startswith("text/plain")
     cache_control = response.headers.get("cache-control", "")
     assert "max-age=" in cache_control.lower()
+    assert "public" in cache_control.lower()
     assert "immutable" not in cache_control.lower()
 
     file_path.unlink(missing_ok=True)

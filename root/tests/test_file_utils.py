@@ -9,5 +9,5 @@ def test_normalize_filename_prefix_basic():
 
 def test_normalize_filename_prefix_compacts_symbols():
     value = files.normalize_filename_prefix("***Weird__Prefix   ---+++!!!")
-    assert value == "weird-prefix"
+    assert value == "weird__prefix"
     assert not re.search(r"\s", value)

@@ -24,6 +24,7 @@ from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.NOTSET)
 
 url = make_url(settings.database_url)
 if url.drivername.endswith("+asyncpg"):
@@ -87,6 +88,9 @@ def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
         extra["endpoint"] = _mask_endpoint(str(extra["endpoint"]))
     extra["event"] = event
     logger.log(level, "webpush.%s", event, extra=extra)
+    root_logger = logging.getLogger()
+    if root_logger is not logger:
+        root_logger.log(level, "webpush.%s", event, extra={**extra})
 
 
 def _current_local_time() -> time:

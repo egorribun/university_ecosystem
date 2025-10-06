@@ -10,7 +10,7 @@ from app.core.config import settings
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
-_PREFIX_CLEAN_RE = re.compile(r"[^a-z0-9.-]+")
+_PREFIX_CLEAN_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _ensure_dir(p: Path) -> None:
@@ -35,8 +35,11 @@ def _ext_from_mime(mime: str) -> str:
 def normalize_filename_prefix(prefix: str) -> str:
     """Return a safe, lowercase slug suitable for file names."""
 
-    cleaned = _PREFIX_CLEAN_RE.sub("-", prefix.strip().lower())
-    cleaned = re.sub(r"-+", "-", cleaned).strip("-.")
+    raw = prefix.strip()
+    cleaned = _PREFIX_CLEAN_RE.sub("-", raw)
+    cleaned = cleaned.lower()
+    cleaned = re.sub(r"-+", "-", cleaned)
+    cleaned = cleaned.strip("-_.")
     return cleaned or "file"
 
 

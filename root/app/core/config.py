@@ -107,19 +107,7 @@ class Settings(BaseSettings):
     rate_limit_sensitive: str = "5/minute"
     rate_limit_storage_uri: str = "memory://"
     rate_limit_headers_enabled: bool = True
-    security_csp: str = (
-        "default-src 'self'; "
-        "base-uri 'self'; "
-        "object-src 'none'; "
-        "frame-ancestors 'self'; "
-        "img-src 'self' data: blob:; "
-        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "connect-src {connect_src}; "
-        "font-src 'self' data:; "
-        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
-        "{require_trusted_types}"
-    )
+    security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
         "https://api.spotify.com,"
@@ -140,7 +128,7 @@ class Settings(BaseSettings):
     security_referrer_policy: str = "no-referrer"
     security_x_content_type_options: str = "nosniff"
     enable_strict_security_headers: bool | None = None
-    enable_coop: bool = True
+    enable_coop: bool = False
     enable_coep: bool = False
     coep_value: str = "require-corp"
     cache_enabled: bool = False
@@ -342,6 +330,19 @@ class Settings(BaseSettings):
             return []
         overrides: list[str] = []
         seen: set[str] = {value.lower() for value in self.security_connect_src_values}
+        for host in ("127.0.0.1:8000", "localhost:5173", "127.0.0.1:5173"):
+            http_origin = f"http://{host}"
+            key = http_origin.lower()
+            if key not in seen:
+                overrides.append(http_origin)
+                seen.add(key)
+        # Preserve websocket origins for local dev servers.
+        for host in ("localhost:5173", "127.0.0.1:5173"):
+            ws_origin = f"ws://{host}"
+            key = ws_origin.lower()
+            if key not in seen:
+                overrides.append(ws_origin)
+                seen.add(key)
         for origin in self.frontend_origins_list:
             cleaned = origin.rstrip("/")
             if not cleaned:
@@ -360,29 +361,15 @@ class Settings(BaseSettings):
                     if key not in seen:
                         overrides.append(ws_origin)
                         seen.add(key)
-        # Allow vite defaults explicitly to ensure DX without env tweaks.
-        for host in ("localhost:5173", "127.0.0.1:5173"):
-            for scheme in ("http", "ws"):
-                candidate = f"{scheme}://{host}"
-                key = candidate.lower()
-                if key not in seen:
-                    overrides.append(candidate)
-                    seen.add(key)
         return overrides
 
     @cached_property
     def coop_enabled(self) -> bool:
-        if "enable_coop" in self.model_fields_set:
-            return bool(self.enable_coop)
-        # Fall back to strict security flag when not explicitly configured.
-        return self.strict_security_headers_enabled
+        return bool(self.enable_coop)
 
     @cached_property
     def coep_enabled(self) -> bool:
-        if "enable_coep" in self.model_fields_set:
-            return bool(self.enable_coep)
-        # Avoid COEP in dev by default to keep Vite happy.
-        return self.strict_security_headers_enabled
+        return bool(self.enable_coep)
 
     @cached_property
     def coep_header_value(self) -> str:
@@ -398,6 +385,8 @@ class Settings(BaseSettings):
 
     @cached_property
     def should_inject_csp_nonce(self) -> bool:
+        if self.security_csp_report_only_effective:
+            return False
         return self.strict_security_headers_enabled
 
     @cached_property
@@ -406,28 +395,70 @@ class Settings(BaseSettings):
         return policy
 
     def build_csp_policy(self, *, nonce: str | None, report_only: bool) -> str:
-        template = self.security_csp.strip() or "default-src 'self'"
-        require_trusted_types = (
-            "require-trusted-types-for 'script'"
-            if self.strict_security_headers_enabled and not report_only
-            else ""
-        )
-        policy = template.replace("{require_trusted_types}", require_trusted_types)
-        connect_sources = (
-            self.security_connect_src_values + self._development_connect_overrides()
-        )
-        connect_value = " ".join(connect_sources).strip()
-        policy = policy.replace("{connect_src}", connect_value or "'self'")
-        if nonce:
-            policy = policy.replace("{nonce}", nonce)
-        else:
-            policy = (
-                policy.replace("'nonce-{nonce}'", "")
-                .replace("{nonce}", "")
-                .replace("  ", " ")
+        # Allow explicit overrides via SECURITY_CSP for power users.
+        if "security_csp" in self.model_fields_set and self.security_csp.strip():
+            template = self.security_csp.strip()
+            require_trusted_types = (
+                "require-trusted-types-for 'script'"
+                if self.strict_security_headers_enabled and not report_only
+                else ""
             )
-        directives = [part.strip() for part in policy.split(";") if part.strip()]
-        policy = "; ".join(directives)
+            policy = template.replace("{require_trusted_types}", require_trusted_types)
+            connect_sources = (
+                self.security_connect_src_values + self._development_connect_overrides()
+            )
+            connect_value = " ".join(connect_sources).strip()
+            policy = policy.replace("{connect_src}", connect_value or "'self'")
+            if nonce:
+                policy = policy.replace("{nonce}", nonce)
+            else:
+                policy = (
+                    policy.replace("'nonce-{nonce}'", "")
+                    .replace("{nonce}", "")
+                    .replace("  ", " ")
+                )
+            directives = [part.strip() for part in policy.split(";") if part.strip()]
+            policy = "; ".join(directives)
+        else:
+            connect_sources = (
+                self.security_connect_src_values + self._development_connect_overrides()
+            )
+            connect_value = " ".join(dict.fromkeys([value for value in connect_sources if value]))
+            if not connect_value:
+                connect_value = "'self'"
+            if self.strict_security_headers_enabled and not report_only:
+                directives = [
+                    "default-src 'self'",
+                    "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'",
+                    "style-src 'self' 'unsafe-inline'",
+                    "img-src 'self' data: blob:",
+                    f"connect-src {connect_value}",
+                    "object-src 'none'",
+                    "base-uri 'self'",
+                    "frame-ancestors 'self'",
+                    "trusted-types app dompurify-news goog#html 'allow-duplicates'",
+                    "require-trusted-types-for 'script'",
+                ]
+            else:
+                directives = [
+                    "default-src 'self' http://localhost:5173",
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'",
+                    "style-src 'self' 'unsafe-inline'",
+                    "img-src 'self' data: blob:",
+                    f"connect-src {connect_value}",
+                    "object-src 'none'",
+                    "base-uri 'self'",
+                    "frame-ancestors 'self'",
+                    "trusted-types app dompurify-news goog#html 'allow-duplicates'",
+                ]
+            policy = "; ".join(directives)
+            if nonce:
+                policy = policy.replace("{nonce}", nonce)
+            else:
+                policy = policy.replace("'nonce-{nonce}'", "").replace("{nonce}", "")
+        policy = "; ".join(
+            part.strip() for part in policy.split(";") if part and part.strip()
+        )
         if not policy:
             policy = "default-src 'self'"
         if "default-src" not in policy.lower():

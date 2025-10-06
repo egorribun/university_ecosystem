@@ -11,6 +11,9 @@ import "./assets/themes.css"
 import "dayjs/locale/ru"
 import { registerServiceWorker } from "./push/register-sw"
 import { ensurePushSubscription, hasPushConsent } from "./push/subscribe"
+import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
+
+ensureTrustedTypesPolicies()
 
 async function setupServiceWorker() {
   if (!import.meta.env.PROD) return

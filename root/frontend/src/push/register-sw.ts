@@ -1,4 +1,5 @@
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
+import { createTrustedScriptURL } from "../utils/trustedTypes"
 
 const SKIP_WAITING_MESSAGE = { type: "SKIP_WAITING" } as const
 const PROCESS_QUEUE_MESSAGE = { type: "PROCESS_NOTIFICATION_CLICK_QUEUE" } as const
@@ -29,10 +30,14 @@ export async function registerServiceWorker(path = "/sw.js") {
   if (!("serviceWorker" in navigator)) return null
 
   try {
-    const registration = await navigator.serviceWorker.register(path, {
-      scope: "/",
-      updateViaCache: "none",
-    })
+    const scriptUrl = createTrustedScriptURL(path)
+    const registration = await navigator.serviceWorker.register(
+      scriptUrl as unknown as string,
+      {
+        scope: "/",
+        updateViaCache: "none",
+      },
+    )
 
     await navigator.serviceWorker.ready
 
