@@ -152,7 +152,9 @@ class Settings(BaseSettings):
     def _validate_coep_value(cls, value: str) -> str:
         normalized = value.strip().lower()
         if normalized not in {"require-corp", "credentialless"}:
-            raise ValueError("COEP_VALUE must be either 'require-corp' or 'credentialless'")
+            raise ValueError(
+                "COEP_VALUE must be either 'require-corp' or 'credentialless'"
+            )
         return normalized
 
     model_config = SettingsConfigDict(
@@ -411,7 +413,9 @@ class Settings(BaseSettings):
             else ""
         )
         policy = template.replace("{require_trusted_types}", require_trusted_types)
-        connect_sources = self.security_connect_src_values + self._development_connect_overrides()
+        connect_sources = (
+            self.security_connect_src_values + self._development_connect_overrides()
+        )
         connect_value = " ".join(connect_sources).strip()
         policy = policy.replace("{connect_src}", connect_value or "'self'")
         if nonce:

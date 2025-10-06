@@ -4,10 +4,10 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 
-from alembic import op
-
 # For idempotent checks on existing tables.
 from sqlalchemy import inspect
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "f9d2b1f5e2d0"

@@ -1,4 +1,5 @@
 """Normalize avatar and cover filenames and update DB references."""
+
 from __future__ import annotations
 
 import asyncio
@@ -94,7 +95,11 @@ async def main() -> None:
         async with session.begin():
             await _update_column(session, avatar_mapping, "avatar_url")
             await _update_column(session, cover_mapping, "cover_url")
-    logger.info("Updated %s avatar URLs and %s cover URLs", len(avatar_mapping), len(cover_mapping))
+    logger.info(
+        "Updated %s avatar URLs and %s cover URLs",
+        len(avatar_mapping),
+        len(cover_mapping),
+    )
 
 
 if __name__ == "__main__":

@@ -100,7 +100,9 @@ async def test_security_headers_development_report_only(monkeypatch):
     assert "Content-Security-Policy" not in headers
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
     assert "default-src 'self'" in report_only
-    assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
+    assert (
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
+    )
     assert "require-trusted-types-for 'script'" not in report_only
     assert "http://localhost:5173" in report_only
     assert "ws://localhost:5173" in report_only

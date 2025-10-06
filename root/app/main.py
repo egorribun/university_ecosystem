@@ -67,6 +67,7 @@ async def _static_cache_control(request: Request, call_next):
         response.headers.setdefault("Cache-Control", "public, max-age=86400")
     return response
 
+
 rate_limit_url = settings.rate_limit_storage_uri.strip()
 if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
     ("redis://", "rediss://")
