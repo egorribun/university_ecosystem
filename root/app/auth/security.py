@@ -38,7 +38,10 @@ else:  # pragma: no cover - executed during import
             cls, secret, ident, new=False, _orig=_original_norm_digest
         ):
             secret, ident = _orig(cls, secret, ident, new=new)
-            if isinstance(secret, (bytes, bytearray)) and len(secret) > LEGACY_BCRYPT_MAX_BYTES:
+            if (
+                isinstance(secret, (bytes, bytearray))
+                and len(secret) > LEGACY_BCRYPT_MAX_BYTES
+            ):
                 secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
             return secret, ident
 
