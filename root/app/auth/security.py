@@ -3,6 +3,7 @@ from typing import Any, Union
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from passlib.hash import bcrypt as passlib_bcrypt
 
 from app.core.config import settings
 
@@ -15,6 +16,19 @@ ARGON2_PARALLELISM = 4
 
 DEFAULT_SCHEME = "argon2"
 LEGACY_SCHEME = "bcrypt"
+
+
+# NOTE: the upstream ``bcrypt`` package started raising ``ValueError`` for
+# inputs longer than 72 bytes during backend feature detection when running
+# under Python 3.12+.  Passlib expects backends to gracefully truncate these
+# probes, so the detection step aborts before we can create or verify legacy
+# hashes.  To keep migrations deterministic across interpreter versions we
+# proactively fall back to the pure-Python backend if the accelerated module
+# refuses to initialise.
+try:  # pragma: no cover - executed during import
+    passlib_bcrypt.set_backend("bcrypt")
+except Exception:  # pragma: no cover - prefer resilience over speed
+    passlib_bcrypt.set_backend("passlib")
 
 pwd_context = CryptContext(
     schemes=[DEFAULT_SCHEME, LEGACY_SCHEME],
