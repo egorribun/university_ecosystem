@@ -34,3 +34,30 @@
 - 🔍 **Trivy в CI**: новый workflow `Container security` собирает backend-образ, запускает сканирование образа и файловой системы (`vuln`, `config`, `secret` проверки) и выгружает отчёты в формате SARIF + артефакты.
 - 🚦 **Политика по уровням**: по умолчанию пайплайн падает при находке `HIGH`/`CRITICAL`, но порог можно поменять через репозиторский variable `TRIVY_FAIL_SEVERITIES`.
 - 📊 **Отчётность и бейджи**: SARIF отправляется в Code Scanning, а бейджи выше ведут к Dockerfile и пайплайну, где доступны размер образа и свежие результаты сканов.
+
+## Переменные окружения
+
+| Переменная | Пример | Назначение |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql+asyncpg://user:pass@host/db` | Подключение к основной БД (используется SQLAlchemy и Alembic). |
+| `SECRET_KEY` | `super-secret` | Ключ подписи JWT и внутренних токенов. |
+| `FRONTEND_ORIGINS` | `https://app.example.com,https://admin.example.com` | Список доверенных origin для CORS и CSP (`FRONTEND_ORIGIN`/`APP_BASE_URL` дополняют этот список). |
+| `ENABLE_STRICT_SECURITY_HEADERS` | `true`/`false` | Принудительно включает или отключает строгий режим безопасности (по умолчанию prod=ON, dev=OFF). |
+| `SECURITY_CSP` | см. `.env.example` | Базовая CSP-политика; шаблон содержит плейсхолдеры `{nonce}` и `{connect_src}`. |
+| `SECURITY_CSP_REPORT_ONLY` | `true` | Переключение в режим `Content-Security-Policy-Report-Only` (по умолчанию включается в development). |
+| `SECURITY_CONNECT_SRC_EXTRA` | `https://api.spotify.com,https://fcm.googleapis.com` | Дополнительные хосты для директивы `connect-src`. |
+| `ENABLE_COOP` | `false` | Управление заголовком `Cross-Origin-Opener-Policy`; если не задан, следует режиму strict headers. |
+| `ENABLE_COEP` | `true` | Управление заголовком `Cross-Origin-Embedder-Policy`; по умолчанию выключается в dev. |
+| `COEP_VALUE` | `require-corp` / `credentialless` | Значение заголовка COEP при включении. |
+| `SECURITY_HSTS_ENABLED` | `true` | Разрешает HSTS (автоматически отключается для не-HTTPS хостов). |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | `smtp.example.com` / `587` / ... | Настройки SMTP-отправки писем. |
+| `SMTP_SECURITY` | `ssl` / `starttls` / `none` | Тип защиты SMTP-сессии. |
+| `SMTP_STARTTLS` | `true` | Принудительное включение STARTTLS (для старых конфигураций). |
+| `MAIL_FROM` | `no-reply@example.com` | Отправитель уведомлений по email. |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | — | Ключи для Web Push VAPID. |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | Контакт для push-подписок. |
+| `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | — | Интеграция с Sentry (опционально). |
+| `ENABLE_OTEL` / `OTEL_EXPORTER_OTLP_ENDPOINT` | `true` / `https://otel.example.com` | Экспорт метрик и трасс в OpenTelemetry. |
+| `SECURITY_CSP_REPORT_URI` | `https://csp.example.com/report` | Добавляет `report-uri` к CSP для сбора отчётов. |
+
+> Списки значений указываются через запятую. Для переменных, связанных с безопасностью, значения по умолчанию подходят для production; в development можно переопределить их в `.env.local`.

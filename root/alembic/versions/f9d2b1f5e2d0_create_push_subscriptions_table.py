@@ -6,6 +6,9 @@ import sqlalchemy as sa
 
 from alembic import op
 
+# For idempotent checks on existing tables.
+from sqlalchemy import inspect
+
 # revision identifiers, used by Alembic.
 revision: str = "f9d2b1f5e2d0"
 down_revision: Union[str, None] = "c8d0b5515f2d"
@@ -14,7 +17,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create the push_subscriptions table."""
+    """Create the push_subscriptions table if it is missing."""
+
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    schema = "public" if bind.dialect.name == "postgresql" else None
+    if inspector.has_table("push_subscriptions", schema=schema):
+        return
 
     op.create_table(
         "push_subscriptions",
@@ -65,7 +74,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop the push_subscriptions table."""
+    """Drop the push_subscriptions table if present."""
+
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    schema = "public" if bind.dialect.name == "postgresql" else None
+    if not inspector.has_table("push_subscriptions", schema=schema):
+        return
 
     op.drop_index(
         op.f("ix_push_subscriptions_last_seen_at"), table_name="push_subscriptions"

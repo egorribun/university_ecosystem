@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -57,6 +57,15 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+
+
+@app.middleware("http")
+async def _static_cache_control(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") and response.status_code == 200:
+        # Encourage browsers to keep avatars locally without marking them immutable.
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
+    return response
 
 rate_limit_url = settings.rate_limit_storage_uri.strip()
 if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
