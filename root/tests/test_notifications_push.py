@@ -12,8 +12,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import settings
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.models.models import PushSubscription
 from app.services import webpush as webpush_module
 
@@ -97,7 +97,9 @@ async def test_subscribe_persists_subscription(
 
     stored = (
         await db_session.execute(
-            select(PushSubscription).where(PushSubscription.endpoint == payload["endpoint"])
+            select(PushSubscription).where(
+                PushSubscription.endpoint == payload["endpoint"]
+            )
         )
     ).scalar_one()
     assert stored.user_id == user.id
@@ -136,10 +138,14 @@ async def test_unsubscribe_removes_subscription(
     assert response.status_code == 204
 
     remaining = (
-        await db_session.execute(
-            select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        (
+            await db_session.execute(
+                select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert remaining == []
 
     # Deleting again should still return 204 and keep database clean.
@@ -246,8 +252,14 @@ async def test_send_test_filters_and_cleans_subscriptions(
     assert called_endpoints == {ok_endpoint, gone_410_endpoint, gone_404_endpoint}
 
     remaining = (
-        await db_session.execute(select(PushSubscription).order_by(PushSubscription.endpoint))
-    ).scalars().all()
+        (
+            await db_session.execute(
+                select(PushSubscription).order_by(PushSubscription.endpoint)
+            )
+        )
+        .scalars()
+        .all()
+    )
     remaining_endpoints = {sub.endpoint for sub in remaining}
     assert remaining_endpoints == {ok_endpoint, news_only_endpoint}
 
