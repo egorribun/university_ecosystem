@@ -42,6 +42,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
+import { addVersionParam, resolveMediaUrl } from "@/utils/media";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 
@@ -62,87 +63,59 @@ const onlinePulse = keyframes`
 `;
 
 const MotionPaper = motion.create(Paper);
-const isTest = process.env.NODE_ENV === "test";
+const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test";
 
-const safeEncode = (seg: string) => {
-  try {
-    return encodeURIComponent(decodeURIComponent(seg));
-  } catch {
-    return encodeURIComponent(seg);
-  }
-};
-
-const buildMediaUrl = (raw?: string): string | undefined => {
-  if (!raw) return undefined;
-  const origin =
-    BACKEND_ORIGIN ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-  const cleaned = String(raw).trim().replace(/^\/+/, match => (match ? "/" : ""));
-  try {
-    const base = origin ? new URL(origin) : undefined;
-    const u = new URL(cleaned, base?.toString());
-    const parts = u.pathname.split("/").map(safeEncode).join("/");
-    u.pathname = parts.replace(/\/{2,}/g, "/");
-    return u.toString();
-  } catch {
-    const path = `/${cleaned}`;
-    const encoded = path
-      .split("/")
-      .map(safeEncode)
-      .join("/")
-      .replace(/\/{2,}/g, "/");
-    return `${origin.replace(/\/$/, "")}${encoded}`;
-  }
-};
-
-const addVersionParam = (url: string | undefined, v: number): string | undefined => {
-  if (!url) return undefined;
-  try {
-    const u = new URL(url);
-    u.searchParams.set("v", String(v));
-    return u.toString();
-  } catch {
-    const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}v=${v}`;
-  }
-};
-
-const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const [progress, setProgress] = useState<number>(data.progress_ms ?? 0);
-  const startRef = useRef<number>(Date.now() - (data.progress_ms ?? 0));
-  const rafRef = useRef<number | null>(null);
+export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const theme = useTheme();
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)");
   const reduced = useReducedMotion();
   const isDark = theme.palette.mode === "dark";
   const borderCol = isDark ? alpha(theme.palette.common.white, 0.14) : alpha(theme.palette.common.black, 0.12);
   const textSecondary = theme.palette.text.secondary;
+  const duration = data.duration_ms ?? 0;
+
+  const clampProgress = useCallback(
+    (value: number | null | undefined) => {
+      if (value == null) return 0;
+      if (!Number.isFinite(value)) return 0;
+      if (!duration || duration <= 0) return Math.max(0, value);
+      return Math.min(Math.max(0, value), duration);
+    },
+    [duration]
+  );
+
+  const [progress, setProgress] = useState<number>(() => clampProgress(data.progress_ms));
+  const startRef = useRef<number>(Date.now() - clampProgress(data.progress_ms));
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    startRef.current = Date.now() - (data.progress_ms ?? 0);
-    setProgress(data.progress_ms ?? 0);
-  }, [data.track_id, data.progress_ms, data.duration_ms, data.is_playing]);
+    const next = clampProgress(data.progress_ms);
+    startRef.current = Date.now() - next;
+    setProgress(next);
+  }, [clampProgress, data.progress_ms, data.duration_ms, data.track_id, data.is_playing]);
+
+  const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0;
 
   useEffect(() => {
-    if (isTest || !data.is_playing || !data.duration_ms) return;
+    if (!shouldAnimate) return;
     const loop = () => {
-      const p = Math.min(data.duration_ms!, Date.now() - startRef.current);
-      setProgress(p);
+      const elapsed = Date.now() - startRef.current;
+      setProgress(clampProgress(elapsed));
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [data.is_playing, data.duration_ms, data.track_id]);
+  }, [clampProgress, shouldAnimate]);
 
-  const pct = data.duration_ms ? Math.max(0, Math.min(100, (progress / data.duration_ms) * 100)) : 0;
-  const fmt = (ms?: number) => {
+  const pct = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0;
+  const fmt = (ms: number | null | undefined) => {
     if (ms == null) return "0:00";
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const m = Math.floor(s / 60);
-    const ss = String(s % 60).padStart(2, "0");
-    return `${m}:${ss}`;
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const rest = String(seconds % 60).padStart(2, "0");
+    return `${minutes}:${rest}`;
   };
 
   const href = data.track_url || "https://open.spotify.com";
@@ -154,19 +127,15 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
       target="_blank"
       rel="noopener noreferrer"
       aria-label={data.track_name ? `Открыть в Spotify: ${data.track_name}` : "Открыть Spotify"}
-      sx={{
-        display: "block",
-        textDecoration: "none",
-        width: "100%"
-      }}
+      sx={{ display: "block", textDecoration: "none", width: "100%" }}
     >
       <MotionPaper
         elevation={0}
         className="nowplaying--spotify"
-        initial={isTest ? false : { y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
+        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
-        whileTap={reduced ? {} : { scale: 0.997 }}
+        whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
+        whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
         transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
         sx={{
           width: "100%",
@@ -197,30 +166,50 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
           }}
         >
           <Avatar
-            src={data.album_image_url || ""}
+            src={data.album_image_url ?? ""}
             variant="rounded"
             alt={data.album_name || data.track_name || "Обложка альбома"}
             sx={{
               width: "100%",
               height: "100%",
               borderRadius: 2,
-              transform: prefersReduce ? "none" : "scale(1.012)",
-              transition: prefersReduce ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-              "&:hover": prefersReduce ? undefined : { transform: "scale(1.02)" }
+              transform: prefersReduce || reduced ? "none" : "scale(1.012)",
+              transition:
+                prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
+              "&:hover": prefersReduce || reduced ? undefined : { transform: "scale(1.02)" }
             }}
           />
         </Box>
-        <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
-          <Typography className="np-title" variant="body1" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}>
+        <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }} aria-live="polite">
+          <Typography
+            className="np-title"
+            variant="body1"
+            sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}
+          >
             {data.track_name || "—"}
           </Typography>
           <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
-            {(data.artists || []).join(", ")}
+            {data.artists.join(", ")}
           </Typography>
+          {!data.is_playing && (
+            <Chip
+              size="small"
+              label="Пауза"
+              color="default"
+              sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
+              aria-hidden
+            />
+          )}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-            <LinearProgress className="progress" variant="determinate" value={pct} sx={{ flex: 1, height: 6, borderRadius: 999 }} />
+            <LinearProgress
+              className="progress"
+              variant="determinate"
+              value={pct}
+              aria-label="Прогресс трека"
+              sx={{ flex: 1, height: 6, borderRadius: 999 }}
+            />
             <Typography className="np-time" variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
-              {fmt(progress)} / {fmt(data.duration_ms)}
+              {fmt(progress)} / {fmt(duration)}
             </Typography>
           </Box>
         </Box>
@@ -228,6 +217,7 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
     </Box>
   );
 });
+
 
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   const theme = useTheme();
@@ -287,33 +277,11 @@ export default function Profile() {
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
   const nowPlayingQuery = useNowPlaying(spotifyConnected);
   const nowPlaying = nowPlayingQuery.data ?? null;
-  const [npFallback, setNpFallback] = useState<NowPlaying | null>(null);
-
-  useEffect(() => {
-    let stop = false;
-    let timer: number | null = null;
-    const load = async () => {
-      try {
-        const r = await api.get<NowPlaying | null>("/spotify/now-playing", { validateStatus: () => true });
-        if (stop) return;
-        if (r.status === 200 && r.data && (r.data as any).track_id) setNpFallback(r.data as NowPlaying);
-        else setNpFallback(null);
-      } catch {
-        if (!stop) setNpFallback(null);
-      } finally {
-        if (!stop) timer = window.setTimeout(load, 8000);
-      }
-    };
-    if (spotifyConnected) load();
-    else setNpFallback(null);
-    return () => {
-      stop = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [spotifyConnected]);
-
-  const effectiveNowPlaying = nowPlaying || npFallback;
-
+  const showNowPlaying = Boolean(
+    spotifyConnected &&
+      nowPlaying &&
+      (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
+  );
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -401,7 +369,7 @@ export default function Profile() {
       affiliation: user.institute || user.department || "",
       url: typeof window !== "undefined" ? window.location.href : "",
       image: (() => {
-        const media = buildMediaUrl(user.avatar_url || "");
+        const media = resolveMediaUrl(user.avatar_url || "", BACKEND_ORIGIN);
         const withV = addVersionParam(media, avatarVersion);
         return withV || "";
       })()
@@ -423,12 +391,12 @@ export default function Profile() {
     );
 
   const getAvatarSrc = () => {
-    const media = buildMediaUrl(user?.avatar_url || "");
-    return addVersionParam(media, avatarVersion);
+    const media = resolveMediaUrl(user?.avatar_url || "", BACKEND_ORIGIN);
+    return addVersionParam(media, avatarVersion) || undefined;
   };
 
   const getCoverSrc = () => {
-    const media = buildMediaUrl(user?.cover_url || "");
+    const media = resolveMediaUrl(user?.cover_url || "", BACKEND_ORIGIN);
     return media || "https://mui.com/static/images/cards/cover1.jpg";
   };
 
@@ -898,13 +866,13 @@ export default function Profile() {
                     </Stack>
                   </Paper>
 
-                  {spotifyConnected && effectiveNowPlaying && (
+                  {showNowPlaying && nowPlaying && (
                     <Fade in timeout={isTest || reduced ? 0 : 720}>
                       <Stack spacing={1.4}>
                         <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
                           Сейчас играет
                         </Typography>
-                        <NowPlayingCard data={effectiveNowPlaying} />
+                        <NowPlayingCard data={nowPlaying} />
                       </Stack>
                     </Fade>
                   )}

@@ -38,9 +38,10 @@ const ensureSanitizePolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null
   if (win.__ttSanitizePolicy === false) return null
   if (win.__ttSanitizePolicy) return win.__ttSanitizePolicy
   try {
-    win.__ttSanitizePolicy = win.trustedTypes.createPolicy(SANITIZE_POLICY_NAME, {
+    const policy = win.trustedTypes.createPolicy(SANITIZE_POLICY_NAME, {
       createHTML: (input: string) => DOMPurify.sanitize(input, DEFAULT_SANITIZE_CONFIG),
-    })
+    }) as TrustedTypePolicy
+    win.__ttSanitizePolicy = policy
   } catch {
     win.__ttSanitizePolicy = false
   }
@@ -54,7 +55,7 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
   const location = win.location
   const allowed = getAllowedScriptOrigins(location)
   try {
-    win.__ttAppPolicy = win.trustedTypes.createPolicy(APP_POLICY_NAME, {
+    const policy = win.trustedTypes.createPolicy(APP_POLICY_NAME, {
       createScriptURL: (value: string) => {
         const resolved = new URL(value, location.href)
         if (!allowed.has(resolved.origin)) {
@@ -62,7 +63,8 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
         }
         return resolved.toString()
       },
-    })
+    }) as TrustedTypePolicy
+    win.__ttAppPolicy = policy
   } catch {
     win.__ttAppPolicy = false
   }

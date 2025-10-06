@@ -60,7 +60,7 @@ async function bootstrap() {
   function BodyColorSchemeSync() {
     const { mode, systemMode } = useColorScheme()
     useEffect(() => {
-      const resolved = mode === "system" ? systemMode ?? "light" : mode ?? "light"
+      const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
       document.body.dataset.colorScheme = resolved
       document.body.classList.toggle("dark", resolved === "dark")
       return () => {
@@ -76,7 +76,12 @@ async function bootstrap() {
   ReactDOMMod.default.createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme} defaultMode="system" modeStorageKey="theme" disableTransitionOnChange>
+        <CssVarsProvider
+          theme={theme}
+          defaultMode="system"
+          modeStorageKey="theme"
+          disableTransitionOnChange
+        >
           <CssBaseline enableColorScheme />
           <BodyColorSchemeSync />
           <ErrorBoundary>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, ChangeEvent, FocusEvent } from "react";
+import { isAxiosError } from "axios";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -51,7 +52,7 @@ import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
-import { resolveMediaUrl } from "@/utils/media";
+import { addVersionParam, resolveMediaUrl } from "@/utils/media";
 
 type ThemeMode = "system" | "light" | "dark";
 
@@ -115,8 +116,6 @@ export default function Settings() {
 
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
-
-  const withV = (url: string | undefined, v: number) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${v}` : url);
 
   const syncDndFromUser = useCallback((value: any) => {
     const enabled = Boolean(value?.dnd_enabled);
@@ -300,7 +299,7 @@ export default function Settings() {
   const getAvatarSrc = useCallback(() => {
     if ((user as any)?.avatar_url) {
       const url = resolveMediaUrl((user as any).avatar_url, BACKEND_ORIGIN);
-      return withV(url, avatarVersion) || defaultAvatar;
+      return addVersionParam(url, avatarVersion) || defaultAvatar;
     }
     return defaultAvatar;
   }, [user, avatarVersion]);
@@ -308,7 +307,7 @@ export default function Settings() {
   const getCoverSrc = useCallback(() => {
     if ((user as any)?.cover_url) {
       const url = resolveMediaUrl((user as any).cover_url, BACKEND_ORIGIN);
-      return withV(url || "", coverVersion);
+      return addVersionParam(url || "", coverVersion) || "";
     }
     return "";
   }, [user, coverVersion]);
@@ -316,11 +315,30 @@ export default function Settings() {
   const triggerAvatarPick = () => avatarInputRef.current?.click();
   const triggerCoverPick = () => coverInputRef.current?.click();
 
-  const refreshMe = async () => {
-    const meResp = await fetch("/api/users/me", { credentials: "include" });
-    const me = await meResp.json();
-    setUser(me);
-  };
+  const refreshMe = useCallback(async () => {
+    const fresh = await queryClient.fetchQuery({
+      queryKey: currentUserQueryKey,
+      queryFn: fetchCurrentUser,
+      staleTime: 0,
+    });
+    setUser(fresh);
+    return fresh;
+  }, [queryClient, setUser]);
+
+  const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
+    if (isAxiosError(error)) {
+      const detail = (error.response?.data as any)?.detail;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        const combined = detail
+          .map((item) => (item && typeof item === "object" && "msg" in item ? String(item.msg) : ""))
+          .filter(Boolean)
+          .join("; ");
+        if (combined) return combined;
+      }
+    }
+    return fallback;
+  }, []);
 
   const uploadAvatar = async (file: File) => {
     if (!isImage(file)) return setSnack({ text: "Поддерживаются PNG/JPG/WebP/AVIF/GIF", sev: "warning" });
@@ -329,13 +347,14 @@ export default function Settings() {
       setAvatarBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetch("/api/users/me/avatar", { method: "POST", body: fd, credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.post("/users/me/avatar", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       await refreshMe();
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар обновлён", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось загрузить аватар", sev: "error" });
+    } catch (error) {
+      setSnack({ text: resolveDetailMessage(error, "Не удалось загрузить аватар"), sev: "error" });
     } finally {
       setAvatarBusy(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -345,13 +364,12 @@ export default function Settings() {
   const removeAvatar = async () => {
     try {
       setAvatarBusy(true);
-      const r = await fetch("/api/users/me/avatar", { method: "DELETE", credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.delete("/users/me/avatar");
       await refreshMe();
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар удалён", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось удалить аватар", sev: "error" });
+    } catch (error) {
+      setSnack({ text: resolveDetailMessage(error, "Не удалось удалить аватар"), sev: "error" });
     } finally {
       setAvatarBusy(false);
     }
@@ -364,13 +382,14 @@ export default function Settings() {
       setCoverBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetch("/api/users/me/cover", { method: "POST", body: fd, credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.post("/users/me/cover", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       await refreshMe();
       setCoverVersion(Date.now());
       setSnack({ text: "Обложка обновлена", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось загрузить обложку", sev: "error" });
+    } catch (error) {
+      setSnack({ text: resolveDetailMessage(error, "Не удалось загрузить обложку"), sev: "error" });
     } finally {
       setCoverBusy(false);
       if (coverInputRef.current) coverInputRef.current.value = "";
@@ -714,6 +733,7 @@ export default function Settings() {
               >
                 <ListItemAvatar sx={{ mr: 1.25 }}>
                   <Box
+                    data-testid="settings-cover-preview"
                     sx={{
                       width: 120,
                       height: 52,
@@ -756,7 +776,10 @@ export default function Settings() {
                     variant="text"
                     color="error"
                     startIcon={<LogoutIcon />}
-                    onClick={async () => { setConfirmLogout(false); try { await fetch("/auth/logout", { method: "POST", credentials: "include" }); } finally { logout(); } }}
+                    onClick={async () => {
+                      setConfirmLogout(false);
+                      await logout();
+                    }}
                     sx={{ px: 0 }}
                   >
                     Выйти
@@ -799,7 +822,15 @@ export default function Settings() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmLogout(false)}>Отмена</Button>
-          <Button color="error" onClick={async () => { setConfirmLogout(false); try { await fetch("/auth/logout", { method: "POST", credentials: "include" }); } finally { logout(); } }}>Выйти</Button>
+          <Button
+            color="error"
+            onClick={async () => {
+              setConfirmLogout(false);
+              await logout();
+            }}
+          >
+            Выйти
+          </Button>
         </DialogActions>
       </Dialog>
 
