@@ -140,8 +140,8 @@ class Settings(BaseSettings):
     security_referrer_policy: str = "no-referrer"
     security_x_content_type_options: str = "nosniff"
     enable_strict_security_headers: bool | None = None
-    enable_coop: bool | None = None
-    enable_coep: bool | None = None
+    enable_coop: bool = True
+    enable_coep: bool = False
     coep_value: str = "require-corp"
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
@@ -372,14 +372,14 @@ class Settings(BaseSettings):
 
     @cached_property
     def coop_enabled(self) -> bool:
-        if self.enable_coop is not None:
+        if "enable_coop" in self.model_fields_set:
             return bool(self.enable_coop)
-        # In development COOP is optional unless explicitly enabled.
+        # Fall back to strict security flag when not explicitly configured.
         return self.strict_security_headers_enabled
 
     @cached_property
     def coep_enabled(self) -> bool:
-        if self.enable_coep is not None:
+        if "enable_coep" in self.model_fields_set:
             return bool(self.enable_coep)
         # Avoid COEP in dev by default to keep Vite happy.
         return self.strict_security_headers_enabled

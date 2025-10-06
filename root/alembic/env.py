@@ -3,6 +3,7 @@ import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine import make_url
 
 from alembic import context
 
@@ -13,6 +14,27 @@ from app.models import models  # импортируй свою базу моде
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+
+def _coerce_sync_url(raw_url: str) -> str:
+    url = make_url(raw_url)
+    driver = url.drivername
+    if driver.endswith("+aiosqlite"):
+        url = url.set(drivername="sqlite")
+    elif driver.endswith("+asyncpg"):
+        url = url.set(drivername="postgresql+psycopg")
+    elif driver.endswith("+asyncmy"):
+        url = url.set(drivername="mysql+pymysql")
+    return str(url)
+
+
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", _coerce_sync_url(database_url))
+else:
+    current_url = config.get_main_option("sqlalchemy.url")
+    if current_url:
+        config.set_main_option("sqlalchemy.url", _coerce_sync_url(current_url))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
