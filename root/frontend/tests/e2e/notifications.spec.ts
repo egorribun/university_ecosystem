@@ -84,19 +84,19 @@ async function setupMockServiceWorker(page: Page) {
       const result: MockAction[] = [];
       for (const entry of raw) {
         if (!entry || typeof entry !== "object") continue;
-        const key = typeof (entry as { action?: unknown }).action === "string"
-          ? (entry as { action?: string }).action.trim()
-          : "";
-        const title = typeof (entry as { title?: unknown }).title === "string"
-          ? (entry as { title?: string }).title.trim()
-          : "";
+        const actionValue = (entry as { action?: unknown }).action;
+        const titleValue = (entry as { title?: unknown }).title;
+        const key = typeof actionValue === "string" ? actionValue.trim() : "";
+        const title = typeof titleValue === "string" ? titleValue.trim() : "";
         if (!key || !title) continue;
         const item: MockAction = { action: key, title };
-        if (typeof (entry as { icon?: unknown }).icon === "string") {
-          item.icon = (entry as { icon?: string }).icon;
+        const iconValue = (entry as { icon?: unknown }).icon;
+        if (typeof iconValue === "string") {
+          item.icon = iconValue;
         }
-        if (typeof (entry as { url?: unknown }).url === "string") {
-          const trimmed = (entry as { url?: string }).url.trim();
+        const urlValue = (entry as { url?: unknown }).url;
+        if (typeof urlValue === "string") {
+          const trimmed = urlValue.trim();
           if (trimmed) item.url = trimmed;
         }
         result.push(item);
@@ -163,7 +163,11 @@ async function setupMockServiceWorker(page: Page) {
         return;
       }
 
-      const options: NotificationOptions = {
+      type NotificationOptionsWithActions = NotificationOptions & {
+        actions?: Array<{ action: string; title: string; icon?: string }>;
+      };
+
+      const options: NotificationOptionsWithActions = {
         body: toast.body,
         icon: toast.icon,
         badge: toast.icon,
