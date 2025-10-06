@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription
+from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
 logger = logging.getLogger(__name__)
@@ -361,11 +362,45 @@ async def _check_rate_limit(
 def build_payload(
     notification_type: str, data: Mapping[str, Any] | None
 ) -> dict[str, Any]:
-    source: Mapping[str, Any]
     if isinstance(data, Mapping):
-        source = data
+        raw_source = {key: deepcopy(value) for key, value in data.items()}
     else:
-        source = {}
+        raw_source = {}
+
+    template_defaults = render_notification_template(notification_type, raw_source)
+    if template_defaults:
+        source: dict[str, Any] = {
+            key: deepcopy(value) for key, value in template_defaults.items()
+        }
+        template_data = (
+            template_defaults.get("data")
+            if isinstance(template_defaults.get("data"), Mapping)
+            else None
+        )
+        input_data = (
+            raw_source.get("data")
+            if isinstance(raw_source.get("data"), Mapping)
+            else None
+        )
+        if template_data or input_data:
+            merged_data: dict[str, Any] = {}
+            if template_data:
+                merged_data.update(
+                    {key: deepcopy(value) for key, value in template_data.items()}
+                )
+            if input_data:
+                for key, value in input_data.items():
+                    merged_data[key] = deepcopy(value)
+            source["data"] = merged_data
+        for key, value in raw_source.items():
+            if key == "data":
+                continue
+            if value is None:
+                continue
+            source[key] = value
+    else:
+        source = raw_source
+
     title = str(source.get("title") or "Уведомление")
     payload_data: dict[str, Any] = {}
     if isinstance(source.get("data"), Mapping):
