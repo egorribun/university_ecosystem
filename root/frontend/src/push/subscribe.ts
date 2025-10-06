@@ -9,6 +9,26 @@ const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 
 const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
 
+type NormalizedTopics = string[] | undefined
+
+function parseStoredTopics(raw: string | null): NormalizedTopics {
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return undefined
+    const topics: string[] = []
+    for (const entry of parsed) {
+      if (typeof entry !== "string") continue
+      const normalized = entry.trim()
+      if (!normalized) continue
+      topics.push(normalized)
+    }
+    return topics.length ? topics : []
+  } catch {
+    return undefined
+  }
+}
+
 function sleep(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms))
 }
@@ -202,9 +222,14 @@ export async function ensurePushSubscription(
   }
 }
 
-export async function unsubscribePush() {
+type UnsubscribePushOptions = {
+  registration?: ServiceWorkerRegistration
+  preserveConsent?: boolean
+}
+
+export async function unsubscribePush(options?: UnsubscribePushOptions) {
   if (!("serviceWorker" in navigator)) return false
-  const reg = await navigator.serviceWorker.ready
+  const reg = options?.registration ?? (await navigator.serviceWorker.ready)
   const sub = await reg.pushManager.getSubscription()
   if (!sub) return true
   const endpoint = sub.endpoint
@@ -218,9 +243,11 @@ export async function unsubscribePush() {
     }
   }
   const ok = await sub.unsubscribe()
-  try {
-    localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
-  } catch {}
+  if (!options?.preserveConsent) {
+    try {
+      localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
+    } catch {}
+  }
   removeStoredValue(PUSH_LAST_SYNC_STORAGE_KEY)
   removeStoredValue(PUSH_SUB_STORAGE_KEY)
   removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
@@ -245,6 +272,33 @@ export async function getExistingPushSubscription(
     const sub = await reg.pushManager.getSubscription()
     return sub
   } catch {
+    return null
+  }
+}
+
+type SoftSyncOptions = {
+  registration?: ServiceWorkerRegistration
+  vapidPublicKey?: string
+  topics?: string[]
+}
+
+export async function softSyncPushSubscription(
+  options?: SoftSyncOptions
+): Promise<PushSubscription | null> {
+  if (!isPushSupported()) return null
+  if (typeof Notification === "undefined") return null
+  if (Notification.permission !== "granted") return null
+
+  const storedTopics = options?.topics ?? parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY))
+  try {
+    const subscription = await ensurePushSubscription(
+      options?.vapidPublicKey,
+      options?.registration,
+      storedTopics,
+    )
+    return subscription
+  } catch (error) {
+    console.error("Failed to soft sync push subscription", error)
     return null
   }
 }
