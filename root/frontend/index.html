@@ -1,7 +1,7 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
   <head>
-    <script nonce="__CSP_NONCE__">
+    <script>
       (function () {
         var s = null;
         try { s = localStorage.getItem("theme"); } catch (e) {}
@@ -43,10 +43,6 @@
     <meta name="twitter:title" content="Экосистема ГУУ" />
     <meta name="twitter:description" content="Личный кабинет: профиль, расписание, новости и события." />
     <meta name="twitter:image" content="/og-image.png" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="trusted-types app dompurify-news goog#html 'allow-duplicates'; require-trusted-types-for 'script'"
-    />
     <title>Экосистема ГУУ</title>
     <link rel="icon" type="image/png" href="/guu_logo.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="/maskable-icon-192.png" />
@@ -60,6 +56,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script nonce="__CSP_NONCE__" type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

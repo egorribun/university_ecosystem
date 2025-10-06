@@ -14,26 +14,19 @@ const ensureMaskableIcons = () => {
   for (const [filename, base64] of Object.entries(MASKABLE_ICON_BASE64)) {
     const destination = resolve(publicDir, filename)
     const expected = Buffer.from(base64.replace(/\s+/g, ""), "base64")
-
     let writeFile = true
     try {
       const current = readFileSync(destination)
-      if (current.equals(expected)) {
-        writeFile = false
-      }
+      if (current.equals(expected)) writeFile = false
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error
-      }
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
     }
-
     if (writeFile) {
       mkdirSync(publicDir, { recursive: true })
       writeFileSync(destination, expected)
     }
   }
 }
-
 ensureMaskableIcons()
 
 const loadManifest = () => {
@@ -41,14 +34,12 @@ const loadManifest = () => {
   try {
     const raw = readFileSync(manifestPath, "utf-8")
     return JSON.parse(raw)
-  } catch (error) {
-    console.warn(`⚠️  Unable to read manifest at ${manifestPath}:`, error)
+  } catch {
     return undefined
   }
 }
 
 const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
-
 const withStrictCspNonce = (): PluginOption => ({
   name: "strict-csp-nonce",
   enforce: "post",
@@ -88,7 +79,7 @@ export default defineConfig(({ mode }) => {
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: "script",
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts",
@@ -98,13 +89,12 @@ export default defineConfig(({ mode }) => {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
       },
       devOptions: {
-        enabled: true,
-        suppressWarnings: true,
-        type: "module",
+        enabled: false,
       },
     }),
     withStrictCspNonce(),
   ]
+
   if (analyze) {
     plugins.push(
       visualizer({
@@ -157,22 +147,11 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = toPosix(id)
             for (const chunk of routeChunks) {
-              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern))) {
-                return chunk.name
-              }
+              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern))) return chunk.name
             }
             if (!normalizedId.includes("node_modules")) return
-
-            const uiMatchers = [
-              /[\\/]react(?:-dom)?[\\/]/,
-              /[\\/]scheduler[\\/]/,
-              /@emotion/,
-              /@mui/,
-            ] as const
-            if (uiMatchers.some((pattern) => pattern.test(normalizedId))) {
-              return "ui"
-            }
-
+            const uiMatchers = [/[/\\]react(?:-dom)?[/\\]/, /[/\\]scheduler[/\\]/, /@emotion/, /@mui/] as const
+            if (uiMatchers.some((pattern) => pattern.test(normalizedId))) return "ui"
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"
             if (normalizedId.includes("react-router")) return "router"

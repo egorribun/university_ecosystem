@@ -107,10 +107,16 @@ export default function Settings() {
     safariIOS,
     safariGuideUrl
   } = usePushPreferences({ onNotify: setSnack });
+
   const [dndEnabled, setDndEnabled] = useState(false);
   const [dndStart, setDndStart] = useState("");
   const [dndEnd, setDndEnd] = useState("");
   const [dndSaving, setDndSaving] = useState(false);
+
+  const [avatarVersion, setAvatarVersion] = useState(Date.now());
+  const [coverVersion, setCoverVersion] = useState(Date.now());
+
+  const withV = (url: string | undefined, v: number) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${v}` : url);
 
   const syncDndFromUser = useCallback((value: any) => {
     const enabled = Boolean(value?.dnd_enabled);
@@ -161,7 +167,6 @@ export default function Settings() {
         else message = 'Настройки режима "Не беспокоить" обновлены';
         setSnack({ text: message, sev: "success" });
       } catch (error: any) {
-        console.error("Failed to update quiet mode", error);
         let message = 'Не удалось обновить настройки режима "Не беспокоить"';
         const detail = error?.response?.data?.detail;
         if (typeof detail === "string") message = detail;
@@ -261,8 +266,11 @@ export default function Settings() {
 
   const connectSpotify = async () => {
     try {
-      const r = await api.get<{ url: string }>("/spotify/auth-url");
-      if (r.data?.url) window.location.assign(r.data.url);
+      const r = await fetch("/spotify/auth-url", { credentials: "include" });
+      if (!r.ok) throw new Error();
+      const data = (await r.json()) as { url?: string };
+      if (data?.url) window.location.assign(data.url);
+      else throw new Error();
     } catch {
       setSnack({ text: "Не удалось открыть авторизацию Spotify", sev: "error" });
     }
@@ -270,11 +278,10 @@ export default function Settings() {
 
   const disconnectSpotify = async () => {
     try {
-      await api.post("/spotify/disconnect");
-      const me = await queryClient.fetchQuery({
-        queryKey: currentUserQueryKey,
-        queryFn: fetchCurrentUser,
-      });
+      const r = await fetch("/spotify/disconnect", { method: "POST", credentials: "include" });
+      if (!r.ok) throw new Error();
+      const meResp = await fetch("/api/users/me", { credentials: "include" });
+      const me = await meResp.json();
       setUser(me);
       setSnack({ text: "Spotify отключён", sev: "success" });
     } catch {
@@ -293,21 +300,27 @@ export default function Settings() {
   const getAvatarSrc = useCallback(() => {
     if ((user as any)?.avatar_url) {
       const url = resolveMediaUrl((user as any).avatar_url, BACKEND_ORIGIN);
-      return url;
+      return withV(url, avatarVersion) || defaultAvatar;
     }
     return defaultAvatar;
-  }, [user]);
+  }, [user, avatarVersion]);
 
   const getCoverSrc = useCallback(() => {
     if ((user as any)?.cover_url) {
       const url = resolveMediaUrl((user as any).cover_url, BACKEND_ORIGIN);
-      return url;
+      return withV(url || "", coverVersion);
     }
     return "";
-  }, [user]);
+  }, [user, coverVersion]);
 
   const triggerAvatarPick = () => avatarInputRef.current?.click();
   const triggerCoverPick = () => coverInputRef.current?.click();
+
+  const refreshMe = async () => {
+    const meResp = await fetch("/api/users/me", { credentials: "include" });
+    const me = await meResp.json();
+    setUser(me);
+  };
 
   const uploadAvatar = async (file: File) => {
     if (!isImage(file)) return setSnack({ text: "Поддерживаются PNG/JPG/WebP/AVIF/GIF", sev: "warning" });
@@ -316,29 +329,26 @@ export default function Settings() {
       setAvatarBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const me = await queryClient.fetchQuery({
-        queryKey: currentUserQueryKey,
-        queryFn: fetchCurrentUser,
-      });
-      setUser(me);
+      const r = await fetch("/api/users/me/avatar", { method: "POST", body: fd, credentials: "include" });
+      if (!r.ok) throw new Error();
+      await refreshMe();
+      setAvatarVersion(Date.now());
       setSnack({ text: "Аватар обновлён", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось загрузить аватар", sev: "error" });
     } finally {
       setAvatarBusy(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
     }
   };
 
   const removeAvatar = async () => {
     try {
       setAvatarBusy(true);
-      await api.delete("/users/me/avatar");
-      const me = await queryClient.fetchQuery({
-        queryKey: currentUserQueryKey,
-        queryFn: fetchCurrentUser,
-      });
-      setUser(me);
+      const r = await fetch("/api/users/me/avatar", { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error();
+      await refreshMe();
+      setAvatarVersion(Date.now());
       setSnack({ text: "Аватар удалён", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось удалить аватар", sev: "error" });
@@ -354,17 +364,16 @@ export default function Settings() {
       setCoverBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const me = await queryClient.fetchQuery({
-        queryKey: currentUserQueryKey,
-        queryFn: fetchCurrentUser,
-      });
-      setUser(me);
+      const r = await fetch("/api/users/me/cover", { method: "POST", body: fd, credentials: "include" });
+      if (!r.ok) throw new Error();
+      await refreshMe();
+      setCoverVersion(Date.now());
       setSnack({ text: "Обложка обновлена", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось загрузить обложку", sev: "error" });
     } finally {
       setCoverBusy(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
     }
   };
 
@@ -475,7 +484,7 @@ export default function Settings() {
                       </Typography>
                       {safariIOS && (
                         <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления. {" "}
+                          Установите приложение на Домой, затем разрешите уведомления.{" "}
                           <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
                             Инструкция
                           </Link>
@@ -514,7 +523,7 @@ export default function Settings() {
                       </Stack>
                       {safariIOS && (
                         <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления. {" "}
+                          Установите приложение на Домой, затем разрешите уведомления.{" "}
                           <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
                             Инструкция
                           </Link>
@@ -559,8 +568,6 @@ export default function Settings() {
                               key={key}
                               control={
                                 <Switch
-                                  // Keys originate from a predefined list
-                                  // eslint-disable-next-line security/detect-object-injection
                                   checked={topicState[key]}
                                   onChange={handleTopicToggle(key)}
                                   disabled={!notificationsEnabled || pushBusy || pushInitializing}
@@ -749,7 +756,7 @@ export default function Settings() {
                     variant="text"
                     color="error"
                     startIcon={<LogoutIcon />}
-                    onClick={() => setConfirmLogout(true)}
+                    onClick={async () => { setConfirmLogout(false); try { await fetch("/auth/logout", { method: "POST", credentials: "include" }); } finally { logout(); } }}
                     sx={{ px: 0 }}
                   >
                     Выйти
@@ -772,7 +779,7 @@ export default function Settings() {
                 {spotifyConnected && !!spotifyName && <Chip size="small" variant="outlined" label={spotifyName} />}
               </Stack>
               {!spotifyConnected ? (
-                <Button variant="contained" onClick={connectSpotify} sx={{ alignSelf: "flex-start" }}>
+                <Button variant="contained" onClick={connectSpotify} sx={{ alignSelf: "lex-start" }}>
                   Подключить Spotify
                 </Button>
               ) : (
@@ -792,7 +799,7 @@ export default function Settings() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmLogout(false)}>Отмена</Button>
-          <Button color="error" onClick={() => { setConfirmLogout(false); logout(); }}>Выйти</Button>
+          <Button color="error" onClick={async () => { setConfirmLogout(false); try { await fetch("/auth/logout", { method: "POST", credentials: "include" }); } finally { logout(); } }}>Выйти</Button>
         </DialogActions>
       </Dialog>
 
