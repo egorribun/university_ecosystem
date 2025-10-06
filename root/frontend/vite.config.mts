@@ -149,10 +149,16 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = toPosix(id)
             for (const chunk of routeChunks) {
-              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern))) return chunk.name
+              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern)))
+                return chunk.name
             }
             if (!normalizedId.includes("node_modules")) return
-            const uiMatchers = [/[/\\]react(?:-dom)?[/\\]/, /[/\\]scheduler[/\\]/, /@emotion/, /@mui/] as const
+            const uiMatchers = [
+              /[/\\]react(?:-dom)?[/\\]/,
+              /[/\\]scheduler[/\\]/,
+              /@emotion/,
+              /@mui/,
+            ] as const
             if (uiMatchers.some((pattern) => pattern.test(normalizedId))) return "ui"
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"
