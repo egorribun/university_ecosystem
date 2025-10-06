@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -110,21 +111,25 @@ class Settings(BaseSettings):
         "default-src 'self'; "
         "base-uri 'self'; "
         "object-src 'none'; "
-        "frame-ancestors 'none'; "
-        "img-src 'self' data: https:; "
-        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic'; "
+        "frame-ancestors 'self'; "
+        "img-src 'self' data: blob:; "
+        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'; "
         "style-src 'self' 'unsafe-inline'; "
-        "connect-src 'self' https://api.spotify.com https://fcm.googleapis.com "
-        "https://fcmregistrations.googleapis.com https://*.push.services.mozilla.com "
-        "https://updates.push.services.mozilla.com https://*.push.apple.com; "
-        "worker-src 'self' blob:; "
-        "manifest-src 'self'; "
+        "connect-src {connect_src}; "
         "font-src 'self' data:; "
-        "trusted-types dompurify-news; "
-        "require-trusted-types-for 'script'; "
-        "upgrade-insecure-requests"
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
+        "{require_trusted_types}"
     )
-    security_csp_report_only: bool = False
+    # Extra hosts for connect-src; merged with defaults dynamically.
+    security_connect_src_extra: str | list[str] = (
+        "https://api.spotify.com,"
+        "https://fcm.googleapis.com,"
+        "https://fcmregistrations.googleapis.com,"
+        "https://*.push.services.mozilla.com,"
+        "https://updates.push.services.mozilla.com,"
+        "https://*.push.apple.com"
+    )
+    security_csp_report_only: bool | None = None
     security_csp_report_uri: str = ""
     security_hsts_enabled: bool = True
     security_hsts_max_age: int = 31536000
@@ -135,9 +140,22 @@ class Settings(BaseSettings):
     security_referrer_policy: str = "no-referrer"
     security_x_content_type_options: str = "nosniff"
     enable_strict_security_headers: bool | None = None
+    enable_coop: bool | None = None
+    enable_coep: bool | None = None
+    coep_value: str = "require-corp"
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
+
+    @field_validator("coep_value")
+    @classmethod
+    def _validate_coep_value(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"require-corp", "credentialless"}:
+            raise ValueError(
+                "COEP_VALUE must be either 'require-corp' or 'credentialless'"
+            )
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
@@ -301,16 +319,119 @@ class Settings(BaseSettings):
         return bool(value)
 
     @cached_property
+    def security_csp_report_only_effective(self) -> bool:
+        if self.security_csp_report_only is not None:
+            return bool(self.security_csp_report_only)
+        return not self.strict_security_headers_enabled
+
+    @cached_property
+    def security_connect_src_values(self) -> list[str]:
+        values: list[str] = []
+        seen: set[str] = set()
+        for candidate in ["'self'"] + _coerce_str_list(self.security_connect_src_extra):
+            parts = [part.strip() for part in str(candidate).split() if part.strip()]
+            for part in parts:
+                key = part.lower()
+                if key not in seen:
+                    seen.add(key)
+                    values.append(part)
+        return values
+
+    def _development_connect_overrides(self) -> list[str]:
+        if not self.is_development:
+            return []
+        overrides: list[str] = []
+        seen: set[str] = {value.lower() for value in self.security_connect_src_values}
+        for origin in self.frontend_origins_list:
+            cleaned = origin.rstrip("/")
+            if not cleaned:
+                continue
+            lower = cleaned.lower()
+            if lower not in seen:
+                overrides.append(cleaned)
+                seen.add(lower)
+            parsed = urlparse(cleaned)
+            scheme = parsed.scheme.lower()
+            if scheme in {"http", "https"}:
+                ws_scheme = "ws" if scheme == "http" else "wss"
+                ws_origin = f"{ws_scheme}://{parsed.netloc}" if parsed.netloc else ""
+                if ws_origin:
+                    key = ws_origin.lower()
+                    if key not in seen:
+                        overrides.append(ws_origin)
+                        seen.add(key)
+        # Allow vite defaults explicitly to ensure DX without env tweaks.
+        for host in ("localhost:5173", "127.0.0.1:5173"):
+            for scheme in ("http", "ws"):
+                candidate = f"{scheme}://{host}"
+                key = candidate.lower()
+                if key not in seen:
+                    overrides.append(candidate)
+                    seen.add(key)
+        return overrides
+
+    @cached_property
+    def coop_enabled(self) -> bool:
+        if self.enable_coop is not None:
+            return bool(self.enable_coop)
+        # In development COOP is optional unless explicitly enabled.
+        return self.strict_security_headers_enabled
+
+    @cached_property
+    def coep_enabled(self) -> bool:
+        if self.enable_coep is not None:
+            return bool(self.enable_coep)
+        # Avoid COEP in dev by default to keep Vite happy.
+        return self.strict_security_headers_enabled
+
+    @cached_property
+    def coep_header_value(self) -> str:
+        return self.coep_value
+
+    @cached_property
+    def security_hsts_enabled_effective(self) -> bool:
+        if not self.strict_security_headers_enabled:
+            return False
+        if not self.security_hsts_enabled:
+            return False
+        return self.app_base_url_clean.startswith("https://")
+
+    @cached_property
+    def should_inject_csp_nonce(self) -> bool:
+        return self.strict_security_headers_enabled
+
+    @cached_property
     def strict_security_csp(self) -> str:
-        directives = [
-            part.strip() for part in self.security_csp.split(";") if part.strip()
-        ]
+        policy = self.build_csp_policy(nonce="{nonce}", report_only=False)
+        return policy
+
+    def build_csp_policy(self, *, nonce: str | None, report_only: bool) -> str:
+        template = self.security_csp.strip() or "default-src 'self'"
+        require_trusted_types = (
+            "require-trusted-types-for 'script'"
+            if self.strict_security_headers_enabled and not report_only
+            else ""
+        )
+        policy = template.replace("{require_trusted_types}", require_trusted_types)
+        connect_sources = (
+            self.security_connect_src_values + self._development_connect_overrides()
+        )
+        connect_value = " ".join(connect_sources).strip()
+        policy = policy.replace("{connect_src}", connect_value or "'self'")
+        if nonce:
+            policy = policy.replace("{nonce}", nonce)
+        else:
+            policy = (
+                policy.replace("'nonce-{nonce}'", "")
+                .replace("{nonce}", "")
+                .replace("  ", " ")
+            )
+        directives = [part.strip() for part in policy.split(";") if part.strip()]
         policy = "; ".join(directives)
         if not policy:
             policy = "default-src 'self'"
         if "default-src" not in policy.lower():
-            policy = f"default-src 'self'; {policy}"
-        policy = policy.rstrip("; ")
+            policy = f"default-src 'self'; {policy}".strip("; ")
         report_uri = self.security_csp_report_uri.strip()
         if report_uri:
             policy = f"{policy}; report-uri {report_uri}".rstrip("; ")

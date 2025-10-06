@@ -20,16 +20,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:  # type: ignore[override]
         nonce: str | None = None
-        if self._settings.strict_security_headers_enabled:
+        if self._settings.should_inject_csp_nonce:
+            # Generate a fresh nonce only when strict headers are active.
             nonce = secrets.token_urlsafe(16)
             request.state.csp_nonce = nonce
         response = await call_next(request)
-        if not self._settings.strict_security_headers_enabled:
-            return response
-        if nonce:
+        if nonce and self._settings.should_inject_csp_nonce:
+            # Inject nonce placeholder into HTML served by FastAPI templates.
             response = self._inject_nonce_into_html(response, nonce)
-        self._apply_hsts(response)
         self._apply_csp(response, nonce=nonce)
+        self._apply_hsts(response)
         self._apply_frame_options(response)
         self._apply_permissions_policy(response)
         self._apply_content_type_options(response)
@@ -39,7 +39,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_hsts(self, response: Response) -> None:
         headers = response.headers
-        if not self._settings.security_hsts_enabled:
+        if not self._settings.security_hsts_enabled_effective:
             try:
                 del headers["Strict-Transport-Security"]
             except KeyError:
@@ -54,19 +54,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_csp(self, response: Response, *, nonce: str | None) -> None:
         headers = response.headers
-        policy_template = self._settings.strict_security_csp
-        policy = policy_template
-        if nonce:
-            policy = policy.replace("{nonce}", nonce)
-        else:
-            policy = (
-                policy.replace("'nonce-{nonce}'", "")
-                .replace("  ", " ")
-                .replace(" ;", ";")
-                .strip(" ;")
-            )
+        report_only = self._settings.security_csp_report_only_effective
+        policy = self._settings.build_csp_policy(nonce=nonce, report_only=report_only)
         header_name = "Content-Security-Policy"
-        if self._settings.security_csp_report_only:
+        if report_only:
             header_name = "Content-Security-Policy-Report-Only"
             try:
                 del headers["Content-Security-Policy"]
@@ -135,8 +126,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def _apply_cross_origin_policies(self, response: Response) -> None:
         headers = response.headers
-        headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+        if self._settings.coop_enabled:
+            headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        else:
+            try:
+                del headers["Cross-Origin-Opener-Policy"]
+            except KeyError:
+                pass
+        if self._settings.coep_enabled:
+            # Allow switching between require-corp and credentialless.
+            headers["Cross-Origin-Embedder-Policy"] = self._settings.coep_header_value
+        else:
+            try:
+                del headers["Cross-Origin-Embedder-Policy"]
+            except KeyError:
+                pass
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers

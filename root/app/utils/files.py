@@ -1,4 +1,5 @@
 import mimetypes
+import re
 import secrets
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from app.core.config import settings
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
+_PREFIX_CLEAN_RE = re.compile(r"[^a-z0-9.-]+")
 
 
 def _ensure_dir(p: Path) -> None:
@@ -29,10 +32,19 @@ def _ext_from_mime(mime: str) -> str:
     return exts[0] if exts else ""
 
 
+def normalize_filename_prefix(prefix: str) -> str:
+    """Return a safe, lowercase slug suitable for file names."""
+
+    cleaned = _PREFIX_CLEAN_RE.sub("-", prefix.strip().lower())
+    cleaned = re.sub(r"-+", "-", cleaned).strip("-.")
+    return cleaned or "file"
+
+
 def _gen_name(prefix: str, ext: str) -> str:
+    safe_prefix = normalize_filename_prefix(prefix)
     token = secrets.token_hex(16)
     ext = ext if ext.startswith(".") else f".{ext}" if ext else ""
-    return f"{prefix}_{token}{ext}"
+    return f"{safe_prefix}_{token}{ext}"
 
 
 async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
@@ -49,8 +61,11 @@ async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
     }.get(upload.content_type, "")
     name = _gen_name(prefix, ext)
     base = settings.static_dir_path
-    _ensure_dir(base / subdir)
-    path = base / subdir / name
+    sanitized_subdir = subdir.strip("/ ")
+    target_dir = base / sanitized_subdir
+    _ensure_dir(target_dir)
+    path = target_dir / name
     with open(path, "wb") as f:
         f.write(data)
-    return f"/static/{subdir}/{name}"
+    # Return canonical public URL without accidental duplicate slashes.
+    return f"/static/{sanitized_subdir}/{name}"
