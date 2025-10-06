@@ -121,8 +121,8 @@ def test_alembic_upgrade_from_multiple_heads(tmp_path):
     engine = _inspect(sync_url)
     with engine.begin() as conn:
         rows = conn.execute(version.select()).fetchall()
-    assert {row[0] for row in rows} == {"5a9d1c0a9bc1"}
-    engine.dispose()
-
     script = ScriptDirectory.from_config(config)
-    assert len(script.get_heads()) == 1
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert {row[0] for row in rows} == set(heads)
+    engine.dispose()
