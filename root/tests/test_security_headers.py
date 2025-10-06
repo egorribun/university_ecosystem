@@ -110,6 +110,40 @@ async def test_security_headers_development_report_only(monkeypatch):
     assert "Cross-Origin-Embedder-Policy" not in headers
 
 
+@pytest.mark.anyio
+async def test_security_headers_credentialless_coep(monkeypatch):
+    monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_BASE_URL", "https://example.com")
+    monkeypatch.setenv("ENABLE_COEP", "true")
+    monkeypatch.setenv("COEP_VALUE", "credentialless")
+    settings = Settings()
+    spec = importlib_util.find_spec("app.core.security_headers")
+    assert spec and spec.origin
+    module = importlib_util.module_from_spec(spec)
+    loader = spec.loader
+    assert loader is not None
+    loader.exec_module(module)
+    middleware_cls = module.SecurityHeadersMiddleware
+    app = FastAPI()
+
+    @app.get("/")
+    async def root():
+        return {"status": "ok"}
+
+    app.add_middleware(middleware_cls, settings=settings)
+
+    transport = httpx.ASGITransport(app=app)
+    async with LifespanManager(app):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            response = await client.get("/")
+
+    headers = response.headers
+    assert headers.get("Cross-Origin-Embedder-Policy") == "credentialless"
+
+
 def _reset_security_env(monkeypatch):
     for key in (
         "FRONTEND_ORIGINS",

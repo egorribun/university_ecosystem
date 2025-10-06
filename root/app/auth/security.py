@@ -3,6 +3,7 @@ from typing import Any, Union
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from passlib.hash import bcrypt as passlib_bcrypt
 
 from app.core.config import settings
 
@@ -15,6 +16,38 @@ ARGON2_PARALLELISM = 4
 
 DEFAULT_SCHEME = "argon2"
 LEGACY_SCHEME = "bcrypt"
+
+
+# NOTE: the upstream ``bcrypt`` package started raising ``ValueError`` for
+# inputs longer than 72 bytes during backend feature detection when running
+# under Python 3.12+.  Passlib expects backends to gracefully truncate these
+# probes, so the detection step aborts before we can create or verify legacy
+# hashes.  To keep migrations deterministic across interpreter versions we
+# proactively reinstate the historical truncation semantics so feature
+# detection and legacy verifications succeed across interpreter versions.
+try:  # pragma: no cover - optional backend
+    from passlib.handlers import bcrypt as passlib_bcrypt_handlers
+except ImportError:  # pragma: no cover - optional dependency
+    pass
+else:  # pragma: no cover - executed during import
+    _backend_common = getattr(passlib_bcrypt_handlers, "_BcryptCommon", None)
+    if _backend_common is not None:
+        _original_norm_digest = _backend_common._norm_digest_args.__func__
+
+        def _norm_digest_args_with_legacy_truncation(
+            cls, secret, ident, new=False, _orig=_original_norm_digest
+        ):
+            secret, ident = _orig(cls, secret, ident, new=new)
+            if (
+                isinstance(secret, (bytes, bytearray))
+                and len(secret) > LEGACY_BCRYPT_MAX_BYTES
+            ):
+                secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
+            return secret, ident
+
+        _backend_common._norm_digest_args = classmethod(
+            _norm_digest_args_with_legacy_truncation
+        )
 
 pwd_context = CryptContext(
     schemes=[DEFAULT_SCHEME, LEGACY_SCHEME],
