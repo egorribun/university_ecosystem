@@ -51,7 +51,7 @@ describe("NowPlayingCard", () => {
 
     const advanced: NowPlaying = {
       ...baseTrack,
-      progress_ms: baseTrack.progress_ms + 15000,
+      progress_ms: (baseTrack.progress_ms ?? 0) + 15000,
       fetched_at: "2024-01-01T00:00:15.000Z",
     };
 
