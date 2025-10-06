@@ -23,12 +23,28 @@ LEGACY_SCHEME = "bcrypt"
 # under Python 3.12+.  Passlib expects backends to gracefully truncate these
 # probes, so the detection step aborts before we can create or verify legacy
 # hashes.  To keep migrations deterministic across interpreter versions we
-# proactively fall back to the pure-Python backend if the accelerated module
-# refuses to initialise.
-try:  # pragma: no cover - executed during import
-    passlib_bcrypt.set_backend("bcrypt")
-except Exception:  # pragma: no cover - prefer resilience over speed
-    passlib_bcrypt.set_backend("passlib")
+# proactively reinstate the historical truncation semantics so feature
+# detection and legacy verifications succeed across interpreter versions.
+try:  # pragma: no cover - optional backend
+    from passlib.handlers import bcrypt as passlib_bcrypt_handlers
+except ImportError:  # pragma: no cover - optional dependency
+    pass
+else:  # pragma: no cover - executed during import
+    _backend_common = getattr(passlib_bcrypt_handlers, "_BcryptCommon", None)
+    if _backend_common is not None:
+        _original_norm_digest = _backend_common._norm_digest_args.__func__
+
+        def _norm_digest_args_with_legacy_truncation(
+            cls, secret, ident, new=False, _orig=_original_norm_digest
+        ):
+            secret, ident = _orig(cls, secret, ident, new=new)
+            if isinstance(secret, (bytes, bytearray)) and len(secret) > LEGACY_BCRYPT_MAX_BYTES:
+                secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
+            return secret, ident
+
+        _backend_common._norm_digest_args = classmethod(
+            _norm_digest_args_with_legacy_truncation
+        )
 
 pwd_context = CryptContext(
     schemes=[DEFAULT_SCHEME, LEGACY_SCHEME],
