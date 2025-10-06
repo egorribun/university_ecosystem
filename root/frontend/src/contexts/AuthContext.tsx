@@ -9,7 +9,7 @@ type SetUserArg = any | ((prev: any) => any)
 type AuthContextType = {
   isAuth: boolean
   login: (token: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   user: any
   loading: boolean
   setUser: (user: SetUserArg) => void
@@ -18,7 +18,7 @@ type AuthContextType = {
 export const AuthContext = createContext<AuthContextType>({
   isAuth: false,
   login: async () => {},
-  logout: () => {},
+  logout: async () => {},
   user: null,
   loading: false,
   setUser: () => {},
@@ -189,13 +189,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [applyToken, queryClient]
   )
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     if (typeof window === "undefined") {
       handleUnauthorized()
       return
     }
 
-    void (async () => {
+    try {
+      await api.post("/auth/logout")
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn("Logout request failed", error)
+      }
+    } finally {
       try {
         await unsubscribePush({ preserveConsent: true })
       } catch (error) {
@@ -203,7 +209,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } finally {
         handleUnauthorized()
       }
-    })()
+    }
   }, [handleUnauthorized])
 
   const value = useMemo(

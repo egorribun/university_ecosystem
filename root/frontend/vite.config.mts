@@ -62,6 +62,8 @@ export default defineConfig(({ mode }) => {
   const mk = (rewrite = false) => ({
     target,
     changeOrigin: true,
+    secure: false,
+    ws: true,
     ...(rewrite ? { rewrite: (p: string) => p.replace(/^\/api/, "") } : {}),
   })
 
