@@ -29,14 +29,13 @@ import {
   Container,
   Divider,
   Fade,
-  Grow,
+  Grow
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import EmailIcon from "@mui/icons-material/Email";
 import TelegramIcon from "@mui/icons-material/Telegram";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { resolveMediaUrl } from "@/utils/media";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { QRCodeSVG } from "qrcode.react";
@@ -62,8 +61,51 @@ const onlinePulse = keyframes`
   100% { transform: scale(1.8); opacity: 0; }
 `;
 
-const MotionPaper = motion(Paper);
+const MotionPaper = motion.create(Paper);
 const isTest = process.env.NODE_ENV === "test";
+
+const safeEncode = (seg: string) => {
+  try {
+    return encodeURIComponent(decodeURIComponent(seg));
+  } catch {
+    return encodeURIComponent(seg);
+  }
+};
+
+const buildMediaUrl = (raw?: string): string | undefined => {
+  if (!raw) return undefined;
+  const origin =
+    BACKEND_ORIGIN ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  const cleaned = String(raw).trim().replace(/^\/+/, match => (match ? "/" : ""));
+  try {
+    const base = origin ? new URL(origin) : undefined;
+    const u = new URL(cleaned, base?.toString());
+    const parts = u.pathname.split("/").map(safeEncode).join("/");
+    u.pathname = parts.replace(/\/{2,}/g, "/");
+    return u.toString();
+  } catch {
+    const path = `/${cleaned}`;
+    const encoded = path
+      .split("/")
+      .map(safeEncode)
+      .join("/")
+      .replace(/\/{2,}/g, "/");
+    return `${origin.replace(/\/$/, "")}${encoded}`;
+  }
+};
+
+const addVersionParam = (url: string | undefined, v: number): string | undefined => {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    u.searchParams.set("v", String(v));
+    return u.toString();
+  } catch {
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}v=${v}`;
+  }
+};
 
 const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const [progress, setProgress] = useState<number>(data.progress_ms ?? 0);
@@ -115,7 +157,7 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
       sx={{
         display: "block",
         textDecoration: "none",
-        width: "100%",
+        width: "100%"
       }}
     >
       <MotionPaper
@@ -141,47 +183,47 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
           border: `1px solid ${borderCol}`,
           textDecoration: "none",
           ["--glass-alpha" as any]: ".018",
-          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+          ["--glass-highlight" as any]: "rgba(255,255,255,0)"
         }}
       >
-      <Box
-        sx={{
-          position: "relative",
-          width: 56,
-          height: 56,
-          borderRadius: 2,
-          overflow: "hidden",
-          boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`,
-        }}
-      >
-        <Avatar
-          src={data.album_image_url || ""}
-          variant="rounded"
-          alt={data.album_name || data.track_name || "Обложка альбома"}
+        <Box
           sx={{
-            width: "100%",
-            height: "100%",
+            position: "relative",
+            width: 56,
+            height: 56,
             borderRadius: 2,
-            transform: prefersReduce ? "none" : "scale(1.012)",
-            transition: prefersReduce ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-            "&:hover": prefersReduce ? undefined : { transform: "scale(1.02)" },
+            overflow: "hidden",
+            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`
           }}
-        />
-      </Box>
-      <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
-        <Typography className="np-title" variant="body1" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}>
-          {data.track_name || "—"}
-        </Typography>
-        <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
-          {(data.artists || []).join(", ")}
-        </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-          <LinearProgress className="progress" variant="determinate" value={pct} sx={{ flex: 1, height: 6, borderRadius: 999 }} />
-          <Typography className="np-time" variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
-            {fmt(progress)} / {fmt(data.duration_ms)}
-          </Typography>
+        >
+          <Avatar
+            src={data.album_image_url || ""}
+            variant="rounded"
+            alt={data.album_name || data.track_name || "Обложка альбома"}
+            sx={{
+              width: "100%",
+              height: "100%",
+              borderRadius: 2,
+              transform: prefersReduce ? "none" : "scale(1.012)",
+              transition: prefersReduce ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
+              "&:hover": prefersReduce ? undefined : { transform: "scale(1.02)" }
+            }}
+          />
         </Box>
-      </Box>
+        <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
+          <Typography className="np-title" variant="body1" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}>
+            {data.track_name || "—"}
+          </Typography>
+          <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
+            {(data.artists || []).join(", ")}
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
+            <LinearProgress className="progress" variant="determinate" value={pct} sx={{ flex: 1, height: 6, borderRadius: 999 }} />
+            <Typography className="np-time" variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
+              {fmt(progress)} / {fmt(data.duration_ms)}
+            </Typography>
+          </Box>
+        </Box>
       </MotionPaper>
     </Box>
   );
@@ -205,7 +247,7 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
         borderRadius: 2,
         border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.1)}`,
         ["--glass-alpha" as any]: ".016",
-        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+        ["--glass-highlight" as any]: "rgba(255,255,255,0)"
       }}
     >
       <Box
@@ -215,7 +257,7 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
           borderRadius: "50%",
           bgcolor: theme.palette.info.main,
           boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.22)}`,
-          justifySelf: "center",
+          justifySelf: "center"
         }}
       />
       <Typography sx={{ lineHeight: 1.25 }}>
@@ -228,7 +270,6 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
 export default function Profile() {
   const { user, loading, setUser } = useAuth();
   const theme = useTheme();
-
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
@@ -236,19 +277,42 @@ export default function Profile() {
   const isTwoCol = useMediaQuery("(min-width:1400px)");
   const isMobile = useMediaQuery("(max-width:600px)");
   const reduced = useReducedMotion();
-
   const [scrollY, setScrollY] = useState(0);
-
   const [qrOpen, setQrOpen] = useState(false);
   const [achOpen, setAchOpen] = useState<{ name: string; issuer?: string; date?: string; url?: string } | null>(null);
-
   const containerRef = useRef<HTMLDivElement | null>(null);
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
-
+  const ldJsonRef = useRef<HTMLScriptElement | null>(null);
   const queryClient = useQueryClient();
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
   const nowPlayingQuery = useNowPlaying(spotifyConnected);
   const nowPlaying = nowPlayingQuery.data ?? null;
+  const [npFallback, setNpFallback] = useState<NowPlaying | null>(null);
+
+  useEffect(() => {
+    let stop = false;
+    let timer: number | null = null;
+    const load = async () => {
+      try {
+        const r = await api.get<NowPlaying | null>("/spotify/now-playing", { validateStatus: () => true });
+        if (stop) return;
+        if (r.status === 200 && r.data && (r.data as any).track_id) setNpFallback(r.data as NowPlaying);
+        else setNpFallback(null);
+      } catch {
+        if (!stop) setNpFallback(null);
+      } finally {
+        if (!stop) timer = window.setTimeout(load, 8000);
+      }
+    };
+    if (spotifyConnected) load();
+    else setNpFallback(null);
+    return () => {
+      stop = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [spotifyConnected]);
+
+  const effectiveNowPlaying = nowPlaying || npFallback;
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -321,6 +385,36 @@ export default function Profile() {
     }
   }, [queryClient]);
 
+  useEffect(() => {
+    if (!user) return;
+    const elPrev = ldJsonRef.current;
+    if (elPrev && elPrev.parentNode) elPrev.parentNode.removeChild(elPrev);
+    const el = document.createElement("script");
+    el.type = "application/ld+json";
+    el.setAttribute("data-profile-ldjson", "1");
+    el.text = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Person",
+      name: user.full_name || "",
+      email: user.email || "",
+      jobTitle: user.role === "teacher" ? user.position || "" : user.role === "student" ? "Student" : "Administrator",
+      affiliation: user.institute || user.department || "",
+      url: typeof window !== "undefined" ? window.location.href : "",
+      image: (() => {
+        const media = buildMediaUrl(user.avatar_url || "");
+        const withV = addVersionParam(media, avatarVersion);
+        return withV || "";
+      })()
+    });
+    document.head.appendChild(el);
+    ldJsonRef.current = el;
+    return () => {
+      const node = ldJsonRef.current;
+      if (node && node.parentNode) node.parentNode.removeChild(node);
+      ldJsonRef.current = null;
+    };
+  }, [user, avatarVersion]);
+
   if (loading)
     return (
       <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
@@ -329,35 +423,14 @@ export default function Profile() {
     );
 
   const getAvatarSrc = () => {
-    const url = user?.avatar_url || "";
-    const resolved = resolveMediaUrl(url, BACKEND_ORIGIN);
-    return resolved ? `${resolved}?v=${avatarVersion}` : undefined;
+    const media = buildMediaUrl(user?.avatar_url || "");
+    return addVersionParam(media, avatarVersion);
   };
 
   const getCoverSrc = () => {
-    const url = user?.cover_url || "";
-    const resolved = resolveMediaUrl(url, BACKEND_ORIGIN);
-    return resolved || "https://mui.com/static/images/cards/cover1.jpg";
+    const media = buildMediaUrl(user?.cover_url || "");
+    return media || "https://mui.com/static/images/cards/cover1.jpg";
   };
-
-  const structuredDataJson = useMemo(() => {
-    const role = user?.role;
-    const jobTitle = role === "teacher" ? user?.position || "" : role === "student" ? "Student" : "Administrator";
-    const affiliation = user?.institute || user?.department || "";
-    const avatarUrl = user?.avatar_url || "";
-    const resolvedAvatar = resolveMediaUrl(avatarUrl, BACKEND_ORIGIN);
-    const image = resolvedAvatar ? `${resolvedAvatar}?v=${avatarVersion}` : "";
-    return JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "Person",
-      name: user?.full_name || "",
-      email: user?.email || "",
-      jobTitle,
-      affiliation,
-      url: typeof window !== "undefined" ? window.location.href : "",
-      image,
-    });
-  }, [user?.role, user?.position, user?.institute, user?.department, user?.avatar_url, user?.full_name, user?.email, avatarVersion]);
 
   const ensureConfettiSize = useCallback(() => {
     const canvas = confettiRef.current;
@@ -444,7 +517,7 @@ export default function Profile() {
       u.email ? `EMAIL:${u.email}` : "",
       u.institute || u.department ? `ORG:${u.institute || u.department}` : "",
       u.position || u.status ? `TITLE:${u.position || u.status}` : "",
-      typeof window !== "undefined" ? `URL:${window.location.href}` : "",
+      typeof window !== "undefined" ? `URL:${window.location.href}` : ""
     ].filter(Boolean);
     lines.push("END:VCARD");
     return lines.join("\r\n");
@@ -475,6 +548,20 @@ export default function Profile() {
     [user?.achievements]
   );
 
+  const avatarPx = useMemo(() => {
+    if (isMobile) return 132;
+    return isTwoCol ? 188 : 168;
+  }, [isMobile, isTwoCol]);
+  const avatarSize = `${avatarPx}px`;
+  const avatarFloat = Math.round(avatarPx * 0.55);
+  const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`;
+  const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`;
+  const isDark = theme.palette.mode === "dark";
+  const textSecondary = theme.palette.text.secondary;
+  const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean;
+  const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx]);
+  const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -492,7 +579,7 @@ export default function Profile() {
         telegram,
         achievements,
         department,
-        position,
+        position
       });
       setUser(res.data);
       setEdit(false);
@@ -517,22 +604,6 @@ export default function Profile() {
     navigate("/profile", { replace: true });
   };
 
-  const avatarPx = useMemo(() => {
-    if (isMobile) return 132;
-    return isTwoCol ? 188 : 168;
-  }, [isMobile, isTwoCol]);
-  const avatarSize = `${avatarPx}px`;
-  const avatarFloat = Math.round(avatarPx * 0.55);
-  const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`;
-  const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`;
-
-  const isDark = theme.palette.mode === "dark";
-  const textSecondary = theme.palette.text.secondary;
-
-  const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean;
-  const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx]);
-  const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx]);
-
   return (
     <>
       <Box
@@ -549,15 +620,15 @@ export default function Profile() {
             position: "absolute",
             inset: 0,
             background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.66)}, ${alpha(theme.palette.secondary.dark, 0.6)})`,
-            mixBlendMode: "multiply",
+            mixBlendMode: "multiply"
           },
           "&::after": {
             content: '""',
             position: "absolute",
             inset: 0,
             background: `radial-gradient(1600px 800px at 50% 0%, ${alpha(theme.palette.primary.light, 0.08)} 0%, transparent 60%)`,
-            opacity: 0.6,
-          },
+            opacity: 0.6
+          }
         }}
       />
 
@@ -588,7 +659,7 @@ export default function Profile() {
                 position: "relative",
                 overflow: "hidden",
                 ["--glass-alpha" as any]: ".02",
-                ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                ["--glass-highlight" as any]: "rgba(255,255,255,0)"
               }}
             >
               <Box
@@ -597,7 +668,7 @@ export default function Profile() {
                   gridTemplateColumns: { xs: "1fr", md: "minmax(360px, 420px) minmax(0, 1fr)" },
                   columnGap: { xs: 3, sm: 4, md: 6 },
                   rowGap: { xs: 4, md: 0 },
-                  alignItems: "start",
+                  alignItems: "start"
                 }}
               >
                 <Stack spacing={{ xs: 3.2, md: 4 }} alignItems="stretch">
@@ -614,19 +685,19 @@ export default function Profile() {
                       pb: heroPaddingBottom,
                       boxShadow: `0 28px 70px -44px ${alpha(theme.palette.common.black, isDark ? 0.58 : 0.2)}`,
                       ["--glass-alpha" as any]: ".018",
-                      ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                      ["--glass-highlight" as any]: "rgba(255,255,255,0)"
                     }}
                   >
                     <Box
                       sx={{
                         position: "absolute",
                         inset: 0,
-                        backgroundImage: `url(${getCoverSrc()}?v=${coverVersion})`,
+                        backgroundImage: `url(${addVersionParam(getCoverSrc(), coverVersion)})`,
                         backgroundPosition: "center",
                         backgroundSize: "cover",
                         transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                         transition: reduceMotion ? "none" : "transform 1200ms cubic-bezier(.33,1,.68,1)",
-                        filter: "saturate(1) contrast(1.02) brightness(0.98)",
+                        filter: "saturate(1) contrast(1.02) brightness(0.98)"
                       }}
                     />
                     <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(185deg, rgba(6,9,20,0) 40%, rgba(6,9,20,0.9) 100%)" }} />
@@ -643,7 +714,7 @@ export default function Profile() {
                         alignItems: "center",
                         justifyContent: "center",
                         p: "4px",
-                        animation: reduceMotion ? "none" : `${auraPulse} 14s ease-in-out infinite`,
+                        animation: reduceMotion ? "none" : `${auraPulse} 14s ease-in-out infinite`
                       }}
                     >
                       <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
@@ -656,7 +727,7 @@ export default function Profile() {
                             borderRadius: "50%",
                             fontSize: "clamp(28px, 6vw, 64px)",
                             backgroundColor: alpha(theme.palette.common.white, 0.12),
-                            color: alpha(theme.palette.common.white, 0.92),
+                            color: alpha(theme.palette.common.white, 0.92)
                           }}
                         >
                           {user?.full_name?.[0]}
@@ -675,7 +746,7 @@ export default function Profile() {
                             backgroundColor: "#22c55e",
                             boxShadow: `0 0 0 2px rgba(0,0,0,.18), 0 4px 10px rgba(34,197,94,.45)`,
                             zIndex: 3,
-                            pointerEvents: "none",
+                            pointerEvents: "none"
                           }}
                         >
                           {!reduced && (
@@ -685,7 +756,7 @@ export default function Profile() {
                                 inset: "-6px",
                                 borderRadius: "50%",
                                 border: `2px solid ${alpha("#22c55e", 0.45)}`,
-                                animation: `${onlinePulse} 1.8s ease-in-out infinite`,
+                                animation: `${onlinePulse} 1.8s ease-in-out infinite`
                               }}
                             />
                           )}
@@ -702,7 +773,7 @@ export default function Profile() {
                         pt: heroTextPaddingTop,
                         display: "flex",
                         flexDirection: "column",
-                        gap: 2.4,
+                        gap: 2.4
                       }}
                     >
                       <Box>
@@ -725,14 +796,9 @@ export default function Profile() {
                         {[
                           user!.role === "teacher" ? "Преподаватель" : user!.role === "student" ? "Студент" : "Администратор",
                           ...(user!.role === "student" && user!.course ? [`Курс ${user!.course}`] : []),
-                          ...(user!.institute ? [user!.institute] : []),
+                          ...(user!.institute ? [user!.institute] : [])
                         ].map((chip, idx) => (
-                          <Grow
-                            in
-                            key={`${chip}-${idx}`}
-                            timeout={isTest || reduced ? 0 : 560}
-                            style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
-                          >
+                          <Grow in key={`${chip}-${idx}`} timeout={isTest || reduced ? 0 : 560} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
                             <Chip
                               size="small"
                               label={chip}
@@ -741,7 +807,7 @@ export default function Profile() {
                                 borderRadius: 999,
                                 "& .MuiChip-label": { px: 1.6, py: 0.62, lineHeight: 1.28, fontWeight: 700, letterSpacing: ".01em" },
                                 animation: reduced ? "none" : `${chipHighlight} 12s ease-in-out infinite`,
-                                animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
+                                animationDelay: reduced ? "0ms" : `${idx * 90}ms`
                               }}
                             />
                           </Grow>
@@ -760,7 +826,7 @@ export default function Profile() {
                       flexDirection: "column",
                       gap: { xs: 2.6, md: 3 },
                       ["--glass-alpha" as any]: ".02",
-                      ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                      ["--glass-highlight" as any]: "rgba(255,255,255,0)"
                     }}
                   >
                     <Stack spacing={1.3} alignItems="stretch">
@@ -782,12 +848,7 @@ export default function Profile() {
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                           <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
                           <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                            <a
-                              href={`mailto:${user!.email}`}
-                              style={{ color: "inherit", textDecoration: "none" }}
-                              data-testid="profile-email-link"
-                              title="Email"
-                            >
+                            <a href={`mailto:${user!.email}`} style={{ color: "inherit", textDecoration: "none" }} data-testid="profile-email-link" title="Email">
                               {user!.email}
                             </a>
                           </Typography>
@@ -801,7 +862,7 @@ export default function Profile() {
                           data-testid="copy-email"
                           sx={{
                             transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                            "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
+                            "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" }
                           }}
                         >
                           <ContentCopyIcon fontSize="small" />
@@ -813,14 +874,7 @@ export default function Profile() {
                           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                             <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
                             <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                              <a
-                                href={telegramHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: "inherit", textDecoration: "none" }}
-                                data-testid="profile-telegram-link"
-                                title="Telegram"
-                              >
+                              <a href={telegramHref} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }} data-testid="profile-telegram-link" title="Telegram">
                                 {user!.telegram}
                               </a>
                             </Typography>
@@ -834,7 +888,7 @@ export default function Profile() {
                             data-testid="copy-telegram"
                             sx={{
                               transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" },
+                              "&:hover": { transform: reduced ? "none" : "translateY(-1px) scale(1.05)" }
                             }}
                           >
                             <ContentCopyIcon fontSize="small" />
@@ -844,13 +898,13 @@ export default function Profile() {
                     </Stack>
                   </Paper>
 
-                  {spotifyConnected && nowPlaying && (
+                  {spotifyConnected && effectiveNowPlaying && (
                     <Fade in timeout={isTest || reduced ? 0 : 720}>
                       <Stack spacing={1.4}>
                         <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
                           Сейчас играет
                         </Typography>
-                        <NowPlayingCard data={nowPlaying} />
+                        <NowPlayingCard data={effectiveNowPlaying} />
                       </Stack>
                     </Fade>
                   )}
@@ -866,7 +920,7 @@ export default function Profile() {
                         borderRadius: 3,
                         p: { xs: 2.6, sm: 3, md: 3.4 },
                         ["--glass-alpha" as any]: ".02",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                        ["--glass-highlight" as any]: "rgba(255,255,255,0)"
                       }}
                     >
                       <Stack spacing={2.2}>
@@ -912,14 +966,10 @@ export default function Profile() {
                           borderRadius: 3,
                           p: { xs: 2.6, sm: 3, md: 3.4 },
                           ["--glass-alpha" as any]: ".02",
-                          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                          ["--glass-highlight" as any]: "rgba(255,255,255,0)"
                         }}
                       >
-                        <Typography
-                          variant="h5"
-                          component="h2"
-                          sx={{ fontWeight: 900, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, letterSpacing: "-.01em" }}
-                        >
+                        <Typography variant="h5" component="h2" sx={{ fontWeight: 900, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, letterSpacing: "-.01em" }}>
                           Сведения
                         </Typography>
                         <Accordion
@@ -931,7 +981,7 @@ export default function Profile() {
                             boxShadow: "none",
                             "&::before": { display: "none" },
                             ["--glass-alpha" as any]: ".016",
-                            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                            ["--glass-highlight" as any]: "rgba(255,255,255,0)"
                           }}
                         >
                           <AccordionSummary
@@ -950,14 +1000,14 @@ export default function Profile() {
                                 { label: "Направление", value: user!.track },
                                 { label: "Образовательная программа", value: user!.program },
                                 { label: "Кафедра/отдел", value: user!.department },
-                                { label: "Должность", value: user!.position },
+                                { label: "Должность", value: user!.position }
                               ];
                               return (
                                 <Box
                                   sx={{
                                     display: "grid",
                                     gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                                    gap: { xs: 1.2, md: 1.6 },
+                                    gap: { xs: 1.2, md: 1.6 }
                                   }}
                                 >
                                   {rows.map((r) => (
@@ -975,16 +1025,11 @@ export default function Profile() {
                                   sx={{
                                     display: "grid",
                                     gridTemplateColumns: { xs: "repeat(auto-fit, minmax(140px, 1fr))", sm: "repeat(auto-fit, minmax(160px, 1fr))" },
-                                    gap: 1.2,
+                                    gap: 1.2
                                   }}
                                 >
                                   {achievementsList.map((ach, idx) => (
-                                    <Grow
-                                      in
-                                      key={ach.key}
-                                      timeout={isTest || reduced ? 0 : 500}
-                                      style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
-                                    >
+                                    <Grow in key={ach.key} timeout={isTest || reduced ? 0 : 500} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
                                       <Chip
                                         label={ach.name}
                                         clickable
@@ -993,7 +1038,7 @@ export default function Profile() {
                                             name: ach.name,
                                             issuer: ach.issuer,
                                             date: ach.date,
-                                            url: ach.url,
+                                            url: ach.url
                                           })
                                         }
                                         className="glass--chip"
@@ -1002,7 +1047,7 @@ export default function Profile() {
                                           alignSelf: "stretch",
                                           "& .MuiChip-label": { display: "block", whiteSpace: "normal", lineHeight: 1.3, px: 1.6, py: 1.1, fontWeight: 700 },
                                           animation: reduced ? "none" : `${chipHighlight} 14s ease-in-out infinite`,
-                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
+                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`
                                         }}
                                       />
                                     </Grow>
@@ -1020,10 +1065,7 @@ export default function Profile() {
             </MotionPaper>
           </Container>
 
-          <canvas
-            ref={confettiRef}
-            style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }}
-          />
+          <canvas ref={confettiRef} style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }} />
         </Box>
       </motion.div>
 
@@ -1037,8 +1079,8 @@ export default function Profile() {
           sx: {
             borderRadius: 3,
             ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
+            ["--glass-highlight" as any]: "rgba(255,255,255,0)"
+          }
         }}
       >
         <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>QR-код</DialogTitle>
@@ -1049,7 +1091,7 @@ export default function Profile() {
               p: 2,
               borderRadius: 3,
               border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`,
+              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`
             }}
           >
             <QRCodeSVG
@@ -1063,7 +1105,7 @@ export default function Profile() {
                 src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
                 height: 56,
                 width: 56,
-                excavate: true,
+                excavate: true
               }}
             />
           </Box>
@@ -1088,8 +1130,8 @@ export default function Profile() {
           sx: {
             borderRadius: 3,
             ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
+            ["--glass-highlight" as any]: "rgba(255,255,255,0)"
+          }
         }}
       >
         <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
@@ -1120,8 +1162,6 @@ export default function Profile() {
           {snack?.text}
         </Alert>
       </Snackbar>
-
-      <script type="application/ld+json">{structuredDataJson}</script>
     </>
   );
 }
