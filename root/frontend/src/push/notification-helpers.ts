@@ -1,6 +1,8 @@
 export type NotificationData = {
   url?: string
   actionUrls?: Record<string, string>
+  reportUrl?: string
+  reportPayload?: unknown
   // Allow arbitrary additional payload data from the server.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any
