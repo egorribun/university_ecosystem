@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
+import { softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
 
 type SetUserArg = any | ((prev: any) => any)
@@ -179,12 +180,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       applyToken(nextToken)
       await queryClient.cancelQueries({ queryKey: currentUserQueryKey })
       await queryClient.fetchQuery({ queryKey: currentUserQueryKey, queryFn: fetchCurrentUser })
+      if (typeof window !== "undefined" && typeof Notification !== "undefined") {
+        if (Notification.permission === "granted") {
+          await softSyncPushSubscription()
+        }
+      }
     },
     [applyToken, queryClient]
   )
 
   const logout = useCallback(() => {
-    handleUnauthorized()
+    if (typeof window === "undefined") {
+      handleUnauthorized()
+      return
+    }
+
+    void (async () => {
+      try {
+        await unsubscribePush({ preserveConsent: true })
+      } catch (error) {
+        console.error("Failed to unsubscribe push subscription on logout", error)
+      } finally {
+        handleUnauthorized()
+      }
+    })()
   }, [handleUnauthorized])
 
   const value = useMemo(
