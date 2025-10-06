@@ -9,6 +9,7 @@ Create Date: 2025-06-14 06:36:56.799150
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 from alembic import op
 
@@ -20,16 +21,34 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    if "news" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("news")}
+    fkeys = {fk["name"] for fk in inspector.get_foreign_keys("news") if fk.get("name")}
     with op.batch_alter_table("news") as batch_op:
-        batch_op.drop_constraint("news_author_id_fkey", type_="foreignkey")
-        batch_op.drop_column("author_id")
-        batch_op.add_column(sa.Column("image_url", sa.String(), nullable=True))
+        if "news_author_id_fkey" in fkeys:
+            batch_op.drop_constraint("news_author_id_fkey", type_="foreignkey")
+        if "author_id" in columns:
+            batch_op.drop_column("author_id")
+        if "image_url" not in columns:
+            batch_op.add_column(sa.Column("image_url", sa.String(), nullable=True))
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    if "news" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("news")}
+    fkeys = {fk["name"] for fk in inspector.get_foreign_keys("news") if fk.get("name")}
     with op.batch_alter_table("news") as batch_op:
-        batch_op.add_column(sa.Column("author_id", sa.Integer(), nullable=True))
-        batch_op.create_foreign_key(
-            "news_author_id_fkey", "users", ["author_id"], ["id"]
-        )
-        batch_op.drop_column("image_url")
+        if "author_id" not in columns:
+            batch_op.add_column(sa.Column("author_id", sa.Integer(), nullable=True))
+        if "news_author_id_fkey" not in fkeys:
+            batch_op.create_foreign_key(
+                "news_author_id_fkey", "users", ["author_id"], ["id"]
+            )
+        if "image_url" in columns:
+            batch_op.drop_column("image_url")

@@ -43,12 +43,12 @@
 | `SECRET_KEY` | `super-secret` | Ключ подписи JWT и внутренних токенов. |
 | `FRONTEND_ORIGINS` | `https://app.example.com,https://admin.example.com` | Список доверенных origin для CORS и CSP (`FRONTEND_ORIGIN`/`APP_BASE_URL` дополняют этот список). |
 | `ENABLE_STRICT_SECURITY_HEADERS` | `true`/`false` | Принудительно включает или отключает строгий режим безопасности (по умолчанию prod=ON, dev=OFF). |
-| `SECURITY_CSP` | см. `.env.example` | Базовая CSP-политика; шаблон содержит плейсхолдеры `{nonce}` и `{connect_src}`. |
-| `SECURITY_CSP_REPORT_ONLY` | `true` | Переключение в режим `Content-Security-Policy-Report-Only` (по умолчанию включается в development). |
+| `SECURITY_CSP` | — | Необязательный шаблон CSP с плейсхолдерами `{nonce}` и `{connect_src}`; по умолчанию backend собирает dev-политику (Report-Only, HMR origin) и prod-политику (nonce + `strict-dynamic`). |
+| `SECURITY_CSP_REPORT_ONLY` | `true` | Принудительный режим `Content-Security-Policy-Report-Only` (по умолчанию dev=true, prod=false). |
 | `SECURITY_CONNECT_SRC_EXTRA` | `https://api.spotify.com,https://fcm.googleapis.com` | Дополнительные хосты для директивы `connect-src`. |
-| `ENABLE_COOP` | `false` | Управление заголовком `Cross-Origin-Opener-Policy`; если не задан, следует режиму strict headers. |
-| `ENABLE_COEP` | `true` | Управление заголовком `Cross-Origin-Embedder-Policy`; по умолчанию выключается в dev. |
-| `COEP_VALUE` | `require-corp` / `credentialless` | Значение заголовка COEP при включении. |
+| `ENABLE_COOP` | `false` | Включает заголовок `Cross-Origin-Opener-Policy: same-origin`; по умолчанию отключён и должен включаться осознанно. |
+| `ENABLE_COEP` | `false` | Включает заголовок `Cross-Origin-Embedder-Policy`; по умолчанию отключён, разрешает dev-режим без COEP. |
+| `COEP_VALUE` | `require-corp` / `credentialless` | Значение COEP, используется только при `ENABLE_COEP=true`. |
 | `SECURITY_HSTS_ENABLED` | `true` | Разрешает HSTS (автоматически отключается для не-HTTPS хостов). |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | `smtp.example.com` / `587` / ... | Настройки SMTP-отправки писем. |
 | `SMTP_SECURITY` | `ssl` / `starttls` / `none` | Тип защиты SMTP-сессии. |
@@ -61,10 +61,21 @@
 | `SECURITY_CSP_REPORT_URI` | `https://csp.example.com/report` | Добавляет `report-uri` к CSP для сбора отчётов. |
 
 > Списки значений указываются через запятую. Для переменных, связанных с безопасностью, значения по умолчанию подходят для production; в development можно переопределить их в `.env.local`.
+>
+> По умолчанию backend в dev-режиме включает CSP в режиме Report-Only (с разрешением `http://localhost:5173`, `ws://localhost:5173`, `http://127.0.0.1:8000`) и не выставляет COOP/COEP. В production при `ENABLE_STRICT_SECURITY_HEADERS=true` отдаётся строгая политика с `nonce` + `strict-dynamic`, директивой `require-trusted-types-for 'script'` и белым списком политик `trusted-types app dompurify-news goog#html 'allow-duplicates'`.
+
+### Переменные окружения фронтенда (Vite)
+
+| Переменная | Пример | Назначение |
+| --- | --- | --- |
+| `VITE_BACKEND_ORIGIN` | `http://127.0.0.1:8000` | Явный origin backend API; dev-сервер Vite проксирует `/api`, `/auth`, `/static` и `/push` на этот адрес. |
+| `VITE_ASSETS_BASE` | `http://127.0.0.1:8000` | (Опционально) Базовый origin для медиа/статики, если dev-прокси отключён. |
 
 ## Основные команды для разработчиков
 
-- `alembic upgrade head` — применить все миграции базы данных до актуального состояния.
-- `uvicorn app.main:app --reload` — запустить backend в режиме разработки (использует dev-настройки безопасности и статику из `app/static`).
-- `uvicorn app.main:app --host 0.0.0.0 --port 8000` — старт продового инстанса (с учётом строгих заголовков и актуальной CSP); запускайте под process manager/ASGI-сервером.
-- `pytest` — прогнать автотесты (асинхронные фикстуры, проверка безопасности и статики).
+- `alembic revision --autogenerate -m "add_feature" && alembic upgrade head` — сгенерировать и применить новую миграцию (использует `Base.metadata`).
+- `alembic upgrade head` — привести базу к актуальному состоянию; миграции `push_subscriptions` и тихих часов идемпотентны.
+- `uvicorn app.main:app --reload` — запустить backend в dev-режиме (смягчённые заголовки безопасности, статика из `app/static`).
+- `npm run dev --prefix frontend` — запустить Vite dev-сервер на `localhost:5173` (прокси к API и статику backend).
+- `ENABLE_STRICT_SECURITY_HEADERS=true ENABLE_COOP=true uvicorn app.main:app --host 0.0.0.0 --port 8000` — пример запуска production-инстанса со строгими заголовками (COOP/COEP включайте по необходимости, проксируйте статику через reverse-proxy).
+- `pytest` — прогнать автотесты (включая smoke-тесты заголовков, статики и Alembic).

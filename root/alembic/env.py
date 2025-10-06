@@ -59,12 +59,14 @@ def run_migrations_offline():
     script output.
     """
     url = config.get_main_option("sqlalchemy.url")
+    render_as_batch = url.startswith("sqlite") if url else False
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,  # <-- Важно для изменения типов
         dialect_opts={"paramstyle": "named"},
+        render_as_batch=render_as_batch,
     )
 
     with context.begin_transaction():
@@ -84,10 +86,12 @@ def run_migrations_online():
     )
 
     with connectable.connect() as connection:
+        render_as_batch = connection.dialect.name == "sqlite"
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,  # <-- Важно для autogenerate при смене типа столбца
+            render_as_batch=render_as_batch,
         )
 
         with context.begin_transaction():
