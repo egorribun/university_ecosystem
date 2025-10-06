@@ -5,6 +5,7 @@ def _is_sqlite() -> bool:
     bind = op.get_bind()
     return bind.dialect.name == "sqlite"
 
+
 revision = "change_foreign_keys_ondelete"
 down_revision = "7ea701e08870"
 branch_labels = None

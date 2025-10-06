@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import os
 from pathlib import Path
+
+import pytest
+import sqlalchemy as sa
 
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-import pytest
-import sqlalchemy as sa
-
 from app.core.database import Base
-from app.models import models  # noqa: F401  # ensure tables are registered with Base metadata
+from app.models import (
+    models,  # noqa: F401  # ensure tables are registered with Base metadata
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 

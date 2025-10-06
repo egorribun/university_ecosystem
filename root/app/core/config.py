@@ -423,7 +423,9 @@ class Settings(BaseSettings):
             connect_sources = (
                 self.security_connect_src_values + self._development_connect_overrides()
             )
-            connect_value = " ".join(dict.fromkeys([value for value in connect_sources if value]))
+            connect_value = " ".join(
+                dict.fromkeys([value for value in connect_sources if value])
+            )
             if not connect_value:
                 connect_value = "'self'"
             if self.strict_security_headers_enabled and not report_only:
