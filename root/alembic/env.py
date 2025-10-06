@@ -4,6 +4,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import make_url
+
 from alembic import context
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -15,6 +16,7 @@ if config.config_file_name is not None:
 
 target_metadata = models.Base.metadata
 
+
 def get_url() -> str:
     url = config.get_main_option("sqlalchemy.url")
     if url:
@@ -23,6 +25,7 @@ def get_url() -> str:
     if env_url:
         return env_url
     raise RuntimeError("Database URL is not configured for Alembic")
+
 
 def run_migrations_offline() -> None:
     url = get_url()
@@ -35,6 +38,7 @@ def run_migrations_offline() -> None:
     )
     with context.begin_transaction():
         context.run_migrations()
+
 
 def run_migrations_online() -> None:
     connectable = engine_from_config(
@@ -50,6 +54,7 @@ def run_migrations_online() -> None:
         )
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()
