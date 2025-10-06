@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-
 _DEFAULT_ICON = "/maskable-icon-192.png"
 _DEFAULT_BADGE = _DEFAULT_ICON
 _SYSTEM_ICON = "/guu_logo.png"
