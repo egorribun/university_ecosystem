@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
-import { useAuth } from "@/contexts/AuthContext"
+import { useAuth, currentUserQueryKey } from "@/contexts/AuthContext"
 import {
   Box,
   Button,
@@ -40,7 +40,10 @@ export default function SpotifyConnect() {
     try {
       await api.post("/spotify/disconnect")
       setUser({ ...user, spotify_connected: false, spotify_display_name: null })
-      queryClient.setQueryData(nowPlayingQueryKey, null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
+        queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
+      ])
     } finally {
       setActionLoading(false)
     }
