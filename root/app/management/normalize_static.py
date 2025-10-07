@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,7 +72,7 @@ def _rename_files(base_dir: Path) -> tuple[dict[str, str], dict[str, str]]:
 
 
 async def _update_column(
-    session: AsyncSession, mapping: Dict[str, str], column_name: str
+    session: AsyncSession, mapping: dict[str, str], column_name: str
 ) -> None:
     if not mapping:
         return

@@ -1,6 +1,6 @@
 import base64
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import httpx
@@ -32,7 +32,7 @@ def _basic_headers() -> dict:
 
 def _normalize_scope(scope_val) -> str:
     # settings.spotify_scopes может быть строкой или списком
-    if isinstance(scope_val, (list, tuple, set)):
+    if isinstance(scope_val, list | tuple | set):
         return " ".join(scope_val)
     return str(scope_val or "").strip()
 
@@ -64,7 +64,7 @@ async def spotify_auth_url(user: User = Depends(get_current_user)):
 
 
 async def _refresh_if_needed(db: AsyncSession, user: User) -> bool:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if (
         user.spotify_access_token
         and user.spotify_expires_at
@@ -94,7 +94,7 @@ async def _refresh_if_needed(db: AsyncSession, user: User) -> bool:
     data = r.json()
     user.spotify_access_token = data.get("access_token") or user.spotify_access_token
     exp = int(data.get("expires_in", 3600))
-    user.spotify_expires_at = datetime.now(timezone.utc) + timedelta(seconds=exp)
+    user.spotify_expires_at = datetime.now(UTC) + timedelta(seconds=exp)
     await db.commit()
     return True
 
@@ -152,7 +152,7 @@ async def spotify_callback(
     if not user:
         return fail
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user.spotify_access_token = access
     if refresh:
         user.spotify_refresh_token = refresh
@@ -169,7 +169,7 @@ async def spotify_callback(
 async def spotify_now_playing(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if not getattr(user, "spotify_is_connected", False):
         return schemas.SpotifyNowPlayingOut(is_playing=False, fetched_at=now)

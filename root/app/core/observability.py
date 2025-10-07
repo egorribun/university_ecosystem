@@ -4,9 +4,10 @@ import json
 import logging
 import socket
 import uuid
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from contextvars import ContextVar
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from fastapi import FastAPI
 from opentelemetry import metrics, trace

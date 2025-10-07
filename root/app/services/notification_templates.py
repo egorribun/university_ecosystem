@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 _DEFAULT_ICON = "/maskable-icon-192.png"
 _DEFAULT_BADGE = _DEFAULT_ICON
@@ -42,7 +43,7 @@ class ScenarioContext:
         value = self.get(*keys)
         if value is None:
             return None
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             if isinstance(value, bool):
                 return None
             return str(int(value))

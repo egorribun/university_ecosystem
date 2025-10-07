@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, Union
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from passlib.hash import bcrypt as passlib_bcrypt
 
 from app.core.config import settings
 
@@ -39,7 +38,7 @@ else:  # pragma: no cover - executed during import
         ):
             secret, ident = _orig(cls, secret, ident, new=new)
             if (
-                isinstance(secret, (bytes, bytearray))
+                isinstance(secret, bytes | bytearray)
                 and len(secret) > LEGACY_BCRYPT_MAX_BYTES
             ):
                 secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
@@ -96,10 +95,10 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(
-    sub: Union[str, Any], expires_delta: int | None = None, extra: dict | None = None
+    sub: str | Any, expires_delta: int | None = None, extra: dict | None = None
 ) -> str:
     minutes = expires_delta or settings.access_token_expire_minutes
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(sub),
         "iat": now,

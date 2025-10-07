@@ -1,6 +1,5 @@
 import base64
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -22,7 +21,7 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+def _ensure_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
@@ -36,8 +35,8 @@ async def _save_tokens(
     db: AsyncSession,
     user: User,
     access: str,
-    refresh: Optional[str],
-    scope: Optional[str],
+    refresh: str | None,
+    scope: str | None,
     expires_in: int,
 ):
     user.spotify_access_token = access
@@ -50,7 +49,7 @@ async def _save_tokens(
     await db.refresh(user)
 
 
-async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
+async def _ensure_access_token(db: AsyncSession, user: User) -> str | None:
     if not user.spotify_access_token or not user.spotify_refresh_token:
         return None
     exp = _ensure_utc(user.spotify_token_expires_at)

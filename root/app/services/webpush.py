@@ -114,11 +114,11 @@ def _is_user_in_quiet_hours(user: Any | None, *, now_time: time | None = None) -
 
 
 def _sanitize_vibrate(raw: Any) -> list[int]:
-    if not isinstance(raw, (list, tuple)):
+    if not isinstance(raw, list | tuple):
         return []
     cleaned: list[int] = []
     for item in raw:
-        if isinstance(item, (int, float)):
+        if isinstance(item, int | float):
             cleaned.append(int(item))
     return cleaned
 

@@ -104,10 +104,11 @@ async def test_security_headers_development_report_only(monkeypatch):
     assert "Content-Security-Policy" not in headers
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
     assert "default-src 'self'" in report_only
-    assert (
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'"
-        in report_only
+    expected_script = (
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "http://localhost:5173 'report-sample'"
     )
+    assert expected_script in report_only
     assert (
         "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
     )

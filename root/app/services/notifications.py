@@ -1,7 +1,8 @@
 import asyncio
 import datetime as dt
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
-from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
+from typing import Any
 
 from sqlalchemy import and_, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,15 +66,15 @@ async def create_notifications_for_users(
     db: AsyncSession,
     *,
     title: str,
-    body: Optional[str] = None,
-    type: Optional[str] = None,
-    url: Optional[str] = None,
-    badge: Optional[str] = None,
-    tag: Optional[str] = None,
-    actions: Optional[Sequence[Mapping[str, Any]]] = None,
-    payload_data: Optional[Mapping[str, Any]] = None,
+    body: str | None = None,
+    type: str | None = None,
+    url: str | None = None,
+    badge: str | None = None,
+    tag: str | None = None,
+    actions: Sequence[Mapping[str, Any]] | None = None,
+    payload_data: Mapping[str, Any] | None = None,
     user_ids: Sequence[int],
-    topic: Optional[str] = None,
+    topic: str | None = None,
 ) -> int:
     now = dt.datetime.now(UTC)
     uids = list({int(uid) for uid in user_ids})

@@ -5,10 +5,9 @@ import secrets
 import smtplib
 import ssl
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
-from typing import List, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -87,12 +86,16 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
         settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")
     ).lower()
     name = f", {full_name}" if full_name else ""
+    button_style = (
+        "display:inline-block;padding:10px 16px;background:#1d5fff;color:#fff;"
+        "border-radius:8px;text-decoration:none"
+    )
     html = f"""
     <div style="font-family:Inter,Arial,sans-serif">
       <h2>Сброс пароля</h2>
       <p>Здравствуйте{name}!</p>
       <p>Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует 45 минут.</p>
-      <p><a href="{link}" style="display:inline-block;padding:10px 16px;background:#1d5fff;color:#fff;border-radius:8px;text-decoration:none">Сбросить пароль</a></p>
+      <p><a href="{link}" style="{button_style}">Сбросить пароль</a></p>
       <p>Если вы не запрашивали сброс, проигнорируйте это письмо.</p>
     </div>
     """
@@ -155,7 +158,7 @@ async def forgot_password(
     if user:
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
-        expires = datetime.now(timezone.utc) + timedelta(minutes=45)
+        expires = datetime.now(UTC) + timedelta(minutes=45)
         db.add(
             models.PasswordResetToken(
                 user_id=user.id, token_hash=token_hash, expires_at=expires, used=False
@@ -180,7 +183,7 @@ async def reset_password(
         )
     )
     rec = result.scalar_one_or_none()
-    if not rec or rec.expires_at < datetime.now(timezone.utc):
+    if not rec or rec.expires_at < datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Недействительная или просроченная ссылка",
@@ -277,12 +280,12 @@ async def create_user(data: schemas.UserCreate, db: AsyncSession = Depends(get_d
     return user
 
 
-@router.get("/users", response_model=List[schemas.UserOut])
+@router.get("/users", response_model=list[schemas.UserOut])
 async def get_users(
     db: AsyncSession = Depends(get_db),
-    full_name: Optional[str] = Query(None),
-    group_id: Optional[int] = Query(None),
-    role: Optional[str] = Query(None),
+    full_name: str | None = Query(None),
+    group_id: int | None = Query(None),
+    role: str | None = Query(None),
     user: models.User = Depends(get_current_user),
 ):
     if user.role != "admin":
@@ -333,7 +336,7 @@ async def create_group(
     return await crud.create_group(db, data)
 
 
-@router.get("/groups", response_model=List[schemas.GroupOut])
+@router.get("/groups", response_model=list[schemas.GroupOut])
 async def get_groups(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Group))
     return result.scalars().all()
@@ -353,7 +356,7 @@ async def add_schedule(
     return result
 
 
-@router.get("/schedule/{group_id}", response_model=List[schemas.ScheduleOut])
+@router.get("/schedule/{group_id}", response_model=list[schemas.ScheduleOut])
 async def get_schedule(
     group_id: int,
     response: Response,
@@ -438,7 +441,7 @@ async def _spotify_refresh_if_needed(db: AsyncSession, user: models.User) -> Non
         user, "spotify_refresh_token", None
     ):
         raise HTTPException(status_code=400, detail="Spotify не подключён")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if getattr(
         user, "spotify_token_expires_at", None
     ) and user.spotify_token_expires_at > now + timedelta(seconds=30):
@@ -490,9 +493,9 @@ async def spotify_auth_url(req: Request, user: models.User = Depends(get_current
 @router.get("/spotify/callback")
 async def spotify_callback(
     request: Request,
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     if error or not code:
@@ -529,7 +532,7 @@ async def spotify_callback(
         url = settings.app_base_url_clean + "/profile?spotify=error"
         return RedirectResponse(url)
     j = r.json()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user.spotify_access_token = j.get("access_token")
     user.spotify_refresh_token = j.get("refresh_token") or user.spotify_refresh_token
     user.spotify_token_expires_at = now + timedelta(
@@ -556,7 +559,7 @@ async def spotify_now_playing(
             "https://api.spotify.com/v1/me/player/currently-playing",
             headers={"Authorization": f"Bearer {token}"},
         )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if r.status_code == 204:
         if hasattr(user, "spotify_is_playing"):
             user.spotify_is_playing = False
@@ -613,7 +616,7 @@ async def create_event(
     return await crud.create_event(db, data, user_id=user.id)
 
 
-@router.get("/events", response_model=List[schemas.EventOut])
+@router.get("/events", response_model=list[schemas.EventOut])
 async def all_events(
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
@@ -655,7 +658,7 @@ async def unregister_event(
     return await crud.unregister_attendance(db, data, user_id=user.id)
 
 
-@router.get("/events/my", response_model=List[schemas.EventOut])
+@router.get("/events/my", response_model=list[schemas.EventOut])
 async def my_events(
     db: AsyncSession = Depends(get_db), user: models.User = Depends(get_current_user)
 ):
@@ -689,7 +692,7 @@ async def upload_event_file(
     return ef
 
 
-@router.get("/events/{id}/files", response_model=List[schemas.EventFileOut])
+@router.get("/events/{id}/files", response_model=list[schemas.EventFileOut])
 async def get_event_files(id: int, db: AsyncSession = Depends(get_db)):
     files = (
         (
@@ -831,7 +834,7 @@ async def create_news(
     return record
 
 
-@router.get("/news", response_model=List[schemas.NewsOut])
+@router.get("/news", response_model=list[schemas.NewsOut])
 async def news_list(
     response: Response,
     if_none_match: str | None = Header(default=None),
