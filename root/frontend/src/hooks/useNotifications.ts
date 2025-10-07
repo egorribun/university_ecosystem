@@ -1,27 +1,37 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react"
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query"
 import {
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   type NotificationListResponse,
-} from "@/api/notifications";
+} from "@/api/notifications"
 
 export type AppNotification = {
-  id: number | string;
-  title: string;
-  body?: string;
-  type?: string;
-  url?: string;
-  created_at: string;
-  read: boolean;
-  read_at?: string;
-  avatar_url?: string;
-  icon?: string;
-};
+  id: number | string
+  title: string
+  body?: string
+  type?: string
+  url?: string
+  created_at: string
+  read: boolean
+  read_at?: string
+  avatar_url?: string
+  icon?: string
+}
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 20
 
-type LoadMode = "reset" | "append";
+export const notificationsQueryKey = ["notifications", "list"] as const
+
+type NotificationsInfiniteData = InfiniteData<NotificationListResponse, string | null>
+
+type LoadMode = "reset" | "append"
 
 function normalizeItem(item: NotificationListResponse["items"][number]): AppNotification {
   return {
@@ -33,168 +43,265 @@ function normalizeItem(item: NotificationListResponse["items"][number]): AppNoti
     created_at: item.created_at,
     read: Boolean(item.read),
     read_at: item.read_at ?? undefined,
-  };
+  }
+}
+
+function markItemReadInCache(
+  data: NotificationsInfiniteData | undefined,
+  id: number | string,
+  iso: string,
+): NotificationsInfiniteData | undefined {
+  if (!data) return data
+
+  let mutated = false
+  let decremented = false
+
+  const pages = data.pages.map(page => {
+    const index = page.items.findIndex(item => item.id === Number(id))
+    if (index === -1) return page
+
+    const original = page.items[index]
+    const wasUnread = !original.read
+    const nextItem = {
+      ...original,
+      read: true,
+      read_at: original.read_at ?? iso,
+    }
+
+    const unread_count =
+      wasUnread && !decremented ? Math.max(0, (page.unread_count ?? 0) - 1) : page.unread_count
+    if (wasUnread && !decremented) decremented = true
+
+    mutated = mutated || wasUnread || original.read_at == null
+
+    const nextItems = page.items.slice()
+    nextItems[index] = nextItem
+
+    return {
+      ...page,
+      unread_count,
+      items: nextItems,
+    }
+  })
+
+  if (!mutated) return data
+
+  return {
+    ...data,
+    pages,
+  }
+}
+
+function markAllReadInCache(
+  data: NotificationsInfiniteData | undefined,
+  iso: string,
+): NotificationsInfiniteData | undefined {
+  if (!data) return data
+
+  let mutated = false
+
+  const pages = data.pages.map(page => {
+    let changed = false
+    const nextItems = page.items.map(item => {
+      if (!item.read || !item.read_at) {
+        changed = true
+        return {
+          ...item,
+          read: true,
+          read_at: item.read_at ?? iso,
+        }
+      }
+      return item
+    })
+
+    if (!changed && (page.unread_count ?? 0) === 0) {
+      return page
+    }
+
+    mutated = mutated || changed || (page.unread_count ?? 0) > 0
+
+    return {
+      ...page,
+      unread_count: 0,
+      items: changed ? nextItems : page.items,
+    }
+  })
+
+  if (!mutated) return data
+
+  return {
+    ...data,
+    pages,
+  }
 }
 
 export function useNotifications() {
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const unreadFromServer = useRef(0);
-  const seenIds = useRef<Set<string | number>>(new Set());
-  const nextCursorRef = useRef<string | null>(null);
-  const loadingRef = useRef(false);
-  const hasMoreRef = useRef(false);
-  const initializedRef = useRef(false);
+  const queryClient = useQueryClient()
+
+  const query = useInfiniteQuery({
+    queryKey: notificationsQueryKey,
+    queryFn: async ({ pageParam }) =>
+      fetchNotifications({ limit: PAGE_SIZE, cursor: pageParam ?? null }),
+    initialPageParam: null as string | null,
+    getNextPageParam: lastPage =>
+      lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined,
+  })
+
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+  } = query
+
+  const items = useMemo(() => {
+    if (!data) return [] as AppNotification[]
+    return data.pages.flatMap(page => page.items.map(normalizeItem))
+  }, [data])
 
   const unreadCount = useMemo(() => {
-    const local = items.reduce((acc, n) => acc + (n.read ? 0 : 1), 0);
-    return Math.max(local, unreadFromServer.current);
-  }, [items]);
+    const fromItems = items.reduce((acc, item) => acc + (item.read ? 0 : 1), 0)
+    const fromServer =
+      data?.pages.reduce((max, page) => Math.max(max, page.unread_count ?? 0), 0) ?? 0
+    return Math.max(fromItems, fromServer)
+  }, [data, items])
 
-  const load = useCallback(async (mode: LoadMode = "reset") => {
-    if (mode === "append" && (loadingRef.current || !hasMoreRef.current)) {
-      return;
-    }
-
-    loadingRef.current = true;
-    setFetching(true);
-    const showLoader = !initializedRef.current || mode === "reset";
-    if (showLoader) {
-      setLoading(true);
-    }
-
-    try {
-      const cursor = mode === "append" ? nextCursorRef.current : null;
-      const page = await fetchNotifications({ limit: PAGE_SIZE, cursor });
-      unreadFromServer.current = page.unread_count ?? 0;
-      setHasMore(Boolean(page.has_more));
-      hasMoreRef.current = Boolean(page.has_more);
-      nextCursorRef.current = page.next_cursor ?? null;
-
-      const mapped = page.items.map(normalizeItem);
-
-      setItems(prev => {
-        if (mode === "reset") {
-          seenIds.current = new Set();
-        }
-
-        const map = new Map<string | number, AppNotification>();
-        if (mode !== "reset") {
-          for (const it of prev) {
-            map.set(it.id, it);
-          }
-        }
-
-        for (const it of mapped) {
-          map.set(it.id, it);
-          seenIds.current.add(it.id);
-        }
-
-        const next = Array.from(map.values());
-        next.sort((a, b) => {
-          const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-          if (diff !== 0) return diff;
-          const aId = typeof a.id === "number" ? a.id : Number.parseInt(String(a.id), 10);
-          const bId = typeof b.id === "number" ? b.id : Number.parseInt(String(b.id), 10);
-          if (Number.isFinite(aId) && Number.isFinite(bId)) return bId - aId;
-          return String(b.id).localeCompare(String(a.id));
-        });
-        return next;
-      });
-    } catch (error) {
-      console.error("Failed to load notifications", error);
+  const load = useCallback(
+    async (mode: LoadMode = "reset") => {
       if (mode === "append") {
-        setHasMore(false);
-        hasMoreRef.current = false;
+        if (!hasNextPage) return
+        await fetchNextPage()
+        return
       }
-    } finally {
-      loadingRef.current = false;
-      setFetching(false);
-      if (showLoader) {
-        setLoading(false);
-      }
-      if (!initializedRef.current) {
-        initializedRef.current = true;
-        setInitialized(true);
-      }
-    }
-  }, []);
+      await refetch()
+    },
+    [fetchNextPage, hasNextPage, refetch],
+  )
 
-  const loadMore = useCallback(async () => {
-    await load("append");
-  }, [load]);
+  const markReadMutation = useMutation({
+    mutationFn: async ({ id }: { id: number; iso: string }) => {
+      await markNotificationRead(id)
+    },
+    onMutate: async ({ id, iso }: { id: number; iso: string }) => {
+      await queryClient.cancelQueries({ queryKey: notificationsQueryKey })
+      const previous = queryClient.getQueryData<NotificationsInfiniteData>(notificationsQueryKey)
 
-  const markRead = useCallback(async (id: number | string) => {
-    const nowIso = new Date().toISOString();
-    setItems(prev =>
-      prev.map(n => (n.id === id ? { ...n, read: true, read_at: n.read_at ?? nowIso } : n))
-    );
-    if (unreadFromServer.current > 0) unreadFromServer.current -= 1;
-    if (typeof id === "number") {
-      try {
-        await markNotificationRead(id);
-      } catch (error) {
-        console.error("Failed to mark notification read", error);
+      queryClient.setQueryData(
+        notificationsQueryKey,
+        (current: NotificationsInfiniteData | undefined) => markItemReadInCache(current, id, iso),
+      )
+
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(notificationsQueryKey, context.previous)
       }
-    }
-  }, []);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationsQueryKey })
+    },
+  })
+
+  const markAllMutation = useMutation({
+    mutationFn: async () => {
+      await markAllNotificationsRead()
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: notificationsQueryKey })
+      const previous = queryClient.getQueryData<NotificationsInfiniteData>(notificationsQueryKey)
+      const iso = new Date().toISOString()
+      queryClient.setQueryData(
+        notificationsQueryKey,
+        (current: NotificationsInfiniteData | undefined) => markAllReadInCache(current, iso),
+      )
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(notificationsQueryKey, context.previous)
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationsQueryKey })
+    },
+  })
+
+  const markRead = useCallback(
+    async (id: number | string) => {
+      const parsed = Number(id)
+      const iso = new Date().toISOString()
+
+      if (Number.isFinite(parsed)) {
+        await markReadMutation.mutateAsync({ id: parsed, iso })
+      } else {
+        queryClient.setQueryData(
+          notificationsQueryKey,
+          (current: NotificationsInfiniteData | undefined) => markItemReadInCache(current, id, iso),
+        )
+        void queryClient.invalidateQueries({ queryKey: notificationsQueryKey })
+      }
+    },
+    [markReadMutation, queryClient],
+  )
 
   const markAllRead = useCallback(async () => {
-    const nowIso = new Date().toISOString();
-    setItems(prev => prev.map(n => ({ ...n, read: true, read_at: n.read_at ?? nowIso })));
-    unreadFromServer.current = 0;
-    try {
-      await markAllNotificationsRead();
-    } catch (error) {
-      console.error("Failed to mark all notifications read", error);
-    }
-  }, []);
+    await markAllMutation.mutateAsync()
+  }, [markAllMutation])
+
+  const loadMore = useCallback(async () => {
+    await load("append")
+  }, [load])
 
   const refresh = useCallback(async () => {
-    await load("reset");
-  }, [load]);
+    await load("reset")
+  }, [load])
 
   useEffect(() => {
-    void load("reset");
-  }, [load]);
+    if (!("serviceWorker" in navigator)) return
 
-  useEffect(() => {
-    if ("setAppBadge" in navigator) {
-      try {
-        const nav: any = navigator;
-        if (unreadCount > 0) nav.setAppBadge(unreadCount);
-        else nav.clearAppBadge?.();
-      } catch {}
-    }
-  }, [unreadCount]);
-
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    const onMsg = (e: MessageEvent) => {
-      const msg: any = e.data ?? {};
+    const onMessage = (event: MessageEvent) => {
+      const msg: any = event.data ?? {}
       if (msg?.type === "PUSH_NOTIFICATION") {
-        void refresh();
+        void queryClient.invalidateQueries({ queryKey: notificationsQueryKey })
+        return
       }
       if (msg?.type === "NOTIFICATION_MARK_READ" && msg.id != null) {
-        void markRead(msg.id);
+        const iso = new Date().toISOString()
+        queryClient.setQueryData(
+          notificationsQueryKey,
+          (current: NotificationsInfiniteData | undefined) => markItemReadInCache(current, msg.id, iso),
+        )
+        return
       }
-    };
-    navigator.serviceWorker.addEventListener("message", onMsg);
-    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
-  }, [markRead, refresh]);
+    }
+
+    navigator.serviceWorker.addEventListener("message", onMessage)
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage)
+  }, [queryClient])
+
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) return
+    try {
+      const nav: any = navigator
+      if (unreadCount > 0) nav.setAppBadge?.(unreadCount)
+      else nav.clearAppBadge?.()
+    } catch {}
+  }, [unreadCount])
 
   return {
     items,
-    loading: loading && !initialized,
+    loading: isLoading,
     unreadCount,
-    hasMore,
+    hasMore: Boolean(hasNextPage),
     loadMore,
     markRead,
     markAllRead,
     refresh,
-    fetching,
-  };
+    fetching: isFetching,
+    loadingMore: isFetchingNextPage,
+  }
 }

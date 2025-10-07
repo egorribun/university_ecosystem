@@ -137,7 +137,6 @@ const Navbar = () => {
       { to: "/dashboard", label: "Главная" },
       { to: "/news", label: "Новости" },
       { to: "/schedule", label: "Расписание" },
-      { to: "/notifications", label: "Уведомления" },
       { to: "/events", label: "Мероприятия" },
       { to: "/activity", label: "Активность" },
       { to: "/map", label: "Карта" }
