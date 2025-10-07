@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import api from '../api/client'
 import {
   Box, Typography, Paper, CircularProgress, Stack, IconButton, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Button, useMediaQuery, Snackbar
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Button, useMediaQuery, Snackbar, Skeleton
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -51,6 +51,7 @@ const NewsDetail = () => {
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const [snack, setSnack] = useState('')
+  const [imageFailed, setImageFailed] = useState(false)
 
   useEffect(() => {
     loadNews()
@@ -149,17 +150,25 @@ const NewsDetail = () => {
     }
   }
 
-  const getImageUrl = () => {
-    if (previewUrl) return previewUrl
-    const path = editOpen ? editData.image_url : news?.image_url
-    if (!path) return ''
-    return resolveMediaUrl(path, BACKEND_ORIGIN)
-  }
-
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1)
     else navigate('/news')
   }
+
+  const sanitizedContent = useMemo(
+    () => sanitizeNewsHtml(news?.content ?? ""),
+    [news?.content]
+  )
+
+  const currentImagePath = previewUrl || (editOpen ? editData.image_url : news?.image_url)
+  const resolvedImageUrl = useMemo(
+    () => resolveMediaUrl(currentImagePath, BACKEND_ORIGIN),
+    [currentImagePath]
+  )
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [resolvedImageUrl])
 
   if (loading) {
     return (
@@ -170,11 +179,6 @@ const NewsDetail = () => {
       </Layout>
     )
   }
-
-  const sanitizedContent = useMemo(
-    () => sanitizeNewsHtml(news?.content ?? ""),
-    [news?.content]
-  )
 
   if (!news) {
     return (
@@ -275,24 +279,38 @@ const NewsDetail = () => {
             )}
           </Typography>
 
-          {getImageUrl() && (
+          {resolvedImageUrl && !imageFailed && (
             <Box
               component="img"
-              src={getImageUrl()}
+              src={resolvedImageUrl}
               alt={news.title || "Новость"}
               loading="lazy"
               decoding="async"
               sx={{
                 width: "100%",
                 maxWidth: { xs: "100%", md: 800, lg: 1000 },
-                maxHeight: { xs: 220, sm: 340, md: 420, lg: 500 },
+                height: { xs: 220, sm: 340, md: 420, lg: 500 },
                 objectFit: "cover",
                 borderRadius: 4,
                 border: "1px solid #eee",
                 mb: 2,
                 background: "#f7f8fa"
               }}
-              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+              onError={() => setImageFailed(true)}
+            />
+          )}
+
+          {resolvedImageUrl && imageFailed && (
+            <Skeleton
+              variant="rectangular"
+              animation="wave"
+              sx={{
+                width: "100%",
+                maxWidth: { xs: "100%", md: 800, lg: 1000 },
+                height: { xs: 220, sm: 340, md: 420, lg: 500 },
+                borderRadius: 4,
+                mb: 2
+              }}
             />
           )}
 
@@ -363,10 +381,10 @@ const NewsDetail = () => {
                   />
                 </Button>
 
-                {getImageUrl() && (
+                {resolvedImageUrl && !imageFailed && (
                   <Box>
                     <img
-                      src={getImageUrl()}
+                      src={resolvedImageUrl}
                       alt="preview"
                       style={{
                         width: 120,
@@ -377,6 +395,14 @@ const NewsDetail = () => {
                       }}
                     />
                   </Box>
+                )}
+                {resolvedImageUrl && imageFailed && (
+                  <Skeleton
+                    variant="rectangular"
+                    width={120}
+                    height={70}
+                    sx={{ borderRadius: 2 }}
+                  />
                 )}
               </Box>
             </Stack>
