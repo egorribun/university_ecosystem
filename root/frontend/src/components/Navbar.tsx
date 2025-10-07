@@ -326,7 +326,15 @@ const Navbar = () => {
             style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? "8px" : "10px", minWidth: 0, padding: "6px 6px", borderRadius: 12, textDecoration: "none" }}
           >
             <div style={{ width: `${logoWrapSize}px`, height: `${logoWrapSize}px`, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#fff", boxShadow: "0 0 8px rgba(0,0,0,0.13)" }}>
-              <img src={guuLogo} alt="ГУУ" width={logoImgSize} height={logoImgSize} style={{ objectFit: "contain" }} />
+              <img
+                src={guuLogo}
+                alt="ГУУ"
+                width={logoImgSize}
+                height={logoImgSize}
+                style={{ objectFit: "contain" }}
+                loading="eager"
+                decoding="async"
+              />
             </div>
             <span style={{ color: "#fff", fontWeight: 800, fontSize: titleFont, whiteSpace: "nowrap", letterSpacing: ".2px" }}>
               Экосистема ГУУ
@@ -344,6 +352,10 @@ const Navbar = () => {
                   style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: "cover", border: "1px solid #d7d7d7", background: "#fff", cursor: "pointer" }}
                   onClick={() => go("/profile")}
                   onError={handleAvatarError}
+                  loading="lazy"
+                  decoding="async"
+                  width={avatarSize}
+                  height={avatarSize}
                 />
               ) : (
                 <Skeleton
@@ -412,6 +424,10 @@ const Navbar = () => {
                 style={{ width: "36px", height: "36px", borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ccc", background: "#fff", cursor: "pointer" }}
                 onClick={() => go("/profile")}
                 onError={handleAvatarError}
+                loading="lazy"
+                decoding="async"
+                width={36}
+                height={36}
               />
               <button
                 type="button"
@@ -467,7 +483,15 @@ const Navbar = () => {
           >
             <div style={{ width: "100%", padding: "18px 0 10px 22px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #ede2d2" }}>
               <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", boxShadow: "0 0 6px rgba(0,0,0,0.10)" }}>
-                <img src={guuLogo} alt="ГУУ" width={24} height={24} style={{ objectFit: "contain" }} />
+                <img
+                  src={guuLogo}
+                  alt="ГУУ"
+                  width={24}
+                  height={24}
+                  style={{ objectFit: "contain" }}
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
               <span style={{ color: navTextColor, fontWeight: 800, fontSize: "clamp(15px, 4.5vw, 18px)", whiteSpace: "nowrap" }}>
                 Экосистема ГУУ

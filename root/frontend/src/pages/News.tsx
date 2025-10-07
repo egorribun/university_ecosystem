@@ -1,6 +1,14 @@
 import Layout from "../components/Layout"
 import NewsCard from "../components/NewsCard"
-import { useEffect, useState, useRef, useCallback, useDeferredValue, startTransition } from "react"
+import {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useDeferredValue,
+  startTransition,
+  useMemo,
+} from "react"
 import axios from "../api/client"
 import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent, Stack, TextField, useMediaQuery
@@ -44,31 +52,41 @@ const News = () => {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const hydratedFromCache = useRef(false)
   const isMobile = useMediaQuery("(max-width:600px)")
 
   const cacheKey = "news:list"
   const etagKey = "news:etag"
 
-  const fetchNews = useCallback(async () => {
-    let cancelled = false
-    const cached = localStorage.getItem(cacheKey)
-    if (cached && newsList.length === 0) {
+  const fetchNews = useCallback(
+    async (signal?: AbortSignal) => {
+      const cached = localStorage.getItem(cacheKey)
+
+      if (cached && !hydratedFromCache.current) {
+        try {
+          const arr = toNewsList(JSON.parse(cached))
+          startTransition(() => setNewsList(arr))
+          hydratedFromCache.current = true
+        } catch {}
+      }
+
+      const shouldShowLoader = !cached && !hydratedFromCache.current
+      if (shouldShowLoader) setLoading(true)
+
       try {
-        const arr = toNewsList(JSON.parse(cached))
-        startTransition(() => setNewsList(arr))
-      } catch {}
-    }
-    setLoading(!cached)
-    try {
-      const etag = localStorage.getItem(etagKey) || ""
-      const res = await axios.get<NewsItem[]>("/news", {
-        headers: etag ? { "If-None-Match": etag } : {},
-        validateStatus: s => s === 200 || s === 304
-      })
-      if (!cancelled) {
+        const etag = localStorage.getItem(etagKey) || ""
+        const res = await axios.get<NewsItem[]>("/news", {
+          headers: etag ? { "If-None-Match": etag } : {},
+          signal,
+          validateStatus: (s) => s === 200 || s === 304,
+        })
+
+        if (signal?.aborted) return
+
         if (res.status === 200) {
           const arr = toNewsList(res.data)
           startTransition(() => setNewsList(arr))
+          hydratedFromCache.current = true
           localStorage.setItem(cacheKey, JSON.stringify(arr))
           const newTag = (res.headers?.etag as string) || ""
           if (newTag) localStorage.setItem(etagKey, newTag)
@@ -76,25 +94,26 @@ const News = () => {
           try {
             const arr = toNewsList(JSON.parse(cached))
             startTransition(() => setNewsList(arr))
+            hydratedFromCache.current = true
           } catch {
             startTransition(() => setNewsList([]))
           }
         }
+      } catch {
+        if (signal?.aborted) return
+        if (!cached) startTransition(() => setNewsList([]))
+      } finally {
+        if (signal?.aborted) return
+        if (shouldShowLoader) setLoading(false)
       }
-    } catch {
-      if (!cached) startTransition(() => setNewsList([]))
-    } finally {
-      if (!cancelled) setLoading(false)
-    }
-    return () => { cancelled = true }
-  }, [newsList.length])
+    },
+    [cacheKey, etagKey],
+  )
 
   useEffect(() => {
-    let cleanup = () => {}
-    fetchNews().then((fn) => {
-      if (typeof fn === "function") cleanup = fn
-    })
-    return () => cleanup()
+    const controller = new AbortController()
+    void fetchNews(controller.signal)
+    return () => controller.abort()
   }, [fetchNews])
 
   useEffect(() => {
@@ -128,16 +147,16 @@ const News = () => {
     return () => { cancelled = true }
   }, [visibleCount, deferredList.length])
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       setImageFile(file)
       if (imagePreview) URL.revokeObjectURL(imagePreview)
       setImagePreview(URL.createObjectURL(file))
     }
-  }
+  }, [imagePreview])
 
-  const handleAddNews = async () => {
+  const handleAddNews = useCallback(async () => {
     if (adding) return
     setAdding(true)
     try {
@@ -164,9 +183,9 @@ const News = () => {
     } finally {
       setAdding(false)
     }
-  }
+  }, [adding, fetchNews, imageFile, imagePreview, newsData])
 
-  const handleCloseDialog = () => {
+  const handleCloseDialog = useCallback(() => {
     setAddOpen(false)
     setNewsData(initialNews)
     setImageFile(null)
@@ -175,9 +194,12 @@ const News = () => {
       setImagePreview(null)
     }
     if (imageInputRef.current) imageInputRef.current.value = ""
-  }
+  }, [imagePreview])
 
-  const visibleList = visibleCount > 0 ? deferredList.slice(0, visibleCount) : deferredList
+  const visibleList = useMemo(
+    () => (visibleCount > 0 ? deferredList.slice(0, visibleCount) : deferredList),
+    [deferredList, visibleCount],
+  )
 
   return (
     <Layout>
@@ -329,6 +351,9 @@ const News = () => {
                     src={imagePreview}
                     alt="preview"
                     loading="lazy"
+                    decoding="async"
+                    width={100}
+                    height={60}
                     style={{
                       width: 100,
                       height: 60,

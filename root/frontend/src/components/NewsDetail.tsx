@@ -284,6 +284,9 @@ const NewsDetail = () => {
               alt={news.title || "Новость"}
               loading="lazy"
               decoding="async"
+              width={1000}
+              height={500}
+              sizes="(min-width: 1200px) 800px, (min-width: 900px) 640px, 100vw"
               sx={{
                 width: "100%",
                 maxWidth: { xs: "100%", md: 800, lg: 1000 },

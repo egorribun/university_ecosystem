@@ -145,6 +145,9 @@ export function useNotifications() {
     initialPageParam: null as string | null,
     getNextPageParam: lastPage =>
       lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const {
