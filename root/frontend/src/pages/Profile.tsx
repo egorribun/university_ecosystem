@@ -83,20 +83,57 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     [duration]
   );
 
-  const [progress, setProgress] = useState<number>(() => clampProgress(data.progress_ms));
-  const startRef = useRef<number>(Date.now() - clampProgress(data.progress_ms));
+  const initialProgress = clampProgress(data.progress_ms);
+  const [progress, setProgress] = useState<number>(() => initialProgress);
+  const startRef = useRef<number>(Date.now() - initialProgress);
   const rafRef = useRef<number | null>(null);
+  const prevTrackIdRef = useRef<string | null>(data.track_id ?? null);
+  const prevProgressRef = useRef<number>(initialProgress);
+  const prevIsPlayingRef = useRef<boolean>(data.is_playing);
 
   useEffect(() => {
     const next = clampProgress(data.progress_ms);
+    const trackChanged = (data.track_id ?? null) !== prevTrackIdRef.current;
+    const progressChanged = next !== prevProgressRef.current;
+    const resumed = data.is_playing && !prevIsPlayingRef.current;
+
+    if (trackChanged) {
+      prevTrackIdRef.current = data.track_id ?? null;
+    }
+
+    if (progressChanged) {
+      prevProgressRef.current = next;
+    }
+
+    if (trackChanged || progressChanged || resumed) {
+      startRef.current = Date.now() - next;
+      setProgress(next);
+    }
+
+    prevIsPlayingRef.current = data.is_playing;
+  }, [clampProgress, data.is_playing, data.progress_ms, data.track_id]);
+
+  useEffect(() => {
+    if (data.is_playing) return;
+    const next = clampProgress(data.progress_ms);
     startRef.current = Date.now() - next;
-    setProgress(next);
-  }, [clampProgress, data.progress_ms, data.duration_ms, data.track_id, data.is_playing]);
+    setProgress((prev) => (prev === next ? prev : next));
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, [clampProgress, data.is_playing, data.progress_ms]);
 
   const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0;
 
   useEffect(() => {
-    if (!shouldAnimate) return;
+    if (!shouldAnimate) {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
+    }
     const loop = () => {
       const elapsed = Date.now() - startRef.current;
       setProgress(clampProgress(elapsed));
@@ -104,7 +141,10 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [clampProgress, shouldAnimate]);
 

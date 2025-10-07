@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "@/hooks/useNotifications";
 import { usePushPreferences, NOTIFICATION_TOPIC_LABELS } from "@/hooks/usePushPreferences";
+import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
 import api from "../api/client";
 import {
   Box,
@@ -277,6 +278,10 @@ export default function Settings() {
     try {
       const r = await fetch("/spotify/disconnect", { method: "POST", credentials: "include" });
       if (!r.ok) throw new Error();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
+        queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
+      ]);
       const meResp = await fetch("/api/users/me", { credentials: "include" });
       const me = await meResp.json();
       setUser(me);
