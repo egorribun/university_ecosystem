@@ -54,6 +54,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
 import { appendCacheBust, resolveMediaUrl } from "@/utils/media";
+import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify";
 
 type ThemeMode = "system" | "light" | "dark";
 
@@ -267,8 +268,9 @@ export default function Settings() {
       const r = await fetch("/spotify/auth-url", { credentials: "include" });
       if (!r.ok) throw new Error();
       const data = (await r.json()) as { url?: string };
-      if (data?.url) window.location.assign(data.url);
-      else throw new Error();
+      const safeUrl = sanitizeSpotifyAuthorizeUrl(data?.url);
+      if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL");
+      window.location.assign(safeUrl);
     } catch {
       setSnack({ text: "Не удалось открыть авторизацию Spotify", sev: "error" });
     }

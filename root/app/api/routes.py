@@ -1,6 +1,6 @@
 import base64
 import hashlib
-import mimetypes
+import logging
 import secrets
 import smtplib
 import ssl
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from fastapi import (
@@ -38,11 +38,11 @@ from app.core.database import get_db
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
+from app.utils.files import save_image
 
 router = APIRouter()
 
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_IMAGE_SIZE = 5 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 def _news_item_cache_key(news_id: int) -> str:
@@ -58,6 +58,23 @@ _NEWS_LIST_CACHE_KEY = "news:list"
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _redact_sensitive_query(url: str) -> str:
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "[redacted]"
+    redacted_items = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key.lower() in {"token", "code"}:
+            redacted_items.append((key, "***redacted***"))
+        else:
+            redacted_items.append((key, value))
+    sanitized_query = urlencode(redacted_items, doseq=True)
+    sanitized = parts._replace(query=sanitized_query)
+    result = urlunsplit(sanitized)
+    return result or "[redacted]"
 
 
 def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
@@ -87,7 +104,10 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
     msg.add_alternative(html, subtype="html")
     try:
         if not host or not port:
-            print(f"[EMAIL_FALLBACK] {to_email} <- {link}")
+            safe_link = _redact_sensitive_query(link)
+            logger.warning(
+                "password.reset_email.fallback", extra={"email": to_email, "link": safe_link}
+            )
             return
         ctx = ssl.create_default_context()
         if security == "ssl":
@@ -108,27 +128,17 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
                 if user:
                     s.login(user, password)
                 s.send_message(msg)
-    except Exception as e:
-        print(f"[EMAIL_ERROR] {e}. Link for {to_email}: {link}")
+    except Exception:
+        safe_link = _redact_sensitive_query(link)
+        logger.error(
+            "password.reset_email.error",
+            extra={"email": to_email, "link": safe_link},
+            exc_info=True,
+        )
 
 
 async def save_upload(file: UploadFile, subdir: str, prefix: str) -> str:
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=415, detail="unsupported media type")
-    data = await file.read(MAX_IMAGE_SIZE + 1)
-    if len(data) > MAX_IMAGE_SIZE:
-        raise HTTPException(status_code=413, detail="file too large")
-    ext = (
-        mimetypes.guess_extension(file.content_type)
-        or f".{file.filename.split('.')[-1].lower()}"
-    )
-    name = f"{prefix}_{secrets.token_hex(8)}{ext}"
-    base_dir = settings.static_dir_path
-    folder = base_dir / subdir
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / name
-    path.write_bytes(data)
-    return f"/static/{subdir}/{name}"
+    return await save_image(file, subdir, prefix)
 
 
 @router.post("/password/forgot")
