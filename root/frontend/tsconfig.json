@@ -22,7 +22,8 @@
       "vite/client",
       "vite-plugin-pwa/client",
       "vitest",
-      "vitest/globals"
+      "vitest/globals",
+      "trusted-types"
     ]
   },
   "include": ["src", "tests", "playwright.config.ts"]

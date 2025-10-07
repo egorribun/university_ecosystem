@@ -1,7 +1,13 @@
 /// <reference lib="webworker" />
 
-import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching"
+import {
+  cleanupOutdatedCaches,
+  precacheAndRoute,
+  createHandlerBoundToURL,
+} from "workbox-precaching"
+import type { PrecacheEntry } from "workbox-precaching"
 import { clientsClaim } from "workbox-core"
+import type { RouteHandlerCallbackOptions } from "workbox-core"
 import { registerRoute, NavigationRoute } from "workbox-routing"
 import { StaleWhileRevalidate, CacheFirst } from "workbox-strategies"
 import { ExpirationPlugin } from "workbox-expiration"
@@ -10,6 +16,12 @@ import {
   buildNotificationDetails,
   parsePushEventData,
 } from "@/push/notification-helpers"
+
+declare global {
+  interface ServiceWorkerGlobalScope {
+    __WB_MANIFEST: Array<PrecacheEntry | string>
+  }
+}
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis
 
@@ -420,7 +432,7 @@ self.addEventListener("sync", (event) => {
 const navigationHandler = createHandlerBoundToURL(OFFLINE_URL)
 
 registerRoute(
-  new NavigationRoute(async (options) => {
+  new NavigationRoute(async (options: RouteHandlerCallbackOptions) => {
     const { event, request, url } = options
     const fetchEvent = event as FetchEvent
 
@@ -442,7 +454,7 @@ registerRoute(
 )
 
 registerRoute(
-  ({ url }) => /\/api\/(news|schedule)/.test(url.pathname),
+  ({ url }: RouteHandlerCallbackOptions) => /\/api\/(news|schedule)/.test(url.pathname),
   new StaleWhileRevalidate({
     cacheName: API_CACHE,
     plugins: [
@@ -452,7 +464,7 @@ registerRoute(
 )
 
 registerRoute(
-  ({ request }) => request.destination === "image",
+  ({ request }: RouteHandlerCallbackOptions) => request.destination === "image",
   new CacheFirst({
     cacheName: IMG_CACHE,
     plugins: [
