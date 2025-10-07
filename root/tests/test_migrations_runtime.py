@@ -10,9 +10,9 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from app.core.database import Base
-from app.models import (
-    models as _models,  # noqa: F401  # ensure tables are registered with Base metadata
-)
+
+# Import models for side effects to register metadata on Base.
+from app.models import models as _models  # noqa: F401
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
