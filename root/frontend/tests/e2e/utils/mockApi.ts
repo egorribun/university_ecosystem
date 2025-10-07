@@ -10,6 +10,8 @@ type MockState = {
   newsVersion: string;
   offline: boolean;
   newsLog: NewsLogEntry[];
+  notifications: MockNotification[];
+  pushSubscription: { endpoint: string; topics: string[] } | null;
 };
 
 const mockUser = {
@@ -63,12 +65,48 @@ const mockGroups = [
   { id: 2, name: "БИ-22", course: 2, faculty: "Бизнес" },
 ];
 
+type MockNotification = {
+  id: number;
+  title: string;
+  body?: string;
+  type?: string;
+  url?: string;
+  created_at: string;
+  read: boolean;
+  read_at?: string | null;
+};
+
+const mockNotificationsSeed: MockNotification[] = [
+  {
+    id: 101,
+    title: "Новое расписание",
+    body: "Расписание обновлено",
+    type: "schedule",
+    url: "/schedule",
+    created_at: new Date("2025-01-03T09:30:00Z").toISOString(),
+    read: false,
+    read_at: null,
+  },
+  {
+    id: 102,
+    title: "Новости кампуса",
+    body: "Открылся новый корпус",
+    type: "news",
+    url: "/news",
+    created_at: new Date("2025-01-02T11:00:00Z").toISOString(),
+    read: true,
+    read_at: new Date("2025-01-02T12:00:00Z").toISOString(),
+  },
+];
+
 export async function useMockApi(page: Page) {
   const state: MockState = {
     loggedIn: false,
     newsVersion: '"news-v1"',
     offline: false,
     newsLog: [],
+    notifications: mockNotificationsSeed.map(notification => ({ ...notification })),
+    pushSubscription: null,
   };
 
   await page.addInitScript(() => {
@@ -261,21 +299,116 @@ export async function useMockApi(page: Page) {
     }
 
     if (pathname === "api/notifications") {
+      const items = state.notifications.map(notification => ({
+        id: notification.id,
+        title: notification.title,
+        body: notification.body,
+        type: notification.type,
+        url: notification.url,
+        created_at: notification.created_at,
+        read: notification.read,
+        read_at: notification.read_at ?? null,
+      }))
+      const unreadCount = items.reduce((acc, item) => acc + (item.read ? 0 : 1), 0)
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [], unread_count: 0, has_more: false, next_cursor: null }),
-      });
-      return;
+        body: JSON.stringify({
+          items,
+          unread_count: unreadCount,
+          has_more: false,
+          next_cursor: null,
+        }),
+      })
+      return
     }
 
-    if (/^api\/notifications\/\d+\/read$/.test(pathname) || pathname === "api/notifications/read-all") {
+    const readMatch = pathname.match(/^api\/notifications\/(\d+)\/read$/)
+    if (readMatch) {
+      const id = Number(readMatch[1])
+      const iso = new Date().toISOString()
+      state.notifications = state.notifications.map(notification =>
+        notification.id === id
+          ? { ...notification, read: true, read_at: notification.read_at ?? iso }
+          : notification,
+      )
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true }),
-      });
-      return;
+      })
+      return
+    }
+
+    if (pathname === "api/notifications/read-all") {
+      const iso = new Date().toISOString()
+      state.notifications = state.notifications.map(notification => ({
+        ...notification,
+        read: true,
+        read_at: notification.read_at ?? iso,
+      }))
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      })
+      return
+    }
+
+    if (pathname === "api/push/subscribe" && method === "POST") {
+      const payload = JSON.parse(route.request().postData() || "{}") as {
+        endpoint?: string
+        keys?: { auth?: string; p256dh?: string }
+        topics?: unknown
+      }
+      const endpoint = (payload.endpoint ?? "").trim()
+      const auth = payload.keys?.auth ?? ""
+      const p256dh = payload.keys?.p256dh ?? ""
+      const topics = Array.isArray(payload.topics)
+        ? (payload.topics.filter((value): value is string => typeof value === "string") as string[])
+        : []
+      state.pushSubscription = { endpoint, topics }
+      const now = new Date().toISOString()
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 1,
+          user_id: mockUser.id,
+          endpoint,
+          p256dh,
+          auth,
+          created_at: now,
+          updated_at: now,
+          topics,
+        }),
+      })
+      return
+    }
+
+    if (pathname === "api/push/unsubscribe" && method === "POST") {
+      state.pushSubscription = null
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      })
+      return
+    }
+
+    if (pathname === "api/push/test" && method === "POST") {
+      const subscribed = state.pushSubscription != null
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sent: subscribed ? 1 : 0,
+          removed: 0,
+          failed: subscribed ? 0 : 1,
+          detail: subscribed ? undefined : "Нет активной подписки",
+        }),
+      })
+      return
     }
 
     await route.fulfill({

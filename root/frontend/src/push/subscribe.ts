@@ -1,5 +1,11 @@
 import { deleteSubscription, saveSubscription } from "@/api/notifications"
 
+declare global {
+  interface Window {
+    __mockVapidPublicKey?: string
+  }
+}
+
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 5
 const PERSIST_BASE_DELAY_MS = 500
@@ -107,6 +113,11 @@ export function setPushConsent(consented: boolean): void {
 }
 
 export async function fetchVapidPublicKey(): Promise<string | null> {
+  const mockKey =
+    typeof window !== "undefined" && typeof window.__mockVapidPublicKey === "string"
+      ? window.__mockVapidPublicKey.trim()
+      : ""
+  if (mockKey) return mockKey
   const rawKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
   if (typeof rawKey === "string") {
     const normalized = rawKey.trim()

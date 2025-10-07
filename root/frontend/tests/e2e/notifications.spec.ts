@@ -6,10 +6,64 @@ async function setupMockServiceWorker(page: Page) {
     const messageListeners = new Set<EventListener>();
     const showNotificationCalls: Array<{ title: string; options: NotificationOptions } | unknown> = [];
 
+    window.__mockVapidPublicKey = "AAAA";
+
+    class MockNotification {
+      static permission: NotificationPermission = "granted";
+      static async requestPermission() {
+        return "granted" as NotificationPermission;
+      }
+
+      title: string;
+      options: NotificationOptions;
+
+      constructor(title: string, options: NotificationOptions = {}) {
+        this.title = title;
+        this.options = options;
+      }
+
+      close() {}
+    }
+
+    Object.defineProperty(window, "Notification", { configurable: true, value: MockNotification });
+
+    let pushSubscription: PushSubscription | null = null;
+
+    const createPushSubscription = (options: PushSubscriptionOptionsInit): PushSubscription => {
+      const endpoint = `https://push.example.com/${Math.random().toString(36).slice(2)}`;
+      const keys = {
+        auth: btoa(`auth-${Math.random().toString(36).slice(2)}`),
+        p256dh: btoa(`p256-${Math.random().toString(36).slice(2)}`),
+      };
+      const subscription: PushSubscription = {
+        endpoint,
+        expirationTime: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        options,
+        getKey: () => null,
+        async unsubscribe() {
+          pushSubscription = null;
+          return true;
+        },
+        toJSON() {
+          return { endpoint, keys };
+        },
+      } as PushSubscription;
+      return subscription;
+    };
+
     const registration = {
       showNotification(title: string, options: NotificationOptions = {}) {
         showNotificationCalls.push({ title, options });
         return Promise.resolve();
+      },
+      pushManager: {
+        async getSubscription() {
+          return pushSubscription;
+        },
+        async subscribe(options: PushSubscriptionOptionsInit) {
+          pushSubscription = createPushSubscription(options);
+          return pushSubscription;
+        },
       },
     } as ServiceWorkerRegistration;
 
@@ -48,6 +102,15 @@ async function setupMockServiceWorker(page: Page) {
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
       value: serviceWorkerContainer,
+    });
+
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        async query() {
+          return { state: "granted" };
+        },
+      },
     });
 
     const dispatchMessage = (data: unknown) => {
@@ -210,6 +273,7 @@ declare global {
     __mockPush?: (payload: unknown) => void;
     __mockNotificationClick?: (action?: string) => void;
     __getShowNotificationCalls?: () => unknown[];
+    __mockVapidPublicKey?: string;
   }
 }
 
@@ -287,5 +351,54 @@ test.describe("Push notifications", () => {
       page.getByRole("button", { name: "Открыть" }).click(),
     ]);
     await expect(page.getByText("Новости Университета")).toBeVisible();
+  });
+
+  test("manages notifications popover and push lifecycle", async ({ page }) => {
+    const mock = await useMockApi(page);
+    await mock.login(page);
+
+    const bellButton = page.getByRole("button", { name: /Открыть уведомления, непрочитанных: 1/ });
+    await expect(bellButton).toBeVisible();
+    await bellButton.click();
+
+    const dialog = page.getByRole("dialog", { name: "Уведомления" });
+    await expect(dialog).toBeVisible();
+
+    const markSelected = dialog.getByRole("button", { name: "Пометить прочитанным" });
+    await expect(markSelected).toBeEnabled();
+    await markSelected.click();
+
+    const singleSuccess = page.getByRole("alert").filter({ hasText: "Уведомление помечено прочитанным" });
+    await expect(singleSuccess).toBeVisible();
+
+    await expect(dialog.getByText("Все уведомления прочитаны.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Пометить все прочитанными" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /непрочитанных нет/ })).toBeVisible();
+
+    const enableSwitch = dialog.getByRole("switch", { name: /Уведомления выключены/ });
+    await expect(enableSwitch).toBeEnabled();
+    await enableSwitch.click();
+
+    const enabledToast = page.getByRole("alert").filter({ hasText: "Уведомления включены" });
+    await expect(enabledToast).toBeVisible();
+
+    const activeSwitch = dialog.getByRole("switch", { name: /Уведомления включены/ });
+    await expect(activeSwitch).toBeChecked();
+    await expect(activeSwitch).toBeEnabled();
+
+    await page.evaluate(() => {
+      window.__mockPush?.({
+        title: "Тестовое уведомление",
+        body: "Проверка доставки",
+        data: { type: "in-app", severity: "info" },
+      });
+    });
+
+    const testToast = page.getByRole("alert").filter({ hasText: "Тестовое уведомление" });
+    await expect(testToast).toBeVisible();
+
+    await activeSwitch.click();
+    const disabledToast = page.getByRole("alert").filter({ hasText: "Уведомления выключены" });
+    await expect(disabledToast).toBeVisible();
   });
 });
