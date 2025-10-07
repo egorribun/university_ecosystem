@@ -106,7 +106,8 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
         if not host or not port:
             safe_link = _redact_sensitive_query(link)
             logger.warning(
-                "password.reset_email.fallback", extra={"email": to_email, "link": safe_link}
+                "password.reset_email.fallback",
+                extra={"email": to_email, "link": safe_link},
             )
             return
         ctx = ssl.create_default_context()
