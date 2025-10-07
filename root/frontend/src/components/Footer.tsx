@@ -17,7 +17,7 @@ export default function Footer() {
           <div className="footer-brand">
             <div className="footer-brand-head">
               <div className="footer-logo">
-                <img src={guuLogo} alt="ГУУ" />
+                <img src={guuLogo} alt="ГУУ" width={48} height={48} loading="lazy" decoding="async" />
               </div>
               <Typography className="footer-brand-title">Экосистема ГУУ</Typography>
             </div>

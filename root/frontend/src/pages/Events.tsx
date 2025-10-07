@@ -1,6 +1,6 @@
 import Layout from "../components/Layout"
 import EventCard from "../components/EventCard"
-import { useEffect, useState, useCallback, type SyntheticEvent } from "react"
+import { useEffect, useState, useCallback, useMemo, type SyntheticEvent } from "react"
 import axios from "../api/client"
 import {
   Box, Tabs, Tab, TextField, Typography, Button,
@@ -161,9 +161,9 @@ const Events = () => {
     } catch {}
   }
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     if (!loading) fetchEvents()
-  }
+  }, [fetchEvents, loading])
 
   const starts = new Date(eventData.starts_at).getTime()
   const ends = new Date(eventData.ends_at).getTime()
@@ -182,26 +182,70 @@ const Events = () => {
     }
   }, [createPreview])
 
-  const renderMobileCards = () => (
-    <Stack spacing={2} mt={1}>
-      {loading &&
-        Array.from({ length: 3 }).map((_, i) => (
-          <Box key={i} sx={{ p: 0 }}>
-            <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2 }} />
-            <Skeleton height={28} sx={{ mt: 1 }} />
-            <Skeleton height={20} width="85%" />
+  const normalizedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events])
+
+  const mobileContent = useMemo(
+    () => (
+      <Stack spacing={2} mt={1}>
+        {loading &&
+          Array.from({ length: 3 }).map((_, i) => (
+            <Box key={`event-skel-mobile-${i}`} sx={{ p: 0 }}>
+              <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2 }} />
+              <Skeleton height={28} sx={{ mt: 1 }} />
+              <Skeleton height={20} width="85%" />
+            </Box>
+          ))}
+        {!loading &&
+          normalizedEvents.map((event) => (
+            <EventCard key={event.id} {...event} onChange={handleRefresh} />
+          ))}
+        {!loading && normalizedEvents.length === 0 && (
+          <Typography fontSize={20} color="text.secondary" align="center" mt={8}>
+            Нет мероприятий
+          </Typography>
+        )}
+      </Stack>
+    ),
+    [handleRefresh, loading, normalizedEvents],
+  )
+
+  const desktopContent = useMemo(
+    () => (
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: { xs: 2, sm: 3 },
+          minHeight: "180px",
+        }}
+      >
+        {loading &&
+          Array.from({ length: 6 }).map((_, i) => (
+            <Box key={`event-skel-desktop-${i}`}>
+              <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2 }} />
+              <Skeleton height={32} sx={{ mt: 1 }} />
+              <Skeleton height={20} width="80%" />
+              <Skeleton height={20} width="60%" />
+            </Box>
+          ))}
+
+        {!loading &&
+          normalizedEvents.map((event) => (
+            <Box key={event.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
+              <EventCard {...event} onChange={handleRefresh} />
+            </Box>
+          ))}
+
+        {!loading && normalizedEvents.length === 0 && (
+          <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
+            <Typography fontSize={24} className="events-empty-text">
+              Нет мероприятий
+            </Typography>
           </Box>
-        ))}
-      {!loading && Array.isArray(events) &&
-        events.map((event) => (
-          <EventCard key={event.id} {...event} onChange={handleRefresh} />
-        ))}
-      {!loading && Array.isArray(events) && events.length === 0 && (
-        <Typography fontSize={20} color="text.secondary" align="center" mt={8}>
-          Нет мероприятий
-        </Typography>
-      )}
-    </Stack>
+        )}
+      </Box>
+    ),
+    [handleRefresh, loading, normalizedEvents],
   )
 
   return (
@@ -417,43 +461,7 @@ const Events = () => {
           </Stack>
         </Popover>
 
-        {isMobile ? (
-          renderMobileCards()
-        ) : (
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: { xs: 2, sm: 3 },
-              minHeight: "180px",
-            }}
-          >
-            {loading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <Box key={i}>
-                  <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2 }} />
-                  <Skeleton height={32} sx={{ mt: 1 }} />
-                  <Skeleton height={20} width="80%" />
-                  <Skeleton height={20} width="60%" />
-                </Box>
-              ))}
-
-            {!loading && Array.isArray(events) &&
-              events.map((event) => (
-                <Box key={event.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                  <EventCard {...event} onChange={handleRefresh} />
-                </Box>
-              ))}
-
-            {!loading && Array.isArray(events) && events.length === 0 && (
-              <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
-                <Typography fontSize={24} className="events-empty-text">
-                  Нет мероприятий
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        )}
+        {isMobile ? mobileContent : desktopContent}
 
         <Dialog open={createOpen} onClose={closeCreate}>
           <DialogTitle>Создать мероприятие</DialogTitle>
@@ -515,6 +523,10 @@ const Events = () => {
                     src={createPreview}
                     alt="preview"
                     style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
+                    loading="lazy"
+                    decoding="async"
+                    width={280}
+                    height={180}
                   />
                 </Box>
               )}
@@ -524,6 +536,10 @@ const Events = () => {
                     src={resolveMediaUrl(eventData.image_url)}
                     alt="event"
                     style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
+                    loading="lazy"
+                    decoding="async"
+                    width={280}
+                    height={180}
                   />
                 </Box>
               )}

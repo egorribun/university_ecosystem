@@ -1,5 +1,6 @@
 import {
   FC,
+  memo,
   useState,
   useEffect,
   useRef,
@@ -63,7 +64,7 @@ const formatLocalDateTime = (s?: string) => {
 const qrKey = (eventId: number, user: any) => `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
 const qrOpenKey = (eventId: number) => `qr:open:${eventId}`
 
-const EventCard: FC<EventCardProps> = ({
+const EventCardComponent: FC<EventCardProps> = ({
   id,
   title,
   description,
@@ -176,8 +177,10 @@ const EventCard: FC<EventCardProps> = ({
     setEditOpen(false)
   }
 
-  const getImageUrl = () =>
-    previewUrl || (editData.image_url ? resolveMediaUrl(editData.image_url) : undefined)
+  const cardImageUrl = useMemo(
+    () => (previewUrl ? previewUrl : editData.image_url ? resolveMediaUrl(editData.image_url) : undefined),
+    [editData.image_url, previewUrl],
+  )
 
   const dateError =
     Boolean(editData.starts_at) &&
@@ -397,11 +400,11 @@ const EventCard: FC<EventCardProps> = ({
         </>
       )}
 
-      {getImageUrl() && (
+      {cardImageUrl && (
         <Box mb={2} display="flex" justifyContent="center">
           <Box
             component="img"
-            src={getImageUrl()}
+            src={cardImageUrl}
             alt="Изображение мероприятия"
             draggable={false}
             sx={{
@@ -421,6 +424,11 @@ const EventCard: FC<EventCardProps> = ({
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none"
             }}
+            loading="lazy"
+            decoding="async"
+            width={960}
+            height={540}
+            sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
           />
         </Box>
       )}
@@ -541,19 +549,21 @@ const EventCard: FC<EventCardProps> = ({
                       boxShadow: 1,
                     }}
                   >
-                    <Box
-                      component="img"
-                      src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                      alt="QR"
-                      sx={{
-                        width: "clamp(220px, calc(min(85vw, 85vh) - 32px), 520px)",
-                        aspectRatio: "1 / 1",
-                        display: "block",
-                        userSelect: "none"
-                      }}
-                      loading="eager"
-                      decoding="async"
-                    />
+                  <Box
+                    component="img"
+                    src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
+                    alt="QR"
+                    sx={{
+                      width: "clamp(220px, calc(min(85vw, 85vh) - 32px), 520px)",
+                      aspectRatio: "1 / 1",
+                      display: "block",
+                      userSelect: "none"
+                    }}
+                    loading="eager"
+                    decoding="async"
+                    width={600}
+                    height={600}
+                  />
                   </Box>
                   <Button sx={{ mt: 2 }} variant="outlined" onClick={() => setQrOpen(false)}>
                     Закрыть
@@ -646,10 +656,10 @@ const EventCard: FC<EventCardProps> = ({
                   onClick={(e) => e.stopPropagation()}
                 />
               </Button>
-              {getImageUrl() && (
+              {cardImageUrl && (
                 <Box mt={1}>
                   <img
-                    src={getImageUrl()!}
+                    src={cardImageUrl}
                     alt="preview"
                     style={{
                       width: 220,
@@ -658,6 +668,10 @@ const EventCard: FC<EventCardProps> = ({
                       borderRadius: 10,
                       border: "1px solid #ddd"
                     }}
+                    loading="lazy"
+                    decoding="async"
+                    width={220}
+                    height={140}
                   />
                 </Box>
               )}
@@ -704,4 +718,20 @@ const EventCard: FC<EventCardProps> = ({
   )
 }
 
-export default EventCard
+const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
+  prev.id === next.id &&
+  prev.title === next.title &&
+  prev.description === next.description &&
+  prev.event_type === next.event_type &&
+  prev.location === next.location &&
+  prev.starts_at === next.starts_at &&
+  prev.ends_at === next.ends_at &&
+  prev.participant_count === next.participant_count &&
+  prev.is_active === next.is_active &&
+  prev.is_registered === next.is_registered &&
+  prev.speaker === next.speaker &&
+  prev.image_url === next.image_url &&
+  prev.onChange === next.onChange &&
+  prev.files === next.files
+
+export default memo(EventCardComponent, areEventCardPropsEqual)

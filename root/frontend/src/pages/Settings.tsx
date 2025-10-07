@@ -800,7 +800,15 @@ export default function Settings() {
           <Stack spacing={3}>
             <Stack spacing={2}>
               <Stack direction="row" alignItems="center" spacing={1}>
-                <img src={spotifyLogo} alt="Spotify" width={22} height={22} style={{ display: "block", borderRadius: "50%" }} />
+                <img
+                  src={spotifyLogo}
+                  alt="Spotify"
+                  width={22}
+                  height={22}
+                  style={{ display: "block", borderRadius: "50%" }}
+                  loading="lazy"
+                  decoding="async"
+                />
                 <Typography variant="h6" sx={{ color: "var(--page-text)" }}>Spotify</Typography>
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">

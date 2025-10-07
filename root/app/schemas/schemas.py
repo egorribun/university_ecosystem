@@ -1,5 +1,5 @@
 from datetime import datetime, time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -84,14 +84,19 @@ class UserProfileUpdate(BaseModel):
     dnd_start: Optional[time] = None
     dnd_end: Optional[time] = None
 
-    @model_validator(mode="after")
-    def _validate_dnd(cls, values: "UserProfileUpdate") -> "UserProfileUpdate":
-        enabled = values.dnd_enabled
-        start = values.dnd_start
-        end = values.dnd_end
+    @model_validator(mode="before")
+    def _validate_dnd(cls, data: Any) -> Any:
+        raw = data.data if hasattr(data, "data") and hasattr(data, "context") else data
+
+        payload = raw if isinstance(raw, dict) else {}
+
+        enabled = payload.get("dnd_enabled")
+        start = payload.get("dnd_start")
+        end = payload.get("dnd_end")
         if enabled and (start is None or end is None):
             raise ValueError('Укажите время начала и окончания режима "Не беспокоить"')
-        return values
+
+        return raw
 
 
 class GroupCreate(BaseModel):
