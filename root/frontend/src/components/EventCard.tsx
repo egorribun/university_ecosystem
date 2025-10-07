@@ -50,7 +50,6 @@ type EventCardProps = {
   onChange?: () => void
 }
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
 const normalizeDate = (dt: string) => (dt.length === 16 ? dt + ":00" : dt)
 
 const formatLocalDateTime = (s?: string) => {
@@ -178,7 +177,7 @@ const EventCard: FC<EventCardProps> = ({
   }
 
   const getImageUrl = () =>
-    previewUrl || (editData.image_url ? resolveMediaUrl(editData.image_url, BACKEND_ORIGIN) : undefined)
+    previewUrl || (editData.image_url ? resolveMediaUrl(editData.image_url) : undefined)
 
   const dateError =
     Boolean(editData.starts_at) &&

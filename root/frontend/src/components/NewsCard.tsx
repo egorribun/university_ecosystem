@@ -29,8 +29,6 @@ type NewsCardProps = {
   onChange?: () => void
 }
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
-
 const getMoscowDate = (dateStr: string) => {
   let parsed = dayjs(dateStr)
   if (!/([Zz]|[+\-]\d\d:?\d\d)$/.test(dateStr)) {
@@ -105,8 +103,8 @@ const NewsCard: FC<NewsCardProps> = ({
     if (imageInputRef.current) imageInputRef.current.value = ""
   }, [previewUrl])
 
-  const getCardImageUrl = () => resolveMediaUrl(image_url, BACKEND_ORIGIN)
-  const getEditImageUrl = () => previewUrl || resolveMediaUrl(editData.image_url, BACKEND_ORIGIN)
+  const getCardImageUrl = () => resolveMediaUrl(image_url)
+  const getEditImageUrl = () => previewUrl || resolveMediaUrl(editData.image_url)
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

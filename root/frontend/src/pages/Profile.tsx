@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import profileBg from "../assets/background.jpg";
 import guuLogo from "../assets/guu_logo.png";
+import defaultAvatar from "../assets/default_avatar.png";
 import {
   Avatar,
   Typography,
@@ -42,9 +43,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
-import { addVersionParam, resolveMediaUrl } from "@/utils/media";
-
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
+import { appendCacheBust, resolveMediaUrl } from "@/utils/media";
 
 const auraPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
@@ -369,8 +368,8 @@ export default function Profile() {
       affiliation: user.institute || user.department || "",
       url: typeof window !== "undefined" ? window.location.href : "",
       image: (() => {
-        const media = resolveMediaUrl(user.avatar_url || "", BACKEND_ORIGIN);
-        const withV = addVersionParam(media, avatarVersion);
+        const media = resolveMediaUrl(user.avatar_url);
+        const withV = media ? appendCacheBust(media, avatarVersion) : "";
         return withV || "";
       })()
     });
@@ -390,15 +389,23 @@ export default function Profile() {
       </Box>
     );
 
-  const getAvatarSrc = () => {
-    const media = resolveMediaUrl(user?.avatar_url || "", BACKEND_ORIGIN);
-    return addVersionParam(media, avatarVersion) || undefined;
-  };
+  const avatarImageUrl = useMemo(() => {
+    const media = resolveMediaUrl(user?.avatar_url);
+    if (!media) return defaultAvatar;
+    return appendCacheBust(media, avatarVersion) || media;
+  }, [user?.avatar_url, avatarVersion]);
 
-  const getCoverSrc = () => {
-    const media = resolveMediaUrl(user?.cover_url || "", BACKEND_ORIGIN);
-    return media || "https://mui.com/static/images/cards/cover1.jpg";
-  };
+  const coverImageUrl = useMemo(() => {
+    const media = resolveMediaUrl(user?.cover_url);
+    if (!media) return profileBg;
+    return appendCacheBust(media, coverVersion) || media;
+  }, [user?.cover_url, coverVersion]);
+
+  const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    img.onerror = null;
+    img.src = defaultAvatar;
+  }, []);
 
   const ensureConfettiSize = useCallback(() => {
     const canvas = confettiRef.current;
@@ -660,7 +667,7 @@ export default function Profile() {
                       sx={{
                         position: "absolute",
                         inset: 0,
-                        backgroundImage: `url(${addVersionParam(getCoverSrc(), coverVersion)})`,
+                        backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
                         backgroundPosition: "center",
                         backgroundSize: "cover",
                         transform: `translateY(${coverParallax}px) scale(${coverScale})`,
@@ -687,8 +694,9 @@ export default function Profile() {
                     >
                       <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
                         <Avatar
-                          src={getAvatarSrc()}
+                          src={avatarImageUrl}
                           alt={user?.full_name}
+                          imgProps={{ onError: handleAvatarImgError }}
                           sx={{
                             width: "100%",
                             height: "100%",

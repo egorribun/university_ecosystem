@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, ChangeEvent, FocusEvent } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react";
 import { isAxiosError } from "axios";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -52,11 +52,9 @@ import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
-import { addVersionParam, resolveMediaUrl } from "@/utils/media";
+import { appendCacheBust, resolveMediaUrl } from "@/utils/media";
 
 type ThemeMode = "system" | "light" | "dark";
-
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 
 const DEFAULT_DND_START = "22:00";
 const DEFAULT_DND_END = "07:00";
@@ -296,21 +294,26 @@ export default function Settings() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
 
-  const getAvatarSrc = useCallback(() => {
-    if ((user as any)?.avatar_url) {
-      const url = resolveMediaUrl((user as any).avatar_url, BACKEND_ORIGIN);
-      return addVersionParam(url, avatarVersion) || defaultAvatar;
-    }
-    return defaultAvatar;
-  }, [user, avatarVersion]);
+  const avatarUrl = (user as any)?.avatar_url as string | undefined;
+  const coverUrl = (user as any)?.cover_url as string | undefined;
 
-  const getCoverSrc = useCallback(() => {
-    if ((user as any)?.cover_url) {
-      const url = resolveMediaUrl((user as any).cover_url, BACKEND_ORIGIN);
-      return addVersionParam(url || "", coverVersion) || "";
-    }
-    return "";
-  }, [user, coverVersion]);
+  const avatarSrc = useMemo(() => {
+    const resolved = resolveMediaUrl(avatarUrl);
+    if (!resolved) return defaultAvatar;
+    return appendCacheBust(resolved, avatarVersion) || resolved;
+  }, [avatarUrl, avatarVersion]);
+
+  const coverSrc = useMemo(() => {
+    const resolved = resolveMediaUrl(coverUrl);
+    if (!resolved) return "";
+    return appendCacheBust(resolved, coverVersion) || resolved;
+  }, [coverUrl, coverVersion]);
+
+  const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    img.onerror = null;
+    img.src = defaultAvatar;
+  }, []);
 
   const triggerAvatarPick = () => avatarInputRef.current?.click();
   const triggerCoverPick = () => coverInputRef.current?.click();
@@ -700,14 +703,10 @@ export default function Settings() {
               >
                 <ListItemAvatar>
                   <Avatar
-                    src={getAvatarSrc()}
+                    src={avatarSrc}
                     alt={(user as any)?.full_name || "avatar"}
                     sx={{ width: 48, height: 48 }}
-                    imgProps={{
-                      onError: (e) => {
-                        (e.currentTarget as HTMLImageElement).src = defaultAvatar;
-                      }
-                    }}
+                    imgProps={{ onError: handleAvatarError }}
                   />
                 </ListItemAvatar>
                 <ListItemText primary="Фото профиля" secondary="PNG/JPG/WebP/AVIF/GIF, до 12 МБ" />
@@ -739,7 +738,7 @@ export default function Settings() {
                       height: 52,
                       borderRadius: 1.5,
                       border: "1px solid var(--glass-border)",
-                      background: getCoverSrc() ? `url(${getCoverSrc()}) center/cover no-repeat` : "var(--card-bg)"
+                      background: coverSrc ? `url(${coverSrc}) center/cover no-repeat` : "var(--card-bg)"
                     }}
                   />
                 </ListItemAvatar>

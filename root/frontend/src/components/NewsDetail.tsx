@@ -22,8 +22,6 @@ import timezone from "dayjs/plugin/timezone"
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
-
 const getMoscowDate = (dateStr: string) => {
   let parsed = dayjs(dateStr)
   if (!/([Zz]|[+\-]\d\d:?\d\d)$/.test(dateStr)) parsed = dayjs.utc(dateStr)
@@ -162,7 +160,7 @@ const NewsDetail = () => {
 
   const currentImagePath = previewUrl || (editOpen ? editData.image_url : news?.image_url)
   const resolvedImageUrl = useMemo(
-    () => resolveMediaUrl(currentImagePath, BACKEND_ORIGIN),
+    () => resolveMediaUrl(currentImagePath),
     [currentImagePath]
   )
 
