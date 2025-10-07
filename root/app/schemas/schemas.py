@@ -85,13 +85,13 @@ class UserProfileUpdate(BaseModel):
     dnd_end: Optional[time] = None
 
     @model_validator(mode="after")
-    def _validate_dnd(cls, values: "UserProfileUpdate") -> "UserProfileUpdate":
-        enabled = values.dnd_enabled
-        start = values.dnd_start
-        end = values.dnd_end
+    def _validate_dnd(cls, model: "UserProfileUpdate") -> "UserProfileUpdate":
+        enabled = bool(model.dnd_enabled)
+        start = model.dnd_start
+        end = model.dnd_end
         if enabled and (start is None or end is None):
             raise ValueError('Укажите время начала и окончания режима "Не беспокоить"')
-        return values
+        return model
 
 
 class GroupCreate(BaseModel):
