@@ -21,8 +21,6 @@ import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ''
-
 const formatLocalDateTime = (s?: string) => {
   if (!s) return '—'
   const norm = s.replace(' ', 'T')
@@ -213,7 +211,7 @@ const EventDetail = () => {
     )
   }
 
-  const imageUrl = resolveMediaUrl(event.image_url, BACKEND_ORIGIN)
+  const imageUrl = resolveMediaUrl(event.image_url)
 
   const BackButton = (
     <Button
@@ -416,7 +414,7 @@ const EventDetail = () => {
                           </Typography>
                         ) : (
                           <a
-                            href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
+                            href={resolveMediaUrl(f.file_url) || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             download
@@ -631,7 +629,7 @@ const EventDetail = () => {
                           </Typography>
                         ) : (
                           <a
-                            href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
+                            href={resolveMediaUrl(f.file_url) || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             download

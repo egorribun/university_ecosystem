@@ -3,13 +3,11 @@ import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } fr
 import { useAuth } from "../contexts/AuthContext";
 import guuLogo from "../assets/guu_logo.png";
 import defaultAvatar from "../assets/default_avatar.png";
-import { resolveMediaUrl } from "@/utils/media";
+import { appendCacheBust, resolveMediaUrl } from "@/utils/media";
 import NotificationsBell from "@/components/NotificationsBell";
 
 const navTextColor = "var(--nav-text)";
 const navBgColor = "var(--nav-bg)";
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
-
 function useIsMobile() {
   const getMatch = useCallback(() => {
     if (typeof window === "undefined" || !("matchMedia" in window)) return false;
@@ -124,13 +122,21 @@ const Navbar = () => {
   }, [location.pathname]);
 
   const getAvatarSrc = () => {
-    if (user?.avatar_url) {
-      const url = resolveMediaUrl(user.avatar_url, BACKEND_ORIGIN);
-      const ver = (user as any).avatar_updated_at || Date.now();
-      return `${url}?v=${ver}`;
-    }
-    return defaultAvatar;
+    const resolved = resolveMediaUrl(user?.avatar_url, undefined, { fallback: defaultAvatar });
+    if (!resolved) return defaultAvatar;
+    const version =
+      (user as any)?.avatar_updated_at ??
+      (user as any)?.avatar_version ??
+      (user as any)?.updated_at ??
+      null;
+    return version != null ? appendCacheBust(resolved, version) ?? resolved : resolved;
   };
+
+  const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    img.onerror = null;
+    img.src = defaultAvatar;
+  }, []);
 
   const menuLinks = useMemo(() => {
     const base = [
@@ -221,7 +227,7 @@ const Navbar = () => {
                   alt="avatar"
                   style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: "cover", border: "1px solid #d7d7d7", background: "#fff", cursor: "pointer" }}
                   onClick={() => go("/profile")}
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = defaultAvatar; }}
+                  onError={handleAvatarError}
                 />
               )}
               <button
@@ -273,7 +279,7 @@ const Navbar = () => {
                 alt="avatar"
                 style={{ width: "36px", height: "36px", borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ccc", background: "#fff", cursor: "pointer" }}
                 onClick={() => go("/profile")}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = defaultAvatar; }}
+                onError={handleAvatarError}
               />
               <button
                 type="button"

@@ -15,8 +15,6 @@ import { useAuth } from "../contexts/AuthContext"
 import { resolveMediaUrl } from "@/utils/media"
 import { useSearchParams } from "react-router-dom"
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
-
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; label: string; is_active?: boolean }
 
@@ -523,7 +521,7 @@ const Events = () => {
               {!createPreview && eventData.image_url && (
                 <Box mt={1}>
                   <img
-                    src={resolveMediaUrl(eventData.image_url, BACKEND_ORIGIN)}
+                    src={resolveMediaUrl(eventData.image_url)}
                     alt="event"
                     style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
                   />
