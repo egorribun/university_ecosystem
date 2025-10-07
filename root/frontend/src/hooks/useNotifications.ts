@@ -155,6 +155,8 @@ export function useNotifications() {
     hasNextPage,
     fetchNextPage,
     refetch,
+    error,
+    isError,
   } = query
 
   const items = useMemo(() => {
@@ -303,5 +305,7 @@ export function useNotifications() {
     refresh,
     fetching: isFetching,
     loadingMore: isFetchingNextPage,
+    error: (error as Error | null) ?? null,
+    isError,
   }
 }

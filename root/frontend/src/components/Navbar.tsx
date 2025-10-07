@@ -1,5 +1,6 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import Skeleton from "@mui/material/Skeleton";
 import { useAuth } from "../contexts/AuthContext";
 import guuLogo from "../assets/guu_logo.png";
 import defaultAvatar from "../assets/default_avatar.png";
@@ -8,6 +9,9 @@ import NotificationsBell from "@/components/NotificationsBell";
 
 const navTextColor = "var(--nav-text)";
 const navBgColor = "var(--nav-bg)";
+
+const focusableSelectors =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])';
 function useIsMobile() {
   const getMatch = useCallback(() => {
     if (typeof window === "undefined" || !("matchMedia" in window)) return false;
@@ -19,6 +23,29 @@ function useIsMobile() {
     const mql = window.matchMedia("(max-width: 1350px)");
     const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
       setMatch("matches" in e ? e.matches : (e as MediaQueryList).matches);
+    };
+    if (mql.addEventListener) mql.addEventListener("change", onChange as EventListener);
+    else mql.addListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
+    setMatch(mql.matches);
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener("change", onChange as EventListener);
+      else mql.removeListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
+    };
+  }, [getMatch]);
+  return match;
+}
+
+function usePrefersReducedMotion() {
+  const getMatch = useCallback(() => {
+    if (typeof window === "undefined" || !("matchMedia" in window)) return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+  const [match, setMatch] = useState(getMatch);
+  useEffect(() => {
+    if (typeof window === "undefined" || !("matchMedia" in window)) return;
+    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setMatch("matches" in event ? event.matches : (event as MediaQueryList).matches);
     };
     if (mql.addEventListener) mql.addEventListener("change", onChange as EventListener);
     else mql.addListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
@@ -52,7 +79,24 @@ function getScrollRoot(): HTMLElement {
   return (document.scrollingElement || document.documentElement) as HTMLElement;
 }
 
+function prefersReducedMotionGlobal() {
+  if (typeof window === "undefined" || !("matchMedia" in window)) return false;
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
 function smoothToTop(target: HTMLElement) {
+  if (prefersReducedMotionGlobal()) {
+    try {
+      target.scrollTo({ top: 0, behavior: "auto" });
+    } catch {
+      target.scrollTop = 0;
+    }
+    return;
+  }
   try {
     (target as any).scrollTo({ top: 0, behavior: "smooth" });
   } catch {
@@ -90,8 +134,14 @@ const Navbar = () => {
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const isMobile = useIsMobile();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const prevIsMobile = useRef(isMobile);
   const navRef = useRef<HTMLDivElement | null>(null);
+  const burgerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const drawerNavRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const drawerWasOpenRef = useRef(false);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false);
@@ -100,18 +150,27 @@ const Navbar = () => {
 
   useEffect(() => {
     document.body.style.overflow = mobileMenu ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [mobileMenu]);
 
-  useEffect(() => { setMobileMenu(false); }, [location.pathname]);
+  useEffect(() => {
+    setMobileMenu(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const opened = mobileMenu && isMobile;
-    document.body.classList.toggle("blurred", opened);
-    return () => { document.body.classList.remove("blurred"); };
-  }, [mobileMenu, isMobile]);
+    document.body.classList.toggle("blurred", opened && !prefersReducedMotion);
+    return () => {
+      document.body.classList.remove("blurred");
+    };
+  }, [mobileMenu, isMobile, prefersReducedMotion]);
 
-  useEffect(() => { navRef.current?.classList.add("navbar-animate-in"); }, []);
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+    navRef.current?.classList.add("navbar-animate-in");
+  }, [prefersReducedMotion]);
 
   useLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
@@ -120,6 +179,60 @@ const Navbar = () => {
       requestAnimationFrame(() => requestAnimationFrame(() => smoothToTop(el)));
     }
   }, [location.pathname]);
+
+  const getDrawerFocusables = useCallback(() => {
+    const root = drawerNavRef.current;
+    if (!root) return [] as HTMLElement[];
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>(focusableSelectors));
+    return nodes.filter((node) => !node.hasAttribute("disabled") && node.getAttribute("aria-hidden") !== "true");
+  }, []);
+
+  useEffect(() => {
+    if (!(mobileMenu && isMobile)) return;
+    drawerWasOpenRef.current = true;
+    previousFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    const focusables = getDrawerFocusables();
+    const fallback = closeButtonRef.current ?? focusables[0];
+    if (fallback) {
+      window.setTimeout(() => fallback.focus(), 0);
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileMenu(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const elements = getDrawerFocusables();
+      if (!elements.length) {
+        event.preventDefault();
+        return;
+      }
+      const current = document.activeElement as HTMLElement | null;
+      let index = elements.indexOf(current ?? elements[0]);
+      if (index === -1) index = 0;
+      index += event.shiftKey ? -1 : 1;
+      if (index < 0) index = elements.length - 1;
+      if (index >= elements.length) index = 0;
+      elements[index].focus();
+      event.preventDefault();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [getDrawerFocusables, isMobile, mobileMenu]);
+
+  useEffect(() => {
+    if (mobileMenu || !drawerWasOpenRef.current || !isMobile) return;
+    const previous = previousFocusRef.current;
+    const target = previous ?? burgerBtnRef.current;
+    if (target) {
+      window.setTimeout(() => target.focus(), 0);
+    }
+    previousFocusRef.current = null;
+    drawerWasOpenRef.current = false;
+  }, [isMobile, mobileMenu]);
 
   const getAvatarSrc = () => {
     const resolved = resolveMediaUrl(user?.avatar_url, undefined, { fallback: defaultAvatar });
@@ -190,7 +303,9 @@ const Navbar = () => {
           overflowX: "hidden",
           position: "sticky",
           top: "env(safe-area-inset-top, 0px)",
-          zIndex: "var(--ue-z-index-nav)"
+          zIndex: "var(--ue-z-index-nav)",
+          transition: prefersReducedMotion ? "none" : undefined,
+          animation: prefersReducedMotion ? "none" : undefined
         }}
       >
         <div
@@ -221,13 +336,22 @@ const Navbar = () => {
           {isMobile ? (
             <div style={{ display: "flex", alignItems: "center", marginLeft: "auto", gap: "6px" }}>
               <NotificationsBell iconColor="#fff" />
-              {isAuth && user && (
+              {isAuth && user && !loading ? (
                 <img
                   src={getAvatarSrc()}
-                  alt="avatar"
+                  alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
+                  title="Открыть профиль"
                   style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: "cover", border: "1px solid #d7d7d7", background: "#fff", cursor: "pointer" }}
                   onClick={() => go("/profile")}
                   onError={handleAvatarError}
+                />
+              ) : (
+                <Skeleton
+                  variant="circular"
+                  width={avatarSize}
+                  height={avatarSize}
+                  sx={{ bgcolor: "rgba(255,255,255,0.32)" }}
+                  aria-hidden="true"
                 />
               )}
               <button
@@ -235,11 +359,12 @@ const Navbar = () => {
                 className="burger-btn"
                 style={{ background: "none", border: "none", padding: 0, width: burgerBtnSize, height: burgerBtnSize, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", borderRadius: 10 }}
                 onClick={() => setMobileMenu(v => !v)}
-                aria-label="Меню"
+                aria-label={mobileMenu ? "Закрыть меню" : "Открыть меню"}
                 aria-expanded={mobileMenu}
                 aria-controls="mobile-drawer"
+                ref={burgerBtnRef}
               >
-                <svg width={burgerIcon} height={burgerIcon} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width={burgerIcon} height={burgerIcon} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <line x1="4" y1="7" x2="22" y2="7"/>
                   <line x1="4" y1="13" x2="22" y2="13"/>
                   <line x1="4" y1="19" x2="22" y2="19"/>
@@ -271,12 +396,19 @@ const Navbar = () => {
             </ul>
           )}
 
-          {!isMobile && loading ? null : (!isMobile && isAuth && user && (
+          {!isMobile && loading ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px" }} aria-hidden="true">
+              <Skeleton variant="circular" width={36} height={36} sx={{ bgcolor: "rgba(255,255,255,0.25)" }} />
+              <Skeleton variant="rectangular" width={96} height={18} sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }} />
+              <Skeleton variant="circular" width={32} height={32} sx={{ bgcolor: "rgba(255,255,255,0.25)" }} />
+            </div>
+          ) : (!isMobile && isAuth && user && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px", minWidth: 0, whiteSpace: "nowrap" }}>
               <NotificationsBell iconColor="#fff" />
               <img
                 src={getAvatarSrc()}
-                alt="avatar"
+                alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
+                title="Открыть профиль"
                 style={{ width: "36px", height: "36px", borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ccc", background: "#fff", cursor: "pointer" }}
                 onClick={() => go("/profile")}
                 onError={handleAvatarError}
@@ -284,6 +416,8 @@ const Navbar = () => {
               <button
                 type="button"
                 onClick={() => go("/profile")}
+                aria-label="Открыть профиль"
+                title="Открыть профиль"
                 style={{
                   background: "none",
                   border: "none",
@@ -320,14 +454,15 @@ const Navbar = () => {
         <div
           id="mobile-drawer"
           className="mobile-drawer"
-          style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: "var(--ue-z-index-overlay)", pointerEvents: mobileMenu ? "auto" : "none", background: mobileMenu ? "rgba(0,0,0,0.23)" : "transparent", transition: "background 0.28s", display: "flex" }}
+          style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: "var(--ue-z-index-overlay)", pointerEvents: mobileMenu ? "auto" : "none", background: mobileMenu ? "rgba(0,0,0,0.23)" : "transparent", transition: prefersReducedMotion ? "none" : "background 0.28s", display: "flex" }}
           onClick={() => setMobileMenu(false)}
           role="dialog"
           aria-modal="true"
           aria-label="Мобильное меню"
         >
           <nav
-            style={{ width: 270, maxWidth: "88vw", background: navBgColor, height: "100vh", boxShadow: "2px 0 22px #0003", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", transition: "transform 0.35s cubic-bezier(.52,1.29,.47,.97)", transform: mobileMenu ? "translateX(0)" : "translateX(-120%)", justifyContent: "flex-start", position: "relative" }}
+            ref={drawerNavRef}
+            style={{ width: 270, maxWidth: "88vw", background: navBgColor, height: "100vh", boxShadow: "2px 0 22px #0003", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", transition: prefersReducedMotion ? "none" : "transform 0.35s cubic-bezier(.52,1.29,.47,.97)", transform: mobileMenu ? "translateX(0)" : "translateX(-120%)", justifyContent: "flex-start", position: "relative" }}
             onClick={e => e.stopPropagation()}
           >
             <div style={{ width: "100%", padding: "18px 0 10px 22px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #ede2d2" }}>
@@ -343,6 +478,7 @@ const Navbar = () => {
               style={{ position: "absolute", top: 9, right: 10, background: "none", border: "none", fontSize: 27, color: navTextColor, cursor: "pointer" }}
               aria-label="Закрыть"
               onClick={() => setMobileMenu(false)}
+              ref={closeButtonRef}
             >
               ×
             </button>
