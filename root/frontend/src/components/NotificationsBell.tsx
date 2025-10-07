@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+  type ChangeEvent,
+  type SyntheticEvent,
+} from "react"
 import {
   Alert,
   Avatar,
@@ -16,10 +26,13 @@ import {
   ListItemIcon,
   ListItemText,
   Popover,
+  Skeleton,
+  Snackbar,
   Stack,
   Switch,
   Typography,
 } from "@mui/material"
+import type { SnackbarCloseReason } from "@mui/material/Snackbar"
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone"
 import DoneAllIcon from "@mui/icons-material/DoneAll"
 import TaskAltIcon from "@mui/icons-material/TaskAlt"
@@ -46,6 +59,13 @@ type Notif = {
   icon?: string
 }
 
+const focusableSelectors =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+type SnackbarSeverity = "success" | "error" | "info" | "warning"
+
+type SnackbarState = { message: string; severity: SnackbarSeverity }
+
 const rtf = new Intl.RelativeTimeFormat("ru-RU", { numeric: "auto" })
 function formatRelTime(iso: string, nowMs: number) {
   const ts = new Date(iso).getTime()
@@ -58,9 +78,9 @@ function formatRelTime(iso: string, nowMs: number) {
 }
 
 function pickIcon(t?: string) {
-  if (t === "event") return <EventNoteIcon fontSize="small" />
-  if (t === "news") return <ArticleIcon fontSize="small" />
-  return <InfoOutlinedIcon fontSize="small" />
+  if (t === "event") return <EventNoteIcon fontSize="small" aria-hidden="true" />
+  if (t === "news") return <ArticleIcon fontSize="small" aria-hidden="true" />
+  return <InfoOutlinedIcon fontSize="small" aria-hidden="true" />
 }
 
 const TimeAgo = memo(function TimeAgo({ date }: { date: string }) {
@@ -84,7 +104,9 @@ const NotificationItem = memo(function NotificationItem({
   onFocus: (n: Notif) => void
   isActive: boolean
 }) {
-  const unreadDot = !n.read ? <FiberManualRecordIcon sx={{ fontSize: 10, color: "var(--nav-link)" }} /> : null
+  const unreadDot = !n.read ? (
+    <FiberManualRecordIcon aria-hidden="true" sx={{ fontSize: 10, color: "var(--nav-link)" }} />
+  ) : null
   const leading = n.avatar_url ? (
     <Avatar src={n.avatar_url} alt="" imgProps={{ loading: "lazy", referrerPolicy: "no-referrer" }} sx={{ width: 28, height: 28 }} />
   ) : (
@@ -119,7 +141,9 @@ const NotificationItem = memo(function NotificationItem({
       })}
       aria-label={n.title}
     >
-      <ListItemIcon sx={{ minWidth: 34, mt: 0.2 }}>{leading}</ListItemIcon>
+      <ListItemIcon sx={{ minWidth: 34, mt: 0.2 }} aria-hidden="true">
+        {leading}
+      </ListItemIcon>
       <ListItemText
         primary={
           <Stack direction="row" alignItems="center" spacing={0.8}>
@@ -138,7 +162,7 @@ const NotificationItem = memo(function NotificationItem({
                 {n.body}
               </Typography>
             )}
-            {n.url && <OpenInNewIcon fontSize="inherit" />}
+            {n.url && <OpenInNewIcon fontSize="inherit" aria-hidden="true" />}
           </Stack>
         }
       />
@@ -216,7 +240,7 @@ function PushSettingsPreview({ onOpenSettings }: { onOpenSettings: () => void })
             На iOS звук push-уведомлений может отсутствовать — это ограничение системы.
           </Typography>
           <Typography variant="caption" component="p">
-            <a href={safariGuideUrl} target="_blank" rel="noreferrer">
+            <a href={safariGuideUrl} target="_blank" rel="noopener noreferrer">
               Подробная инструкция от Apple
             </a>
           </Typography>
@@ -315,16 +339,53 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
     markRead,
     markAllRead,
     loadingMore,
+    refresh,
+    fetching,
+    error,
   } = useNotifications()
   const [open, setOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
+  const [snackbar, setSnackbar] = useState<SnackbarState | null>(null)
   const anchorRef = useRef<HTMLButtonElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
   const scrollBoxRef = useRef<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const paperRef = useRef<HTMLDivElement | null>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const wasOpenRef = useRef(false)
   const navigate = useNavigate()
-  const popoverId = "notifications-popover"
-  const titleId = "notifications-title"
+  const uniqueId = useId()
+  const popoverDomId = `notifications-popover-${uniqueId}`
+  const titleDomId = `notifications-title-${uniqueId}`
+
+  const getPopoverFocusables = useCallback(() => {
+    const root = paperRef.current
+    if (!root) return [] as HTMLElement[]
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>(focusableSelectors))
+    return nodes.filter((node) => {
+      if (node.hasAttribute("disabled")) return false
+      if (node.getAttribute("aria-hidden") === "true") return false
+      if (node.tabIndex === -1) return false
+      if (node.getClientRects().length === 0) return false
+      return true
+    })
+  }, [])
+
+  const showError = useCallback((message: string) => {
+    setSnackbar({ message, severity: "error" })
+  }, [])
+
+  const showSuccess = useCallback((message: string) => {
+    setSnackbar({ message, severity: "success" })
+  }, [])
+
+  const handleSnackbarClose = useCallback(
+    (_event?: SyntheticEvent | Event, reason?: SnackbarCloseReason) => {
+      if (reason === "clickaway") return
+      setSnackbar(null)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -335,22 +396,63 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
       (entries) => {
         const vis = entries.some((entry) => entry.isIntersecting)
         if (!vis || loadingMore) return
-        void loadMore()
+        void loadMore().catch(() => showError("Не удалось загрузить дополнительные уведомления"))
       },
       { root: scrollBoxRef.current, rootMargin: "120px 0px", threshold: 0.01 },
     )
     io.observe(el)
     return () => io.disconnect()
-  }, [open, hasMore, loadMore, loadingMore])
+  }, [open, hasMore, loadMore, loadingMore, showError])
 
   useEffect(() => {
     if (!open) return
-    const timer = setTimeout(() => {
-      const first = listRef.current?.querySelector<HTMLElement>("[data-notification-id]")
-      first?.focus()
-    }, 20)
-    return () => clearTimeout(timer)
-  }, [open, items.length])
+    wasOpenRef.current = true
+    previousFocusRef.current = (document.activeElement as HTMLElement) ?? null
+    const focusables = getPopoverFocusables()
+    const fallback =
+      focusables[0] ??
+      listRef.current?.querySelector<HTMLElement>("[data-notification-id]") ??
+      paperRef.current
+    if (fallback) {
+      window.setTimeout(() => fallback.focus(), 0)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setOpen(false)
+        return
+      }
+      if (event.key !== "Tab") return
+      const elements = getPopoverFocusables()
+      if (!elements.length) {
+        event.preventDefault()
+        return
+      }
+      const active = document.activeElement as HTMLElement | null
+      let index = elements.indexOf(active ?? elements[0])
+      if (index === -1) index = 0
+      index += event.shiftKey ? -1 : 1
+      if (index < 0) index = elements.length - 1
+      if (index >= elements.length) index = 0
+      elements[index].focus()
+      event.preventDefault()
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [getPopoverFocusables, open])
+
+  useEffect(() => {
+    if (open) return
+    if (!wasOpenRef.current) return
+    const previous = previousFocusRef.current ?? anchorRef.current
+    if (previous) {
+      window.setTimeout(() => previous.focus(), 0)
+    }
+    previousFocusRef.current = null
+    wasOpenRef.current = false
+  }, [open])
 
   useEffect(() => {
     if (!open) {
@@ -365,8 +467,12 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
   }, [items, open])
 
   const handleOpenItem = useCallback(
-    (n: Notif, e: React.MouseEvent | React.KeyboardEvent) => {
-      void markRead(n.id)
+    async (n: Notif, e: React.MouseEvent | React.KeyboardEvent) => {
+      try {
+        await markRead(n.id)
+      } catch {
+        showError("Не удалось обновить уведомление")
+      }
       if (!n.url) {
         setOpen(false)
         return
@@ -379,12 +485,12 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
         if (newTab) window.open(n.url, "_blank", "noopener,noreferrer")
         else window.open(n.url, "_self")
       } else {
-        if (newTab) window.open(n.url, "_blank")
+        if (newTab) window.open(n.url, "_blank", "noopener,noreferrer")
         else navigate(n.url)
       }
       setOpen(false)
     },
-    [markRead, navigate],
+    [markRead, navigate, showError],
   )
 
   const handleFocusItem = useCallback((n: Notif) => {
@@ -416,14 +522,24 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
     return items.find((item) => item.id === selectedId)
   }, [items, selectedId])
 
-  const handleMarkSelected = useCallback(() => {
+  const handleMarkSelected = useCallback(async () => {
     if (!selectedNotification || selectedNotification.read) return
-    void markRead(selectedNotification.id)
-  }, [markRead, selectedNotification])
+    try {
+      await markRead(selectedNotification.id)
+      showSuccess("Уведомление помечено прочитанным")
+    } catch {
+      showError("Не удалось обновить уведомление")
+    }
+  }, [markRead, selectedNotification, showError, showSuccess])
 
-  const handleMarkAll = useCallback(() => {
-    void markAllRead()
-  }, [markAllRead])
+  const handleMarkAll = useCallback(async () => {
+    try {
+      await markAllRead()
+      showSuccess("Все уведомления отмечены прочитанными")
+    } catch {
+      showError("Не удалось отметить уведомления")
+    }
+  }, [markAllRead, showError, showSuccess])
 
   const handleOpenSettings = useCallback(() => {
     setOpen(false)
@@ -435,12 +551,57 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
     navigate("/notifications")
   }, [navigate])
 
+  const handleLoadMore = useCallback(async () => {
+    try {
+      await loadMore()
+    } catch {
+      showError("Не удалось загрузить дополнительные уведомления")
+    }
+  }, [loadMore, showError])
+
+  const handleRetry = useCallback(async () => {
+    try {
+      await refresh()
+      showSuccess("Уведомления обновлены")
+    } catch {
+      showError("Не удалось обновить уведомления")
+    }
+  }, [refresh, showError, showSuccess])
+
   const renderList = () => {
     if (loading && !items.length) {
       return (
-        <Stack alignItems="center" justifyContent="center" sx={{ py: 3 }}>
-          <CircularProgress size={26} />
+        <Stack spacing={2} sx={{ py: 2.5, px: 1.5 }} role="status" aria-live="polite">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Stack key={index} direction="row" spacing={1.5} alignItems="flex-start">
+              <Skeleton variant="circular" width={32} height={32} sx={{ flexShrink: 0 }} />
+              <Box sx={{ flex: 1 }}>
+                <Skeleton variant="text" width="82%" />
+                <Skeleton variant="text" width="60%" />
+              </Box>
+            </Stack>
+          ))}
         </Stack>
+      )
+    }
+    if (!loading && items.length === 0 && error) {
+      return (
+        <Alert
+          severity="error"
+          sx={{ m: 1.5 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => void handleRetry()}
+              disabled={loading || fetching}
+            >
+              Повторить
+            </Button>
+          }
+        >
+          Не удалось загрузить уведомления. Попробуйте ещё раз.
+        </Alert>
       )
     }
     if (items.length === 0) {
@@ -457,7 +618,8 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
           ref={listRef}
           disablePadding
           role="list"
-          aria-labelledby={titleId}
+          aria-labelledby={titleDomId}
+          aria-busy={loading || fetching}
           sx={{ py: 0 }}
           onKeyDown={handleListKeyDown}
         >
@@ -472,7 +634,7 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
                 <CircularProgress size={22} />
               </Stack>
             ) : (
-              <Button fullWidth variant="outlined" onClick={() => void loadMore()} aria-busy={loadingMore}>
+              <Button fullWidth variant="outlined" onClick={() => void handleLoadMore()} aria-busy={loadingMore}>
                 Показать ещё
               </Button>
             )}
@@ -490,33 +652,40 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
         onClick={() => setOpen((v) => !v)}
         aria-label={`Открыть уведомления${unreadCount > 0 ? `, непрочитанных: ${unreadCount}` : ", непрочитанных нет"}`}
         aria-haspopup="dialog"
-        aria-controls={open ? popoverId : undefined}
+        aria-controls={open ? popoverDomId : undefined}
         aria-expanded={open ? "true" : "false"}
         sx={{ ml: { xs: 0.5, sm: 1 }, color: iconColor }}
+        title="Открыть уведомления"
       >
         <Badge color="error" badgeContent={unreadCount} max={99} overlap="circular">
-          <NotificationsNoneIcon />
+          <NotificationsNoneIcon aria-hidden="true" />
         </Badge>
       </IconButton>
 
       <Popover
-        id={popoverId}
+        id={popoverDomId}
         open={open}
         onClose={() => setOpen(false)}
         anchorEl={anchorRef.current}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         transformOrigin={{ vertical: "top", horizontal: "center" }}
-        PaperProps={{
-          role: "dialog",
-          "aria-modal": "true",
-          "aria-labelledby": titleId,
-          sx: { width: 400, maxWidth: "92vw", bgcolor: "var(--card-bg)" },
+        slotProps={{
+          paper: {
+            ref: paperRef,
+            role: "dialog",
+            "aria-modal": "true",
+            "aria-labelledby": titleDomId,
+            sx: { width: 400, maxWidth: "92vw", bgcolor: "var(--card-bg)" },
+            tabIndex: -1,
+          },
         }}
-        disableRestoreFocus={false}
+        disableAutoFocus
+        disableEnforceFocus
+        disableRestoreFocus
       >
         <Box sx={{ p: 1.5 }}>
           <Stack spacing={0.5}>
-            <Typography id={titleId} fontWeight={800} fontSize="1rem">
+            <Typography id={titleDomId} fontWeight={800} fontSize="1rem">
               Уведомления
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -556,7 +725,7 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
           </Stack>
         </Box>
         <Divider />
-        <Box ref={scrollBoxRef} sx={{ maxHeight: 444, overflow: "auto" }}>
+        <Box ref={scrollBoxRef} sx={{ maxHeight: 444, overflow: "auto" }} aria-busy={loading || fetching}>
           {renderList()}
         </Box>
         <Divider />
@@ -578,6 +747,24 @@ export default function NotificationsBell({ iconColor = "inherit" }: { iconColor
           </>
         )}
       </Popover>
+
+      {snackbar && (
+        <Snackbar
+          open
+          autoHideDuration={4000}
+          onClose={handleSnackbarClose}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert
+            onClose={handleSnackbarClose}
+            severity={snackbar.severity}
+            variant="filled"
+            sx={{ width: "100%" }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      )}
     </>
   )
 }
