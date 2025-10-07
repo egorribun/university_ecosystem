@@ -9,10 +9,10 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from app.core.database import Base
-from app.models import (
+from app import (
     models as _models,  # noqa: F401  # Import for Base metadata side effects.
 )
+from app.core.database import Base
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
