@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import type { ChangeEvent, ReactNode } from "react"
+import type { ChangeEvent, ReactElement, ReactNode } from "react"
 import {
   afterEach,
   beforeEach,
@@ -94,7 +94,7 @@ type MockRegistration = ServiceWorkerRegistration & {
 
 let registration: MockRegistration
 let queryClient: QueryClient
-let wrapper: ({ children }: { children: ReactNode }) => JSX.Element
+let wrapper: ({ children }: { children: ReactNode }) => ReactElement
 
 const ensureAtob = () => {
   if (typeof globalThis.atob !== "function") {
