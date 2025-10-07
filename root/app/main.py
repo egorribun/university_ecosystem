@@ -17,7 +17,8 @@ from app.core.observability import configure_observability, shutdown_observabili
 from app.core.rate_limit import RateLimitMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import shutdown_cache
-from app.routers.notifications import router as webpush_router
+from app.routers.notifications import legacy_router as legacy_push_router
+from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
 
@@ -111,6 +112,7 @@ async def ready():
 app.include_router(auth_router)
 app.include_router(spotify_router)
 app.include_router(notifications_router)
-app.include_router(webpush_router)
+app.include_router(push_router)
+app.include_router(legacy_push_router)
 app.include_router(schedule_router)
 app.include_router(main_router)

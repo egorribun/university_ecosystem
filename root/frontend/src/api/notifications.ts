@@ -1,9 +1,5 @@
 import api from "@/api/client"
-import type {
-  PushSubscriptionResponse,
-  SendTestNotificationResponse,
-  VapidPublicKeyResponse,
-} from "@/types/notifications"
+import type { PushSubscriptionResponse, SendTestNotificationResponse } from "@/types/notifications"
 
 export type NotificationListResponse = {
   items: Array<{
@@ -42,11 +38,6 @@ export async function markAllNotificationsRead(): Promise<void> {
   await api.post("/notifications/read-all")
 }
 
-export async function getVapidKey(): Promise<string> {
-  const { data } = await api.get<VapidPublicKeyResponse>("/webpush/vapid-public-key")
-  return data.publicKey
-}
-
 export async function saveSubscription(
   sub: PushSubscriptionJSON,
   topics?: string[]
@@ -68,31 +59,15 @@ export async function saveSubscription(
     user_agent: userAgent,
   }
 
-  const { data } = await api.post<PushSubscriptionResponse>("/webpush/subscribe", payload)
+  const { data } = await api.post<PushSubscriptionResponse>("/push/subscribe", payload)
   return data
 }
 
 export async function deleteSubscription(endpoint: string): Promise<void> {
-  await api.delete("/webpush/subscribe", { data: { endpoint } })
-}
-
-export async function updateSubscriptionTopics(
-  endpoint: string,
-  topics: string[]
-): Promise<PushSubscriptionResponse> {
-  const normalizedEndpoint = endpoint?.trim()
-  if (!normalizedEndpoint) {
-    throw new Error("Endpoint is required")
-  }
-  const payload = { endpoint: normalizedEndpoint, topics }
-  const { data } = await api.patch<PushSubscriptionResponse>(
-    "/webpush/subscribe/topics",
-    payload
-  )
-  return data
+  await api.post("/push/unsubscribe", { endpoint })
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {
-  const { data } = await api.post<SendTestNotificationResponse>("/webpush/send-test")
+  const { data } = await api.post<SendTestNotificationResponse>("/push/test")
   return data
 }

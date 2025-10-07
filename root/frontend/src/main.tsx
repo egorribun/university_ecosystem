@@ -34,7 +34,7 @@ async function bootstrap() {
       if (!registration) return
       if (!hasPushConsent()) return
       try {
-        await ensurePushSubscription(undefined, registration)
+        await ensurePushSubscription({ registration, requestPermission: false })
       } catch (error) {
         console.error("Failed to ensure push subscription", error)
       }

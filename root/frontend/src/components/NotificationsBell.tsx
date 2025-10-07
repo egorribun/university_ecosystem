@@ -1,10 +1,14 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import {
+  Alert,
   Avatar,
   Badge,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
+  FormControlLabel,
+  FormGroup,
   Divider,
   IconButton,
   List,
@@ -13,6 +17,7 @@ import {
   ListItemText,
   Popover,
   Stack,
+  Switch,
   Typography,
 } from "@mui/material"
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone"
@@ -26,7 +31,7 @@ import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord"
 import SettingsIcon from "@mui/icons-material/Settings"
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive"
 import { useNotifications } from "@/hooks/useNotifications"
-import { usePushPreferences } from "@/hooks/usePushPreferences"
+import { usePushPreferences, NOTIFICATION_TOPIC_LABELS } from "@/hooks/usePushPreferences"
 import { useNavigate } from "react-router-dom"
 
 type Notif = {
@@ -151,74 +156,151 @@ function PushSettingsPreview({ onOpenSettings }: { onOpenSettings: () => void })
     pushBusy,
     pushInitializing,
     permissionText,
+    notificationPermission,
     enableNotifications,
     disableNotifications,
+    topicKeys,
+    topicState,
+    handleTopicToggle,
+    selectedTopicsDescription,
+    safariIOS,
+    safariGuideUrl,
   } = usePushPreferences()
 
   const busy = pushBusy || pushInitializing
 
   const statusText = useMemo(() => {
     if (!pushSupported) return "Веб push-уведомления недоступны в этом браузере."
-    if (notificationsEnabled) return "Пуш-уведомления включены."
-    return `Разрешение браузера: ${permissionText}.`
-  }, [notificationsEnabled, permissionText, pushSupported])
-
-  const hintText = useMemo(() => {
-    if (!pushSupported) {
-      return "Попробуйте открыть Экосистему ГУУ в другом браузере или установите приложение."
-    }
     if (notificationsEnabled) {
-      return "Отключить уведомления можно здесь или в настройках браузера."
+      return `Подписка активна. Темы: ${selectedTopicsDescription}.`
     }
-    return "Разрешите уведомления, чтобы получать новости и изменения сразу."
-  }, [notificationsEnabled, pushSupported])
+    if (notificationPermission === "denied") {
+      return "Уведомления заблокированы. Разрешите их в настройках браузера."
+    }
+    if (notificationPermission === "default") {
+      return "Нажмите переключатель, чтобы разрешить уведомления."
+    }
+    return `Уведомления выключены. Разрешение: ${permissionText}.`
+  }, [
+    notificationPermission,
+    notificationsEnabled,
+    permissionText,
+    pushSupported,
+    selectedTopicsDescription,
+  ])
 
-  const handleToggle = useCallback(async () => {
-    if (!pushSupported) return
-    if (notificationsEnabled) {
-      await disableNotifications()
-    } else {
-      await enableNotifications()
-    }
-  }, [disableNotifications, enableNotifications, notificationsEnabled, pushSupported])
+  const handleSwitchChange = useCallback(
+    (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      if (!pushSupported) return
+      if (checked) void enableNotifications()
+      else void disableNotifications()
+    },
+    [disableNotifications, enableNotifications, pushSupported],
+  )
+
+  const safariHint = useMemo(() => {
+    if (!safariIOS) return null
+    return (
+      <Alert severity="info" variant="outlined">
+        <Stack spacing={0.5}>
+          <Typography variant="body2" fontWeight={600} component="p">
+            Safari / iOS
+          </Typography>
+          <Typography variant="caption" component="p">
+            Добавьте Экосистему на Домой: поделиться → На экран Домой.
+          </Typography>
+          <Typography variant="caption" component="p">
+            Разрешите уведомления в Настройки → Уведомления → Экосистема ГУУ.
+          </Typography>
+          <Typography variant="caption" component="p">
+            На iOS звук push-уведомлений может отсутствовать — это ограничение системы.
+          </Typography>
+          <Typography variant="caption" component="p">
+            <a href={safariGuideUrl} target="_blank" rel="noreferrer">
+              Подробная инструкция от Apple
+            </a>
+          </Typography>
+        </Stack>
+      </Alert>
+    )
+  }, [safariGuideUrl, safariIOS])
 
   return (
-    <Stack spacing={1.2}>
+    <Stack spacing={1.5}>
       <Stack direction="row" alignItems="center" spacing={1}>
         <NotificationsActiveIcon fontSize="small" color={notificationsEnabled ? "primary" : "disabled"} />
         <Typography variant="subtitle2" fontWeight={700} component="h3">
           Настройки пушей
         </Typography>
       </Stack>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="text.primary">
         {statusText}
       </Typography>
+      <FormControlLabel
+        control={
+          <Switch
+            size="medium"
+            color="primary"
+            checked={notificationsEnabled}
+            onChange={handleSwitchChange}
+            disabled={busy || !pushSupported}
+          />
+        }
+        label={
+          <Stack direction="row" alignItems="center" spacing={0.75}>
+            <Typography variant="body2">
+              {notificationsEnabled ? "Уведомления включены" : "Уведомления выключены"}
+            </Typography>
+            {busy && <CircularProgress size={16} />}
+          </Stack>
+        }
+      />
       <Typography variant="caption" color="text.secondary">
-        {hintText}
+        Разрешение браузера: {permissionText}
       </Typography>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-        {pushSupported && (
-          <Button
-            size="small"
-            variant={notificationsEnabled ? "outlined" : "contained"}
-            onClick={() => {
-              void handleToggle()
-            }}
-            disabled={busy}
-            startIcon={busy ? <CircularProgress size={16} sx={{ color: "inherit" }} /> : undefined}
-          >
-            {notificationsEnabled ? "Выключить" : "Включить"}
-          </Button>
-        )}
-        <Button
-          size="small"
-          variant="text"
-          onClick={onOpenSettings}
-          startIcon={<SettingsIcon fontSize="small" />}
-        >
-          Подробнее
-        </Button>
-      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        {notificationsEnabled
+          ? selectedTopicsDescription
+          : "Выберите темы и включите уведомления, чтобы получать новости и изменения сразу."}
+      </Typography>
+      <FormGroup sx={{ pl: 0.5 }}>
+        {topicKeys.map(key => (
+          <FormControlLabel
+            key={key}
+            control={
+              <Checkbox
+                size="small"
+                color="primary"
+                checked={Boolean(topicState[key])}
+                onChange={handleTopicToggle(key)}
+                disabled={!notificationsEnabled || busy}
+              />
+            }
+            label={
+              <Typography variant="body2" color="text.primary">
+                {NOTIFICATION_TOPIC_LABELS[key]}
+              </Typography>
+            }
+          />
+        ))}
+      </FormGroup>
+      {safariHint ? (
+        safariHint
+      ) : (
+        <Typography variant="caption" color="text.secondary">
+          {pushSupported
+            ? "Настройки можно изменить здесь или в настройках браузера."
+            : "Попробуйте открыть Экосистему ГУУ в другом браузере или установить приложение."}
+        </Typography>
+      )}
+      <Button
+        size="small"
+        variant="text"
+        onClick={onOpenSettings}
+        startIcon={<SettingsIcon fontSize="small" />}
+      >
+        Полные настройки
+      </Button>
     </Stack>
   )
 }

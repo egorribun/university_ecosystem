@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
-import type { ChangeEvent } from "react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ChangeEvent, ReactNode } from "react"
 import {
   afterEach,
   beforeEach,
@@ -11,33 +12,26 @@ import {
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 
 const hoistedMocks = vi.hoisted(() => ({
-  getVapidKeyMock: vi.fn(),
-  saveSubscriptionMock: vi.fn(),
   deleteSubscriptionMock: vi.fn(),
-  updateSubscriptionTopicsMock: vi.fn(),
+  ensurePushSubscriptionMock: vi.fn(),
   setPushConsentMock: vi.fn(),
   getExistingPushSubscriptionMock: vi.fn(),
+  getPersistedTopicsMock: vi.fn(),
   isPushSupportedMock: vi.fn(() => true),
-  requestPermissionMock: vi.fn(),
 })) as {
-  getVapidKeyMock: ReturnType<typeof vi.fn>
-  saveSubscriptionMock: ReturnType<typeof vi.fn>
   deleteSubscriptionMock: ReturnType<typeof vi.fn>
-  updateSubscriptionTopicsMock: ReturnType<typeof vi.fn>
+  ensurePushSubscriptionMock: ReturnType<typeof vi.fn>
   setPushConsentMock: ReturnType<typeof vi.fn>
   getExistingPushSubscriptionMock: ReturnType<typeof vi.fn>
+  getPersistedTopicsMock: ReturnType<typeof vi.fn>
   isPushSupportedMock: ReturnType<typeof vi.fn>
-  requestPermissionMock: ReturnType<typeof vi.fn>
 }
 
 vi.mock("@/api/notifications", async () => {
   const actual = await vi.importActual<typeof import("@/api/notifications")>("@/api/notifications")
   return {
     ...actual,
-    getVapidKey: hoistedMocks.getVapidKeyMock,
-    saveSubscription: hoistedMocks.saveSubscriptionMock,
     deleteSubscription: hoistedMocks.deleteSubscriptionMock,
-    updateSubscriptionTopics: hoistedMocks.updateSubscriptionTopicsMock,
   }
 })
 
@@ -45,27 +39,25 @@ vi.mock("@/push/subscribe", async () => {
   const actual = await vi.importActual<typeof import("@/push/subscribe")>("@/push/subscribe")
   return {
     ...actual,
+    ensurePushSubscription: hoistedMocks.ensurePushSubscriptionMock,
     setPushConsent: hoistedMocks.setPushConsentMock,
     getExistingPushSubscription: hoistedMocks.getExistingPushSubscriptionMock,
+    getPersistedTopics: hoistedMocks.getPersistedTopicsMock,
     isPushSupported: hoistedMocks.isPushSupportedMock,
   }
 })
 
 const {
-  getVapidKeyMock,
-  saveSubscriptionMock,
   deleteSubscriptionMock,
-  updateSubscriptionTopicsMock,
+  ensurePushSubscriptionMock,
   setPushConsentMock,
   getExistingPushSubscriptionMock,
+  getPersistedTopicsMock,
   isPushSupportedMock,
-  requestPermissionMock,
 } = hoistedMocks
 
 class MockNotification {
   static permission: NotificationPermission = "default"
-
-  static requestPermission = requestPermissionMock
 }
 
 type MutableSubscription = PushSubscription & {
@@ -101,6 +93,8 @@ type MockRegistration = ServiceWorkerRegistration & {
 }
 
 let registration: MockRegistration
+let queryClient: QueryClient
+let wrapper: ({ children }: { children: ReactNode }) => JSX.Element
 
 const ensureAtob = () => {
   if (typeof globalThis.atob !== "function") {
@@ -111,7 +105,6 @@ const ensureAtob = () => {
 ensureAtob()
 
 beforeEach(() => {
-  requestPermissionMock.mockReset()
   MockNotification.permission = "default"
   Object.defineProperty(globalThis, "Notification", {
     value: MockNotification,
@@ -151,50 +144,49 @@ beforeEach(() => {
   setPushConsentMock.mockReset()
   isPushSupportedMock.mockReset()
   isPushSupportedMock.mockReturnValue(true)
-  getVapidKeyMock.mockReset()
-  saveSubscriptionMock.mockReset()
+  ensurePushSubscriptionMock.mockReset()
+  ensurePushSubscriptionMock.mockResolvedValue(null)
+  getPersistedTopicsMock.mockReset()
+  getPersistedTopicsMock.mockReturnValue(undefined)
   deleteSubscriptionMock.mockReset()
-  updateSubscriptionTopicsMock.mockReset()
+
+  queryClient = new QueryClient()
+  wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
 })
 
 afterEach(() => {
   vi.clearAllMocks()
   delete (navigator as any).serviceWorker
   delete (window as any).PushManager
+  queryClient.clear()
 })
 
 describe("usePushPreferences notifications flow", () => {
-  it("requests permission and enables notifications", async () => {
+  it("enables notifications when subscription is ensured", async () => {
     const subscription = createMockSubscription()
-    registration.pushManager.getSubscription.mockResolvedValueOnce(null)
-    registration.pushManager.subscribe.mockResolvedValue(subscription)
-
-    requestPermissionMock.mockImplementation(async () => {
-      MockNotification.permission = "granted"
-      return "granted"
-    })
-
-    getVapidKeyMock.mockResolvedValue("BElq1234ABCD5678")
-    saveSubscriptionMock.mockResolvedValue({ topics: ["news", "schedule"] })
+    ensurePushSubscriptionMock.mockResolvedValue(subscription)
+    getPersistedTopicsMock.mockReturnValue(["news", "schedule"])
+    MockNotification.permission = "granted"
 
     const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }))
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
 
     await act(async () => {
       await result.current.enableNotifications()
     })
 
-    expect(requestPermissionMock).toHaveBeenCalled()
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
 
-    expect(registration.pushManager.subscribe).toHaveBeenCalledWith(
-      expect.objectContaining({ userVisibleOnly: true }),
-    )
-    expect(saveSubscriptionMock).toHaveBeenCalledWith(subscription.__payload, [
-      "news",
-      "schedule",
-      "system",
-    ])
+    expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
+    const initialArgs = ensurePushSubscriptionMock.mock.calls[0][0]
+    expect(initialArgs.requestPermission).toBe(false)
+    const ensureArgs = ensurePushSubscriptionMock.mock.calls[1][0]
+    expect(ensureArgs.registration).toBe(registration)
+    expect(ensureArgs.requestPermission).toBe(true)
+    expect(ensureArgs.topics).toEqual(["news", "schedule", "system"])
+
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Уведомления включены", sev: "success" }),
@@ -204,12 +196,13 @@ describe("usePushPreferences notifications flow", () => {
 
   it("disables notifications and removes subscription", async () => {
     const subscription = createMockSubscription()
+    ensurePushSubscriptionMock.mockResolvedValue(subscription)
+    getPersistedTopicsMock.mockReturnValue(["news", "schedule", "system"])
+    MockNotification.permission = "granted"
     registration.pushManager.getSubscription.mockResolvedValue(subscription)
-    getExistingPushSubscriptionMock.mockResolvedValue(subscription)
-    saveSubscriptionMock.mockResolvedValue({ topics: ["news", "schedule", "system"] })
 
     const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }))
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
 
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
 
@@ -228,12 +221,15 @@ describe("usePushPreferences notifications flow", () => {
 
   it("updates topics when toggles change", async () => {
     const subscription = createMockSubscription()
-    registration.pushManager.getSubscription.mockResolvedValue(subscription)
-    getExistingPushSubscriptionMock.mockResolvedValue(subscription)
-    saveSubscriptionMock.mockResolvedValue({ topics: ["news", "schedule", "system"] })
-    updateSubscriptionTopicsMock.mockResolvedValue({ topics: ["news", "schedule"] })
+    ensurePushSubscriptionMock
+      .mockResolvedValueOnce(subscription)
+      .mockResolvedValueOnce(subscription)
+    getPersistedTopicsMock
+      .mockReturnValueOnce(["news", "schedule", "system"])
+      .mockReturnValueOnce(["news", "schedule"])
+    MockNotification.permission = "granted"
 
-    const { result } = renderHook(() => usePushPreferences())
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
 
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
 
@@ -242,33 +238,29 @@ describe("usePushPreferences notifications flow", () => {
       await handler({} as ChangeEvent<HTMLInputElement>, false)
     })
 
-    expect(updateSubscriptionTopicsMock).toHaveBeenCalledWith(subscription.endpoint, [
-      "news",
-      "schedule",
-    ])
+    expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
+    const updateArgs = ensurePushSubscriptionMock.mock.calls[1][0]
+    expect(updateArgs.topics).toEqual(["news", "schedule"])
     expect(result.current.topicState.system).toBe(false)
   })
 
   it("notifies user when permission is denied", async () => {
-    registration.pushManager.getSubscription.mockResolvedValue(null)
-
-    requestPermissionMock.mockImplementation(async () => {
-      MockNotification.permission = "denied"
-      return "denied"
-    })
+    ensurePushSubscriptionMock.mockResolvedValue(null)
+    MockNotification.permission = "denied"
 
     const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }))
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
 
     await act(async () => {
       await result.current.enableNotifications()
     })
 
-    expect(requestPermissionMock).toHaveBeenCalled()
-    expect(getVapidKeyMock).not.toHaveBeenCalled()
-    expect(saveSubscriptionMock).not.toHaveBeenCalled()
+    expect(ensurePushSubscriptionMock).toHaveBeenCalled()
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Разрешите уведомления в настройках браузера", sev: "info" }),
+      expect.objectContaining({
+        text: "Разрешите уведомления в настройках браузера, чтобы получать пуши",
+        sev: "info",
+      }),
     )
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("denied")

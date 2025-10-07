@@ -1,4 +1,4 @@
-import { deleteSubscription, getVapidKey, saveSubscription } from "@/api/notifications"
+import { deleteSubscription, saveSubscription } from "@/api/notifications"
 
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 5
@@ -11,7 +11,7 @@ const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
 
 type NormalizedTopics = string[] | undefined
 
-function parseStoredTopics(raw: string | null): NormalizedTopics {
+export function parseStoredTopics(raw: string | null): NormalizedTopics {
   if (!raw) return undefined
   try {
     const parsed = JSON.parse(raw)
@@ -27,6 +27,10 @@ function parseStoredTopics(raw: string | null): NormalizedTopics {
   } catch {
     return undefined
   }
+}
+
+export function getPersistedTopics(): string[] | undefined {
+  return parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY)) ?? undefined
 }
 
 function sleep(ms: number) {
@@ -55,8 +59,8 @@ function removeStoredValue(key: string) {
 
 async function persistSubscriptionWithBackoff(
   payload: Parameters<typeof saveSubscription>[0],
-  topics?: string[]
-) {
+  topics?: string[],
+): Promise<Awaited<ReturnType<typeof saveSubscription>> | null> {
   let attempt = 0
   // Add jitter to reduce the probability of thundering herd
   const jitter = () => Math.random() * PERSIST_BASE_DELAY_MS
@@ -64,11 +68,12 @@ async function persistSubscriptionWithBackoff(
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
-      await saveSubscription(payload, topics)
+      const response = await saveSubscription(payload, topics)
+      const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
       setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
       setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
-      setStoredValue(PUSH_TOPICS_STORAGE_KEY, JSON.stringify(topics ? [...topics].sort() : []))
-      return
+      setStoredValue(PUSH_TOPICS_STORAGE_KEY, JSON.stringify(normalizedTopics))
+      return response
     } catch (error) {
       attempt += 1
       if (attempt >= PERSIST_MAX_ATTEMPTS) {
@@ -102,13 +107,15 @@ export function setPushConsent(consented: boolean): void {
 }
 
 export async function fetchVapidPublicKey(): Promise<string | null> {
-  try {
-    const key = await getVapidKey()
-    const normalized = key?.trim() || ""
-    return normalized || null
-  } catch {
-    return null
+  const rawKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+  if (typeof rawKey === "string") {
+    const normalized = rawKey.trim()
+    if (normalized) return normalized
   }
+  if (import.meta.env.DEV) {
+    console.warn("VITE_VAPID_PUBLIC_KEY is not configured")
+  }
+  return null
 }
 
 export function urlBase64ToUint8Array(base64String: string) {
@@ -120,11 +127,16 @@ export function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
-export async function ensurePushSubscription(
-  vapidPublicKey?: string,
-  registration?: ServiceWorkerRegistration,
+type EnsurePushSubscriptionOptions = {
+  registration?: ServiceWorkerRegistration
+  vapidPublicKey?: string
   topics?: string[]
-) {
+  requestPermission?: boolean
+}
+
+export async function ensurePushSubscription(
+  options?: EnsurePushSubscriptionOptions,
+): Promise<PushSubscription | null> {
   if (
     !("serviceWorker" in navigator) ||
     !("PushManager" in window) ||
@@ -132,9 +144,12 @@ export async function ensurePushSubscription(
   ) {
     return null
   }
+
+  const topics = options?.topics
   const lockKey = JSON.stringify({
-    key: vapidPublicKey || null,
+    key: options?.vapidPublicKey || null,
     topics: topics ? [...topics].sort() : [],
+    requestPermission: Boolean(options?.requestPermission),
   })
 
   const existingLock = ensureLocks.get(lockKey)
@@ -143,20 +158,25 @@ export async function ensurePushSubscription(
   }
 
   const task = (async () => {
-    const reg = registration ?? (await navigator.serviceWorker.ready)
+    const reg = options?.registration ?? (await navigator.serviceWorker.ready)
 
     if (Notification.permission === "denied") {
       return null
     }
 
     if (Notification.permission === "default") {
+      if (!options?.requestPermission) {
+        return null
+      }
       const perm = await Notification.requestPermission()
       if (perm !== "granted") {
         return null
       }
     }
 
-    const key = (vapidPublicKey || (await fetchVapidPublicKey()) || "").trim()
+    const key = (
+      options?.vapidPublicKey || (await fetchVapidPublicKey()) || ""
+    ).trim()
     if (!key) {
       return null
     }
@@ -180,7 +200,11 @@ export async function ensurePushSubscription(
       if (!matches || isExpiringSoon) {
         try {
           await sub.unsubscribe()
-        } catch {}
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.warn("Failed to unsubscribe push subscription", error)
+          }
+        }
         sub = null
       }
     }
@@ -291,11 +315,12 @@ export async function softSyncPushSubscription(
 
   const storedTopics = options?.topics ?? parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY))
   try {
-    const subscription = await ensurePushSubscription(
-      options?.vapidPublicKey,
-      options?.registration,
-      storedTopics,
-    )
+    const subscription = await ensurePushSubscription({
+      vapidPublicKey: options?.vapidPublicKey,
+      registration: options?.registration,
+      topics: storedTopics,
+      requestPermission: false,
+    })
     return subscription
   } catch (error) {
     console.error("Failed to soft sync push subscription", error)

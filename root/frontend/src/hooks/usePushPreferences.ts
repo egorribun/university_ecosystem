@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ChangeEvent } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { deleteSubscription } from "@/api/notifications"
 import {
+  ensurePushSubscription,
   getExistingPushSubscription,
+  getPersistedTopics,
   isPushSupported,
   setPushConsent,
-  urlBase64ToUint8Array,
 } from "@/push/subscribe"
-import {
-  deleteSubscription,
-  getVapidKey,
-  saveSubscription,
-  updateSubscriptionTopics,
-} from "@/api/notifications"
+import { notificationsQueryKey } from "@/hooks/useNotifications"
+import { currentUserQueryKey } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
 
 export type NotificationTopicKey = "news" | "schedule" | "system"
@@ -58,6 +57,23 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const [pushBusy, setPushBusy] = useState(false)
   const [pushInitializing, setPushInitializing] = useState(true)
   const [safariIOS] = useState(() => isSafariIOS())
+  const queryClient = useQueryClient()
+
+  const invalidatePushQueries = useCallback(() => {
+    queryClient.invalidateQueries({
+      predicate: query => {
+        const key = query.queryKey
+        if (!Array.isArray(key)) return false
+        if (
+          key.length === currentUserQueryKey.length &&
+          key.every((value, index) => value === currentUserQueryKey[index])
+        ) {
+          return true
+        }
+        return key.some(value => value === "notifications" || value === "users")
+      },
+    })
+  }, [queryClient])
 
   const notify = useCallback(
     (toast: NotificationToast) => {
@@ -117,49 +133,27 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     }
     setPushBusy(true)
     try {
-      const permission = await Notification.requestPermission()
-      setNotificationPermission(permission)
-      if (permission !== "granted") {
-        notify({ text: "Разрешите уведомления в настройках браузера", sev: "info" })
-        return
-      }
-
-      if (!("serviceWorker" in navigator)) {
-        notify({ text: "Сервис-воркеры недоступны", sev: "error" })
-        return
-      }
-
       const registration = await navigator.serviceWorker.ready
-      let sub = await registration.pushManager.getSubscription()
-
-      if (!sub) {
-        let vapidKey = ""
-        try {
-          vapidKey = (await getVapidKey())?.trim() || ""
-        } catch (error) {
-          console.error("Failed to load VAPID key", error)
-        }
-        if (!vapidKey) {
-          notify({ text: "Не удалось получить ключ уведомлений", sev: "error" })
-          return
-        }
-        const applicationServerKey = urlBase64ToUint8Array(vapidKey)
-        sub = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey,
+      const sub = await ensurePushSubscription({
+        registration,
+        topics: selectedTopics,
+        requestPermission: true,
+      })
+      const permission = Notification.permission
+      setNotificationPermission(permission)
+      if (permission !== "granted" || !sub) {
+        notify({
+          text: "Разрешите уведомления в настройках браузера, чтобы получать пуши",
+          sev: "info",
         })
-      }
-
-      if (!sub) {
-        notify({ text: "Не удалось активировать подписку", sev: "error" })
+        setPushSubscription(sub)
         return
       }
-
-      type Payload = Parameters<typeof saveSubscription>[0]
-      const saved = await saveSubscription(sub.toJSON() as Payload, selectedTopics)
-      applyServerTopics(saved?.topics ?? selectedTopics)
+      const persistedTopics = getPersistedTopics() ?? selectedTopics
+      applyServerTopics(persistedTopics)
       setPushSubscription(sub)
       setPushConsent(true)
+      invalidatePushQueries()
       notify({ text: "Уведомления включены", sev: "success" })
     } catch (error) {
       console.error("Failed to enable notifications", error)
@@ -168,7 +162,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       setPushBusy(false)
       setPushInitializing(false)
     }
-  }, [applyServerTopics, notify, selectedTopics])
+  }, [applyServerTopics, invalidatePushQueries, notify, selectedTopics])
 
   const disableNotifications = useCallback(async () => {
     if (!isPushSupported()) {
@@ -184,6 +178,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         setPushSubscription(null)
         setPushConsent(false)
         notify({ text: "Уведомления выключены", sev: "success" })
+        invalidatePushQueries()
         return
       }
       const endpoint = sub.endpoint
@@ -207,6 +202,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       } else {
         notify({ text: "Уведомления отключены локально", sev: "info" })
       }
+      invalidatePushQueries()
     } catch (error) {
       console.error("Failed to disable notifications", error)
       notify({ text: "Не удалось выключить уведомления", sev: "error" })
@@ -226,19 +222,24 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         const topicsToSend = topicKeys.filter(topic => nextState[topic])
         try {
           const registration = await navigator.serviceWorker.ready
-          const sub = await registration.pushManager.getSubscription()
+          const sub = await ensurePushSubscription({
+            registration,
+            topics: topicsToSend,
+            requestPermission: false,
+          })
           if (!sub) {
             setPushSubscription(null)
             setPushConsent(false)
+            notify({
+              text: "Подписка недоступна: проверьте разрешения браузера",
+              sev: "warning",
+            })
             return
           }
-          const endpoint = (sub.endpoint || "").trim()
-          type Payload = Parameters<typeof saveSubscription>[0]
-          const saved = endpoint
-            ? await updateSubscriptionTopics(endpoint, topicsToSend)
-            : await saveSubscription(sub.toJSON() as Payload, topicsToSend)
-          applyServerTopics(saved?.topics ?? topicsToSend)
+          const persisted = getPersistedTopics() ?? topicsToSend
+          applyServerTopics(persisted)
           setPushSubscription(sub)
+          invalidatePushQueries()
         } catch (error) {
           console.error("Failed to update topics", error)
           notify({ text: "Не удалось обновить настройки уведомлений", sev: "error" })
@@ -246,7 +247,15 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           setPushBusy(false)
         }
       },
-    [applyServerTopics, notificationsEnabled, pushBusy, topicKeys, topicState, notify],
+    [
+      applyServerTopics,
+      invalidatePushQueries,
+      notificationsEnabled,
+      pushBusy,
+      topicKeys,
+      topicState,
+      notify,
+    ],
   )
 
   useEffect(() => {
@@ -316,18 +325,23 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           return
         }
         setPushInitializing(true)
-        const sub = await getExistingPushSubscription()
+        const storedTopics = getPersistedTopics()
+        let sub: PushSubscription | null = null
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          sub = await ensurePushSubscription({
+            topics: storedTopics,
+            requestPermission: false,
+          })
+        } else {
+          sub = await getExistingPushSubscription()
+        }
         if (!active) return
         setPushSubscription(sub)
         if (sub) {
           setPushConsent(true)
-          type Payload = Parameters<typeof saveSubscription>[0]
-          try {
-            const saved = await saveSubscription(sub.toJSON() as Payload)
-            if (!active) return
-            applyServerTopics(saved?.topics ?? [])
-          } catch (error) {
-            console.warn("Не удалось получить настройки подписки", error)
+          const persisted = getPersistedTopics() ?? storedTopics ?? []
+          if (persisted) {
+            applyServerTopics(persisted)
           }
         }
       } catch (error) {
