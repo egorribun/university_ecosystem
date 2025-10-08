@@ -25,10 +25,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run dev -- --host ${HOST} --port ${PORT}`,
+    command: `pnpm dev -- --host ${HOST} --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     cwd: __dirname,
+    env: {
+      VITE_VAPID_PUBLIC_KEY: process.env.VITE_VAPID_PUBLIC_KEY || "BMockKeyExampleValue12345",
+    },
   },
 });

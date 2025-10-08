@@ -5,11 +5,27 @@ type NewsLogEntry = {
   status: number;
 };
 
+type MockNotification = {
+  id: number;
+  title: string;
+  body: string;
+  type: string;
+  url: string;
+  created_at: string;
+  read: boolean;
+  read_at?: string | null;
+};
+
 type MockState = {
   loggedIn: boolean;
   newsVersion: string;
   offline: boolean;
   newsLog: NewsLogEntry[];
+  notifications: MockNotification[];
+  pushSubscribed: boolean;
+  lastSubscriptionTopics: string[];
+  lastSubscriptionEndpoint?: string;
+  testNotificationsSent: number;
 };
 
 const mockUser = {
@@ -63,12 +79,38 @@ const mockGroups = [
   { id: 2, name: "БИ-22", course: 2, faculty: "Бизнес" },
 ];
 
+const initialNotifications: MockNotification[] = [
+  {
+    id: 301,
+    title: "Изменение расписания",
+    body: "Пара по математике перенесена на 12:00.",
+    type: "schedule",
+    url: "/schedule",
+    created_at: "2025-01-04T07:30:00Z",
+    read: false,
+  },
+  {
+    id: 302,
+    title: "Новая новость",
+    body: "Появился отчёт о прошедшем хакатоне.",
+    type: "news",
+    url: "/news/2",
+    created_at: "2025-01-03T16:00:00Z",
+    read: true,
+    read_at: "2025-01-03T17:00:00Z",
+  },
+];
+
 export async function useMockApi(page: Page) {
   const state: MockState = {
     loggedIn: false,
     newsVersion: '"news-v1"',
     offline: false,
     newsLog: [],
+    notifications: initialNotifications.map((item) => ({ ...item })),
+    pushSubscribed: false,
+    lastSubscriptionTopics: [],
+    testNotificationsSent: 0,
   };
 
   await page.addInitScript(() => {
@@ -261,19 +303,102 @@ export async function useMockApi(page: Page) {
     }
 
     if (pathname === "api/notifications") {
+      const unread = state.notifications.filter((item) => !item.read).length;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [], unread_count: 0, has_more: false, next_cursor: null }),
+        body: JSON.stringify({
+          items: state.notifications.map((item) => ({
+            id: item.id,
+            title: item.title,
+            body: item.body,
+            type: item.type,
+            url: item.url,
+            created_at: item.created_at,
+            read: item.read,
+            read_at: item.read_at ?? null,
+          })),
+          unread_count: unread,
+          has_more: false,
+          next_cursor: null,
+        }),
       });
       return;
     }
 
-    if (/^api\/notifications\/\d+\/read$/.test(pathname) || pathname === "api/notifications/read-all") {
+    if (/^api\/notifications\/\d+\/read$/.test(pathname)) {
+      const id = Number(pathname.split("/")[2]);
+      const target = state.notifications.find((item) => item.id === id);
+      if (target) {
+        target.read = true;
+        target.read_at = new Date().toISOString();
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true }),
+      });
+      return;
+    }
+
+    if (pathname === "api/notifications/read-all") {
+      const iso = new Date().toISOString();
+      state.notifications = state.notifications.map((item) => ({
+        ...item,
+        read: true,
+        read_at: item.read_at ?? iso,
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+      return;
+    }
+
+    if (pathname === "api/push/subscribe") {
+      const payload = route.request().postDataJSON?.() as
+        | { endpoint?: string; keys?: { p256dh?: string; auth?: string }; topics?: string[] }
+        | undefined;
+      const endpoint = payload?.endpoint ?? "https://push.example/sub";
+      const topics = Array.isArray(payload?.topics) ? payload!.topics.filter(Boolean) : [];
+      state.pushSubscribed = true;
+      state.lastSubscriptionTopics = topics;
+      state.lastSubscriptionEndpoint = endpoint;
+      const response = {
+        id: 1,
+        user_id: mockUser.id,
+        endpoint,
+        p256dh: payload?.keys?.p256dh ?? "p256",
+        auth: payload?.keys?.auth ?? "auth",
+        created_at: new Date().toISOString(),
+        topics,
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(response),
+      });
+      return;
+    }
+
+    if (pathname === "api/push/unsubscribe") {
+      state.pushSubscribed = false;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+      return;
+    }
+
+    if (pathname === "api/push/test") {
+      state.testNotificationsSent += 1;
+      const success = state.pushSubscribed ? 1 : 0;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ sent: success, removed: 0, failed: state.pushSubscribed ? 0 : 1 }),
       });
       return;
     }

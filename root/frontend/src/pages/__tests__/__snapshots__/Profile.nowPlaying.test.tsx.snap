@@ -42,7 +42,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
       </p>
       <div
         aria-hidden="true"
-        class="MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-filledDefault css-k6o8te-MuiChip-root"
+        class="MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-filledDefault css-1l4c1di-MuiChip-root"
       >
         <span
           class="MuiChip-label MuiChip-labelSmall css-eccknh-MuiChip-label"

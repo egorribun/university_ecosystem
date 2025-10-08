@@ -66,4 +66,26 @@ describe("NowPlayingCard", () => {
     const updated = Number(progressBar.getAttribute("aria-valuenow"));
     expect(updated).toBeGreaterThan(initial);
   });
+
+  it("formats progress and duration as mm:ss", () => {
+    const track: NowPlaying = {
+      ...baseTrack,
+      duration_ms: 245000,
+      progress_ms: 61000,
+    };
+    const { container } = renderWithTheme(track);
+    const display = container.querySelector(".np-time");
+    expect(display?.textContent).toBe("1:01 / 4:05");
+  });
+
+  it("falls back to 0:00 when timing data is missing", () => {
+    const track: NowPlaying = {
+      ...baseTrack,
+      duration_ms: null,
+      progress_ms: null,
+    };
+    const { container } = renderWithTheme(track);
+    const display = container.querySelector(".np-time");
+    expect(display?.textContent).toBe("0:00 / 0:00");
+  });
 });

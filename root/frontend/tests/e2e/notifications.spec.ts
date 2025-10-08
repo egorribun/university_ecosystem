@@ -6,12 +6,110 @@ async function setupMockServiceWorker(page: Page) {
     const messageListeners = new Set<EventListener>();
     const showNotificationCalls: Array<{ title: string; options: NotificationOptions } | unknown> = [];
 
+    let activeSubscription: PushSubscription | null = null;
+    const subscriptionPayload = {
+      endpoint: "https://push.example/subscription",
+      keys: { p256dh: "p256", auth: "auth" },
+    } satisfies PushSubscriptionJSON;
+
+    const createSubscription = () => {
+      const sub: PushSubscription = {
+        endpoint: subscriptionPayload.endpoint!,
+        expirationTime: Date.now() + 24 * 3600 * 1000,
+        options: {
+          applicationServerKey: new Uint8Array([1, 2, 3, 4]),
+          userVisibleOnly: true,
+        },
+        toJSON: () => subscriptionPayload,
+        getKey: () => new ArrayBuffer(0),
+        unsubscribe: async () => {
+          activeSubscription = null;
+          return true;
+        },
+      } as unknown as PushSubscription;
+      return sub;
+    };
+
+    const pushManager = {
+      getSubscription: async () => activeSubscription,
+      subscribe: async () => {
+        activeSubscription = createSubscription();
+        return activeSubscription;
+      },
+    } satisfies ServiceWorkerRegistration["pushManager"];
+
     const registration = {
       showNotification(title: string, options: NotificationOptions = {}) {
         showNotificationCalls.push({ title, options });
         return Promise.resolve();
       },
+      pushManager: pushManager as PushManager,
     } as ServiceWorkerRegistration;
+
+    const permissionListeners = new Set<() => void>();
+
+    const permissionStatus = {
+      state: "prompt" as PermissionState,
+      onchange: null as (() => void) | null,
+      addEventListener(type: string, listener: EventListener | null) {
+        if (type !== "change" || typeof listener !== "function") return;
+        permissionListeners.add(listener);
+      },
+      removeEventListener(type: string, listener: EventListener | null) {
+        if (type !== "change" || typeof listener !== "function") return;
+        permissionListeners.delete(listener);
+      },
+    } as PermissionStatus & { onchange: (() => void) | null };
+
+    const updatePermission = (next: NotificationPermission) => {
+      MockNotification.permission = next;
+      permissionStatus.state = next === "default" ? "prompt" : next;
+      permissionListeners.forEach(listener => {
+        try {
+          listener.call(permissionStatus);
+        } catch (error) {
+          console.error("Mock permission listener failed", error);
+        }
+      });
+      try {
+        permissionStatus.onchange?.call(permissionStatus);
+      } catch (error) {
+        console.error("Mock permission onchange failed", error);
+      }
+    };
+
+    class MockNotification {
+      static permission: NotificationPermission = "default";
+
+      static async requestPermission(): Promise<NotificationPermission> {
+        updatePermission("granted");
+        return MockNotification.permission;
+      }
+
+      constructor(public title: string, public options?: NotificationOptions) {
+        this.title = title;
+        this.options = options;
+      }
+    }
+
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: MockNotification,
+    });
+
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: async () => permissionStatus,
+      },
+    });
+
+    Object.defineProperty(window, "PushManager", {
+      configurable: true,
+      value: function MockPushManager() {},
+    });
+
+    updatePermission("default");
 
     const wrapListener = (listener: EventListenerOrEventListenerObject | null | undefined) => {
       if (!listener) return undefined;
@@ -287,5 +385,61 @@ test.describe("Push notifications", () => {
       page.getByRole("button", { name: "Открыть" }).click(),
     ]);
     await expect(page.getByText("Новости Университета")).toBeVisible();
+  });
+
+  test("opens popover and marks notifications as read", async ({ page }) => {
+    const mock = await useMockApi(page);
+    await mock.login(page);
+
+    const bell = page.getByRole("button", { name: /Открыть уведомления/ });
+    await expect(bell).toHaveAttribute("aria-label", /непрочитанных: 1/);
+
+    await bell.click();
+    const dialog = page.getByRole("dialog", { name: "Уведомления" });
+    await expect(dialog).toBeVisible();
+
+    const firstItem = dialog.getByRole("listitem").first();
+    await expect(firstItem).toContainText("Изменение расписания");
+
+    await page.getByRole("button", { name: "Пометить прочитанным" }).click();
+    await expect(page.getByRole("alert")).toContainText("Уведомление помечено прочитанным");
+    await expect(dialog.getByText("Все уведомления прочитаны.")).toBeVisible();
+
+    await expect.poll(() => mock.state.notifications.filter((item) => !item.read).length).toBe(0);
+    await expect(bell).toHaveAttribute("aria-label", /непрочитанных нет/);
+  });
+
+  test("subscribes, receives test push and unsubscribes from popover", async ({ page }) => {
+    const mock = await useMockApi(page);
+    await mock.login(page);
+
+    const bell = page.getByRole("button", { name: /Открыть уведомления/ });
+    await bell.click();
+
+    const dialog = page.getByRole("dialog", { name: "Уведомления" });
+    await expect(dialog).toBeVisible();
+
+    const toggle = dialog.getByRole("switch");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await toggle.click();
+
+    await expect(dialog.getByText(/Подписка активна/)).toBeVisible();
+    await expect.poll(() => mock.state.pushSubscribed).toBeTruthy();
+
+    await page.evaluate(() => {
+      window.__mockPush?.({
+        title: "Тестовое уведомление",
+        body: "Проверка доставки",
+        data: { type: "in-app", url: "/notifications" },
+      });
+    });
+
+    const toast = page.getByRole("alert");
+    await expect(toast).toContainText("Тестовое уведомление");
+
+    await toggle.click();
+    await expect(dialog.getByText(/Уведомления выключены/)).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect.poll(() => mock.state.pushSubscribed).toBeFalsy();
   });
 });
