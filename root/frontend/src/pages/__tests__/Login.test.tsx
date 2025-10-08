@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Login from '../Login';
 import { server } from '@/tests/mocks/server';
 import { routerFutureFlags } from '../../App';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 const clients: QueryClient[] = [];
 
@@ -24,12 +25,14 @@ const renderLogin = () => {
   clients.push(client);
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
-        </Routes>
-      </MemoryRouter>
+      <AuthProvider>
+        <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
     </QueryClientProvider>,
   );
 };
