@@ -92,13 +92,17 @@ export function resolveMediaUrl(
     url.pathname = encodePathname(url.pathname)
     return url.toString()
   } catch {
+    if (fallback) return fallback
+    if (normalizedRelative.startsWith("/")) {
+      return `${origin}${normalizedRelative}`
+    }
     const basePath = normalizedRelative.replace(/^\/+/, "")
     const finalPath = basePath ? `/${basePath}` : ""
     return `${origin}${finalPath}` || fallback
   }
 }
 
-export function addCacheBuster(url: string | undefined, version: number | string): string | undefined {
+export function addCacheBust(url: string | undefined, version: number | string): string | undefined {
   if (!url) return undefined
   const value = String(version)
   if (!value) return url
