@@ -289,7 +289,7 @@ export default function Activity() {
     return {
       backgroundImage: `linear-gradient(180deg, ${alpha(
         base,
-        theme.palette.mode === "dark" ? 0.2 : 0.5,
+        theme.palette.mode === "dark" ? 0.2 : 0.5
       )} 0%, ${alpha(base, theme.palette.mode === "dark" ? 0.12 : 0.38)} 100%), linear-gradient(${tonal}, ${tonal})`,
       backdropFilter: "blur(12px)",
       WebkitBackdropFilter: "blur(12px)",
@@ -318,17 +318,17 @@ export default function Activity() {
   const attendanceItemKey = useCallback(
     (item: AttendanceStats["recent"][number], index: number) =>
       `${item?.date ?? index}-${item?.course ?? index}-${item?.status ?? ""}`,
-    [],
+    []
   )
   const gradeItemKey = useCallback(
     (item: GradeStats["recent"][number], index: number) =>
       `${item?.date ?? index}-${item?.course ?? index}-${item?.score ?? ""}-${item?.max ?? ""}`,
-    [],
+    []
   )
   const participationItemKey = useCallback(
     (item: ParticipationStats["recent"][number], index: number) =>
       `${item?.date ?? index}-${item?.title ?? index}-${item?.role ?? ""}`,
-    [],
+    []
   )
   const pickKeyCandidate = useCallback((value: unknown): string | number | undefined => {
     return typeof value === "number" || typeof value === "string" ? value : undefined
@@ -495,9 +495,7 @@ export default function Activity() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: reduce ? 0 : 0.35 }}
             style={
-              reduce
-                ? undefined
-                : { willChange: "transform, opacity", transform: "translateZ(0)" }
+              reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
             }
           >
             <ToggleButtonGroup
@@ -674,7 +672,10 @@ export default function Activity() {
                         : r.status === "late"
                           ? theme.palette.warning.main
                           : theme.palette.error.main
-                    const attendanceRecord = r as Partial<{ id?: number | string; lesson_id?: number | string }>
+                    const attendanceRecord = r as Partial<{
+                      id?: number | string
+                      lesson_id?: number | string
+                    }>
                     const itemKey =
                       pickKeyCandidate(attendanceRecord.id) ??
                       pickKeyCandidate(attendanceRecord.lesson_id) ??
