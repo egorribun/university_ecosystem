@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "../api/client";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth, currentUserQueryKey } from "../contexts/AuthContext";
-import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../contexts/AuthContext";
 import { Box, Paper, Typography, TextField, Button, Stack, InputAdornment, IconButton, useMediaQuery, CircularProgress, Checkbox, FormControlLabel, Chip, Tooltip } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -51,7 +49,6 @@ const Login = () => {
 
   const navigate = useNavigate();
   const { login } = useAuth();
-  const queryClient = useQueryClient();
   const isMobile = useMediaQuery("(max-width:600px)");
 
   const emailRef = useRef<HTMLInputElement | null>(null);
@@ -108,21 +105,17 @@ const Login = () => {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const payload = new URLSearchParams();
-      payload.append("username", username);
-      payload.append("password", passwordValue);
-      const res = await axios.post("/auth/login", payload, { headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      await login(username, passwordValue);
+
       if (remember) {
         localStorage.setItem("auth:lastEmail", username);
         savedEmail.current = username;
       }
       localStorage.setItem("auth:remember", remember ? "1" : "0");
-      await login(res.data.access_token);
-      await queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
       navigate("/dashboard");
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || "Неверный email или пароль";
-      setSubmitError(String(msg));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Неверный email или пароль";
+      setSubmitError(message);
     } finally {
       setSubmitting(false);
     }

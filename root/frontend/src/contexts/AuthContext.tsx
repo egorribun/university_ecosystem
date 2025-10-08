@@ -1,18 +1,30 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
 
-type SetUserArg = any | ((prev: any) => any)
+type UserState = any | null
+
+type SetUserArg = UserState | ((prev: UserState) => UserState)
 
 type AuthContextType = {
   isAuth: boolean
-  login: (token: string) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  user: any
+  user: UserState
   loading: boolean
   setUser: (user: SetUserArg) => void
+  refresh: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -22,6 +34,7 @@ export const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: false,
   setUser: () => {},
+  refresh: async () => {},
 })
 
 export const useAuth = () => useContext(AuthContext)
@@ -67,71 +80,147 @@ const readStoredToken = () => {
   }
 }
 
-export const fetchCurrentUser = async () => {
-  try {
-    const res = await api.get("/users/me")
-    return res.data
-  } catch (error) {
-    if (!isAxiosError(error) || error.response) {
-      throw error
-    }
-    return null
-  }
+type FetchCurrentUserOptions = {
+  signal?: AbortSignal
+}
+
+export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {}) => {
+  const response = await api.get("/users/me", { signal })
+  return response.data
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
+  const cachedUserRef = useRef<UserState>(readCachedUser() ?? null)
   const [token, setToken] = useState<string | null>(() => readStoredToken())
-  const hasToken = Boolean(token)
+  const [userState, setUserState] = useState<UserState>(cachedUserRef.current)
+  const [initializing, setInitializing] = useState<boolean>(
+    () => Boolean(cachedUserRef.current || token)
+  )
+  const [authOperation, setAuthOperation] = useState(false)
+  const bootstrapSkipRef = useRef(false)
+  const activeRequestRef = useRef<AbortController | null>(null)
 
   const applyToken = useCallback((value: string | null) => {
     setToken(value)
     setAuthToken(value ?? undefined)
   }, [])
 
-  const clearProfile = useCallback(() => {
-    persistUserToCache(null)
-    queryClient.setQueryData(currentUserQueryKey, null)
-  }, [queryClient])
-
-  const handleUnauthorized = useCallback(() => {
-    void queryClient.cancelQueries({ queryKey: currentUserQueryKey })
-    applyToken(null)
-    clearProfile()
-  }, [applyToken, clearProfile, queryClient])
-
   useEffect(() => {
     setAuthToken(token ?? undefined)
   }, [token])
 
-  const userQuery = useQuery<any>({
-    queryKey: currentUserQueryKey,
-    queryFn: fetchCurrentUser,
-    enabled: hasToken,
-    initialData: readCachedUser,
-    placeholderData: (previous: any) => previous,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry(failureCount: number, error: unknown) {
-      if (isAxiosError(error) && error.response?.status === 401) return false
-      return failureCount < 3
+  const setUser = useCallback(
+    (value: SetUserArg) => {
+      setUserState((prev: UserState) => {
+        const previous = prev ?? null
+        const next =
+          typeof value === "function"
+            ? (value as (prev: UserState) => UserState)(previous)
+            : value
+        const normalized: UserState = next ?? null
+        persistUserToCache(normalized)
+        queryClient.setQueryData(currentUserQueryKey, normalized)
+        return normalized
+      })
     },
-    retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
-  })
-
-  const { data: userData, isSuccess, isError, error, isPending } = userQuery
+    [queryClient]
+  )
 
   useEffect(() => {
-    if (isSuccess) {
-      persistUserToCache(userData ?? null)
+    if (cachedUserRef.current !== null) {
+      queryClient.setQueryData(currentUserQueryKey, cachedUserRef.current)
+      cachedUserRef.current = null
     }
-  }, [isSuccess, userData])
+  }, [queryClient])
+
+  const clearProfile = useCallback(() => {
+    activeRequestRef.current?.abort()
+    setUser(null)
+    cachedUserRef.current = null
+  }, [setUser])
+
+  const handleUnauthorized = useCallback(() => {
+    activeRequestRef.current?.abort()
+    applyToken(null)
+    clearProfile()
+    setInitializing(false)
+  }, [applyToken, clearProfile])
 
   useEffect(() => {
-    if (isError && isAxiosError(error) && error.response?.status === 401) {
-      handleUnauthorized()
+    if (!token) {
+      clearProfile()
+      setInitializing(false)
+      return
     }
-  }, [error, handleUnauthorized, isError])
+
+    if (bootstrapSkipRef.current) {
+      bootstrapSkipRef.current = false
+      return
+    }
+
+    const controller = new AbortController()
+    activeRequestRef.current?.abort()
+    activeRequestRef.current = controller
+    setInitializing(true)
+
+    ;(async () => {
+      try {
+        const profile = await fetchCurrentUser({ signal: controller.signal })
+        setUser(profile ?? null)
+      } catch (error) {
+        if (controller.signal.aborted) return
+        if (isAxiosError(error) && error.response?.status === 401) {
+          handleUnauthorized()
+          return
+        }
+        console.error("Failed to fetch current user", error)
+      } finally {
+        if (!controller.signal.aborted) {
+          setInitializing(false)
+          if (activeRequestRef.current === controller) {
+            activeRequestRef.current = null
+          }
+        }
+      }
+    })()
+
+    return () => {
+      controller.abort()
+    }
+  }, [clearProfile, handleUnauthorized, setUser, token])
+
+  const refresh = useCallback(async () => {
+    if (!token) {
+      clearProfile()
+      setInitializing(false)
+      return
+    }
+
+    const controller = new AbortController()
+    activeRequestRef.current?.abort()
+    activeRequestRef.current = controller
+
+    try {
+      setInitializing(true)
+      const profile = await fetchCurrentUser({ signal: controller.signal })
+      setUser(profile ?? null)
+    } catch (error) {
+      if (controller.signal.aborted) return
+      if (isAxiosError(error) && error.response?.status === 401) {
+        handleUnauthorized()
+        return
+      }
+      throw error
+    } finally {
+      if (!controller.signal.aborted) {
+        setInitializing(false)
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null
+        }
+      }
+    }
+  }, [clearProfile, handleUnauthorized, setUser, token])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -140,7 +229,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const stored = readStoredToken()
         if (stored) {
           applyToken(stored)
-          void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
         } else {
           handleUnauthorized()
         }
@@ -148,7 +236,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
-  }, [applyToken, handleUnauthorized, queryClient])
+  }, [applyToken, handleUnauthorized])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -158,42 +246,79 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
   }, [handleUnauthorized])
 
-  const user = userData ?? null
-  const loading = hasToken && isPending
-  const isAuth = Boolean(hasToken && user)
-
-  const setUser = useCallback(
-    (value: SetUserArg) => {
-      queryClient.setQueryData(currentUserQueryKey, (prev: any) => {
-        const previous = prev ?? null
-        const next =
-          typeof value === "function" ? (value as (prev: any) => any)(previous) : value
-        persistUserToCache(next ?? null)
-        return next ?? null
-      })
-    },
-    [queryClient]
-  )
-
   const login = useCallback(
-    async (nextToken: string) => {
-      applyToken(nextToken)
-      await queryClient.cancelQueries({ queryKey: currentUserQueryKey })
-      await queryClient.fetchQuery({ queryKey: currentUserQueryKey, queryFn: fetchCurrentUser })
-      if (typeof window !== "undefined" && typeof Notification !== "undefined") {
-        if (Notification.permission === "granted") {
-          await softSyncPushSubscription()
+    async (email: string, password: string) => {
+      const payload = new URLSearchParams()
+      payload.append("username", email.trim())
+      payload.append("password", password)
+
+      const controller = new AbortController()
+      activeRequestRef.current?.abort()
+      activeRequestRef.current = controller
+
+      try {
+        setAuthOperation(true)
+        const { data } = await api.post("/auth/login", payload, {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          signal: controller.signal,
+        })
+
+        const nextToken: string | undefined =
+          data?.access_token ?? data?.accessToken ?? data?.token ?? undefined
+
+        if (!nextToken) {
+          throw new Error("Не удалось получить токен авторизации")
+        }
+
+        bootstrapSkipRef.current = true
+        applyToken(nextToken)
+
+        const profile = await fetchCurrentUser({ signal: controller.signal })
+        setUser(profile ?? null)
+
+        if (typeof window !== "undefined" && typeof Notification !== "undefined") {
+          if (Notification.permission === "granted") {
+            try {
+              await softSyncPushSubscription()
+            } catch (error) {
+              console.warn("Failed to sync push subscription", error)
+            }
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          handleUnauthorized()
+        }
+
+        if (isAxiosError(error)) {
+          const message =
+            typeof error.response?.data?.detail === "string"
+              ? error.response.data.detail
+              : "Не удалось войти"
+          throw new Error(message)
+        }
+
+        if (error instanceof Error) {
+          throw error
+        }
+
+        throw new Error("Не удалось войти")
+      } finally {
+        if (!controller.signal.aborted) {
+          setAuthOperation(false)
+          setInitializing(false)
+          if (activeRequestRef.current === controller) {
+            activeRequestRef.current = null
+          }
         }
       }
     },
-    [applyToken, queryClient]
+    [applyToken, handleUnauthorized, setUser]
   )
 
   const logout = useCallback(async () => {
-    if (typeof window === "undefined") {
-      handleUnauthorized()
-      return
-    }
+    activeRequestRef.current?.abort()
+    setAuthOperation(true)
 
     try {
       await api.post("/auth/logout")
@@ -208,13 +333,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error("Failed to unsubscribe push subscription on logout", error)
       } finally {
         handleUnauthorized()
+        setAuthOperation(false)
       }
     }
   }, [handleUnauthorized])
 
+  const user = userState ?? null
+  const isAuth = Boolean(token && user)
+  const loading = initializing || authOperation
+
   const value = useMemo(
-    () => ({ isAuth, login, logout, user, loading, setUser }),
-    [isAuth, login, logout, user, loading, setUser]
+    () => ({ isAuth, login, logout, user, loading, setUser, refresh }),
+    [isAuth, login, logout, user, loading, setUser, refresh]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

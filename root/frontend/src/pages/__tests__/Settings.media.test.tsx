@@ -58,6 +58,7 @@ const renderSettings = () => {
               setUser: mockSetUser,
               logout: mockLogout,
               login: vi.fn(),
+              refresh: vi.fn(),
               isAuth: true,
               loading: false,
             }}
@@ -109,7 +110,14 @@ describe("Settings media actions", () => {
     const formData = postSpy.mock.calls[0][1] as FormData;
     expect(formData.get("file")).toBe(file);
 
-    await waitFor(() => expect(getSpy).toHaveBeenCalledWith("/users/me"));
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalled();
+      const [endpoint, config] = getSpy.mock.calls[getSpy.mock.calls.length - 1];
+      expect(endpoint).toBe("/users/me");
+      if (config) {
+        expect(config).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal) }));
+      }
+    });
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser));
 
     const updatedSrc = avatar.getAttribute("src");
