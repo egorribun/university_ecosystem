@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 
-import app.models as _models  # noqa: F401  # Ensure all ORM models register with Base metadata.
+# Import models for Base metadata registration side effects.
+import app.models  # noqa: F401
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
