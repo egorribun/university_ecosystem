@@ -13,66 +13,93 @@ async function setupMockServiceWorker(page: Page) {
     } satisfies PushSubscriptionJSON;
 
     const createSubscription = () => {
-      const sub: PushSubscription = {
+      const applicationServerKey = Uint8Array.from([1, 2, 3, 4]).buffer;
+      const authKey = new TextEncoder().encode(subscriptionPayload.keys?.auth ?? "").buffer;
+
+      const sub = {
         endpoint: subscriptionPayload.endpoint!,
         expirationTime: Date.now() + 24 * 3600 * 1000,
         options: {
-          applicationServerKey: new Uint8Array([1, 2, 3, 4]),
+          applicationServerKey,
           userVisibleOnly: true,
         },
         toJSON: () => subscriptionPayload,
-        getKey: () => new ArrayBuffer(0),
+        getKey: (name: PushEncryptionKeyName) => {
+          if (name === "p256dh") return applicationServerKey;
+          if (name === "auth") return authKey;
+          return null;
+        },
         unsubscribe: async () => {
           activeSubscription = null;
           return true;
         },
-      } as unknown as PushSubscription;
+      } satisfies PushSubscription;
       return sub;
     };
 
-    const pushManager = {
+    const pushManager: PushManager = {
       getSubscription: async () => activeSubscription,
       subscribe: async () => {
         activeSubscription = createSubscription();
         return activeSubscription;
       },
-    } satisfies ServiceWorkerRegistration["pushManager"];
+      permissionState: async () =>
+        MockNotification.permission === "default" ? "prompt" : MockNotification.permission,
+    };
 
     const registration = {
       showNotification(title: string, options: NotificationOptions = {}) {
         showNotificationCalls.push({ title, options });
         return Promise.resolve();
       },
-      pushManager: pushManager as PushManager,
+      pushManager,
     } as ServiceWorkerRegistration;
 
-    const permissionListeners = new Set<() => void>();
+    const permissionListeners = new Set<EventListener>();
+
+    let currentPermissionState: PermissionState = "prompt";
 
     const permissionStatus = {
-      state: "prompt" as PermissionState,
-      onchange: null as (() => void) | null,
-      addEventListener(type: string, listener: EventListener | null) {
-        if (type !== "change" || typeof listener !== "function") return;
-        permissionListeners.add(listener);
+      get state() {
+        return currentPermissionState;
       },
-      removeEventListener(type: string, listener: EventListener | null) {
-        if (type !== "change" || typeof listener !== "function") return;
-        permissionListeners.delete(listener);
+      onchange: null as ((this: PermissionStatus, event: Event) => void) | null,
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+        if (type !== "change") return;
+        const wrapped = wrapListener(listener);
+        if (wrapped) permissionListeners.add(wrapped);
       },
-    } as PermissionStatus & { onchange: (() => void) | null };
+      removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+        if (type !== "change") return;
+        const wrapped = wrapListener(listener);
+        if (wrapped) permissionListeners.delete(wrapped);
+      },
+      dispatchEvent(event: Event) {
+        if (event.type !== "change") return true;
+        permissionListeners.forEach((listener) => {
+          try {
+            listener.call(permissionStatus, event);
+          } catch (error) {
+            console.error("Mock permission listener failed", error);
+          }
+        });
+        return true;
+      },
+    } as PermissionStatus & { onchange: ((this: PermissionStatus, event: Event) => void) | null };
 
     const updatePermission = (next: NotificationPermission) => {
       MockNotification.permission = next;
-      permissionStatus.state = next === "default" ? "prompt" : next;
-      permissionListeners.forEach(listener => {
+      currentPermissionState = next === "default" ? "prompt" : next;
+      const changeEvent = new Event("change");
+      permissionListeners.forEach((listener) => {
         try {
-          listener.call(permissionStatus);
+          listener.call(permissionStatus, changeEvent);
         } catch (error) {
           console.error("Mock permission listener failed", error);
         }
       });
       try {
-        permissionStatus.onchange?.call(permissionStatus);
+        permissionStatus.onchange?.call(permissionStatus, changeEvent);
       } catch (error) {
         console.error("Mock permission onchange failed", error);
       }
