@@ -4,7 +4,7 @@ import Skeleton from "@mui/material/Skeleton";
 import { useAuth } from "../contexts/AuthContext";
 import guuLogo from "../assets/guu_logo.png";
 import defaultAvatar from "../assets/default_avatar.png";
-import { addCacheBuster, resolveMediaUrl } from "@/utils/media";
+import { addCacheBust, resolveMediaUrl } from "@/utils/media";
 import NotificationsBell from "@/components/NotificationsBell";
 
 const navTextColor = "var(--nav-text)";
@@ -242,7 +242,7 @@ const Navbar = () => {
       (user as any)?.avatar_version ??
       (user as any)?.updated_at ??
       null;
-    return version != null ? addCacheBuster(resolved, version) ?? resolved : resolved;
+    return version != null ? addCacheBust(resolved, version) ?? resolved : resolved;
   };
 
   const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
