@@ -4,7 +4,7 @@ import Skeleton from "@mui/material/Skeleton";
 import { useAuth } from "../contexts/AuthContext";
 import guuLogo from "../assets/guu_logo.png";
 import defaultAvatar from "../assets/default_avatar.png";
-import { addCacheBust, resolveMediaUrl } from "@/utils/media";
+import SmartImage from "@/components/SmartImage";
 import NotificationsBell from "@/components/NotificationsBell";
 
 const navTextColor = "var(--nav-text)";
@@ -126,6 +126,17 @@ function samePath(a: string, b: string) {
   return na === nb;
 }
 
+function parseCacheVersion(input: unknown): number | undefined {
+  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "string") {
+    const numeric = Number(input);
+    if (!Number.isNaN(numeric)) return numeric;
+    const parsed = Date.parse(input);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -234,22 +245,26 @@ const Navbar = () => {
     drawerWasOpenRef.current = false;
   }, [isMobile, mobileMenu]);
 
-  const getAvatarSrc = () => {
-    const resolved = resolveMediaUrl(user?.avatar_url, undefined, { fallback: defaultAvatar });
-    if (!resolved) return defaultAvatar;
-    const version =
+  const avatarCacheV = useMemo(() => {
+    const raw =
       (user as any)?.avatar_updated_at ??
       (user as any)?.avatar_version ??
       (user as any)?.updated_at ??
-      null;
-    return version != null ? addCacheBust(resolved, version) ?? resolved : resolved;
-  };
+      undefined;
+    return parseCacheVersion(raw);
+  }, [user]);
 
-  const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = event.currentTarget;
-    img.onerror = null;
-    img.src = defaultAvatar;
+  const avatarFallback = useMemo(() => {
+    if (typeof window === "undefined") return defaultAvatar;
+    try {
+      return new URL(defaultAvatar, window.location.origin).toString();
+    } catch {
+      return defaultAvatar;
+    }
   }, []);
+
+  const avatarSource = user?.avatar_url || "";
+  const hasAvatar = Boolean(avatarSource);
 
   const menuLinks = useMemo(() => {
     const base = [
@@ -343,19 +358,25 @@ const Navbar = () => {
 
           {isMobile ? (
             <div style={{ display: "flex", alignItems: "center", marginLeft: "auto", gap: "6px" }}>
-              <NotificationsBell iconColor="#fff" />
+              <NotificationsBell />
               {isAuth && user && !loading ? (
-                <img
-                  src={getAvatarSrc()}
+                <SmartImage
+                  srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                  cacheV={hasAvatar ? avatarCacheV : undefined}
+                  fallback={avatarFallback}
                   alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
                   title="Открыть профиль"
-                  style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: "cover", border: "1px solid #d7d7d7", background: "#fff", cursor: "pointer" }}
+                  style={{
+                    width: avatarSize,
+                    height: avatarSize,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "1px solid #d7d7d7",
+                    background: "#fff",
+                    cursor: "pointer",
+                    display: "block",
+                  }}
                   onClick={() => go("/profile")}
-                  onError={handleAvatarError}
-                  loading="lazy"
-                  decoding="async"
-                  width={avatarSize}
-                  height={avatarSize}
                 />
               ) : (
                 <Skeleton
@@ -416,18 +437,24 @@ const Navbar = () => {
             </div>
           ) : (!isMobile && isAuth && user && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px", minWidth: 0, whiteSpace: "nowrap" }}>
-              <NotificationsBell iconColor="#fff" />
-              <img
-                src={getAvatarSrc()}
+              <NotificationsBell />
+              <SmartImage
+                srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                cacheV={hasAvatar ? avatarCacheV : undefined}
+                fallback={avatarFallback}
                 alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
                 title="Открыть профиль"
-                style={{ width: "36px", height: "36px", borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ccc", background: "#fff", cursor: "pointer" }}
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "1.5px solid #ccc",
+                  background: "#fff",
+                  cursor: "pointer",
+                  display: "block",
+                }}
                 onClick={() => go("/profile")}
-                onError={handleAvatarError}
-                loading="lazy"
-                decoding="async"
-                width={36}
-                height={36}
               />
               <button
                 type="button"

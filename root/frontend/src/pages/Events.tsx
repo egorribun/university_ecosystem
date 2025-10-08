@@ -13,6 +13,7 @@ import FilterListIcon from "@mui/icons-material/FilterList"
 import ClearIcon from "@mui/icons-material/Clear"
 import { useAuth } from "../contexts/AuthContext"
 import { resolveMediaUrl } from "@/utils/media"
+import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 
 type EventTabKey = "active" | "archive" | "my"
@@ -519,27 +520,19 @@ const Events = () => {
 
               {createPreview && (
                 <Box mt={1}>
-                  <img
-                    src={createPreview}
-                    alt="preview"
-                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
-                    loading="lazy"
-                    decoding="async"
-                    width={280}
-                    height={180}
+                  <SmartImage
+                    srcRaw={createPreview}
+                    alt="Предпросмотр изображения"
+                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />
                 </Box>
               )}
               {!createPreview && eventData.image_url && (
                 <Box mt={1}>
-                  <img
-                    src={resolveMediaUrl(eventData.image_url)}
-                    alt="event"
-                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
-                    loading="lazy"
-                    decoding="async"
-                    width={280}
-                    height={180}
+                  <SmartImage
+                    srcRaw={resolveMediaUrl(eventData.image_url)}
+                    alt="Изображение события"
+                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />
                 </Box>
               )}

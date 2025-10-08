@@ -20,7 +20,7 @@ import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
 const News = lazy(() => import("./pages/News"))
-const NewsDetail = lazy(() => import("./components/NewsDetail"))
+const NewsDetail = lazy(() => import("./pages/NewsDetail"))
 const Schedule = lazy(() => import("./pages/Schedule"))
 const Activity = lazy(() => import("./pages/Activity"))
 const Events = lazy(() => import("./pages/Events"))
@@ -33,7 +33,6 @@ const AdminUsers = lazy(() => import("./pages/AdminUsers"))
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
 const ResetPassword = lazy(() => import("./pages/ResetPassword"))
 const Settings = lazy(() => import("./pages/Settings"))
-const NotificationsPage = lazy(() => import("./pages/Notifications"))
 
 type RouteGuardProps = { children: ReactElement }
 
@@ -101,10 +100,6 @@ function AppContent() {
           <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
           <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
           <Route path="/activity" element={<PrivateRoute>{wrap(<Activity />)}</PrivateRoute>} />
-          <Route
-            path="/notifications"
-            element={<PrivateRoute>{wrap(<NotificationsPage />)}</PrivateRoute>}
-          />
           <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
           <Route
             path="/events/:id"

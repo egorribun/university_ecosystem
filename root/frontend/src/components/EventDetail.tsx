@@ -14,6 +14,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import { useAuth } from '../contexts/AuthContext'
 import Layout from '../components/Layout'
 import { resolveMediaUrl } from '@/utils/media'
+import SmartImage from '@/components/SmartImage'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
@@ -288,20 +289,21 @@ const EventDetail = () => {
             </Box>
             {imageUrl && (
               <Box
-                component="img"
-                src={imageUrl}
-                alt="Изображение мероприятия"
-                loading="lazy"
                 sx={{
                   width: '100%',
                   maxHeight: 350,
                   borderRadius: 3,
-                  objectFit: 'cover',
                   border: '1px solid #282c34',
-                  boxShadow: 2
+                  boxShadow: 2,
+                  overflow: 'hidden',
                 }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
+              >
+                <SmartImage
+                  srcRaw={imageUrl}
+                  alt="Изображение мероприятия"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </Box>
             )}
             <Box>
               <Stack direction="row" spacing={1} alignItems="center" mb={1}>
@@ -479,20 +481,21 @@ const EventDetail = () => {
           <Stack spacing={3} width="45%">
             {imageUrl && (
               <Box
-                component="img"
-                src={imageUrl}
-                alt="Изображение мероприятия"
-                loading="lazy"
                 sx={{
                   width: '100%',
                   maxHeight: 520,
                   borderRadius: 5,
-                  objectFit: 'cover',
                   border: '1px solid #282c34',
-                  boxShadow: 3
+                  boxShadow: 3,
+                  overflow: 'hidden',
                 }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
+              >
+                <SmartImage
+                  srcRaw={imageUrl}
+                  alt="Изображение мероприятия"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </Box>
             )}
             <Divider />
             <Stack direction="row" spacing={1} alignItems="center" mb={1}>

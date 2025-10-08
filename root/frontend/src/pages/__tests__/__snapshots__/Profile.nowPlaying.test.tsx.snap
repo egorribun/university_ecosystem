@@ -22,6 +22,9 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
         <img
           alt="Album"
           class="MuiAvatar-img css-1su80sj-MuiAvatar-img"
+          decoding="async"
+          loading="lazy"
+          referrerpolicy="no-referrer"
           src="https://example.com/cover.jpg"
         />
       </div>
@@ -101,6 +104,9 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
         <img
           alt="Album"
           class="MuiAvatar-img css-1su80sj-MuiAvatar-img"
+          decoding="async"
+          loading="lazy"
+          referrerpolicy="no-referrer"
           src="https://example.com/cover.jpg"
         />
       </div>

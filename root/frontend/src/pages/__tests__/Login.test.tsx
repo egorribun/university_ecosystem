@@ -4,19 +4,35 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { axe } from 'jest-axe';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Login from '../Login';
 import { server } from '@/tests/mocks/server';
 import { routerFutureFlags } from '../../App';
 
-const renderLogin = () =>
-  render(
-    <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
-      </Routes>
-    </MemoryRouter>,
+const clients: QueryClient[] = [];
+
+const createClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 30000, retry: 1, refetchOnWindowFocus: false },
+      mutations: { retry: 0 },
+    },
+  });
+
+const renderLogin = () => {
+  const client = createClient();
+  clients.push(client);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
+};
 
 describe('Login page', () => {
   beforeEach(() => {
@@ -25,6 +41,7 @@ describe('Login page', () => {
 
   afterEach(() => {
     localStorage.clear();
+    clients.splice(0).forEach((client) => client.clear());
   });
 
   it('blocks submission for invalid email', async () => {
