@@ -1,6 +1,5 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Dict, List, Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -106,7 +105,7 @@ async def get_news_list(db: AsyncSession, skip: int = 0, limit: int = 10):
     return result.scalars().all()
 
 
-async def _attendance_counts(db: AsyncSession, event_ids: List[int]) -> Dict[int, int]:
+async def _attendance_counts(db: AsyncSession, event_ids: list[int]) -> dict[int, int]:
     if not event_ids:
         return {}
     rows = await db.execute(
@@ -118,15 +117,15 @@ async def _attendance_counts(db: AsyncSession, event_ids: List[int]) -> Dict[int
 
 
 async def _files_by_event(
-    db: AsyncSession, event_ids: List[int]
-) -> Dict[int, List[models.EventFile]]:
+    db: AsyncSession, event_ids: list[int]
+) -> dict[int, list[models.EventFile]]:
     if not event_ids:
         return {}
     rows = await db.execute(
         select(models.EventFile).where(models.EventFile.event_id.in_(event_ids))
     )
     files = rows.scalars().all()
-    out: Dict[int, List[models.EventFile]] = {}
+    out: dict[int, list[models.EventFile]] = {}
     for f in files:
         out.setdefault(f.event_id, []).append(f)
     return out
@@ -350,10 +349,10 @@ async def create_group(db: AsyncSession, data: schemas.GroupCreate):
 
 async def get_users(
     db: AsyncSession,
-    group_id: Optional[int] = None,
-    full_name: Optional[str] = None,
-    role: Optional[str] = None,
-) -> List[models.User]:
+    group_id: int | None = None,
+    full_name: str | None = None,
+    role: str | None = None,
+) -> list[models.User]:
     stmt = select(models.User)
     if group_id:
         stmt = stmt.where(models.User.group_id == group_id)

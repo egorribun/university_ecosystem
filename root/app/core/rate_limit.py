@@ -4,8 +4,8 @@ import asyncio
 import math
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from fastapi import Request
 from redis.asyncio import Redis
@@ -64,7 +64,7 @@ _memory_buckets: dict[str, list[float]] = {}
 _memory_lock = asyncio.Lock()
 
 
-def set_rate_limit_client_factory(factory: Optional[_RedisFactory]) -> None:
+def set_rate_limit_client_factory(factory: _RedisFactory | None) -> None:
     global _redis_factory
     if factory is None:
         _redis_factory = _create_redis_pool

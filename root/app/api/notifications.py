@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, desc, func, or_, select, update
@@ -22,7 +21,7 @@ def _encode_cursor(dt: datetime, nid: int) -> str:
     return f"{int(aware.timestamp() * 1000)}:{nid}"
 
 
-def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
+def _decode_cursor(value: str | None) -> tuple[datetime, int] | None:
     if not value:
         return None
     try:
@@ -34,7 +33,7 @@ def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
 
 @router.get("", response_model=NotificationsListOut)
 async def list_notifications(
-    cursor: Optional[str] = Query(None),
+    cursor: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -146,7 +145,9 @@ async def check_schedule_and_generate(
     created_any = False
     for les in lessons:
         title = f"Скоро пара: {les.subject}"
-        body = f"Начало в {les.start_time.strftime('%H:%M')} — {les.room or 'аудитория не указана'}"
+        room = les.room or "аудитория не указана"
+        start_at = les.start_time.strftime("%H:%M")
+        body = f"Начало в {start_at} — {room}"
         url = "/schedule"
 
         dupe = select(func.count(Notification.id)).where(

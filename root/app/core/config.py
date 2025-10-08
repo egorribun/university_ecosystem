@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from email.utils import parseaddr
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import urlparse
 
 from pydantic import field_validator
@@ -245,7 +245,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def trusted_hosts_list(self) -> list[str]:
-        if isinstance(self.trusted_hosts, (list, tuple, set)):
+        if isinstance(self.trusted_hosts, list | tuple | set):
             items = [str(v).strip() for v in self.trusted_hosts]
         else:
             items = [p.strip() for p in str(self.trusted_hosts).split(",")]
@@ -431,7 +431,10 @@ class Settings(BaseSettings):
             if self.strict_security_headers_enabled and not report_only:
                 directives = [
                     "default-src 'self'",
-                    "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'",
+                    (
+                        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' "
+                        "'report-sample'"
+                    ),
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob:",
                     f"connect-src {connect_value}",
@@ -444,7 +447,10 @@ class Settings(BaseSettings):
             else:
                 directives = [
                     "default-src 'self' http://localhost:5173",
-                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'",
+                    (
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+                        "http://localhost:5173 'report-sample'"
+                    ),
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob:",
                     f"connect-src {connect_value}",

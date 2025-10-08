@@ -1,5 +1,5 @@
 from datetime import datetime, time
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -23,66 +23,66 @@ class ResetPasswordIn(BaseModel):
 
 class UserBase(BaseModel):
     email: EmailStr
-    full_name: Optional[str] = None
-    role: Optional[str] = "student"
-    group_id: Optional[int] = None
-    avatar_url: Optional[str] = None
-    cover_url: Optional[str] = None
-    about: Optional[str] = None
-    record_book_number: Optional[str] = None
-    status: Optional[str] = None
-    institute: Optional[str] = None
-    course: Optional[str] = None
-    education_level: Optional[str] = None
-    track: Optional[str] = None
-    program: Optional[str] = None
-    telegram: Optional[str] = None
-    achievements: Optional[str] = None
-    department: Optional[str] = None
-    position: Optional[str] = None
+    full_name: str | None = None
+    role: str | None = "student"
+    group_id: int | None = None
+    avatar_url: str | None = None
+    cover_url: str | None = None
+    about: str | None = None
+    record_book_number: str | None = None
+    status: str | None = None
+    institute: str | None = None
+    course: str | None = None
+    education_level: str | None = None
+    track: str | None = None
+    program: str | None = None
+    telegram: str | None = None
+    achievements: str | None = None
+    department: str | None = None
+    position: str | None = None
     spotify_connected: bool = False
-    spotify_display_name: Optional[str] = None
+    spotify_display_name: str | None = None
     dnd_enabled: bool = False
-    dnd_start: Optional[time] = None
-    dnd_end: Optional[time] = None
+    dnd_start: time | None = None
+    dnd_end: time | None = None
 
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=200)
-    invite_code: Optional[str] = None
+    invite_code: str | None = None
 
 
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool
-    spotify_is_connected: Optional[bool] = None
+    spotify_is_connected: bool | None = None
 
 
 class UserAdminUpdate(BaseModel):
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    role: Optional[str] = None
-    group_id: Optional[int] = None
+    full_name: str | None = None
+    email: EmailStr | None = None
+    role: str | None = None
+    group_id: int | None = None
 
 
 class UserProfileUpdate(BaseModel):
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    about: Optional[str] = None
-    record_book_number: Optional[str] = None
-    status: Optional[str] = None
-    institute: Optional[str] = None
-    course: Optional[str] = None
-    education_level: Optional[str] = None
-    track: Optional[str] = None
-    program: Optional[str] = None
-    telegram: Optional[str] = None
-    achievements: Optional[str] = None
-    department: Optional[str] = None
-    position: Optional[str] = None
-    dnd_enabled: Optional[bool] = None
-    dnd_start: Optional[time] = None
-    dnd_end: Optional[time] = None
+    full_name: str | None = None
+    email: EmailStr | None = None
+    about: str | None = None
+    record_book_number: str | None = None
+    status: str | None = None
+    institute: str | None = None
+    course: str | None = None
+    education_level: str | None = None
+    track: str | None = None
+    program: str | None = None
+    telegram: str | None = None
+    achievements: str | None = None
+    department: str | None = None
+    position: str | None = None
+    dnd_enabled: bool | None = None
+    dnd_start: time | None = None
+    dnd_end: time | None = None
 
     @model_validator(mode="before")
     def _validate_dnd(cls, data: Any) -> Any:
@@ -101,27 +101,27 @@ class UserProfileUpdate(BaseModel):
 
 class GroupCreate(BaseModel):
     name: str
-    course: Optional[int] = None
-    faculty: Optional[str] = None
+    course: int | None = None
+    faculty: str | None = None
 
 
 class GroupOut(OrmModel):
     id: int
     name: str
-    course: Optional[int] = None
-    faculty: Optional[str] = None
+    course: int | None = None
+    faculty: str | None = None
 
 
 class ScheduleBase(BaseModel):
     group_id: int
     subject: str
-    teacher: Optional[str] = None
-    room: Optional[str] = None
+    teacher: str | None = None
+    room: str | None = None
     weekday: str
     start_time: datetime
     end_time: datetime
-    parity: Optional[str] = "both"
-    lesson_type: Optional[str] = "Лекция"
+    parity: str | None = "both"
+    lesson_type: str | None = "Лекция"
 
 
 class ScheduleCreate(ScheduleBase):
@@ -129,15 +129,15 @@ class ScheduleCreate(ScheduleBase):
 
 
 class ScheduleUpdate(BaseModel):
-    group_id: Optional[int] = None
-    subject: Optional[str] = None
-    teacher: Optional[str] = None
-    room: Optional[str] = None
-    weekday: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    parity: Optional[str] = None
-    lesson_type: Optional[str] = None
+    group_id: int | None = None
+    subject: str | None = None
+    teacher: str | None = None
+    room: str | None = None
+    weekday: str | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    parity: str | None = None
+    lesson_type: str | None = None
 
 
 class ScheduleOut(OrmModel, ScheduleBase):
@@ -147,7 +147,7 @@ class ScheduleOut(OrmModel, ScheduleBase):
 class NewsCreate(BaseModel):
     title: str
     content: str
-    image_url: Optional[str] = None
+    image_url: str | None = None
 
 
 class NewsOut(OrmModel, NewsCreate):
@@ -159,51 +159,51 @@ class EventFileOut(OrmModel):
     id: int
     event_id: int
     file_url: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class EventCreate(BaseModel):
     title: str
-    description: Optional[str] = None
-    location: Optional[str] = None
-    event_type: Optional[str] = None
+    description: str | None = None
+    location: str | None = None
+    event_type: str | None = None
     starts_at: datetime
     ends_at: datetime
-    speaker: Optional[str] = None
-    image_url: Optional[str] = None
-    about: Optional[str] = None
+    speaker: str | None = None
+    image_url: str | None = None
+    about: str | None = None
 
 
 class EventUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    location: Optional[str] = None
-    event_type: Optional[str] = None
-    starts_at: Optional[datetime] = None
-    ends_at: Optional[datetime] = None
-    is_active: Optional[bool] = None
-    speaker: Optional[str] = None
-    image_url: Optional[str] = None
-    about: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
+    location: str | None = None
+    event_type: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    is_active: bool | None = None
+    speaker: str | None = None
+    image_url: str | None = None
+    about: str | None = None
 
 
 class EventOut(OrmModel):
     id: int
     title: str
-    description: Optional[str] = None
-    location: Optional[str] = None
-    event_type: Optional[str] = None
+    description: str | None = None
+    location: str | None = None
+    event_type: str | None = None
     starts_at: datetime
     ends_at: datetime
     created_by: int
     created_at: datetime
     is_active: bool
-    speaker: Optional[str] = None
-    image_url: Optional[str] = None
-    about: Optional[str] = None
-    files: List[EventFileOut] = Field(default_factory=list)
+    speaker: str | None = None
+    image_url: str | None = None
+    about: str | None = None
+    files: list[EventFileOut] = Field(default_factory=list)
     participant_count: int = 0
-    is_registered: Optional[bool] = None
+    is_registered: bool | None = None
 
 
 class EventAttendanceCreate(BaseModel):
@@ -215,7 +215,7 @@ class EventAttendanceOut(OrmModel):
     user_id: int
     event_id: int
     registered_at: datetime
-    qr_code: Optional[str] = None
+    qr_code: str | None = None
 
 
 class Token(BaseModel):
@@ -229,44 +229,44 @@ class SpotifyAuthURL(BaseModel):
 
 class SpotifyNowPlayingOut(BaseModel):
     is_playing: bool
-    progress_ms: Optional[int] = None
-    duration_ms: Optional[int] = None
-    track_id: Optional[str] = None
-    track_name: Optional[str] = None
-    artists: List[str] = Field(default_factory=list)
-    album_name: Optional[str] = None
-    album_image_url: Optional[str] = None
-    track_url: Optional[str] = None
-    preview_url: Optional[str] = None
+    progress_ms: int | None = None
+    duration_ms: int | None = None
+    track_id: str | None = None
+    track_name: str | None = None
+    artists: list[str] = Field(default_factory=list)
+    album_name: str | None = None
+    album_image_url: str | None = None
+    track_url: str | None = None
+    preview_url: str | None = None
     fetched_at: datetime
 
 
 class NotificationCreate(BaseModel):
     user_id: int
     title: str
-    body: Optional[str] = None
-    type: Optional[str] = None
-    url: Optional[str] = None
+    body: str | None = None
+    type: str | None = None
+    url: str | None = None
 
 
 class NotificationOut(OrmModel):
     id: int
     title: str
-    body: Optional[str] = None
-    type: Optional[str] = None
-    url: Optional[str] = None
+    body: str | None = None
+    type: str | None = None
+    url: str | None = None
     created_at: datetime
     read: bool
-    read_at: Optional[datetime] = None
+    read_at: datetime | None = None
 
 
 class NotificationsListOut(BaseModel):
-    items: List[NotificationOut]
+    items: list[NotificationOut]
     unread_count: int
     has_more: bool
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
 
 
 class NotificationMarkReadIn(BaseModel):
-    id: Optional[int] = None
-    ids: Optional[List[int]] = None
+    id: int | None = None
+    ids: list[int] | None = None

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,8 +15,8 @@ def test_generate_schedule_ics_includes_lessons() -> None:
         teacher="Проф. Смирнов",
         room="А-101",
         weekday="Понедельник",
-        start_time=datetime(2024, 1, 1, 9, 0),
-        end_time=datetime(2024, 1, 1, 10, 30),
+        start_time=datetime(2024, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2024, 1, 1, 10, 30, tzinfo=UTC),
         parity="both",
         lesson_type="Лекция",
     )
@@ -43,8 +43,8 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
         teacher="Проф. Смирнов",
         room="А-101",
         weekday="Понедельник",
-        start_time=datetime(2024, 1, 1, 9, 0),
-        end_time=datetime(2024, 1, 1, 10, 30),
+        start_time=datetime(2024, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2024, 1, 1, 10, 30, tzinfo=UTC),
         parity="both",
         lesson_type="Лекция",
     )

@@ -7,12 +7,18 @@ from app.core.config import settings
 
 def _build_html(link: str, full_name: str) -> str:
     name = f", {full_name}" if full_name else ""
+    button_style = (
+        "display:inline-block;padding:10px 16px;background:#1d5fff;"
+        "color:#fff;border-radius:8px;text-decoration:none"
+    )
     return f"""
   <div style="font-family:Inter,Arial,sans-serif">
     <h2>Сброс пароля</h2>
     <p>Здравствуйте{name}!</p>
     <p>Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует 45 минут.</p>
-    <p><a href="{link}" style="display:inline-block;padding:10px 16px;background:#1d5fff;color:#fff;border-radius:8px;text-decoration:none">Сбросить пароль</a></p>
+    <p>
+      <a href="{link}" style="{button_style}">Сбросить пароль</a>
+    </p>
     <p>Если вы не запрашивали сброс, проигнорируйте это письмо.</p>
   </div>
   """
