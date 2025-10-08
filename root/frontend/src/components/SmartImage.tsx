@@ -1,5 +1,5 @@
 import { useState, memo } from "react"
-import { resolveMediaUrl, withCacheBust } from "@/utils/media"
+import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 
 type Props = React.ImgHTMLAttributes<HTMLImageElement> & {
   srcRaw?: string
@@ -18,7 +18,7 @@ export default memo(function SmartImage({ srcRaw, cacheV, fallback, ...rest }: P
     : resolved
     ? isSpecial
       ? resolved
-      : withCacheBust(resolved, cacheV)
+      : addVersionParam(resolved, cacheV)
     : base
   return (
     <img

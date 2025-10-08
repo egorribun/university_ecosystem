@@ -59,29 +59,35 @@ describe("resolveMediaUrl", () => {
       "https://backend.example/media/%D1%84%D0%BE%D1%82%D0%BE%201.png",
     )
   })
+
+  it("supports overriding origin", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("avatar.png", "https://custom.example"))
+      .toBe("https://custom.example/avatar.png")
+  })
 })
 
-describe("withCacheBust", () => {
+describe("addVersionParam", () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
   it("appends version parameter", async () => {
-    const { withCacheBust } = await import("@/utils/media")
-    expect(withCacheBust("https://example.com/image.png", 123)).toBe(
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("https://example.com/image.png", 123)).toBe(
       "https://example.com/image.png?v=123",
     )
   })
 
   it("updates existing parameter", async () => {
-    const { withCacheBust } = await import("@/utils/media")
-    expect(withCacheBust("https://example.com/image.png?v=1", 2)).toBe(
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("https://example.com/image.png?v=1", 2)).toBe(
       "https://example.com/image.png?v=2",
     )
   })
 
   it("handles relative URLs", async () => {
-    const { withCacheBust } = await import("@/utils/media")
-    expect(withCacheBust("/media/photo.png", 7)).toBe("/media/photo.png?v=7")
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("/media/photo.png", 7)).toBe("/media/photo.png?v=7")
   })
 })

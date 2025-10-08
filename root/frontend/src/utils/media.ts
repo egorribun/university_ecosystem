@@ -1,43 +1,75 @@
-const BACKEND_ORIGIN =
-  import.meta.env.VITE_BACKEND_ORIGIN ||
-  (typeof window !== "undefined" ? window.location.origin : "")
+const getDefaultOrigin = () => {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin
+  }
+  return ""
+}
 
-const safeEncode = (seg: string) => {
+const safeEncode = (segment: string) => {
+  const trimmed = segment.trim()
+  if (!trimmed) return ""
   try {
-    return encodeURIComponent(decodeURIComponent(seg))
+    return encodeURIComponent(decodeURIComponent(trimmed))
   } catch {
-    return encodeURIComponent(seg)
+    return encodeURIComponent(trimmed)
   }
 }
 
-export function resolveMediaUrl(raw?: string): string {
+const normaliseOrigin = (origin?: string) => {
+  const fallback = getDefaultOrigin()
+  const raw = origin?.trim() || fallback
+  if (!raw) return ""
+  try {
+    const parsed = new URL(raw)
+    parsed.hash = ""
+    parsed.search = ""
+    return parsed.origin
+  } catch {
+    return fallback
+  }
+}
+
+export function resolveMediaUrl(
+  raw?: string,
+  origin = import.meta.env.VITE_BACKEND_ORIGIN,
+): string {
   if (!raw) return ""
   const cleaned = String(raw).trim()
   if (!cleaned) return ""
-  if (/^https?:\/\//i.test(cleaned)) return cleaned
-  const base = BACKEND_ORIGIN.replace(/\/+$/, "")
-  const path = cleaned.replace(/^\/+/, "/")
-  const encoded = path
+  if (/^(?:https?:)?\/\//i.test(cleaned)) {
+    try {
+      return new URL(cleaned, "http://dummy").toString().replace("http://dummy", "")
+    } catch {
+      return cleaned
+    }
+  }
+
+  const base = normaliseOrigin(origin)
+  if (!base) return cleaned
+
+  const normalised = cleaned.replace(/^\/+/, "").replace(/\/{2,}/g, "/")
+  const encodedPath = normalised
     .split("/")
-    .map(safeEncode)
+    .map((segment) => safeEncode(segment))
     .join("/")
-    .replace(/\/{2,}/g, "/")
+
   try {
-    const u = new URL(encoded, base + "/")
-    return u.toString()
+    const resolved = new URL(encodedPath, base + "/")
+    return resolved.toString()
   } catch {
-    return base + encoded
+    return `${base}/${encodedPath}`.replace(/(?<!:)\/{2,}/g, "/")
   }
 }
 
-export function withCacheBust(url: string, v?: number): string {
-  if (!url) return url
-  const vv = v ?? Date.now()
+export function addVersionParam(url: string, version?: number): string {
+  if (!url) return ""
+  const v = version ?? Date.now()
   try {
-    const u = new URL(url)
-    u.searchParams.set("v", String(vv))
-    return u.toString()
+    const parsed = new URL(url)
+    parsed.searchParams.set("v", String(v))
+    return parsed.toString()
   } catch {
-    return url + (url.includes("?") ? "&" : "?") + "v=" + vv
+    const separator = url.includes("?") ? "&" : "?"
+    return `${url}${separator}v=${encodeURIComponent(String(v))}`
   }
 }
