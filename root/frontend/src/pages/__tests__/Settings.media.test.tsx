@@ -58,6 +58,7 @@ const renderSettings = () => {
               setUser: mockSetUser,
               logout: mockLogout,
               login: vi.fn(),
+              refresh: vi.fn(),
               isAuth: true,
               loading: false,
             }}

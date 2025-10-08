@@ -86,6 +86,7 @@ const createWrapper = (route = "/dashboard") => {
     login: vi.fn(),
     logout: vi.fn(),
     setUser: vi.fn(),
+    refresh: vi.fn(),
     loading: false,
     user: { ...baseUser },
   };

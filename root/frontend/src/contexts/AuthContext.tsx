@@ -13,13 +13,15 @@ import { isAxiosError } from "axios"
 import { softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
 
-type SetUserArg = any | ((prev: any) => any)
+type UserState = any | null
+
+type SetUserArg = UserState | ((prev: UserState) => UserState)
 
 type AuthContextType = {
   isAuth: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  user: any
+  user: UserState
   loading: boolean
   setUser: (user: SetUserArg) => void
   refresh: () => Promise<void>
@@ -89,9 +91,9 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
-  const cachedUserRef = useRef<any | null>(readCachedUser() ?? null)
+  const cachedUserRef = useRef<UserState>(readCachedUser() ?? null)
   const [token, setToken] = useState<string | null>(() => readStoredToken())
-  const [userState, setUserState] = useState<any | null>(cachedUserRef.current)
+  const [userState, setUserState] = useState<UserState>(cachedUserRef.current)
   const [initializing, setInitializing] = useState<boolean>(
     () => Boolean(cachedUserRef.current || token)
   )
@@ -110,11 +112,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const setUser = useCallback(
     (value: SetUserArg) => {
-      setUserState((prev) => {
+      setUserState((prev: UserState) => {
         const previous = prev ?? null
         const next =
-          typeof value === "function" ? (value as (prev: any) => any)(previous) : value
-        const normalized = next ?? null
+          typeof value === "function"
+            ? (value as (prev: UserState) => UserState)(previous)
+            : value
+        const normalized: UserState = next ?? null
         persistUserToCache(normalized)
         queryClient.setQueryData(currentUserQueryKey, normalized)
         return normalized
