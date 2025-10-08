@@ -53,7 +53,7 @@ import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
-import { appendCacheBust, resolveMediaUrl } from "@/utils/media";
+import { addCacheBuster, resolveMediaUrl } from "@/utils/media";
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify";
 
 type ThemeMode = "system" | "light" | "dark";
@@ -307,13 +307,13 @@ export default function Settings() {
   const avatarSrc = useMemo(() => {
     const resolved = resolveMediaUrl(avatarUrl);
     if (!resolved) return defaultAvatar;
-    return appendCacheBust(resolved, avatarVersion) || resolved;
+    return addCacheBuster(resolved, avatarVersion) || resolved;
   }, [avatarUrl, avatarVersion]);
 
   const coverSrc = useMemo(() => {
     const resolved = resolveMediaUrl(coverUrl);
     if (!resolved) return "";
-    return appendCacheBust(resolved, coverVersion) || resolved;
+    return addCacheBuster(resolved, coverVersion) || resolved;
   }, [coverUrl, coverVersion]);
 
   const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {

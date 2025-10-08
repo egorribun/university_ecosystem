@@ -43,7 +43,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
-import { appendCacheBust, resolveMediaUrl } from "@/utils/media";
+import { addCacheBuster, resolveMediaUrl } from "@/utils/media";
 
 const auraPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
@@ -409,7 +409,7 @@ export default function Profile() {
       url: typeof window !== "undefined" ? window.location.href : "",
       image: (() => {
         const media = resolveMediaUrl(user.avatar_url);
-        const withV = media ? appendCacheBust(media, avatarVersion) : "";
+        const withV = media ? addCacheBuster(media, avatarVersion) : "";
         return withV || "";
       })()
     });
@@ -432,13 +432,13 @@ export default function Profile() {
   const avatarImageUrl = useMemo(() => {
     const media = resolveMediaUrl(user?.avatar_url);
     if (!media) return defaultAvatar;
-    return appendCacheBust(media, avatarVersion) || media;
+    return addCacheBuster(media, avatarVersion) || media;
   }, [user?.avatar_url, avatarVersion]);
 
   const coverImageUrl = useMemo(() => {
     const media = resolveMediaUrl(user?.cover_url);
     if (!media) return profileBg;
-    return appendCacheBust(media, coverVersion) || media;
+    return addCacheBuster(media, coverVersion) || media;
   }, [user?.cover_url, coverVersion]);
 
   const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
