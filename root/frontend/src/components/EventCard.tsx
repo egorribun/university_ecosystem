@@ -26,6 +26,7 @@ import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import { resolveMediaUrl } from "@/utils/media"
+import SmartImage from "@/components/SmartImage"
 
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -403,33 +404,28 @@ const EventCardComponent: FC<EventCardProps> = ({
       {cardImageUrl && (
         <Box mb={2} display="flex" justifyContent="center">
           <Box
-            component="img"
-            src={cardImageUrl}
-            alt="Изображение мероприятия"
-            draggable={false}
             sx={{
               width: "100%",
               maxHeight: 280,
-              objectFit: "cover",
               borderRadius: 2,
               border: "1px solid #e0e0e0",
-              display: "block",
+              overflow: "hidden",
               transition: "transform 0.25s ease",
-              "&:hover": { transform: isMobile ? "none" : "scale(1.01)" }
+              "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
             }}
-            onClick={(e) => {
-              e.stopPropagation()
-              navigateToDetails()
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none"
-            }}
-            loading="lazy"
-            decoding="async"
-            width={960}
-            height={540}
-            sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
-          />
+          >
+            <SmartImage
+              srcRaw={cardImageUrl}
+              alt="Изображение мероприятия"
+              sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              draggable={false}
+              onClick={(e) => {
+                e.stopPropagation()
+                navigateToDetails()
+              }}
+            />
+          </Box>
         </Box>
       )}
 
@@ -502,16 +498,14 @@ const EventCardComponent: FC<EventCardProps> = ({
           {qr && (
             <>
               <Tooltip title="Открыть QR" arrow>
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
+                <SmartImage
+                  srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
                   alt="QR"
-                  style={{ height: 64, width: 64, borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                  style={{ height: 64, width: 64, borderRadius: 8, background: "#fff", cursor: "pointer", display: "block" }}
                   onClick={(e) => {
                     e.stopPropagation()
                     setQrOpen(true)
                   }}
-                  loading="eager"
-                  decoding="async"
                 />
               </Tooltip>
 
@@ -658,20 +652,17 @@ const EventCardComponent: FC<EventCardProps> = ({
               </Button>
               {cardImageUrl && (
                 <Box mt={1}>
-                  <img
-                    src={cardImageUrl}
-                    alt="preview"
+                  <SmartImage
+                    srcRaw={cardImageUrl}
+                    alt="Предпросмотр изображения"
                     style={{
                       width: 220,
                       maxHeight: 140,
                       objectFit: "cover",
                       borderRadius: 10,
-                      border: "1px solid #ddd"
+                      border: "1px solid #ddd",
+                      display: "block",
                     }}
-                    loading="lazy"
-                    decoding="async"
-                    width={220}
-                    height={140}
                   />
                 </Box>
               )}

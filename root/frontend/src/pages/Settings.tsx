@@ -53,7 +53,7 @@ import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import defaultAvatar from "@/assets/default_avatar.png";
 import spotifyLogo from "@/assets/spotify_icon.png";
-import { addCacheBust, resolveMediaUrl } from "@/utils/media";
+import { resolveMediaUrl, withCacheBust } from "@/utils/media";
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify";
 
 type ThemeMode = "system" | "light" | "dark";
@@ -306,14 +306,12 @@ export default function Settings() {
 
   const avatarSrc = useMemo(() => {
     const resolved = resolveMediaUrl(avatarUrl);
-    if (!resolved) return defaultAvatar;
-    return addCacheBust(resolved, avatarVersion) || resolved;
+    return resolved ? withCacheBust(resolved, avatarVersion) : defaultAvatar;
   }, [avatarUrl, avatarVersion]);
 
   const coverSrc = useMemo(() => {
     const resolved = resolveMediaUrl(coverUrl);
-    if (!resolved) return "";
-    return addCacheBust(resolved, coverVersion) || resolved;
+    return resolved ? withCacheBust(resolved, coverVersion) : "";
   }, [coverUrl, coverVersion]);
 
   const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
@@ -713,7 +711,12 @@ export default function Settings() {
                     src={avatarSrc}
                     alt={(user as any)?.full_name || "avatar"}
                     sx={{ width: 48, height: 48 }}
-                    imgProps={{ onError: handleAvatarError }}
+                    imgProps={{
+                      onError: handleAvatarError,
+                      loading: "lazy",
+                      decoding: "async",
+                      referrerPolicy: "no-referrer",
+                    }}
                   />
                 </ListItemAvatar>
                 <ListItemText primary="Фото профиля" secondary="PNG/JPG/WebP/AVIF/GIF, до 12 МБ" />

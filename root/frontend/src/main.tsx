@@ -4,7 +4,7 @@ ensureTrustedTypesPolicies()
 
 async function bootstrap() {
   const ReactMod = await import("react")
-  const { StrictMode, Suspense, useEffect } = ReactMod
+  const { StrictMode, useEffect } = ReactMod
   const ReactDOMMod = await import("react-dom/client")
   const { CssBaseline } = await import("@mui/material")
   const StylesMod = await import("@mui/material/styles")
@@ -16,7 +16,7 @@ async function bootstrap() {
   const ErrorBoundaryMod = await import("./app/ErrorBoundary")
   const { default: ErrorBoundary } = ErrorBoundaryMod
   const QueryClientLocal = await import("./app/queryClient")
-  const { lazyDevtools, queryClient } = QueryClientLocal
+  const { queryClient } = QueryClientLocal
   const ThemeMod = await import("./theme")
   const { default: theme } = ThemeMod
   await import("./assets/themes.css")
@@ -71,7 +71,9 @@ async function bootstrap() {
     return null
   }
 
-  const ReactQueryDevtools = lazyDevtools()
+  const ReactQueryDevtools = import.meta.env.DEV
+    ? (await import("@tanstack/react-query-devtools")).ReactQueryDevtools
+    : null
 
   ReactDOMMod.default.createRoot(document.getElementById("root")!).render(
     <StrictMode>
@@ -88,11 +90,7 @@ async function bootstrap() {
             <App />
           </ErrorBoundary>
         </CssVarsProvider>
-        {ReactQueryDevtools ? (
-          <Suspense fallback={null}>
-            <ReactQueryDevtools buttonPosition="bottom-left" />
-          </Suspense>
-        ) : null}
+        {ReactQueryDevtools ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
       </QueryClientProvider>
     </StrictMode>
   )

@@ -43,7 +43,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
-import { addCacheBust, resolveMediaUrl } from "@/utils/media";
+import { resolveMediaUrl, withCacheBust } from "@/utils/media";
 
 const auraPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
@@ -204,14 +204,15 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`
           }}
         >
-          <Avatar
-            src={data.album_image_url ?? ""}
-            variant="rounded"
-            alt={data.album_name || data.track_name || "Обложка альбома"}
-            sx={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 2,
+        <Avatar
+          src={data.album_image_url ?? ""}
+          variant="rounded"
+          alt={data.album_name || data.track_name || "Обложка альбома"}
+          imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
+          sx={{
+            width: "100%",
+            height: "100%",
+            borderRadius: 2,
               transform: prefersReduce || reduced ? "none" : "scale(1.012)",
               transition:
                 prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
@@ -409,8 +410,7 @@ export default function Profile() {
       url: typeof window !== "undefined" ? window.location.href : "",
       image: (() => {
         const media = resolveMediaUrl(user.avatar_url);
-        const withV = media ? addCacheBust(media, avatarVersion) : "";
-        return withV || "";
+        return media ? withCacheBust(media, avatarVersion) : "";
       })()
     });
     document.head.appendChild(el);
@@ -431,14 +431,12 @@ export default function Profile() {
 
   const avatarImageUrl = useMemo(() => {
     const media = resolveMediaUrl(user?.avatar_url);
-    if (!media) return defaultAvatar;
-    return addCacheBust(media, avatarVersion) || media;
+    return media ? withCacheBust(media, avatarVersion) : defaultAvatar;
   }, [user?.avatar_url, avatarVersion]);
 
   const coverImageUrl = useMemo(() => {
     const media = resolveMediaUrl(user?.cover_url);
-    if (!media) return profileBg;
-    return addCacheBust(media, coverVersion) || media;
+    return media ? withCacheBust(media, coverVersion) : profileBg;
   }, [user?.cover_url, coverVersion]);
 
   const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
@@ -736,7 +734,12 @@ export default function Profile() {
                         <Avatar
                           src={avatarImageUrl}
                           alt={user?.full_name}
-                          imgProps={{ onError: handleAvatarImgError }}
+                          imgProps={{
+                            onError: handleAvatarImgError,
+                            loading: "lazy",
+                            decoding: "async",
+                            referrerPolicy: "no-referrer",
+                          }}
                           sx={{
                             width: "100%",
                             height: "100%",

@@ -287,7 +287,10 @@ export default function Activity() {
             ? alpha(theme.palette.warning.main, theme.palette.mode === "dark" ? 0.12 : 0.1)
             : alpha(theme.palette.primary.main, 0)
     return {
-      backgroundImage: `linear-gradient(180deg, ${alpha(base, theme.palette.mode === "dark" ? 0.2 : 0.5)} 0%, ${alpha(base, theme.palette.mode === "dark" ? 0.12 : 0.38)} 100%), linear-gradient(${tonal} , ${tonal})`,
+      backgroundImage: `linear-gradient(180deg, ${alpha(
+        base,
+        theme.palette.mode === "dark" ? 0.2 : 0.5,
+      )} 0%, ${alpha(base, theme.palette.mode === "dark" ? 0.12 : 0.38)} 100%), linear-gradient(${tonal}, ${tonal})`,
       backdropFilter: "blur(12px)",
       WebkitBackdropFilter: "blur(12px)",
     }
@@ -312,6 +315,25 @@ export default function Activity() {
       />
     ) : null
 
+  const attendanceItemKey = useCallback(
+    (item: AttendanceStats["recent"][number], index: number) =>
+      `${item?.date ?? index}-${item?.course ?? index}-${item?.status ?? ""}`,
+    [],
+  )
+  const gradeItemKey = useCallback(
+    (item: GradeStats["recent"][number], index: number) =>
+      `${item?.date ?? index}-${item?.course ?? index}-${item?.score ?? ""}-${item?.max ?? ""}`,
+    [],
+  )
+  const participationItemKey = useCallback(
+    (item: ParticipationStats["recent"][number], index: number) =>
+      `${item?.date ?? index}-${item?.title ?? index}-${item?.role ?? ""}`,
+    [],
+  )
+  const pickKeyCandidate = useCallback((value: unknown): string | number | undefined => {
+    return typeof value === "number" || typeof value === "string" ? value : undefined
+  }, [])
+
   const CardShell = ({
     tone = "neutral",
     onClick,
@@ -323,9 +345,9 @@ export default function Activity() {
   }) => (
     <MotionCard
       elevation={0}
-      initial={{ y: reduce ? 0 : 16, opacity: reduce ? 1 : 0, scale: reduce ? 1 : 0.98 }}
-      animate={{ y: 0, opacity: 1, scale: 1 }}
-      transition={{ type: "spring", stiffness: 160, damping: 22, mass: 0.9 }}
+      initial={{ y: reduce ? 0 : 14, opacity: reduce ? 1 : 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
       sx={{
         position: "relative",
         display: "flex",
@@ -335,16 +357,20 @@ export default function Activity() {
         border: `1px solid ${cardBorder}`,
         overflow: "hidden",
         ...glass(tone),
+        willChange: reduce ? undefined : "transform, opacity",
+        transform: "translateZ(0)",
         transition: theme.transitions.create(
           ["box-shadow", "transform", "background-color", "border-color"],
           { duration: 180 }
         ),
-        "&:hover": {
-          boxShadow: hoverShadow,
-          transform: "translateY(-2px)",
-          borderColor: cardBorder,
-        },
-        "&:active": { transform: "translateY(0)" },
+        "&:hover": reduce
+          ? undefined
+          : {
+              boxShadow: hoverShadow,
+              transform: "translateY(-2px) translateZ(0)",
+              borderColor: cardBorder,
+            },
+        "&:active": { transform: "translateY(0) translateZ(0)" },
       }}
     >
       <CardActionArea
@@ -425,6 +451,9 @@ export default function Activity() {
           maxWidth: "100%",
           mx: "auto",
         }}
+        style={
+          reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+        }
       >
         <Stack
           direction="row"
@@ -464,7 +493,12 @@ export default function Activity() {
           <motion.div
             initial={{ opacity: 0, y: reduce ? 0 : 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
+            transition={{ duration: reduce ? 0 : 0.35 }}
+            style={
+              reduce
+                ? undefined
+                : { willChange: "transform, opacity", transform: "translateZ(0)" }
+            }
           >
             <ToggleButtonGroup
               size="small"
@@ -522,6 +556,9 @@ export default function Activity() {
             columnGap: { xs: 2.5, sm: 3, md: 3 },
             mb: { xs: 2, md: 3 },
           }}
+          style={
+            reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+          }
         >
           <CardShell tone="success" onClick={() => setDetail("attendance")}>
             <Stack direction="row" alignItems="center" spacing={2}>
@@ -637,15 +674,25 @@ export default function Activity() {
                         : r.status === "late"
                           ? theme.palette.warning.main
                           : theme.palette.error.main
+                    const attendanceRecord = r as Partial<{ id?: number | string; lesson_id?: number | string }>
+                    const itemKey =
+                      pickKeyCandidate(attendanceRecord.id) ??
+                      pickKeyCandidate(attendanceRecord.lesson_id) ??
+                      attendanceItemKey(r, i)
                     return (
                       <MotionListItem
-                        key={i}
+                        key={itemKey}
                         variants={listItemVariants}
                         initial="hidden"
                         animate="show"
                         exit={{ opacity: 0 }}
                         transition={{ delay: reduce ? 0 : i * 0.04 }}
-                        sx={{ px: 0, py: 0.25 }}
+                        sx={{
+                          px: 0,
+                          py: 0.25,
+                          willChange: reduce ? undefined : "transform, opacity",
+                          transform: "translateZ(0)",
+                        }}
                       >
                         <ListItemText
                           primaryTypographyProps={{
@@ -707,54 +754,63 @@ export default function Activity() {
               </Stack>
               <List dense disablePadding>
                 <AnimatePresence initial={true}>
-                  {(grades?.recent ?? []).slice(0, 6).map((r, i) => (
-                    <MotionListItem
-                      key={i}
-                      variants={listItemVariants}
-                      initial="hidden"
-                      animate="show"
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: reduce ? 0 : i * 0.04 }}
-                      sx={{ px: 0, py: 0.25 }}
-                    >
-                      <ListItemText
-                        primaryTypographyProps={{
-                          sx: { display: "flex", alignItems: "center", gap: 1 },
+                  {(grades?.recent ?? []).slice(0, 6).map((r, i) => {
+                    const gradeRecord = r as Partial<{ id?: number | string }>
+                    const itemKey = pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
+                    return (
+                      <MotionListItem
+                        key={itemKey}
+                        variants={listItemVariants}
+                        initial="hidden"
+                        animate="show"
+                        exit={{ opacity: 0 }}
+                        transition={{ delay: reduce ? 0 : i * 0.04 }}
+                        sx={{
+                          px: 0,
+                          py: 0.25,
+                          willChange: reduce ? undefined : "transform, opacity",
+                          transform: "translateZ(0)",
                         }}
-                        primary={
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                            <Box
-                              sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 999,
-                                background: alpha(theme.palette.info.main, 0.9),
-                                boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.18)}`,
-                              }}
-                            />
-                            <Box
-                              sx={{
-                                display: "inline-flex",
-                                gap: 0.75,
-                                alignItems: "baseline",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <Typography component="span" sx={{ fontWeight: 700 }}>
-                                {r.course}
-                              </Typography>
-                              <Typography component="span" sx={{ color: subMuted }}>
-                                {r.score}
-                                {r.max ? "/" + r.max : ""}
-                              </Typography>
+                      >
+                        <ListItemText
+                          primaryTypographyProps={{
+                            sx: { display: "flex", alignItems: "center", gap: 1 },
+                          }}
+                          primary={
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+                              <Box
+                                sx={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: 999,
+                                  background: alpha(theme.palette.info.main, 0.9),
+                                  boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.18)}`,
+                                }}
+                              />
+                              <Box
+                                sx={{
+                                  display: "inline-flex",
+                                  gap: 0.75,
+                                  alignItems: "baseline",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <Typography component="span" sx={{ fontWeight: 700 }}>
+                                  {r.course}
+                                </Typography>
+                                <Typography component="span" sx={{ color: subMuted }}>
+                                  {r.score}
+                                  {r.max ? "/" + r.max : ""}
+                                </Typography>
+                              </Box>
                             </Box>
-                          </Box>
-                        }
-                        secondary={new Date(r.date).toLocaleDateString()}
-                        secondaryTypographyProps={{ sx: { color: subMuted } }}
-                      />
-                    </MotionListItem>
-                  ))}
+                          }
+                          secondary={new Date(r.date).toLocaleDateString()}
+                          secondaryTypographyProps={{ sx: { color: subMuted } }}
+                        />
+                      </MotionListItem>
+                    )
+                  })}
                 </AnimatePresence>
                 {!loading && (!grades?.recent || grades.recent.length === 0) && (
                   <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
@@ -773,54 +829,63 @@ export default function Activity() {
               </Stack>
               <List dense disablePadding>
                 <AnimatePresence initial={true}>
-                  {(participation?.recent ?? []).slice(0, 6).map((r, i) => (
-                    <MotionListItem
-                      key={i}
-                      variants={listItemVariants}
-                      initial="hidden"
-                      animate="show"
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: reduce ? 0 : i * 0.04 }}
-                      sx={{ px: 0, py: 0.25 }}
-                    >
-                      <ListItemText
-                        primaryTypographyProps={{
-                          sx: { display: "flex", alignItems: "center", gap: 1 },
+                  {(participation?.recent ?? []).slice(0, 6).map((r, i) => {
+                    const participationRecord = r as Partial<{ id?: number | string }>
+                    const itemKey =
+                      pickKeyCandidate(participationRecord.id) ?? participationItemKey(r, i)
+                    return (
+                      <MotionListItem
+                        key={itemKey}
+                        variants={listItemVariants}
+                        initial="hidden"
+                        animate="show"
+                        exit={{ opacity: 0 }}
+                        transition={{ delay: reduce ? 0 : i * 0.04 }}
+                        sx={{
+                          px: 0,
+                          py: 0.25,
+                          willChange: reduce ? undefined : "transform, opacity",
+                          transform: "translateZ(0)",
                         }}
-                        primary={
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                            <Box
-                              sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 999,
-                                background: alpha(theme.palette.warning.main, 0.9),
-                                boxShadow: `0 0 0 3px ${alpha(theme.palette.warning.main, 0.18)}`,
-                              }}
-                            />
-                            <Box
-                              sx={{
-                                display: "inline-flex",
-                                gap: 0.75,
-                                alignItems: "baseline",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <Typography component="span" sx={{ fontWeight: 700 }}>
-                                {r.title}
-                              </Typography>
-                              <Typography component="span" sx={{ color: subMuted }}>
-                                {[new Date(r.date).toLocaleDateString(), r.role]
-                                  .filter(Boolean)
-                                  .join(" • ")}
-                              </Typography>
+                      >
+                        <ListItemText
+                          primaryTypographyProps={{
+                            sx: { display: "flex", alignItems: "center", gap: 1 },
+                          }}
+                          primary={
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+                              <Box
+                                sx={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: 999,
+                                  background: alpha(theme.palette.warning.main, 0.9),
+                                  boxShadow: `0 0 0 3px ${alpha(theme.palette.warning.main, 0.18)}`,
+                                }}
+                              />
+                              <Box
+                                sx={{
+                                  display: "inline-flex",
+                                  gap: 0.75,
+                                  alignItems: "baseline",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <Typography component="span" sx={{ fontWeight: 700 }}>
+                                  {r.title}
+                                </Typography>
+                                <Typography component="span" sx={{ color: subMuted }}>
+                                  {[new Date(r.date).toLocaleDateString(), r.role]
+                                    .filter(Boolean)
+                                    .join(" • ")}
+                                </Typography>
+                              </Box>
                             </Box>
-                          </Box>
-                        }
-                        secondary=""
-                      />
-                    </MotionListItem>
-                  ))}
+                          }
+                        />
+                      </MotionListItem>
+                    )
+                  })}
                 </AnimatePresence>
                 {!loading && (!participation?.recent || participation.recent.length === 0) && (
                   <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
@@ -855,7 +920,7 @@ export default function Activity() {
               />
               <List dense>
                 {(attendance?.recent ?? []).map((r, i) => (
-                  <ListItem key={i} sx={{ px: 0 }}>
+                  <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
                       primary={`${r.course || "Занятие"} — ${r.status === "present" ? "присутствовал" : r.status === "late" ? "опоздание" : "отсутствовал"}`}
                       secondary={new Date(r.date).toLocaleDateString()}
@@ -876,7 +941,7 @@ export default function Activity() {
               </Typography>
               <List dense>
                 {(grades?.recent ?? []).map((r, i) => (
-                  <ListItem key={i} sx={{ px: 0 }}>
+                  <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
                       primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                       secondary={new Date(r.date).toLocaleDateString()}
@@ -899,7 +964,7 @@ export default function Activity() {
               </Typography>
               <List dense>
                 {(participation?.recent ?? []).map((r, i) => (
-                  <ListItem key={i} sx={{ px: 0 }}>
+                  <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
                       primary={r.title}
                       secondary={[new Date(r.date).toLocaleDateString(), r.role]
@@ -914,7 +979,7 @@ export default function Activity() {
           {detail === "attendance_recent" && (
             <List dense>
               {(attendance?.recent ?? []).map((r, i) => (
-                <ListItem key={i} sx={{ px: 0 }}>
+                <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
                   <ListItemText
                     primary={`${r.course || "Занятие"} — ${r.status === "present" ? "присутствовал" : r.status === "late" ? "опоздание" : "отсутствовал"}`}
                     secondary={new Date(r.date).toLocaleDateString()}
@@ -926,7 +991,7 @@ export default function Activity() {
           {detail === "grades_recent" && (
             <List dense>
               {(grades?.recent ?? []).map((r, i) => (
-                <ListItem key={i} sx={{ px: 0 }}>
+                <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
                   <ListItemText
                     primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                     secondary={new Date(r.date).toLocaleDateString()}
@@ -938,7 +1003,7 @@ export default function Activity() {
           {detail === "participation_recent" && (
             <List dense>
               {(participation?.recent ?? []).map((r, i) => (
-                <ListItem key={i} sx={{ px: 0 }}>
+                <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
                   <ListItemText
                     primary={r.title}
                     secondary={[new Date(r.date).toLocaleDateString(), r.role]

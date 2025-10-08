@@ -15,6 +15,7 @@ import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { resolveMediaUrl } from "@/utils/media"
+import SmartImage from "@/components/SmartImage"
 import { sanitizeNewsText } from "@/utils/sanitize"
 
 dayjs.extend(utc)
@@ -269,26 +270,23 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
       {cardImageUrl && (
         <Box
-          component="img"
-          src={cardImageUrl}
-          alt="Новость"
           sx={{
             width: "100%",
             height: { xs: 160, sm: 180, md: 220, lg: 240 },
-            objectFit: "cover",
             borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
             borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
             borderBottom: "1px solid #eee",
             background: "#f3f3f3",
-            display: "block"
+            overflow: "hidden",
           }}
-          loading="lazy"
-          decoding="async"
-          width={960}
-          height={540}
-          sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-          onError={e => { (e.target as HTMLImageElement).style.display = "none" }}
-        />
+        >
+          <SmartImage
+            srcRaw={cardImageUrl}
+            alt={title ? `Изображение новости ${title}` : "Обложка новости"}
+            sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        </Box>
       )}
 
       <Box sx={{
@@ -384,19 +382,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               </Button>
               {editImageUrl && (
                 <Box mt={1}>
-                  <img
-                    src={editImageUrl}
-                    alt="preview"
-                    loading="lazy"
-                    decoding="async"
-                    width={140}
-                    height={90}
+                  <SmartImage
+                    srcRaw={editImageUrl}
+                    alt="Предпросмотр изображения новости"
                     style={{
                       width: 140,
                       maxHeight: 90,
                       objectFit: "cover",
                       borderRadius: 8,
-                      border: "1px solid #eee"
+                      border: "1px solid #eee",
+                      display: "block",
                     }}
                   />
                 </Box>

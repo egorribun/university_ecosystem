@@ -15,6 +15,7 @@ import {
 } from "@mui/material"
 import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
+import SmartImage from "@/components/SmartImage"
 import { useAuth } from "../contexts/AuthContext"
 
 type NewsItem = {
@@ -347,19 +348,16 @@ const News = () => {
                 </Button>
 
                 {imagePreview && (
-                  <img
-                    src={imagePreview}
-                    alt="preview"
-                    loading="lazy"
-                    decoding="async"
-                    width={100}
-                    height={60}
+                  <SmartImage
+                    srcRaw={imagePreview}
+                    alt="Предпросмотр новой обложки"
                     style={{
                       width: 100,
                       height: 60,
                       objectFit: "cover",
                       borderRadius: 8,
                       border: "1px solid #eee",
+                      display: "block",
                     }}
                   />
                 )}

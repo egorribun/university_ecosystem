@@ -9,7 +9,6 @@ import {
   isPushSupported,
   setPushConsent,
 } from "@/push/subscribe"
-import { notificationsQueryKey } from "@/hooks/useNotifications"
 import { currentUserQueryKey } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
 
