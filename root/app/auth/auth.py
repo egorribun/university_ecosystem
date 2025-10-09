@@ -123,19 +123,3 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(
-    response: Response,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Terminate the client session and revoke issued tokens."""
-
-    response.delete_cookie("Authorization")
-    response.delete_cookie("token")
-    response.delete_cookie("access_token")
-
-    current_version = user.token_version or 0
-    user.token_version = current_version + 1
-    await db.commit()
-
-    return {"status": "ok"}
