@@ -60,6 +60,18 @@ describe("resolveMediaUrl", () => {
     )
   })
 
+  it("preserves query strings on relative URLs", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("media/picture.png?token=abc&expires=1"))
+      .toBe("https://backend.example/media/picture.png?token=abc&expires=1")
+  })
+
+  it("keeps query and hash when encoding path segments", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("/media/фото 2.png?x=1#anchor"))
+      .toBe("https://backend.example/media/%D1%84%D0%BE%D1%82%D0%BE%202.png?x=1#anchor")
+  })
+
   it("supports overriding origin", async () => {
     const { resolveMediaUrl } = await import("@/utils/media")
     expect(resolveMediaUrl("avatar.png", "https://custom.example"))

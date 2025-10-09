@@ -47,17 +47,26 @@ export function resolveMediaUrl(
   const base = normaliseOrigin(origin)
   if (!base) return cleaned
 
-  const normalised = cleaned.replace(/^\/+/, "").replace(/\/{2,}/g, "/")
-  const encodedPath = normalised
+  const stripped = cleaned.replace(/^\/+/, "")
+  const match = /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(stripped)
+  const pathPart = match?.[1] ?? ""
+  const queryPart = match?.[2] ?? ""
+  const hashPart = match?.[3] ?? ""
+
+  const normalisedPath = pathPart.replace(/\/{2,}/g, "/")
+  const encodedPath = normalisedPath
     .split("/")
     .map((segment) => safeEncode(segment))
     .join("/")
 
+  const relative = `${encodedPath}${queryPart}${hashPart}`
+
   try {
-    const resolved = new URL(encodedPath, base + "/")
+    const resolved = new URL(relative, base + "/")
     return resolved.toString()
   } catch {
-    return `${base}/${encodedPath}`.replace(/(?<!:)\/{2,}/g, "/")
+    const fallback = `${base}/${relative}`
+    return fallback.replace(/(?<!:)\/{2,}/g, "/")
   }
 }
 
