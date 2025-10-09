@@ -30,6 +30,7 @@ import timezone from "dayjs/plugin/timezone"
 import api from "@/api/client"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
+import { resolveMediaUrl } from "@/utils/media"
 import { useAuth } from "@/contexts/AuthContext"
 
 dayjs.extend(utc)
@@ -169,11 +170,15 @@ export default function NewsDetail() {
     else navigate("/news")
   }
 
+  const rawImageUrl = useMemo(
+    () => (editOpen ? editData.image_url : query.data?.image_url) || "",
+    [editData.image_url, editOpen, query.data?.image_url],
+  )
+
   const imageUrl = useMemo(() => {
     if (previewUrl) return previewUrl
-    const base = editOpen ? editData.image_url : query.data?.image_url
-    return base || ""
-  }, [previewUrl, editOpen, editData.image_url, query.data?.image_url])
+    return resolveMediaUrl(rawImageUrl)
+  }, [previewUrl, rawImageUrl])
 
   const content = query.data?.content ?? ""
   const createdAt = query.data?.created_at

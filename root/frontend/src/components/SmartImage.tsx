@@ -79,7 +79,6 @@ export default memo(function SmartImage({
       {...rest}
       loading={loading ?? "lazy"}
       decoding="async"
-      referrerPolicy="no-referrer"
       onLoad={handleLoad}
       onError={handleError}
       style={mergedStyle}
