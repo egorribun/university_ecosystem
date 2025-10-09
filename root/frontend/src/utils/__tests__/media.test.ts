@@ -90,4 +90,11 @@ describe("addVersionParam", () => {
     const { addVersionParam } = await import("@/utils/media")
     expect(addVersionParam("/media/photo.png", 7)).toBe("/media/photo.png?v=7")
   })
+
+  it("returns original URL when version is not provided", async () => {
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("https://example.com/image.png")).toBe(
+      "https://example.com/image.png",
+    )
+  })
 })

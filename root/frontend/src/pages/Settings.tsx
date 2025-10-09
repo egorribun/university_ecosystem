@@ -265,30 +265,44 @@ export default function Settings() {
 
   const connectSpotify = async () => {
     try {
-      const r = await fetch("/spotify/auth-url", { credentials: "include" });
-      if (!r.ok) throw new Error();
-      const data = (await r.json()) as { url?: string };
+      const { data } = await api.get<{ url?: string }>("/spotify/auth-url");
       const safeUrl = sanitizeSpotifyAuthorizeUrl(data?.url);
       if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL");
       window.location.assign(safeUrl);
-    } catch {
+    } catch (error) {
+      console.error("Failed to initiate Spotify auth", error);
       setSnack({ text: "Не удалось открыть авторизацию Spotify", sev: "error" });
     }
   };
 
   const disconnectSpotify = async () => {
     try {
-      const r = await fetch("/spotify/disconnect", { method: "POST", credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.post("/spotify/disconnect");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
         queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
       ]);
-      const meResp = await fetch("/api/users/me", { credentials: "include" });
-      const me = await meResp.json();
-      setUser(me);
+
+      try {
+        const profile = await fetchCurrentUser();
+        setUser(profile ?? null);
+      } catch (error) {
+        console.warn("Failed to refresh user after Spotify disconnect", error);
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                spotify_connected: false,
+                spotify_is_connected: false,
+                spotify_display_name: null,
+              }
+            : prev,
+        );
+      }
+
       setSnack({ text: "Spotify отключён", sev: "success" });
-    } catch {
+    } catch (error) {
+      console.error("Failed to disconnect Spotify", error);
       setSnack({ text: "Не удалось отключить Spotify", sev: "error" });
     }
   };
