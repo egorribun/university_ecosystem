@@ -32,6 +32,41 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
 
 
+def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
+    artists: list[str] = []
+    if user.spotify_last_artist_name:
+        artists = [
+            name.strip()
+            for name in user.spotify_last_artist_name.split(",")
+            if name.strip()
+        ]
+
+    has_payload = any(
+        (
+            user.spotify_last_track_id,
+            user.spotify_last_track_name,
+            artists,
+        )
+    )
+
+    if not has_payload:
+        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+
+    return SpotifyNowPlayingOut(
+        is_playing=False,
+        progress_ms=None,
+        duration_ms=None,
+        track_id=user.spotify_last_track_id,
+        track_name=user.spotify_last_track_name,
+        artists=artists,
+        album_name=user.spotify_last_album_name,
+        album_image_url=user.spotify_last_album_image_url,
+        track_url=user.spotify_last_track_url,
+        preview_url=None,
+        fetched_at=_now_utc(),
+    )
+
+
 async def _save_tokens(
     db: AsyncSession,
     user: User,
@@ -151,7 +186,7 @@ async def now_playing(
 ):
     token = await _ensure_access_token(db, user)
     if not token:
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+        return _fallback_now_playing(user)
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             "https://api.spotify.com/v1/me/player/currently-playing",
@@ -161,9 +196,9 @@ async def now_playing(
         user.spotify_is_playing = False
         user.spotify_last_checked_at = _now_utc()
         await db.commit()
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+        return _fallback_now_playing(user)
     if r.status_code != 200:
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+        return _fallback_now_playing(user)
     j = r.json()
     item = j.get("item") or {}
     artists = [a.get("name") for a in item.get("artists", []) if a.get("name")]

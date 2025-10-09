@@ -467,6 +467,38 @@ async def _spotify_refresh_if_needed(db: AsyncSession, user: models.User) -> Non
         await db.refresh(user)
 
 
+def _spotify_fallback_now_playing(user: models.User) -> schemas.SpotifyNowPlayingOut:
+    artists: list[str] = []
+    last_artists = getattr(user, "spotify_last_artist_name", None)
+    if last_artists:
+        artists = [name.strip() for name in last_artists.split(",") if name.strip()]
+
+    has_payload = any(
+        (
+            getattr(user, "spotify_last_track_id", None),
+            getattr(user, "spotify_last_track_name", None),
+            artists,
+        )
+    )
+
+    if not has_payload:
+        return schemas.SpotifyNowPlayingOut(is_playing=False, fetched_at=datetime.now(timezone.utc))
+
+    return schemas.SpotifyNowPlayingOut(
+        is_playing=False,
+        progress_ms=None,
+        duration_ms=None,
+        track_id=getattr(user, "spotify_last_track_id", None),
+        track_name=getattr(user, "spotify_last_track_name", None),
+        artists=artists,
+        album_name=getattr(user, "spotify_last_album_name", None),
+        album_image_url=getattr(user, "spotify_last_album_image_url", None),
+        track_url=getattr(user, "spotify_last_track_url", None),
+        preview_url=None,
+        fetched_at=datetime.now(timezone.utc),
+    )
+
+
 @router.get("/spotify/auth-url", response_model=schemas.SpotifyAuthURL)
 async def spotify_auth_url(req: Request, user: models.User = Depends(get_current_user)):
     if not settings.spotify_client_id or not settings.spotify_redirect_uri:
@@ -562,7 +594,7 @@ async def spotify_now_playing(
             user.spotify_is_playing = False
             user.spotify_last_checked_at = now
             await db.commit()
-        return schemas.SpotifyNowPlayingOut(is_playing=False, fetched_at=now)
+        return _spotify_fallback_now_playing(user)
     if r.status_code == 200:
         data = r.json() or {}
         item = data.get("item") or {}
@@ -599,7 +631,7 @@ async def spotify_now_playing(
         return out
     if r.status_code == 401:
         raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
-    raise HTTPException(status_code=400, detail="Не удалось получить трек")
+    return _spotify_fallback_now_playing(user)
 
 
 @router.post("/events", response_model=schemas.EventOut)
