@@ -31,10 +31,10 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete"
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
 import AddIcon from "@mui/icons-material/Add"
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
 import AccessTimeIcon from "@mui/icons-material/AccessTime"
 import SchoolIcon from "@mui/icons-material/School"
 import RoomIcon from "@mui/icons-material/Room"
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -83,12 +83,6 @@ const writeToStorage = (key: string, value: unknown) => {
     /* noop */
   }
 }
-
-const API_BASE = (() => {
-  const raw = (api.defaults.baseURL as string | undefined) || (import.meta.env.VITE_BACKEND_ORIGIN || "/api")
-  if (!raw) return "/api"
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw
-})()
 
 type LessonParity = "odd" | "even" | "both"
 type LessonWeekday = (typeof days)[number] | string
@@ -228,14 +222,6 @@ export default function Schedule() {
     return () => clearInterval(id)
   }, [])
   const minutesNow = useMemo(() => nowTick.hour() * 60 + nowTick.minute(), [nowTick])
-
-  const exportHref = useMemo(() => {
-    const groupValue = selectedGroup ?? user?.group_id
-    if (!groupValue && groupValue !== 0) return null
-    const value = typeof groupValue === "number" ? groupValue.toString() : String(groupValue)
-    if (!value) return null
-    return `${API_BASE}/schedule/ics?group=${encodeURIComponent(value)}`
-  }, [selectedGroup, user])
 
   const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
     queryKey: scheduleGroupsQueryKey,
@@ -484,24 +470,6 @@ export default function Schedule() {
       >
         Чётная
       </Button>
-      <Tooltip
-        title={exportHref ? "" : "Выберите группу"}
-        disableHoverListener={!!exportHref}
-        placement="top"
-      >
-        <span>
-          <Button
-            component="a"
-            href={exportHref ?? undefined}
-            variant="outlined"
-            startIcon={<CalendarMonthIcon />}
-            disabled={!exportHref}
-            download={exportHref ? "" : undefined}
-          >
-            Экспорт в календарь
-          </Button>
-        </span>
-      </Tooltip>
     </Stack>
   )
 

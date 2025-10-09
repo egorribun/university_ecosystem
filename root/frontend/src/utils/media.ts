@@ -63,13 +63,13 @@ export function resolveMediaUrl(
 
 export function addVersionParam(url: string, version?: number): string {
   if (!url) return ""
-  const v = version ?? Date.now()
+  if (version == null) return url
   try {
     const parsed = new URL(url)
-    parsed.searchParams.set("v", String(v))
+    parsed.searchParams.set("v", String(version))
     return parsed.toString()
   } catch {
     const separator = url.includes("?") ? "&" : "?"
-    return `${url}${separator}v=${encodeURIComponent(String(v))}`
+    return `${url}${separator}v=${encodeURIComponent(String(version))}`
   }
 }
