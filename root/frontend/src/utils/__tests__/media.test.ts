@@ -42,6 +42,12 @@ describe("resolveMediaUrl", () => {
     expect(resolveMediaUrl(absolute)).toBe(absolute)
   })
 
+  it("upgrades insecure absolute URLs when page is secure", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    const absolute = "http://cdn.example/images/photo.png"
+    expect(resolveMediaUrl(absolute)).toBe("https://cdn.example/images/photo.png")
+  })
+
   it("builds URL from window origin when env is missing", async () => {
     const { resolveMediaUrl } = await import("@/utils/media")
     expect(resolveMediaUrl("media/avatar.png")).toBe("https://backend.example/media/avatar.png")
