@@ -11,7 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { createQueryClient } from "@/app/queryClient";
 import api from "@/api/client";
-import { fetchNowPlaying, useNowPlaying } from "@/hooks/useNowPlaying";
+import { fetchNowPlaying, useNowPlaying, __testing as nowPlayingTesting } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
 
 const STORAGE_KEY = "spotify:now-playing:last";
@@ -19,6 +19,8 @@ const STORAGE_KEY = "spotify:now-playing:last";
 afterEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  nowPlayingTesting.clearRateLimit();
 });
 
 beforeEach(() => {
@@ -73,6 +75,26 @@ describe("fetchNowPlaying", () => {
     vi.spyOn(api, "get").mockResolvedValue({ status: 204, data: null } as any);
     const result = await fetchNowPlaying();
     expect(result).toBeNull();
+  });
+
+  it("records rate limit window on 429 errors", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+
+    const error = Object.assign(new Error("Too Many Requests"), {
+      isAxiosError: true,
+      response: {
+        status: 429,
+        headers: { "retry-after": "3" },
+      },
+    });
+
+    vi.spyOn(api, "get").mockRejectedValue(error);
+
+    await expect(fetchNowPlaying()).rejects.toThrow("Too Many Requests");
+    const limit = nowPlayingTesting.getRateLimitedUntil();
+    expect(limit).toBeGreaterThan(Date.now());
+    expect(limit).toBe(Date.now() + 3_250);
   });
 });
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { isAxiosError } from "axios"
 import api from "@/api/client"
 import type { NowPlaying } from "@/types/spotify"
 
@@ -8,6 +9,24 @@ export const nowPlayingQueryKey = ["spotify", "now-playing"] as const
 const isTestEnv = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
 const STORAGE_KEY = "spotify:now-playing:last"
+
+const RATE_LIMIT_FALLBACK_MS = 5_000
+const RATE_LIMIT_BUFFER_MS = 250
+
+let rateLimitedUntil = 0
+
+const clearRateLimit = () => {
+  rateLimitedUntil = 0
+}
+
+const scheduleRateLimit = (ms: number) => {
+  const wait = Math.max(0, ms)
+  rateLimitedUntil = Date.now() + wait
+}
+
+const rateLimitDelay = () => {
+  return Math.max(0, rateLimitedUntil - Date.now())
+}
 
 type RawNowPlaying = Partial<NowPlaying> | null | undefined
 
@@ -79,12 +98,25 @@ const persistNowPlaying = (value: NowPlaying | null) => {
 }
 
 export const fetchNowPlaying = async () => {
-  const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
-    validateStatus: (status) => status === 204 || (status >= 200 && status < 300),
-  })
+  try {
+    const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
+      validateStatus: (status) => status === 204 || (status >= 200 && status < 300),
+    })
 
-  if (res.status === 204) return null
-  return normalizeNowPlaying(res.data)
+    clearRateLimit()
+
+    if (res.status === 204) return null
+    return normalizeNowPlaying(res.data)
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 429) {
+      const header = error.response.headers?.["retry-after"]
+      const raw = Array.isArray(header) ? header[0] : header
+      const parsed = raw != null ? Number.parseFloat(String(raw)) : NaN
+      const waitMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : RATE_LIMIT_FALLBACK_MS
+      scheduleRateLimit(waitMs + RATE_LIMIT_BUFFER_MS)
+    }
+    throw error
+  }
 }
 
 const computeInterval = (data: NowPlaying | null) => {
@@ -114,12 +146,22 @@ export const useNowPlaying = (enabled: boolean) => {
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
-    retry: 1,
+    retry: (failureCount, error) => {
+      if (isAxiosError(error) && error.response?.status === 429) {
+        return false
+      }
+      return failureCount < 1
+    },
     refetchOnWindowFocus: false,
     refetchInterval: ({ state }) => {
       if (!enabled || isTestEnv) return false
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return false
-      return computeInterval(state.data ?? null)
+      const interval = computeInterval(state.data ?? null)
+      const rateLimitWait = rateLimitDelay()
+      if (rateLimitWait > 0) {
+        return Math.max(interval, rateLimitWait)
+      }
+      return interval
     },
     refetchIntervalInBackground: true,
   })
@@ -143,4 +185,9 @@ export const useNowPlaying = (enabled: boolean) => {
   }, [enabled, refetch])
 
   return query
+}
+
+export const __testing = {
+  clearRateLimit,
+  getRateLimitedUntil: () => rateLimitedUntil,
 }
