@@ -411,6 +411,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         <Box
           sx={{
             width: "100%",
+            height: { xs: 200, sm: 220, md: 260 },
             maxHeight: 280,
             borderRadius: 2,
             border: "1px solid #e0e0e0",
@@ -419,6 +420,15 @@ const EventCardComponent: FC<EventCardProps> = ({
             background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
             transition: "transform 0.25s ease",
             "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
+            display: "flex",
+            alignItems: "stretch",
+            "& img": {
+              display: "block",
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center",
+            },
             "&::after": {
               content: '""',
               position: "absolute",
@@ -434,7 +444,13 @@ const EventCardComponent: FC<EventCardProps> = ({
             srcRaw={cardImageUrl}
             alt="Изображение мероприятия"
             sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
-            style={{ width: "100%", height: "100%", display: "block" }}
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+              objectFit: "cover",
+              objectPosition: "center",
+            }}
             draggable={false}
             onClick={(e) => {
               e.stopPropagation()

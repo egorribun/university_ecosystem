@@ -284,6 +284,15 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           background: "linear-gradient(135deg, rgba(13,71,161,0.18), rgba(63,81,181,0.08))",
           position: "relative",
           overflow: "hidden",
+          display: "flex",
+          alignItems: "stretch",
+          "& img": {
+            display: "block",
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+          },
           "&::after": {
             content: '""',
             position: "absolute",
@@ -299,7 +308,13 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           srcRaw={cardImageUrl}
           alt={title ? `Изображение новости ${title}` : "Обложка новости"}
           sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-          style={{ width: "100%", height: "100%", display: "block" }}
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            objectFit: "cover",
+            objectPosition: "center",
+          }}
           onLoad={handleCardImageReady}
           onError={handleCardImageReady}
         />
