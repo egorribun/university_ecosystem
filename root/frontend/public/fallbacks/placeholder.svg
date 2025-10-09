@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320" role="img" aria-labelledby="title">
+  <title>Placeholder illustration</title>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f3f6fb" />
+      <stop offset="100%" stop-color="#e2e9f3" />
+    </linearGradient>
+  </defs>
+  <rect fill="url(#bg)" width="480" height="320" rx="16" ry="16" />
+  <g fill="#c2cada">
+    <circle cx="132" cy="132" r="52" opacity="0.7" />
+    <path d="M70 266c20-46 62-82 106-82s86 36 106 82z" opacity="0.6" />
+    <rect x="256" y="108" width="168" height="18" rx="9" opacity="0.5" />
+    <rect x="256" y="144" width="130" height="18" rx="9" opacity="0.4" />
+    <rect x="256" y="180" width="152" height="18" rx="9" opacity="0.35" />
+  </g>
+</svg>

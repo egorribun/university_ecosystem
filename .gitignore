@@ -29,6 +29,7 @@ web_modules/
 .yarn-integrity
 .env
 .env.*
+!root/frontend/.env.production
 !.env.example
 .cache
 .parcel-cache

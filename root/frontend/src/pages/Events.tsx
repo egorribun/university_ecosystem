@@ -13,7 +13,6 @@ import SearchIcon from "@mui/icons-material/Search"
 import FilterListIcon from "@mui/icons-material/FilterList"
 import ClearIcon from "@mui/icons-material/Clear"
 import { useAuth } from "../contexts/AuthContext"
-import { resolveMediaUrl } from "@/utils/media"
 import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 
@@ -542,7 +541,7 @@ const Events = () => {
               {!createPreview && eventData.image_url && (
                 <Box mt={1}>
                   <SmartImage
-                    srcRaw={resolveMediaUrl(eventData.image_url)}
+                    srcRaw={eventData.image_url}
                     alt="Изображение события"
                     style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />

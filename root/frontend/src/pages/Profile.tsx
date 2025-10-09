@@ -5,7 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import profileBg from "../assets/background.jpg";
 import guuLogo from "../assets/guu_logo.png";
-import defaultAvatar from "../assets/default_avatar.png";
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
 import PageFadeIn from "../components/PageFadeIn";
 import {
   Avatar,
@@ -432,7 +433,7 @@ export default function Profile() {
 
   const avatarImageUrl = useMemo(() => {
     const media = resolveMediaUrl(user?.avatar_url);
-    return media ? addVersionParam(media, avatarVersion) : defaultAvatar;
+    return media ? addVersionParam(media, avatarVersion) : DEFAULT_AVATAR;
   }, [user?.avatar_url, avatarVersion]);
 
   const coverImageUrl = useMemo(() => {
@@ -443,7 +444,7 @@ export default function Profile() {
   const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
     const img = event.currentTarget;
     img.onerror = null;
-    img.src = defaultAvatar;
+    img.src = DEFAULT_AVATAR;
   }, []);
 
   const ensureConfettiSize = useCallback(() => {

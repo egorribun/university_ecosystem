@@ -25,7 +25,6 @@ import DeleteIcon from "@mui/icons-material/Delete"
 import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
-import { resolveMediaUrl } from "@/utils/media"
 import SmartImage from "@/components/SmartImage"
 
 import dayjs from "dayjs"
@@ -179,7 +178,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   }
 
   const cardImageUrl = useMemo(
-    () => (previewUrl ? previewUrl : editData.image_url ? resolveMediaUrl(editData.image_url) : undefined),
+    () => (previewUrl ? previewUrl : editData.image_url || undefined),
     [editData.image_url, previewUrl],
   )
   const [cardImageReady, setCardImageReady] = useState(() => !cardImageUrl)
@@ -408,46 +407,44 @@ const EventCardComponent: FC<EventCardProps> = ({
         </>
       )}
 
-      {cardImageUrl && (
-        <Box mb={2} display="flex" justifyContent="center">
-          <Box
-            sx={{
-              width: "100%",
-              maxHeight: 280,
-              borderRadius: 2,
-              border: "1px solid #e0e0e0",
-              overflow: "hidden",
-              position: "relative",
-              background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
-              transition: "transform 0.25s ease",
-              "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
-              "&::after": {
-                content: '""',
-                position: "absolute",
-                inset: 0,
-                background: "linear-gradient(120deg, rgba(255,255,255,0.28), rgba(255,255,255,0.05))",
-                opacity: cardImageReady ? 0 : 1,
-                transition: "opacity 280ms ease",
-                pointerEvents: "none",
-              },
+      <Box mb={2} display="flex" justifyContent="center">
+        <Box
+          sx={{
+            width: "100%",
+            maxHeight: 280,
+            borderRadius: 2,
+            border: "1px solid #e0e0e0",
+            overflow: "hidden",
+            position: "relative",
+            background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
+            transition: "transform 0.25s ease",
+            "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
+            "&::after": {
+              content: '""',
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(120deg, rgba(255,255,255,0.28), rgba(255,255,255,0.05))",
+              opacity: cardImageReady ? 0 : 1,
+              transition: "opacity 280ms ease",
+              pointerEvents: "none",
+            },
+          }}
+        >
+          <SmartImage
+            srcRaw={cardImageUrl}
+            alt="Изображение мероприятия"
+            sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
+            style={{ width: "100%", height: "100%", display: "block" }}
+            draggable={false}
+            onClick={(e) => {
+              e.stopPropagation()
+              navigateToDetails()
             }}
-          >
-            <SmartImage
-              srcRaw={cardImageUrl}
-              alt="Изображение мероприятия"
-              sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              draggable={false}
-              onClick={(e) => {
-                e.stopPropagation()
-                navigateToDetails()
-              }}
-              onLoad={handleCardImageReady}
-              onError={handleCardImageReady}
-            />
-          </Box>
+            onLoad={handleCardImageReady}
+            onError={handleCardImageReady}
+          />
         </Box>
-      )}
+      </Box>
 
       <Typography variant="h5" fontWeight={800} sx={{ mb: 1, lineHeight: 1.15 }}>
         {title}

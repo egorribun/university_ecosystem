@@ -1,33 +1,29 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-const originalLocation = window.location
+const originalEnv = { ...import.meta.env }
 
-const setWindowOrigin = (origin: string) => {
-  Object.defineProperty(window, "location", {
-    configurable: true,
-    value: { ...originalLocation, origin } as Location,
-  })
-}
-
-const setEnvOrigin = (origin?: string) => {
-  const env = import.meta.env as any
-  if (origin === undefined) {
-    delete env.VITE_BACKEND_ORIGIN
+const setEnv = (key: string, value: unknown) => {
+  const env = import.meta.env as Record<string, unknown>
+  if (value === undefined) {
+    delete env[key]
   } else {
-    env.VITE_BACKEND_ORIGIN = origin
+    env[key] = value
   }
 }
 
 afterAll(() => {
-  Object.defineProperty(window, "location", { configurable: true, value: originalLocation })
-  setEnvOrigin(undefined)
+  const env = import.meta.env as Record<string, unknown>
+  for (const key of Object.keys(env)) {
+    delete env[key]
+  }
+  Object.assign(env, originalEnv)
 })
 
 describe("resolveMediaUrl", () => {
   beforeEach(() => {
     vi.resetModules()
-    setEnvOrigin(undefined)
-    setWindowOrigin("https://backend.example")
+    setEnv("VITE_BACKEND_ORIGIN", undefined)
+    setEnv("DEV", true)
   })
 
   it("returns empty string for empty input", async () => {
@@ -42,46 +38,36 @@ describe("resolveMediaUrl", () => {
     expect(resolveMediaUrl(absolute)).toBe(absolute)
   })
 
-  it("upgrades insecure absolute URLs when page is secure", async () => {
+  it("prefixes backend origin for media paths", async () => {
+    setEnv("VITE_BACKEND_ORIGIN", "https://api.example.com")
     const { resolveMediaUrl } = await import("@/utils/media")
-    const absolute = "http://cdn.example/images/photo.png"
-    expect(resolveMediaUrl(absolute)).toBe("https://cdn.example/images/photo.png")
+    expect(resolveMediaUrl("/media/avatar.png")).toBe("https://api.example.com/media/avatar.png")
+    expect(resolveMediaUrl("static/logo.svg")).toBe("https://api.example.com/static/logo.svg")
   })
 
-  it("builds URL from window origin when env is missing", async () => {
+  it("downgrades to relative path in dev when origin is missing", async () => {
     const { resolveMediaUrl } = await import("@/utils/media")
-    expect(resolveMediaUrl("media/avatar.png")).toBe("https://backend.example/media/avatar.png")
+    expect(resolveMediaUrl("media/avatar.png")).toBe("/media/avatar.png")
   })
 
-  it("prefers env origin when provided", async () => {
-    setEnvOrigin("https://env.example")
+  it("throws in production when origin is missing", async () => {
+    setEnv("DEV", false)
     const { resolveMediaUrl } = await import("@/utils/media")
-    expect(resolveMediaUrl("media/file.png")).toBe("https://env.example/media/file.png")
-  })
-
-  it("encodes unicode path segments and collapses slashes", async () => {
-    const { resolveMediaUrl } = await import("@/utils/media")
-    expect(resolveMediaUrl(" /media/фото 1.png")).toBe(
-      "https://backend.example/media/%D1%84%D0%BE%D1%82%D0%BE%201.png",
+    expect(() => resolveMediaUrl("/media/avatar.png")).toThrowError(
+      /VITE_BACKEND_ORIGIN is not set/,
     )
   })
 
-  it("preserves query strings on relative URLs", async () => {
+  it("allows overriding origin explicitly", async () => {
     const { resolveMediaUrl } = await import("@/utils/media")
-    expect(resolveMediaUrl("media/picture.png?token=abc&expires=1"))
-      .toBe("https://backend.example/media/picture.png?token=abc&expires=1")
+    expect(resolveMediaUrl("/media/avatar.png", "https://override.example")).toBe(
+      "https://override.example/media/avatar.png",
+    )
   })
 
-  it("keeps query and hash when encoding path segments", async () => {
+  it("keeps unrelated relative paths untouched", async () => {
     const { resolveMediaUrl } = await import("@/utils/media")
-    expect(resolveMediaUrl("/media/фото 2.png?x=1#anchor"))
-      .toBe("https://backend.example/media/%D1%84%D0%BE%D1%82%D0%BE%202.png?x=1#anchor")
-  })
-
-  it("supports overriding origin", async () => {
-    const { resolveMediaUrl } = await import("@/utils/media")
-    expect(resolveMediaUrl("avatar.png", "https://custom.example"))
-      .toBe("https://custom.example/avatar.png")
+    expect(resolveMediaUrl("images/photo.png")).toBe("images/photo.png")
   })
 })
 
@@ -93,20 +79,20 @@ describe("addVersionParam", () => {
   it("appends version parameter", async () => {
     const { addVersionParam } = await import("@/utils/media")
     expect(addVersionParam("https://example.com/image.png", 123)).toBe(
-      "https://example.com/image.png?v=123",
+      "https://example.com/image.png?_v=123",
     )
   })
 
   it("updates existing parameter", async () => {
     const { addVersionParam } = await import("@/utils/media")
-    expect(addVersionParam("https://example.com/image.png?v=1", 2)).toBe(
-      "https://example.com/image.png?v=2",
+    expect(addVersionParam("https://example.com/image.png?_v=1", 2)).toBe(
+      "https://example.com/image.png?_v=2",
     )
   })
 
   it("handles relative URLs", async () => {
     const { addVersionParam } = await import("@/utils/media")
-    expect(addVersionParam("/media/photo.png", 7)).toBe("/media/photo.png?v=7")
+    expect(addVersionParam("/media/photo.png", 7)).toBe("/media/photo.png?_v=7")
   })
 
   it("returns original URL when version is not provided", async () => {

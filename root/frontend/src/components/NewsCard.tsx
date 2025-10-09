@@ -14,7 +14,6 @@ import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import { resolveMediaUrl } from "@/utils/media"
 import SmartImage from "@/components/SmartImage"
 import { sanitizeNewsText } from "@/utils/sanitize"
 
@@ -68,7 +67,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const sanitizedPreview = useMemo(() => sanitizeNewsText(content), [content])
   const createdAtIso = useMemo(() => (created_at ? dayjs(created_at).toISOString() : ""), [created_at])
   const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
-  const cardImageUrl = useMemo(() => resolveMediaUrl(image_url), [image_url])
+  const cardImageUrl = useMemo(() => image_url || "", [image_url])
 
   useEffect(() => {
     setCardImageReady(!cardImageUrl)
@@ -115,7 +114,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   }, [previewUrl])
 
   const editImageUrl = useMemo(
-    () => previewUrl || resolveMediaUrl(editData.image_url),
+    () => previewUrl || editData.image_url || "",
     [editData.image_url, previewUrl],
   )
 
@@ -275,38 +274,36 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         </>
       )}
 
-      {cardImageUrl && (
-        <Box
-          sx={{
-            width: "100%",
-            height: { xs: 160, sm: 180, md: 220, lg: 240 },
-            borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
-            borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
-            borderBottom: "1px solid #eee",
-            background: "linear-gradient(135deg, rgba(13,71,161,0.18), rgba(63,81,181,0.08))",
-            position: "relative",
-            overflow: "hidden",
-            "&::after": {
-              content: '""',
-              position: "absolute",
-              inset: 0,
-              background: "linear-gradient(120deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
-              opacity: cardImageReady ? 0 : 1,
-              transition: "opacity 260ms ease",
-              pointerEvents: "none",
-            },
-          }}
-        >
-          <SmartImage
-            srcRaw={cardImageUrl}
-            alt={title ? `Изображение новости ${title}` : "Обложка новости"}
-            sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            onLoad={handleCardImageReady}
-            onError={handleCardImageReady}
-          />
-        </Box>
-      )}
+      <Box
+        sx={{
+          width: "100%",
+          height: { xs: 160, sm: 180, md: 220, lg: 240 },
+          borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
+          borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
+          borderBottom: "1px solid #eee",
+          background: "linear-gradient(135deg, rgba(13,71,161,0.18), rgba(63,81,181,0.08))",
+          position: "relative",
+          overflow: "hidden",
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(120deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
+            opacity: cardImageReady ? 0 : 1,
+            transition: "opacity 260ms ease",
+            pointerEvents: "none",
+          },
+        }}
+      >
+        <SmartImage
+          srcRaw={cardImageUrl}
+          alt={title ? `Изображение новости ${title}` : "Обложка новости"}
+          sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+          style={{ width: "100%", height: "100%", display: "block" }}
+          onLoad={handleCardImageReady}
+          onError={handleCardImageReady}
+        />
+      </Box>
 
       <Box sx={{
         p: { xs: 2, sm: 3 },

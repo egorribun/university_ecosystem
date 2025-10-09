@@ -3,7 +3,7 @@
 import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching"
 import { clientsClaim } from "workbox-core"
 import { registerRoute, NavigationRoute } from "workbox-routing"
-import { StaleWhileRevalidate, CacheFirst } from "workbox-strategies"
+import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from "workbox-strategies"
 import { ExpirationPlugin } from "workbox-expiration"
 import {
   NotificationData,
@@ -16,6 +16,7 @@ declare const self: ServiceWorkerGlobalScope & typeof globalThis
 const OFFLINE_URL = "/offline.html"
 const API_CACHE = "api-cache"
 const IMG_CACHE = "img-cache"
+const BACKEND_STATIC_CACHE = "backend-static"
 const CLICK_DB_NAME = "notification-interactions"
 const CLICK_DB_VERSION = 1
 const NAVIGATION_STORE = "pending-navigations"
@@ -449,6 +450,16 @@ registerRoute(
       new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 }),
     ],
   })
+)
+
+registerRoute(
+  ({ url }) => url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
+  new NetworkFirst({
+    cacheName: BACKEND_STATIC_CACHE,
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 }),
+    ],
+  }),
 )
 
 registerRoute(

@@ -30,7 +30,6 @@ import timezone from "dayjs/plugin/timezone"
 import api from "@/api/client"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
-import { resolveMediaUrl } from "@/utils/media"
 import { useAuth } from "@/contexts/AuthContext"
 
 dayjs.extend(utc)
@@ -177,7 +176,7 @@ export default function NewsDetail() {
 
   const imageUrl = useMemo(() => {
     if (previewUrl) return previewUrl
-    return resolveMediaUrl(rawImageUrl)
+    return rawImageUrl
   }, [previewUrl, rawImageUrl])
 
   const content = query.data?.content ?? ""
@@ -297,25 +296,23 @@ export default function NewsDetail() {
             </Typography>
           )}
 
-          {imageUrl && (
-            <Box
-              sx={{
-                width: "100%",
-                maxWidth: { xs: "100%", md: 800, lg: 1000 },
-                maxHeight: { xs: 220, sm: 340, md: 420, lg: 500 },
-                borderRadius: 4,
-                border: "1px solid #eee",
-                overflow: "hidden",
-                background: "#f7f8fa",
-              }}
-            >
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={query.data.title || "Новость"}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </Box>
-          )}
+          <Box
+            sx={{
+              width: "100%",
+              maxWidth: { xs: "100%", md: 800, lg: 1000 },
+              maxHeight: { xs: 220, sm: 340, md: 420, lg: 500 },
+              borderRadius: 4,
+              border: "1px solid #eee",
+              overflow: "hidden",
+              background: "#f7f8fa",
+            }}
+          >
+            <SmartImage
+              srcRaw={imageUrl}
+              alt={query.data.title || "Новость"}
+              style={{ width: "100%", height: "100%" }}
+            />
+          </Box>
 
           <Divider sx={{ my: 2 }} />
 

@@ -51,7 +51,8 @@ import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import defaultAvatar from "@/assets/default_avatar.png";
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
 import spotifyLogo from "@/assets/spotify_icon.png";
 import { addVersionParam, resolveMediaUrl } from "@/utils/media";
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify";
@@ -320,7 +321,7 @@ export default function Settings() {
 
   const avatarSrc = useMemo(() => {
     const resolved = resolveMediaUrl(avatarUrl);
-    return resolved ? addVersionParam(resolved, avatarVersion) : defaultAvatar;
+    return resolved ? addVersionParam(resolved, avatarVersion) : DEFAULT_AVATAR;
   }, [avatarUrl, avatarVersion]);
 
   const coverSrc = useMemo(() => {
@@ -331,7 +332,7 @@ export default function Settings() {
   const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
     const img = event.currentTarget;
     img.onerror = null;
-    img.src = defaultAvatar;
+    img.src = DEFAULT_AVATAR;
   }, []);
 
   const triggerAvatarPick = () => avatarInputRef.current?.click();
