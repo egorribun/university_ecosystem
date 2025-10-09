@@ -200,7 +200,9 @@ async def now_playing(
     if r.status_code == 429:
         retry_after_header = r.headers.get("Retry-After")
         try:
-            retry_after = max(1, int(float(retry_after_header))) if retry_after_header else 5
+            retry_after = (
+                max(1, int(float(retry_after_header))) if retry_after_header else 5
+            )
         except (TypeError, ValueError):
             retry_after = 5
         user.spotify_last_checked_at = _now_utc()
