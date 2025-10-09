@@ -288,7 +288,7 @@ export default function Settings() {
         setUser(profile ?? null);
       } catch (error) {
         console.warn("Failed to refresh user after Spotify disconnect", error);
-        setUser((prev) =>
+        setUser((prev: ReturnType<typeof useAuth>["user"]) =>
           prev
             ? {
                 ...prev,
