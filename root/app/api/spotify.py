@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,9 +184,14 @@ async def spotify_callback(
 async def now_playing(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    def _as_response(data: SpotifyNowPlayingOut):
+        if data.track_id or data.track_name or data.artists:
+            return data
+        return Response(status_code=204)
+
     token = await _ensure_access_token(db, user)
     if not token:
-        return _fallback_now_playing(user)
+        return _as_response(_fallback_now_playing(user))
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             "https://api.spotify.com/v1/me/player/currently-playing",
@@ -196,7 +201,7 @@ async def now_playing(
         user.spotify_is_playing = False
         user.spotify_last_checked_at = _now_utc()
         await db.commit()
-        return _fallback_now_playing(user)
+        return Response(status_code=204)
     if r.status_code == 429:
         retry_after_header = r.headers.get("Retry-After")
         try:
@@ -213,7 +218,7 @@ async def now_playing(
             headers={"Retry-After": str(retry_after)},
         )
     if r.status_code != 200:
-        return _fallback_now_playing(user)
+        return _as_response(_fallback_now_playing(user))
     j = r.json()
     item = j.get("item") or {}
     artists = [a.get("name") for a in item.get("artists", []) if a.get("name")]
