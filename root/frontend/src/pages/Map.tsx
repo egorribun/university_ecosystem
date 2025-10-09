@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react"
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import { Box, Paper, Skeleton, Stack } from "@mui/material"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import { alpha, useTheme } from "@mui/material/styles"
@@ -87,9 +88,11 @@ function MapSkeleton() {
 export default function MapPage() {
   return (
     <Layout>
-      <Suspense fallback={<MapSkeleton />}>
-        <MapContent />
-      </Suspense>
+      <PageFadeIn>
+        <Suspense fallback={<MapSkeleton />}>
+          <MapContent />
+        </Suspense>
+      </PageFadeIn>
     </Layout>
   )
 }

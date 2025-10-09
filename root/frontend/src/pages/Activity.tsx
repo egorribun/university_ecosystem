@@ -1,4 +1,5 @@
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import axios from "../api/client"
 import { useEffect, useState, useCallback, useMemo } from "react"
 import {
@@ -437,488 +438,550 @@ export default function Activity() {
 
   return (
     <Layout>
-      <MotionBox
-        initial="hidden"
-        animate="show"
-        variants={headerVariants}
-        sx={{
-          width: "100%",
-          minHeight: "100vh",
-          px: { xs: 2, sm: 3, md: 4, xl: 6 },
-          py: { xs: 2.5, md: 4 },
-          pb: { xs: 9, md: 4 },
-          boxSizing: "border-box",
-          maxWidth: "100%",
-          mx: "auto",
-        }}
-        style={
-          reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
-        }
-      >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          mb={{ xs: 2, md: 3 }}
-          gap={2}
-          flexWrap="wrap"
-        >
-          <Stack direction="row" alignItems="center" gap={1.25}>
-            <Box
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 3,
-                display: "grid",
-                placeItems: "center",
-                border: `1px solid ${cardBorder}`,
-                background: alpha(
-                  theme.palette.primary.main,
-                  theme.palette.mode === "dark" ? 0.1 : 0.06
-                ),
-              }}
-            >
-              <TimelineIcon sx={{ fontSize: 20, color: theme.palette.primary.main }} />
-            </Box>
-            <Typography
-              sx={{
-                fontWeight: 900,
-                fontSize: "clamp(1.5rem, 2.6vw, 2.4rem)",
-                letterSpacing: "-.01em",
-              }}
-            >
-              Активность
-            </Typography>
-          </Stack>
-          <motion.div
-            initial={{ opacity: 0, y: reduce ? 0 : 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduce ? 0 : 0.35 }}
-            style={
-              reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
-            }
-          >
-            <ToggleButtonGroup
-              size="small"
-              color="primary"
-              value={period}
-              exclusive
-              onChange={(_, v) => v && setPeriod(v)}
-              sx={{
-                borderRadius: 999,
-                p: 0.5,
-                gap: 0.5,
-                background: alpha(
-                  theme.palette.primary.main,
-                  theme.palette.mode === "dark" ? 0.12 : 0.1
-                ),
-                "& .MuiToggleButton-root": {
-                  textTransform: "none",
-                  px: 1.6,
-                  py: 0.5,
-                  borderRadius: 999,
-                  border: 0,
-                  fontWeight: 700,
-                  color: theme.palette.text.primary,
-                },
-                "& .Mui-selected": {
-                  background:
-                    theme.palette.mode === "dark"
-                      ? darken(theme.palette.background.paper, 0.4)
-                      : lighten(theme.palette.background.paper, 0.4),
-                  color: theme.palette.text.primary,
-                },
-              }}
-            >
-              <ToggleButton value="30d">30 дней</ToggleButton>
-              <ToggleButton value="90d">90 дней</ToggleButton>
-              <ToggleButton value="180d">180 дней</ToggleButton>
-            </ToggleButtonGroup>
-          </motion.div>
-        </Stack>
-
+      <PageFadeIn>
         <MotionBox
-          variants={gridVariants}
           initial="hidden"
           animate="show"
+          variants={headerVariants}
           sx={{
-            display: "grid",
-            gridAutoFlow: "row dense",
-            alignItems: "stretch",
-            gridTemplateColumns: {
-              xs: "1fr",
-              sm: "repeat(2, minmax(0,1fr))",
-              md: "repeat(3, minmax(0,1fr))",
-            },
-            rowGap: { xs: 2.5, sm: 3, md: 3 },
-            columnGap: { xs: 2.5, sm: 3, md: 3 },
-            mb: { xs: 2, md: 3 },
+            width: "100%",
+            minHeight: "100vh",
+            px: { xs: 2, sm: 3, md: 4, xl: 6 },
+            py: { xs: 2.5, md: 4 },
+            pb: { xs: 9, md: 4 },
+            boxSizing: "border-box",
+            maxWidth: "100%",
+            mx: "auto",
           }}
           style={
             reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
           }
         >
-          <CardShell tone="success" onClick={() => setDetail("attendance")}>
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
-              <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
-                  Посещаемость
-                </Typography>
-                <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
-                  <Typography sx={numberSx}>{attendancePctAnimated}%</Typography>
-                  <TrendChip value={attendance?.trend} />
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            mb={{ xs: 2, md: 3 }}
+            gap={2}
+            flexWrap="wrap"
+          >
+            <Stack direction="row" alignItems="center" gap={1.25}>
+              <Box
+                sx={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 3,
+                  display: "grid",
+                  placeItems: "center",
+                  border: `1px solid ${cardBorder}`,
+                  background: alpha(
+                    theme.palette.primary.main,
+                    theme.palette.mode === "dark" ? 0.1 : 0.06
+                  ),
+                }}
+              >
+                <TimelineIcon sx={{ fontSize: 20, color: theme.palette.primary.main }} />
+              </Box>
+              <Typography
+                sx={{
+                  fontWeight: 900,
+                  fontSize: "clamp(1.5rem, 2.6vw, 2.4rem)",
+                  letterSpacing: "-.01em",
+                }}
+              >
+                Активность
+              </Typography>
+            </Stack>
+            <motion.div
+              initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduce ? 0 : 0.35 }}
+              style={
+                reduce
+                  ? undefined
+                  : { willChange: "transform, opacity", transform: "translateZ(0)" }
+              }
+            >
+              <ToggleButtonGroup
+                size="small"
+                color="primary"
+                value={period}
+                exclusive
+                onChange={(_, v) => v && setPeriod(v)}
+                sx={{
+                  borderRadius: 999,
+                  p: 0.5,
+                  gap: 0.5,
+                  background: alpha(
+                    theme.palette.primary.main,
+                    theme.palette.mode === "dark" ? 0.12 : 0.1
+                  ),
+                  "& .MuiToggleButton-root": {
+                    textTransform: "none",
+                    px: 1.6,
+                    py: 0.5,
+                    borderRadius: 999,
+                    border: 0,
+                    fontWeight: 700,
+                    color: theme.palette.text.primary,
+                  },
+                  "& .Mui-selected": {
+                    background:
+                      theme.palette.mode === "dark"
+                        ? darken(theme.palette.background.paper, 0.4)
+                        : lighten(theme.palette.background.paper, 0.4),
+                    color: theme.palette.text.primary,
+                  },
+                }}
+              >
+                <ToggleButton value="30d">30 дней</ToggleButton>
+                <ToggleButton value="90d">90 дней</ToggleButton>
+                <ToggleButton value="180d">180 дней</ToggleButton>
+              </ToggleButtonGroup>
+            </motion.div>
+          </Stack>
+
+          <MotionBox
+            variants={gridVariants}
+            initial="hidden"
+            animate="show"
+            sx={{
+              display: "grid",
+              gridAutoFlow: "row dense",
+              alignItems: "stretch",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, minmax(0,1fr))",
+                md: "repeat(3, minmax(0,1fr))",
+              },
+              rowGap: { xs: 2.5, sm: 3, md: 3 },
+              columnGap: { xs: 2.5, sm: 3, md: 3 },
+              mb: { xs: 2, md: 3 },
+            }}
+            style={
+              reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+            }
+          >
+            <CardShell tone="success" onClick={() => setDetail("attendance")}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
+                <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
+                    Посещаемость
+                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
+                    <Typography sx={numberSx}>{attendancePctAnimated}%</Typography>
+                    <TrendChip value={attendance?.trend} />
+                  </Stack>
+                  <LinearProgress
+                    variant="determinate"
+                    value={progressAttendance}
+                    sx={{
+                      height: 8,
+                      borderRadius: 999,
+                      transition: "transform .6s ease",
+                      bgcolor: alpha(theme.palette.success.main, 0.18),
+                      "& .MuiLinearProgress-bar": {
+                        borderRadius: 999,
+                        backgroundColor: theme.palette.success.main,
+                      },
+                    }}
+                  />
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: muted,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >{`${attendance?.present ?? 0}/${attendance?.total ?? 0} ${attendance?.windowLabel || ""}`}</Typography>
                 </Stack>
+              </Stack>
+            </CardShell>
+
+            <CardShell tone="info" onClick={() => setDetail("grades")}>
+              <Stack spacing={1}>
+                <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
+                  Успеваемость
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1.2}>
+                  <Typography sx={numberSx}>
+                    {grades?.scale === "gpa"
+                      ? `GPA ${gradesAnimated}`
+                      : grades?.scale === "100"
+                        ? `${gradesAnimated}/100`
+                        : `${gradesAnimated}/5`}
+                  </Typography>
+                  <TrendChip value={grades?.trend} />
+                </Stack>
+                <Typography variant="body2" sx={{ color: muted }}>
+                  Средний балл за период
+                </Typography>
+              </Stack>
+            </CardShell>
+
+            <CardShell tone="warning" onClick={() => setDetail("participation")}>
+              <Stack spacing={1}>
+                <Typography variant="overline" sx={{ letterSpacing: ".06ем", color: subMuted }}>
+                  Участие
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1.2}>
+                  <Typography sx={numberSx}>{`${partEventsAnimated} событий`}</Typography>
+                  <TrendChip value={participation?.trend} />
+                </Stack>
+                <Typography variant="body2" sx={{ color: muted }}>
+                  {[
+                    participation?.hours ? `${participation.hours} ч.` : null,
+                    participation?.groups ? `${participation.groups} круж.` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </Typography>
+              </Stack>
+            </CardShell>
+          </MotionBox>
+
+          <Divider sx={{ my: { xs: 2, md: 3 }, borderColor: cardBorder }} />
+
+          <MotionBox
+            variants={gridVariants}
+            initial="hidden"
+            animate="show"
+            sx={{
+              display: "grid",
+              gridAutoFlow: "row dense",
+              alignItems: "stretch",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, minmax(0,1fr))",
+                md: "repeat(3, minmax(0,1fr))",
+              },
+              rowGap: { xs: 2.5, sm: 3, md: 3 },
+              columnGap: { xs: 2.5, sm: 3, md: 3 },
+            }}
+          >
+            <CardShell onClick={() => setDetail("attendance_recent")}>
+              <Stack>
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                  <EventAvailableIcon fontSize="small" />
+                  <Typography fontWeight={900}>Недавние посещения</Typography>
+                </Stack>
+                <List dense disablePadding>
+                  <AnimatePresence initial={true}>
+                    {(attendance?.recent ?? []).slice(0, 6).map((r, i) => {
+                      const color =
+                        r.status === "present"
+                          ? theme.palette.success.main
+                          : r.status === "late"
+                            ? theme.palette.warning.main
+                            : theme.palette.error.main
+                      const attendanceRecord = r as Partial<{
+                        id?: number | string
+                        lesson_id?: number | string
+                      }>
+                      const itemKey =
+                        pickKeyCandidate(attendanceRecord.id) ??
+                        pickKeyCandidate(attendanceRecord.lesson_id) ??
+                        attendanceItemKey(r, i)
+                      return (
+                        <MotionListItem
+                          key={itemKey}
+                          variants={listItemVariants}
+                          initial="hidden"
+                          animate="show"
+                          exit={{ opacity: 0 }}
+                          transition={{ delay: reduce ? 0 : i * 0.04 }}
+                          sx={{
+                            px: 0,
+                            py: 0.25,
+                            willChange: reduce ? undefined : "transform, opacity",
+                            transform: "translateZ(0)",
+                          }}
+                        >
+                          <ListItemText
+                            primaryTypographyProps={{
+                              sx: { display: "flex", alignItems: "center", gap: 1 },
+                            }}
+                            primary={
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+                                <Box
+                                  sx={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: 999,
+                                    background: color,
+                                    boxShadow: `0 0 0 3px ${alpha(color, 0.18)}`,
+                                  }}
+                                />
+                                <Box
+                                  sx={{
+                                    display: "inline-flex",
+                                    gap: 0.75,
+                                    alignItems: "baseline",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <Typography component="span" sx={{ fontWeight: 700 }}>
+                                    {r.course || "Занятие"}
+                                  </Typography>
+                                  <Typography component="span" sx={{ color: subMuted }}>
+                                    {r.status === "present"
+                                      ? "присутствовал"
+                                      : r.status === "late"
+                                        ? "опоздание"
+                                        : "отсутствовал"}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                            secondary={new Date(r.date).toLocaleDateString()}
+                            secondaryTypographyProps={{ sx: { color: subMuted } }}
+                          />
+                        </MotionListItem>
+                      )
+                    })}
+                  </AnimatePresence>
+                  {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
+                    <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
+                      Нет данных
+                    </Typography>
+                  )}
+                </List>
+              </Stack>
+            </CardShell>
+
+            <CardShell onClick={() => setDetail("grades_recent")}>
+              <Stack>
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                  <SchoolIcon fontSize="small" />
+                  <Typography fontWeight={900}>Недавние оценки</Typography>
+                </Stack>
+                <List dense disablePadding>
+                  <AnimatePresence initial={true}>
+                    {(grades?.recent ?? []).slice(0, 6).map((r, i) => {
+                      const gradeRecord = r as Partial<{ id?: number | string }>
+                      const itemKey = pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
+                      return (
+                        <MotionListItem
+                          key={itemKey}
+                          variants={listItemVariants}
+                          initial="hidden"
+                          animate="show"
+                          exit={{ opacity: 0 }}
+                          transition={{ delay: reduce ? 0 : i * 0.04 }}
+                          sx={{
+                            px: 0,
+                            py: 0.25,
+                            willChange: reduce ? undefined : "transform, opacity",
+                            transform: "translateZ(0)",
+                          }}
+                        >
+                          <ListItemText
+                            primaryTypographyProps={{
+                              sx: { display: "flex", alignItems: "center", gap: 1 },
+                            }}
+                            primary={
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+                                <Box
+                                  sx={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: 999,
+                                    background: alpha(theme.palette.info.main, 0.9),
+                                    boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.18)}`,
+                                  }}
+                                />
+                                <Box
+                                  sx={{
+                                    display: "inline-flex",
+                                    gap: 0.75,
+                                    alignItems: "baseline",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <Typography component="span" sx={{ fontWeight: 700 }}>
+                                    {r.course}
+                                  </Typography>
+                                  <Typography component="span" sx={{ color: subMuted }}>
+                                    {r.score}
+                                    {r.max ? "/" + r.max : ""}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                            secondary={new Date(r.date).toLocaleDateString()}
+                            secondaryTypographyProps={{ sx: { color: subMuted } }}
+                          />
+                        </MotionListItem>
+                      )
+                    })}
+                  </AnimatePresence>
+                  {!loading && (!grades?.recent || grades.recent.length === 0) && (
+                    <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
+                      Нет данных
+                    </Typography>
+                  )}
+                </List>
+              </Stack>
+            </CardShell>
+
+            <CardShell onClick={() => setDetail("participation_recent")}>
+              <Stack>
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                  <EmojiEventsIcon fontSize="small" />
+                  <Typography fontWeight={900}>Недавнее участие</Typography>
+                </Stack>
+                <List dense disablePadding>
+                  <AnimatePresence initial={true}>
+                    {(participation?.recent ?? []).slice(0, 6).map((r, i) => {
+                      const participationRecord = r as Partial<{ id?: number | string }>
+                      const itemKey =
+                        pickKeyCandidate(participationRecord.id) ?? participationItemKey(r, i)
+                      return (
+                        <MotionListItem
+                          key={itemKey}
+                          variants={listItemVariants}
+                          initial="hidden"
+                          animate="show"
+                          exit={{ opacity: 0 }}
+                          transition={{ delay: reduce ? 0 : i * 0.04 }}
+                          sx={{
+                            px: 0,
+                            py: 0.25,
+                            willChange: reduce ? undefined : "transform, opacity",
+                            transform: "translateZ(0)",
+                          }}
+                        >
+                          <ListItemText
+                            primaryTypographyProps={{
+                              sx: { display: "flex", alignItems: "center", gap: 1 },
+                            }}
+                            primary={
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+                                <Box
+                                  sx={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: 999,
+                                    background: alpha(theme.palette.warning.main, 0.9),
+                                    boxShadow: `0 0 0 3px ${alpha(theme.palette.warning.main, 0.18)}`,
+                                  }}
+                                />
+                                <Box
+                                  sx={{
+                                    display: "inline-flex",
+                                    gap: 0.75,
+                                    alignItems: "baseline",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <Typography component="span" sx={{ fontWeight: 700 }}>
+                                    {r.title}
+                                  </Typography>
+                                  <Typography component="span" sx={{ color: subMuted }}>
+                                    {[new Date(r.date).toLocaleDateString(), r.role]
+                                      .filter(Boolean)
+                                      .join(" • ")}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                          />
+                        </MotionListItem>
+                      )
+                    })}
+                  </AnimatePresence>
+                  {!loading && (!participation?.recent || participation.recent.length === 0) && (
+                    <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
+                      Нет данных
+                    </Typography>
+                  )}
+                </List>
+              </Stack>
+            </CardShell>
+          </MotionBox>
+        </MotionBox>
+
+        <Dialog open={detail !== ""} onClose={() => setDetail("")} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {detail === "attendance" || detail === "attendance_recent"
+              ? "Посещаемость"
+              : detail === "grades" || detail === "grades_recent"
+                ? "Успеваемость"
+                : "Участие"}
+          </DialogTitle>
+          <DialogContent dividers>
+            {detail === "attendance" && (
+              <Stack spacing={2}>
+                <Typography>
+                  Всего: {attendance?.present ?? 0}/{attendance?.total ?? 0}{" "}
+                  {attendance?.windowLabel || ""}
+                </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={progressAttendance}
-                  sx={{
-                    height: 8,
-                    borderRadius: 999,
-                    transition: "transform .6s ease",
-                    bgcolor: alpha(theme.palette.success.main, 0.18),
-                    "& .MuiLinearProgress-bar": {
-                      borderRadius: 999,
-                      backgroundColor: theme.palette.success.main,
-                    },
-                  }}
+                  value={Math.max(0, Math.min(100, attendance?.percent ?? 0))}
+                  sx={{ height: 10, borderRadius: 8 }}
                 />
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: muted,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >{`${attendance?.present ?? 0}/${attendance?.total ?? 0} ${attendance?.windowLabel || ""}`}</Typography>
+                <List dense>
+                  {(attendance?.recent ?? []).map((r, i) => (
+                    <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
+                      <ListItemText
+                        primary={`${r.course || "Занятие"} — ${r.status === "present" ? "присутствовал" : r.status === "late" ? "опоздание" : "отсутствовал"}`}
+                        secondary={new Date(r.date).toLocaleDateString()}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
               </Stack>
-            </Stack>
-          </CardShell>
-
-          <CardShell tone="info" onClick={() => setDetail("grades")}>
-            <Stack spacing={1}>
-              <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
-                Успеваемость
-              </Typography>
-              <Stack direction="row" alignItems="center" spacing={1.2}>
-                <Typography sx={numberSx}>
+            )}
+            {detail === "grades" && (
+              <Stack spacing={2}>
+                <Typography>
                   {grades?.scale === "gpa"
-                    ? `GPA ${gradesAnimated}`
+                    ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
                     : grades?.scale === "100"
-                      ? `${gradesAnimated}/100`
-                      : `${gradesAnimated}/5`}
+                      ? `${Math.round(grades?.average ?? 0)}/100`
+                      : `${(grades?.average ?? 0).toFixed(1)}/5`}
                 </Typography>
-                <TrendChip value={grades?.trend} />
+                <List dense>
+                  {(grades?.recent ?? []).map((r, i) => (
+                    <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
+                      <ListItemText
+                        primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
+                        secondary={new Date(r.date).toLocaleDateString()}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
               </Stack>
-              <Typography variant="body2" sx={{ color: muted }}>
-                Средний балл за период
-              </Typography>
-            </Stack>
-          </CardShell>
-
-          <CardShell tone="warning" onClick={() => setDetail("participation")}>
-            <Stack spacing={1}>
-              <Typography variant="overline" sx={{ letterSpacing: ".06ем", color: subMuted }}>
-                Участие
-              </Typography>
-              <Stack direction="row" alignItems="center" spacing={1.2}>
-                <Typography sx={numberSx}>{`${partEventsAnimated} событий`}</Typography>
-                <TrendChip value={participation?.trend} />
+            )}
+            {detail === "participation" && (
+              <Stack spacing={2}>
+                <Typography>
+                  {[
+                    `${participation?.events ?? 0} событий`,
+                    participation?.hours ? `${participation.hours} ч.` : null,
+                    participation?.groups ? `${participation.groups} круж.` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </Typography>
+                <List dense>
+                  {(participation?.recent ?? []).map((r, i) => (
+                    <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
+                      <ListItemText
+                        primary={r.title}
+                        secondary={[new Date(r.date).toLocaleDateString(), r.role]
+                          .filter(Boolean)
+                          .join(" • ")}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
               </Stack>
-              <Typography variant="body2" sx={{ color: muted }}>
-                {[
-                  participation?.hours ? `${participation.hours} ч.` : null,
-                  participation?.groups ? `${participation.groups} круж.` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" • ")}
-              </Typography>
-            </Stack>
-          </CardShell>
-        </MotionBox>
-
-        <Divider sx={{ my: { xs: 2, md: 3 }, borderColor: cardBorder }} />
-
-        <MotionBox
-          variants={gridVariants}
-          initial="hidden"
-          animate="show"
-          sx={{
-            display: "grid",
-            gridAutoFlow: "row dense",
-            alignItems: "stretch",
-            gridTemplateColumns: {
-              xs: "1fr",
-              sm: "repeat(2, minmax(0,1fr))",
-              md: "repeat(3, minmax(0,1fr))",
-            },
-            rowGap: { xs: 2.5, sm: 3, md: 3 },
-            columnGap: { xs: 2.5, sm: 3, md: 3 },
-          }}
-        >
-          <CardShell onClick={() => setDetail("attendance_recent")}>
-            <Stack>
-              <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                <EventAvailableIcon fontSize="small" />
-                <Typography fontWeight={900}>Недавние посещения</Typography>
-              </Stack>
-              <List dense disablePadding>
-                <AnimatePresence initial={true}>
-                  {(attendance?.recent ?? []).slice(0, 6).map((r, i) => {
-                    const color =
-                      r.status === "present"
-                        ? theme.palette.success.main
-                        : r.status === "late"
-                          ? theme.palette.warning.main
-                          : theme.palette.error.main
-                    const attendanceRecord = r as Partial<{
-                      id?: number | string
-                      lesson_id?: number | string
-                    }>
-                    const itemKey =
-                      pickKeyCandidate(attendanceRecord.id) ??
-                      pickKeyCandidate(attendanceRecord.lesson_id) ??
-                      attendanceItemKey(r, i)
-                    return (
-                      <MotionListItem
-                        key={itemKey}
-                        variants={listItemVariants}
-                        initial="hidden"
-                        animate="show"
-                        exit={{ opacity: 0 }}
-                        transition={{ delay: reduce ? 0 : i * 0.04 }}
-                        sx={{
-                          px: 0,
-                          py: 0.25,
-                          willChange: reduce ? undefined : "transform, opacity",
-                          transform: "translateZ(0)",
-                        }}
-                      >
-                        <ListItemText
-                          primaryTypographyProps={{
-                            sx: { display: "flex", alignItems: "center", gap: 1 },
-                          }}
-                          primary={
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                              <Box
-                                sx={{
-                                  width: 8,
-                                  height: 8,
-                                  borderRadius: 999,
-                                  background: color,
-                                  boxShadow: `0 0 0 3px ${alpha(color, 0.18)}`,
-                                }}
-                              />
-                              <Box
-                                sx={{
-                                  display: "inline-flex",
-                                  gap: 0.75,
-                                  alignItems: "baseline",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <Typography component="span" sx={{ fontWeight: 700 }}>
-                                  {r.course || "Занятие"}
-                                </Typography>
-                                <Typography component="span" sx={{ color: subMuted }}>
-                                  {r.status === "present"
-                                    ? "присутствовал"
-                                    : r.status === "late"
-                                      ? "опоздание"
-                                      : "отсутствовал"}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                          secondary={new Date(r.date).toLocaleDateString()}
-                          secondaryTypographyProps={{ sx: { color: subMuted } }}
-                        />
-                      </MotionListItem>
-                    )
-                  })}
-                </AnimatePresence>
-                {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
-                  <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
-                    Нет данных
-                  </Typography>
-                )}
-              </List>
-            </Stack>
-          </CardShell>
-
-          <CardShell onClick={() => setDetail("grades_recent")}>
-            <Stack>
-              <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                <SchoolIcon fontSize="small" />
-                <Typography fontWeight={900}>Недавние оценки</Typography>
-              </Stack>
-              <List dense disablePadding>
-                <AnimatePresence initial={true}>
-                  {(grades?.recent ?? []).slice(0, 6).map((r, i) => {
-                    const gradeRecord = r as Partial<{ id?: number | string }>
-                    const itemKey = pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
-                    return (
-                      <MotionListItem
-                        key={itemKey}
-                        variants={listItemVariants}
-                        initial="hidden"
-                        animate="show"
-                        exit={{ opacity: 0 }}
-                        transition={{ delay: reduce ? 0 : i * 0.04 }}
-                        sx={{
-                          px: 0,
-                          py: 0.25,
-                          willChange: reduce ? undefined : "transform, opacity",
-                          transform: "translateZ(0)",
-                        }}
-                      >
-                        <ListItemText
-                          primaryTypographyProps={{
-                            sx: { display: "flex", alignItems: "center", gap: 1 },
-                          }}
-                          primary={
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                              <Box
-                                sx={{
-                                  width: 8,
-                                  height: 8,
-                                  borderRadius: 999,
-                                  background: alpha(theme.palette.info.main, 0.9),
-                                  boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.18)}`,
-                                }}
-                              />
-                              <Box
-                                sx={{
-                                  display: "inline-flex",
-                                  gap: 0.75,
-                                  alignItems: "baseline",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <Typography component="span" sx={{ fontWeight: 700 }}>
-                                  {r.course}
-                                </Typography>
-                                <Typography component="span" sx={{ color: subMuted }}>
-                                  {r.score}
-                                  {r.max ? "/" + r.max : ""}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                          secondary={new Date(r.date).toLocaleDateString()}
-                          secondaryTypographyProps={{ sx: { color: subMuted } }}
-                        />
-                      </MotionListItem>
-                    )
-                  })}
-                </AnimatePresence>
-                {!loading && (!grades?.recent || grades.recent.length === 0) && (
-                  <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
-                    Нет данных
-                  </Typography>
-                )}
-              </List>
-            </Stack>
-          </CardShell>
-
-          <CardShell onClick={() => setDetail("participation_recent")}>
-            <Stack>
-              <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                <EmojiEventsIcon fontSize="small" />
-                <Typography fontWeight={900}>Недавнее участие</Typography>
-              </Stack>
-              <List dense disablePadding>
-                <AnimatePresence initial={true}>
-                  {(participation?.recent ?? []).slice(0, 6).map((r, i) => {
-                    const participationRecord = r as Partial<{ id?: number | string }>
-                    const itemKey =
-                      pickKeyCandidate(participationRecord.id) ?? participationItemKey(r, i)
-                    return (
-                      <MotionListItem
-                        key={itemKey}
-                        variants={listItemVariants}
-                        initial="hidden"
-                        animate="show"
-                        exit={{ opacity: 0 }}
-                        transition={{ delay: reduce ? 0 : i * 0.04 }}
-                        sx={{
-                          px: 0,
-                          py: 0.25,
-                          willChange: reduce ? undefined : "transform, opacity",
-                          transform: "translateZ(0)",
-                        }}
-                      >
-                        <ListItemText
-                          primaryTypographyProps={{
-                            sx: { display: "flex", alignItems: "center", gap: 1 },
-                          }}
-                          primary={
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                              <Box
-                                sx={{
-                                  width: 8,
-                                  height: 8,
-                                  borderRadius: 999,
-                                  background: alpha(theme.palette.warning.main, 0.9),
-                                  boxShadow: `0 0 0 3px ${alpha(theme.palette.warning.main, 0.18)}`,
-                                }}
-                              />
-                              <Box
-                                sx={{
-                                  display: "inline-flex",
-                                  gap: 0.75,
-                                  alignItems: "baseline",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <Typography component="span" sx={{ fontWeight: 700 }}>
-                                  {r.title}
-                                </Typography>
-                                <Typography component="span" sx={{ color: subMuted }}>
-                                  {[new Date(r.date).toLocaleDateString(), r.role]
-                                    .filter(Boolean)
-                                    .join(" • ")}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </MotionListItem>
-                    )
-                  })}
-                </AnimatePresence>
-                {!loading && (!participation?.recent || participation.recent.length === 0) && (
-                  <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
-                    Нет данных
-                  </Typography>
-                )}
-              </List>
-            </Stack>
-          </CardShell>
-        </MotionBox>
-      </MotionBox>
-
-      <Dialog open={detail !== ""} onClose={() => setDetail("")} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {detail === "attendance" || detail === "attendance_recent"
-            ? "Посещаемость"
-            : detail === "grades" || detail === "grades_recent"
-              ? "Успеваемость"
-              : "Участие"}
-        </DialogTitle>
-        <DialogContent dividers>
-          {detail === "attendance" && (
-            <Stack spacing={2}>
-              <Typography>
-                Всего: {attendance?.present ?? 0}/{attendance?.total ?? 0}{" "}
-                {attendance?.windowLabel || ""}
-              </Typography>
-              <LinearProgress
-                variant="determinate"
-                value={Math.max(0, Math.min(100, attendance?.percent ?? 0))}
-                sx={{ height: 10, borderRadius: 8 }}
-              />
+            )}
+            {detail === "attendance_recent" && (
               <List dense>
                 {(attendance?.recent ?? []).map((r, i) => (
                   <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
@@ -929,17 +992,8 @@ export default function Activity() {
                   </ListItem>
                 ))}
               </List>
-            </Stack>
-          )}
-          {detail === "grades" && (
-            <Stack spacing={2}>
-              <Typography>
-                {grades?.scale === "gpa"
-                  ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
-                  : grades?.scale === "100"
-                    ? `${Math.round(grades?.average ?? 0)}/100`
-                    : `${(grades?.average ?? 0).toFixed(1)}/5`}
-              </Typography>
+            )}
+            {detail === "grades_recent" && (
               <List dense>
                 {(grades?.recent ?? []).map((r, i) => (
                   <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
@@ -950,19 +1004,8 @@ export default function Activity() {
                   </ListItem>
                 ))}
               </List>
-            </Stack>
-          )}
-          {detail === "participation" && (
-            <Stack spacing={2}>
-              <Typography>
-                {[
-                  `${participation?.events ?? 0} событий`,
-                  participation?.hours ? `${participation.hours} ч.` : null,
-                  participation?.groups ? `${participation.groups} круж.` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" • ")}
-              </Typography>
+            )}
+            {detail === "participation_recent" && (
               <List dense>
                 {(participation?.recent ?? []).map((r, i) => (
                   <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
@@ -975,51 +1018,13 @@ export default function Activity() {
                   </ListItem>
                 ))}
               </List>
-            </Stack>
-          )}
-          {detail === "attendance_recent" && (
-            <List dense>
-              {(attendance?.recent ?? []).map((r, i) => (
-                <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
-                  <ListItemText
-                    primary={`${r.course || "Занятие"} — ${r.status === "present" ? "присутствовал" : r.status === "late" ? "опоздание" : "отсутствовал"}`}
-                    secondary={new Date(r.date).toLocaleDateString()}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-          {detail === "grades_recent" && (
-            <List dense>
-              {(grades?.recent ?? []).map((r, i) => (
-                <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
-                  <ListItemText
-                    primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                    secondary={new Date(r.date).toLocaleDateString()}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-          {detail === "participation_recent" && (
-            <List dense>
-              {(participation?.recent ?? []).map((r, i) => (
-                <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
-                  <ListItemText
-                    primary={r.title}
-                    secondary={[new Date(r.date).toLocaleDateString(), r.role]
-                      .filter(Boolean)
-                      .join(" • ")}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetail("")}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDetail("")}>Закрыть</Button>
+          </DialogActions>
+        </Dialog>
+      </PageFadeIn>
     </Layout>
   )
 }
