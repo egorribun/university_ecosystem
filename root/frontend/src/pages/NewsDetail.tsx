@@ -300,27 +300,17 @@ export default function NewsDetail() {
             sx={{
               width: "100%",
               maxWidth: { xs: "100%", md: 800, lg: 1000 },
-              maxHeight: { xs: 320, sm: 420, md: 520, lg: 600 },
+              maxHeight: { xs: 220, sm: 340, md: 420, lg: 500 },
               borderRadius: 4,
               border: "1px solid #eee",
-              background: "#f7f8fa",
-              display: "grid",
-              placeItems: "center",
               overflow: "hidden",
-              p: { xs: 1, sm: 1.5, md: 2 },
+              background: "#f7f8fa",
             }}
           >
             <SmartImage
               srcRaw={imageUrl}
               alt={query.data.title || "Новость"}
-              style={{
-                width: "100%",
-                height: "auto",
-                maxWidth: "100%",
-                maxHeight: "100%",
-                objectFit: "contain",
-                display: "block",
-              }}
+              style={{ width: "100%", height: "100%" }}
             />
           </Box>
 
@@ -374,29 +364,11 @@ export default function NewsDetail() {
                 </Button>
 
                 {imageUrl && (
-                  <Box
-                    sx={{
-                      width: 120,
-                      maxHeight: 90,
-                      borderRadius: 2,
-                      overflow: "hidden",
-                      display: "grid",
-                      placeItems: "center",
-                      backgroundColor: "#f5f6f8",
-                      p: 0.5,
-                    }}
-                  >
+                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
                     <SmartImage
                       srcRaw={imageUrl}
                       alt="preview"
-                      style={{
-                        width: "100%",
-                        height: "auto",
-                        maxWidth: "100%",
-                        maxHeight: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   </Box>
                 )}
