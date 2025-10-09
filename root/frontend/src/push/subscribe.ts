@@ -251,12 +251,70 @@ type UnsubscribePushOptions = {
   preserveConsent?: boolean
 }
 
+function clearPushLocals(preserveConsent?: boolean) {
+  if (!preserveConsent) {
+    try {
+      localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
+    } catch {}
+  }
+  removeStoredValue(PUSH_LAST_SYNC_STORAGE_KEY)
+  removeStoredValue(PUSH_SUB_STORAGE_KEY)
+  removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+}
+
+async function resolveServiceWorkerRegistration(
+  provided?: ServiceWorkerRegistration,
+): Promise<ServiceWorkerRegistration | null> {
+  if (provided) return provided
+
+  try {
+    const existing = await navigator.serviceWorker.getRegistration()
+    if (existing) return existing
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Failed to get existing service worker registration", error)
+    }
+  }
+
+  try {
+    const withTimeout = Promise.race<
+      ServiceWorkerRegistration | null | undefined
+    >([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+    ])
+    const registration = await withTimeout
+    return registration ?? null
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Failed to await service worker readiness", error)
+    }
+    return null
+  }
+}
+
 export async function unsubscribePush(options?: UnsubscribePushOptions) {
-  if (!("serviceWorker" in navigator)) return false
-  const reg = options?.registration ?? (await navigator.serviceWorker.ready)
-  const sub = await reg.pushManager.getSubscription()
-  if (!sub) return true
-  const endpoint = sub.endpoint
+  if (!("serviceWorker" in navigator)) {
+    clearPushLocals(options?.preserveConsent)
+    return false
+  }
+
+  const registration = await resolveServiceWorkerRegistration(
+    options?.registration,
+  )
+
+  if (!registration) {
+    clearPushLocals(options?.preserveConsent)
+    return false
+  }
+
+  const subscription = await registration.pushManager.getSubscription()
+  if (!subscription) {
+    clearPushLocals(options?.preserveConsent)
+    return true
+  }
+
+  const endpoint = subscription.endpoint
   let deleted = false
   if (endpoint) {
     try {
@@ -266,15 +324,11 @@ export async function unsubscribePush(options?: UnsubscribePushOptions) {
       console.warn("Failed to delete push subscription on server", error)
     }
   }
-  const ok = await sub.unsubscribe()
-  if (!options?.preserveConsent) {
-    try {
-      localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
-    } catch {}
-  }
-  removeStoredValue(PUSH_LAST_SYNC_STORAGE_KEY)
-  removeStoredValue(PUSH_SUB_STORAGE_KEY)
-  removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+
+  const ok = await subscription.unsubscribe()
+
+  clearPushLocals(options?.preserveConsent)
+
   return ok && (deleted || !endpoint)
 }
 
