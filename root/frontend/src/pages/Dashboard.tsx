@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, useCallback, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useState, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
 import {
@@ -58,8 +59,8 @@ function DateBullet({ date }: { date?: string }) {
     <Tooltip title={full} enterDelay={150}>
       <Box
         aria-label={`Дата публикации: ${full}`}
-        sx={{
-          width: 44,
+          sx={{
+            width: 44,
           height: 44,
           minWidth: 44,
           minHeight: 44,
@@ -338,8 +339,9 @@ export default function Dashboard() {
       >
         Перейти к содержимому
       </a>
-      <Box
-        id="main"
+      <PageFadeIn>
+        <Box
+          id="main"
         sx={{
           width: "100%",
           maxWidth: "min(1800px, 100%)",
@@ -348,9 +350,11 @@ export default function Dashboard() {
           mx: "auto"
         }}
       >
-        <Box
-          sx={{
-            background: headerGradient,
+          <Box
+            data-fade
+          style={{ '--fade-delay': '40ms' } as CSSProperties }
+            sx={{
+              background: headerGradient,
             borderRadius: "2rem",
             p: { xs: 2.2, md: 3 },
             boxShadow: "0 12px 36px #1d5fff16, 0 4px 14px #0000000a",
@@ -397,7 +401,7 @@ export default function Dashboard() {
             gap: { xs: 2, md: 3 }
           }}
         >
-          <Box sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" }, ...newsLikeHover }} aria-busy={loadingSched}>
+          <Box data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" }, ...newsLikeHover }} aria-busy={loadingSched}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
                 Сегодня в расписании
@@ -480,7 +484,7 @@ export default function Dashboard() {
             )}
           </Box>
 
-          <Box sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" }, ...newsLikeHover }} aria-busy={loadingNews}>
+          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" }, ...newsLikeHover }} aria-busy={loadingNews}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>Новости</Typography>
               <Button
@@ -551,7 +555,7 @@ export default function Dashboard() {
             )}
           </Box>
 
-          <Box sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" }, ...newsLikeHover }} aria-busy={loadingEvents}>
+          <Box data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" }, ...newsLikeHover }} aria-busy={loadingEvents}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>События</Typography>
               <Button
@@ -638,6 +642,7 @@ export default function Dashboard() {
           </Box>
         </Box>
       </Box>
+      </PageFadeIn>
     </Layout>
   )
 }

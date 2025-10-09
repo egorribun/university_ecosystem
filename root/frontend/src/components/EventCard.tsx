@@ -182,6 +182,13 @@ const EventCardComponent: FC<EventCardProps> = ({
     () => (previewUrl ? previewUrl : editData.image_url ? resolveMediaUrl(editData.image_url) : undefined),
     [editData.image_url, previewUrl],
   )
+  const [cardImageReady, setCardImageReady] = useState(() => !cardImageUrl)
+
+  useEffect(() => {
+    setCardImageReady(!cardImageUrl)
+  }, [cardImageUrl])
+
+  const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
   const dateError =
     Boolean(editData.starts_at) &&
@@ -410,8 +417,19 @@ const EventCardComponent: FC<EventCardProps> = ({
               borderRadius: 2,
               border: "1px solid #e0e0e0",
               overflow: "hidden",
+              position: "relative",
+              background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
               transition: "transform 0.25s ease",
               "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
+              "&::after": {
+                content: '""',
+                position: "absolute",
+                inset: 0,
+                background: "linear-gradient(120deg, rgba(255,255,255,0.28), rgba(255,255,255,0.05))",
+                opacity: cardImageReady ? 0 : 1,
+                transition: "opacity 280ms ease",
+                pointerEvents: "none",
+              },
             }}
           >
             <SmartImage
@@ -424,6 +442,8 @@ const EventCardComponent: FC<EventCardProps> = ({
                 e.stopPropagation()
                 navigateToDetails()
               }}
+              onLoad={handleCardImageReady}
+              onError={handleCardImageReady}
             />
           </Box>
         </Box>

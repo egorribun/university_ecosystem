@@ -1,6 +1,7 @@
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import { useEffect, useState, useCallback, useMemo, type SyntheticEvent } from "react"
+import { useEffect, useState, useCallback, useMemo, type SyntheticEvent, type CSSProperties } from "react"
 import axios from "../api/client"
 import {
   Box, Tabs, Tab, TextField, Typography, Button,
@@ -187,7 +188,7 @@ const Events = () => {
 
   const mobileContent = useMemo(
     () => (
-      <Stack spacing={2} mt={1}>
+      <Stack data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } spacing={2} mt={1}>
         {loading &&
           Array.from({ length: 3 }).map((_, i) => (
             <Box key={`event-skel-mobile-${i}`} sx={{ p: 0 }}>
@@ -213,6 +214,8 @@ const Events = () => {
   const desktopContent = useMemo(
     () => (
       <Box
+        data-fade
+        style={{ '--fade-delay': '260ms' } as CSSProperties }
         sx={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
@@ -251,7 +254,8 @@ const Events = () => {
 
   return (
     <Layout>
-      <Box
+      <PageFadeIn>
+        <Box
         sx={{
           width: "100vw",
           minHeight: "100vh",
@@ -263,6 +267,8 @@ const Events = () => {
         }}
       >
         <Box
+          data-fade
+          style={{ '--fade-delay': '80ms' } as CSSProperties }
           display="flex"
           alignItems="center"
           gap={2}
@@ -281,7 +287,9 @@ const Events = () => {
         </Box>
 
         {(user?.role === "admin" || user?.role === "teacher") && (
-          <Box sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}>
+          <Box
+            data-fade
+            style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}>
             <Button
               variant="contained"
               sx={{ fontWeight: 600, fontSize: 16, px: 2.5, borderRadius: 2 }}
@@ -294,6 +302,8 @@ const Events = () => {
         )}
 
         <Tabs
+          data-fade
+          style={{ '--fade-delay': '200ms' } as CSSProperties }
           value={tab}
           onChange={handleTabChange}
           variant={isMobile ? "scrollable" : "standard"}
@@ -330,6 +340,8 @@ const Events = () => {
         </Tabs>
 
         <Stack
+          data-fade
+          style={{ '--fade-delay': '240ms' } as CSSProperties }
           direction="row"
           spacing={1.5}
           alignItems="center"
@@ -579,6 +591,7 @@ const Events = () => {
           </DialogContent>
         </Dialog>
       </Box>
+      </PageFadeIn>
     </Layout>
   )
 }
