@@ -12,7 +12,6 @@ from sqlalchemy import inspect
 
 from alembic import op
 
-
 revision: str = "8f6e0bcb76bc"
 down_revision: Union[str, Sequence[str], None] = "ffe470bc9ca2"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -39,7 +38,9 @@ def upgrade() -> None:
             server_default=sa.text("0"),
         ),
     )
-    op.execute(sa.text("UPDATE users SET token_version = 0 WHERE token_version IS NULL"))
+    op.execute(
+        sa.text("UPDATE users SET token_version = 0 WHERE token_version IS NULL")
+    )
     if bind.dialect.name != "sqlite":
         op.alter_column("users", "token_version", server_default=None)
 

@@ -5,7 +5,9 @@ from app.auth.security import get_password_hash
 
 
 @pytest.mark.anyio
-async def test_logout_invalidates_token(async_client: AsyncClient, user_factory) -> None:
+async def test_logout_invalidates_token(
+    async_client: AsyncClient, user_factory
+) -> None:
     password = "StrongP@ssw0rd!"
     hashed_password = get_password_hash(password)
     user = await user_factory(hashed_password=hashed_password, is_active=True)
