@@ -5,6 +5,21 @@ const getDefaultOrigin = () => {
   return ""
 }
 
+const isSecureContext = () => {
+  if (typeof window === "undefined") return false
+  const { protocol, origin } = window.location || {}
+  if (typeof origin === "string" && /^https:\/\//i.test(origin)) return true
+  if (protocol) return protocol === "https:"
+  return false
+}
+
+const shouldUpgradeToHttps = (url: string) => {
+  if (!isSecureContext()) return false
+  return /^http:\/\//i.test(url)
+}
+
+const upgradeToHttps = (url: string) => url.replace(/^http:\/\//i, "https://")
+
 const safeEncode = (segment: string) => {
   const trimmed = segment.trim()
   if (!trimmed) return ""
@@ -38,9 +53,10 @@ export function resolveMediaUrl(
   if (!cleaned) return ""
   if (/^(?:https?:)?\/\//i.test(cleaned)) {
     try {
-      return new URL(cleaned, "http://dummy").toString().replace("http://dummy", "")
+      const resolved = new URL(cleaned, "http://dummy").toString().replace("http://dummy", "")
+      return shouldUpgradeToHttps(resolved) ? upgradeToHttps(resolved) : resolved
     } catch {
-      return cleaned
+      return shouldUpgradeToHttps(cleaned) ? upgradeToHttps(cleaned) : cleaned
     }
   }
 
@@ -63,10 +79,11 @@ export function resolveMediaUrl(
 
   try {
     const resolved = new URL(relative, base + "/")
-    return resolved.toString()
+    const finalUrl = resolved.toString()
+    return shouldUpgradeToHttps(finalUrl) ? upgradeToHttps(finalUrl) : finalUrl
   } catch {
-    const fallback = `${base}/${relative}`
-    return fallback.replace(/(?<!:)\/{2,}/g, "/")
+    const fallback = `${base}/${relative}`.replace(/(?<!:)\/{2,}/g, "/")
+    return shouldUpgradeToHttps(fallback) ? upgradeToHttps(fallback) : fallback
   }
 }
 
