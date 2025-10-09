@@ -290,17 +290,28 @@ const EventDetail = () => {
             <Box
               sx={{
                 width: '100%',
-                maxHeight: 350,
+                maxHeight: 420,
                 borderRadius: 3,
                 border: '1px solid #282c34',
                 boxShadow: 2,
                 overflow: 'hidden',
+                backgroundColor: '#f5f6f8',
+                display: 'grid',
+                placeItems: 'center',
+                p: { xs: 1, sm: 1.5 },
               }}
             >
               <SmartImage
                 srcRaw={imageUrl}
                 alt="Изображение мероприятия"
-                style={{ width: '100%', height: '100%', display: 'block' }}
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
               />
             </Box>
             <Box>
@@ -481,17 +492,28 @@ const EventDetail = () => {
               <Box
                 sx={{
                   width: '100%',
-                  maxHeight: 520,
+                  maxHeight: 560,
                   borderRadius: 5,
                   border: '1px solid #282c34',
                   boxShadow: 3,
                   overflow: 'hidden',
+                  backgroundColor: '#f5f6f8',
+                  display: 'grid',
+                  placeItems: 'center',
+                  p: { xs: 1, md: 1.5 },
                 }}
               >
                 <SmartImage
                   srcRaw={imageUrl}
                   alt="Изображение мероприятия"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
                 />
               </Box>
             )}
