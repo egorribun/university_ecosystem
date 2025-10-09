@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
 from app.auth.security import (
     create_access_token,
     get_password_hash,
@@ -56,7 +57,7 @@ async def login(
         user.hashed_password = new_hash
         await db.commit()
         await db.refresh(user)
-    token = create_access_token(str(user_id))
+    token = create_access_token(str(user_id), extra={"ver": user.token_version or 0})
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -92,7 +93,7 @@ async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
         user.hashed_password = new_hash
         await db.commit()
         await db.refresh(user)
-    token = create_access_token(str(user_id))
+    token = create_access_token(str(user_id), extra={"ver": user.token_version or 0})
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -119,3 +120,22 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(new_user)
     return {"status": "ok", "id": new_user.id}
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Terminate the client session and revoke issued tokens."""
+
+    response.delete_cookie("Authorization")
+    response.delete_cookie("token")
+    response.delete_cookie("access_token")
+
+    current_version = user.token_version or 0
+    user.token_version = current_version + 1
+    await db.commit()
+
+    return {"status": "ok"}

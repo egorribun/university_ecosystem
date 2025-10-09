@@ -67,6 +67,8 @@ class User(Base):
     spotify_last_track_url = Column(String)
     spotify_last_album_image_url = Column(String)
 
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
+
     group = relationship("Group", back_populates="students", passive_deletes=True)
     notifications = relationship(
         "Notification",

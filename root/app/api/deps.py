@@ -31,4 +31,12 @@ async def get_current_user(
     user = await db.get(User, user_id)
     if not user or not user.is_active:
         raise credentials_exception
+    raw_version = payload.get("ver", 0)
+    try:
+        token_version = int(raw_version)
+    except (TypeError, ValueError):
+        token_version = 0
+    current_version = user.token_version or 0
+    if token_version != current_version:
+        raise credentials_exception
     return user
