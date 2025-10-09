@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import type React from 'react'
 import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from 'react'
 import api from '../api/client'
 import {
@@ -106,7 +107,24 @@ const EventDetail = () => {
   const [savingAbout, setSavingAbout] = useState(false)
 
   const [snack, setSnack] = useState('')
+  const [heroPos, setHeroPos] = useState<'50% 18%' | '50% 38%' | '50% 50%' | string>('50% 38%')
+  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = e => {
+    const img = e.currentTarget
+    const w = img.naturalWidth || 0
+    const h = img.naturalHeight || 0
+    if (!w || !h) return
+    const r = w / h
+    if (r < 0.9) setHeroPos('50% 18%')
+    else if (r > 2) setHeroPos('50% 50%')
+    else setHeroPos('50% 38%')
+  }
   const aboutSectionRef = useRef<HTMLHeadingElement | null>(null)
+
+  const imageUrl = event?.image_url || ''
+
+  useEffect(() => {
+    setHeroPos('50% 38%')
+  }, [imageUrl])
 
   const fetchEvent = useCallback(async (signal?: AbortSignal) => {
     const res = await api.get(`/events/${id}`, signal ? { signal } as any : undefined)
@@ -212,8 +230,6 @@ const EventDetail = () => {
     )
   }
 
-  const imageUrl = event.image_url || ""
-
   const BackButton = (
     <Button
       onClick={handleBack}
@@ -290,17 +306,28 @@ const EventDetail = () => {
             <Box
               sx={{
                 width: '100%',
-                maxHeight: 350,
+                aspectRatio: { xs: '16 / 9', md: '21 / 9' },
+                position: 'relative',
                 borderRadius: 3,
                 border: '1px solid #282c34',
                 boxShadow: 2,
                 overflow: 'hidden',
+                bgcolor: 'rgba(0,0,0,0.04)'
               }}
             >
               <SmartImage
                 srcRaw={imageUrl}
                 alt="Изображение мероприятия"
-                style={{ width: '100%', height: '100%', display: 'block' }}
+                onLoad={handleHeroLoad}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  display: 'block',
+                  objectFit: 'cover',
+                  objectPosition: heroPos
+                }}
               />
             </Box>
             <Box>
@@ -481,17 +508,28 @@ const EventDetail = () => {
               <Box
                 sx={{
                   width: '100%',
-                  maxHeight: 520,
+                  aspectRatio: { xs: '16 / 9', md: '21 / 9' },
+                  position: 'relative',
                   borderRadius: 5,
                   border: '1px solid #282c34',
                   boxShadow: 3,
                   overflow: 'hidden',
+                  bgcolor: 'rgba(0,0,0,0.04)'
                 }}
               >
                 <SmartImage
                   srcRaw={imageUrl}
                   alt="Изображение мероприятия"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  onLoad={handleHeroLoad}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    objectFit: 'cover',
+                    objectPosition: heroPos
+                  }}
                 />
               </Box>
             )}

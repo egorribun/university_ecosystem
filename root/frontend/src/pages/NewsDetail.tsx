@@ -1,3 +1,4 @@
+import type React from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -70,6 +71,18 @@ export default function NewsDetail() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [heroPos, setHeroPos] = useState<'50% 18%' | '50% 38%' | '50% 50%' | string>('50% 38%')
+
+  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
+    const img = e.currentTarget
+    const w = img.naturalWidth || 0
+    const h = img.naturalHeight || 0
+    if (!w || !h) return
+    const r = w / h
+    if (r < 0.9) setHeroPos('50% 18%')
+    else if (r > 2) setHeroPos('50% 50%')
+    else setHeroPos('50% 38%')
+  }
 
   const query = useQuery({
     queryKey: ["news", id],
@@ -178,6 +191,10 @@ export default function NewsDetail() {
     if (previewUrl) return previewUrl
     return rawImageUrl
   }, [previewUrl, rawImageUrl])
+
+  useEffect(() => {
+    setHeroPos('50% 38%')
+  }, [imageUrl])
 
   const content = query.data?.content ?? ""
   const createdAt = query.data?.created_at
@@ -300,17 +317,27 @@ export default function NewsDetail() {
             sx={{
               width: "100%",
               maxWidth: { xs: "100%", md: 800, lg: 1000 },
-              maxHeight: { xs: 220, sm: 340, md: 420, lg: 500 },
+              aspectRatio: { xs: "16 / 9", md: "21 / 9" },
+              position: "relative",
               borderRadius: 4,
               border: "1px solid #eee",
               overflow: "hidden",
-              background: "#f7f8fa",
+              bgcolor: "rgba(0,0,0,0.04)",
             }}
           >
             <SmartImage
               srcRaw={imageUrl}
               alt={query.data.title || "Новость"}
-              style={{ width: "100%", height: "100%" }}
+              onLoad={handleHeroLoad}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                display: "block",
+                objectFit: "cover",
+                objectPosition: heroPos,
+              }}
             />
           </Box>
 
