@@ -3,9 +3,11 @@ import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } fr
 import Skeleton from "@mui/material/Skeleton";
 import { useAuth } from "../contexts/AuthContext";
 import guuLogo from "../assets/guu_logo.png";
-import defaultAvatar from "../assets/default_avatar.png";
 import SmartImage from "@/components/SmartImage";
 import NotificationsBell from "@/components/NotificationsBell";
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
+
+const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL;
 
 const navTextColor = "var(--nav-text)";
 const navBgColor = "var(--nav-bg)";
@@ -254,14 +256,7 @@ const Navbar = () => {
     return parseCacheVersion(raw);
   }, [user]);
 
-  const avatarFallback = useMemo(() => {
-    if (typeof window === "undefined") return defaultAvatar;
-    try {
-      return new URL(defaultAvatar, window.location.origin).toString();
-    } catch {
-      return defaultAvatar;
-    }
-  }, []);
+  const avatarFallback = AVATAR_FALLBACK;
 
   const avatarSource = user?.avatar_url || "";
   const hasAvatar = Boolean(avatarSource);

@@ -212,7 +212,7 @@ const EventDetail = () => {
     )
   }
 
-  const imageUrl = resolveMediaUrl(event.image_url)
+  const imageUrl = event.image_url || ""
 
   const BackButton = (
     <Button
@@ -287,24 +287,22 @@ const EventDetail = () => {
               </Typography>
               {event.speaker && <Typography variant="subtitle1">Спикер: <b>{event.speaker}</b></Typography>}
             </Box>
-            {imageUrl && (
-              <Box
-                sx={{
-                  width: '100%',
-                  maxHeight: 350,
-                  borderRadius: 3,
-                  border: '1px solid #282c34',
-                  boxShadow: 2,
-                  overflow: 'hidden',
-                }}
-              >
-                <SmartImage
-                  srcRaw={imageUrl}
-                  alt="Изображение мероприятия"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
-              </Box>
-            )}
+            <Box
+              sx={{
+                width: '100%',
+                maxHeight: 350,
+                borderRadius: 3,
+                border: '1px solid #282c34',
+                boxShadow: 2,
+                overflow: 'hidden',
+              }}
+            >
+              <SmartImage
+                srcRaw={imageUrl}
+                alt="Изображение мероприятия"
+                style={{ width: '100%', height: '100%', display: 'block' }}
+              />
+            </Box>
             <Box>
               <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                 <Typography

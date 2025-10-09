@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-labelledby="title">
+  <title>Default avatar</title>
+  <defs>
+    <linearGradient id="avatarBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eef2f8" />
+      <stop offset="100%" stop-color="#d8deeb" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="48" fill="url(#avatarBg)" />
+  <circle cx="96" cy="76" r="44" fill="#c7cfdd" />
+  <path d="M40 168c16-40 46-64 72-64s56 24 72 64z" fill="#c0c9d8" />
+</svg>

@@ -86,6 +86,21 @@ export default defineConfig(({ mode }) => {
       srcDir: "src",
       filename: "sw.ts",
       includeAssets: ["offline.html"],
+      workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "backend-static",
+              expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
+            },
+          },
+        ],
+      },
       ...(manifest ? { manifest } : {}),
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],

@@ -71,6 +71,29 @@
 | `VITE_BACKEND_ORIGIN` | `http://127.0.0.1:8000` | Явный origin backend API; dev-сервер Vite проксирует `/api`, `/auth`, `/static` и `/push` на этот адрес. |
 | `VITE_ASSETS_BASE` | `http://127.0.0.1:8000` | (Опционально) Базовый origin для медиа/статики, если dev-прокси отключён. |
 
+### HTTPS и origin медиа
+
+- В production фронтенд **и** backend должны обслуживаться по HTTPS. Смешанный контент (`https://app` → `http://api`) блокируется браузерами, поэтому автоматический «даунгрейд» запрещён.
+- Все запросы к `/static/...` и `/media/...` собираются в абсолютные URL на основе `VITE_BACKEND_ORIGIN`. В dev-режиме допускается относительный путь только если origin не задан и включён прокси.
+- Переменные окружения с префиксом `VITE_` читаются **во время сборки** Vite. Убедитесь, что `VITE_BACKEND_ORIGIN` установлен перед запуском `npm run build`.
+- Для продакшена добавлен шаблон `frontend/.env.production`:
+
+```env
+VITE_BACKEND_ORIGIN=https://api.example.com
+```
+
+- CSP на стороне backend должна разрешать загрузку медиа и статики с API-origin. Пример строгих директив:
+
+```text
+Content-Security-Policy:
+  default-src 'self';
+  img-src 'self' data: https://api.example.com;
+  media-src 'self' https://api.example.com;
+  connect-src 'self' https://api.example.com;
+```
+
+В `docs/DEPLOY.md` приведён пример reverse-proxy конфигурации (Nginx) для проброса `/static` и `/media` к backend, если фронтенд и API находятся на разных доменах.
+
 ## Основные команды для разработчиков
 
 - `alembic revision --autogenerate -m "add_feature" && alembic upgrade head` — сгенерировать и применить новую миграцию (использует `Base.metadata`).
@@ -79,3 +102,10 @@
 - `npm run dev --prefix frontend` — запустить Vite dev-сервер на `localhost:5173` (прокси к API и статику backend).
 - `ENABLE_STRICT_SECURITY_HEADERS=true ENABLE_COOP=true uvicorn app.main:app --host 0.0.0.0 --port 8000` — пример запуска production-инстанса со строгими заголовками (COOP/COEP включайте по необходимости, проксируйте статику через reverse-proxy).
 - `pytest` — прогнать автотесты (включая smoke-тесты заголовков, статики и Alembic).
+
+## Проверка
+
+1. В браузере очистите сервис-воркер и хранилище: DevTools → Application → Clear storage → **Clear site data**, затем Unregister.
+2. Обновите страницу `/news` и `/events`, убедитесь, что карточки показывают обложки или плейсхолдер.
+3. Перейдите на любую детальную страницу новости `/news/:id` и мероприятия `/events/:id`, выполните F5 — обложки и аватары должны появляться стабильно.
+4. В DevTools → Network убедитесь, что запросы к изображениям идут на нужный HTTPS-origin backend и не получают `404` или `blocked:mixed-content`. Ответы должны приходить из сети (или из кэша `backend-static` при повторе), но не из устаревшего Service Worker.
