@@ -1,4 +1,5 @@
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
 import {
   useEffect,
@@ -8,6 +9,7 @@ import {
   useDeferredValue,
   startTransition,
   useMemo,
+  type CSSProperties,
 } from "react"
 import axios from "../api/client"
 import {
@@ -204,19 +206,22 @@ const News = () => {
 
   return (
     <Layout>
-      <Box
-        sx={{
-          width: "100vw",
-          minHeight: "100vh",
+      <PageFadeIn>
+        <Box
+          sx={{
+            width: "100vw",
+            minHeight: "100vh",
           pl: { xs: 2, sm: 4, md: 5, lg: 8 },
           pr: { xs: 4, sm: 6, md: 7, lg: 10 },
           py: { xs: 0, sm: 0, md: 0, lg: 0 },
           boxSizing: "border-box",
           overflowX: "hidden",
         }}
-      >
-        <Stack
-          direction="row"
+        >
+          <Stack
+            data-fade
+            style={{ '--fade-delay': '80ms' } as CSSProperties }
+            direction="row"
           alignItems="center"
           gap={2}
           mb={isMobile ? 1.5 : 3}
@@ -234,7 +239,10 @@ const News = () => {
         </Stack>
 
         {user?.role === "admin" && (
-          <Box sx={{ display: "flex", justifyContent: "flex-start", mb: 2 }}>
+          <Box
+            data-fade
+            style={{ '--fade-delay': '140ms' } as CSSProperties }
+            sx={{ display: "flex", justifyContent: "flex-start", mb: 2 }}>
             <Button
               variant="contained"
               sx={{
@@ -253,7 +261,9 @@ const News = () => {
           </Box>
         )}
 
-        <Box
+          <Box
+            data-fade
+          style={{ '--fade-delay': '200ms' } as CSSProperties }
           sx={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
@@ -395,6 +405,7 @@ const News = () => {
           </DialogContent>
         </Dialog>
       </Box>
+      </PageFadeIn>
     </Layout>
   )
 }
