@@ -278,11 +278,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (typeof window !== "undefined" && typeof Notification !== "undefined") {
           if (Notification.permission === "granted") {
-            try {
-              await softSyncPushSubscription()
-            } catch (error) {
-              console.warn("Failed to sync push subscription", error)
-            }
+            void (async () => {
+              try {
+                await softSyncPushSubscription()
+              } catch (error) {
+                console.warn("Failed to sync push subscription", error)
+              }
+            })()
           }
         }
       } catch (error) {
