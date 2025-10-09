@@ -197,6 +197,21 @@ async def now_playing(
         user.spotify_last_checked_at = _now_utc()
         await db.commit()
         return _fallback_now_playing(user)
+    if r.status_code == 429:
+        retry_after_header = r.headers.get("Retry-After")
+        try:
+            retry_after = (
+                max(1, int(float(retry_after_header))) if retry_after_header else 5
+            )
+        except (TypeError, ValueError):
+            retry_after = 5
+        user.spotify_last_checked_at = _now_utc()
+        await db.commit()
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limited by Spotify",
+            headers={"Retry-After": str(retry_after)},
+        )
     if r.status_code != 200:
         return _fallback_now_playing(user)
     j = r.json()
