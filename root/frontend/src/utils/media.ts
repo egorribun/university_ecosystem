@@ -46,7 +46,7 @@ const normaliseOrigin = (origin?: string) => {
 
 export function resolveMediaUrl(
   raw?: string,
-  origin = import.meta.env.VITE_BACKEND_ORIGIN,
+  origin = import.meta.env.VITE_ASSETS_BASE || import.meta.env.VITE_BACKEND_ORIGIN,
 ): string {
   if (!raw) return ""
   const cleaned = String(raw).trim()

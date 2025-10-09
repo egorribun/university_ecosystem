@@ -18,15 +18,26 @@ const setEnvOrigin = (origin?: string) => {
   }
 }
 
+const setEnvAssets = (origin?: string) => {
+  const env = import.meta.env as any
+  if (origin === undefined) {
+    delete env.VITE_ASSETS_BASE
+  } else {
+    env.VITE_ASSETS_BASE = origin
+  }
+}
+
 afterAll(() => {
   Object.defineProperty(window, "location", { configurable: true, value: originalLocation })
   setEnvOrigin(undefined)
+  setEnvAssets(undefined)
 })
 
 describe("resolveMediaUrl", () => {
   beforeEach(() => {
     vi.resetModules()
     setEnvOrigin(undefined)
+    setEnvAssets(undefined)
     setWindowOrigin("https://backend.example")
   })
 
@@ -57,6 +68,13 @@ describe("resolveMediaUrl", () => {
     setEnvOrigin("https://env.example")
     const { resolveMediaUrl } = await import("@/utils/media")
     expect(resolveMediaUrl("media/file.png")).toBe("https://env.example/media/file.png")
+  })
+
+  it("prefers assets base over backend origin", async () => {
+    setEnvOrigin("https://env.example")
+    setEnvAssets("https://cdn.example")
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("media/photo.png")).toBe("https://cdn.example/media/photo.png")
   })
 
   it("encodes unicode path segments and collapses slashes", async () => {
