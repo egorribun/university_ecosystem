@@ -87,7 +87,9 @@ def test_legacy_fallback_matches_new_behavior():
     assert legacy.track_url == modern.track_url
 
 
-async def _login(async_client: AsyncClient, user: ModelUser, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, user: ModelUser, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": user.email, "password": password},
