@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from app.api.spotify import _fallback_now_playing
 from app.api.routes import _spotify_fallback_now_playing
+from app.api.spotify import _fallback_now_playing
 from app.models.models import User
 
 
@@ -44,7 +44,9 @@ def test_fallback_now_playing_returns_last_track_details():
     assert out.track_url == "https://open.spotify.com/track/track-123"
     assert isinstance(out.fetched_at, datetime)
     assert out.fetched_at.tzinfo is not None
-    assert out.fetched_at.tzinfo.utcoffset(out.fetched_at) == timezone.utc.utcoffset(None)
+    assert out.fetched_at.tzinfo.utcoffset(out.fetched_at) == timezone.utc.utcoffset(
+        None
+    )
 
 
 def test_fallback_now_playing_handles_missing_data():

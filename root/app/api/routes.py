@@ -482,7 +482,9 @@ def _spotify_fallback_now_playing(user: models.User) -> schemas.SpotifyNowPlayin
     )
 
     if not has_payload:
-        return schemas.SpotifyNowPlayingOut(is_playing=False, fetched_at=datetime.now(timezone.utc))
+        return schemas.SpotifyNowPlayingOut(
+            is_playing=False, fetched_at=datetime.now(timezone.utc)
+        )
 
     return schemas.SpotifyNowPlayingOut(
         is_playing=False,
