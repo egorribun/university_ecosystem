@@ -1,4 +1,5 @@
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import axios from "../api/client"
 import { useEffect, useState, useCallback, useMemo } from "react"
 import {
@@ -437,12 +438,13 @@ export default function Activity() {
 
   return (
     <Layout>
-      <MotionBox
-        initial="hidden"
-        animate="show"
-        variants={headerVariants}
-        sx={{
-          width: "100%",
+      <PageFadeIn>
+        <MotionBox
+          initial="hidden"
+          animate="show"
+          variants={headerVariants}
+          sx={{
+            width: "100%",
           minHeight: "100vh",
           px: { xs: 2, sm: 3, md: 4, xl: 6 },
           py: { xs: 2.5, md: 4 },
@@ -1020,6 +1022,7 @@ export default function Activity() {
           <Button onClick={() => setDetail("")}>Закрыть</Button>
         </DialogActions>
       </Dialog>
+      </PageFadeIn>
     </Layout>
   )
 }

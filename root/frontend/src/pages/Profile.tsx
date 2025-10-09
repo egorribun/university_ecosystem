@@ -6,6 +6,7 @@ import api from "../api/client";
 import profileBg from "../assets/background.jpg";
 import guuLogo from "../assets/guu_logo.png";
 import defaultAvatar from "../assets/default_avatar.png";
+import PageFadeIn from "../components/PageFadeIn";
 import {
   Avatar,
   Typography,
@@ -645,19 +646,20 @@ export default function Profile() {
         }}
       />
 
-      <motion.div
-        initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
-      >
-        <Box
-          component="main"
-          id="main"
-          className="profile-page"
-          data-testid="profile-root"
-          aria-label="Профиль"
-          sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
+      <PageFadeIn>
+        <motion.div
+          initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
+          <Box
+            component="main"
+            id="main"
+            className="profile-page"
+            data-testid="profile-root"
+            aria-label="Профиль"
+            sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
+          >
           <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
             <MotionPaper
               ref={containerRef}
@@ -1084,9 +1086,10 @@ export default function Profile() {
             </MotionPaper>
           </Container>
 
-          <canvas ref={confettiRef} style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }} />
-        </Box>
-      </motion.div>
+            <canvas ref={confettiRef} style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }} />
+          </Box>
+        </motion.div>
+      </PageFadeIn>
 
       <Dialog
         open={qrOpen}
