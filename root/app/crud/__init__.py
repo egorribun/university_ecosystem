@@ -166,14 +166,29 @@ async def get_all_events(
     counts = await _attendance_counts(db, ids)
     files_map = await _files_by_event(db, ids)
 
-    registered_ids = set()
+    registered_ids: set[int] = set()
+    qr_map: Dict[int, Optional[str]] = {}
     if user_id:
-        reg_q = await db.execute(
-            select(models.EventAttendance.event_id).where(
-                models.EventAttendance.user_id == user_id
+        attendance_rows = (
+            (
+                await db.execute(
+                    select(models.EventAttendance).where(
+                        models.EventAttendance.user_id == user_id
+                    )
+                )
             )
+            .scalars()
+            .all()
         )
-        registered_ids = set(reg_q.scalars().all())
+        missing_qr = [row for row in attendance_rows if not row.qr_code]
+        if missing_qr:
+            for row in missing_qr:
+                row.qr_code = str(uuid.uuid4())
+            await db.commit()
+            for row in missing_qr:
+                await db.refresh(row)
+        registered_ids = {row.event_id for row in attendance_rows}
+        qr_map = {row.event_id: row.qr_code for row in attendance_rows}
 
     result = []
     for event in events:
@@ -196,6 +211,7 @@ async def get_all_events(
                 ],
                 "is_active": getattr(event, "is_active", True),
                 "is_registered": event.id in registered_ids,
+                "my_qr_code": qr_map.get(event.id),
                 "speaker": getattr(event, "speaker", None),
                 "image_url": getattr(event, "image_url", None),
             }
@@ -235,6 +251,10 @@ async def register_attendance(
     )
     exist = (await db.execute(stmt)).scalar_one_or_none()
     if exist:
+        if not exist.qr_code:
+            exist.qr_code = str(uuid.uuid4())
+            await db.commit()
+            await db.refresh(exist)
         return exist
 
     qr_code = str(uuid.uuid4())
@@ -242,7 +262,18 @@ async def register_attendance(
         user_id=user_id, event_id=data.event_id, qr_code=qr_code
     )
     db.add(record)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        exist = (await db.execute(stmt)).scalar_one_or_none()
+        if not exist:
+            raise
+        if not exist.qr_code:
+            exist.qr_code = str(uuid.uuid4())
+            await db.commit()
+            await db.refresh(exist)
+        return exist
     await db.refresh(record)
     return record
 
@@ -265,10 +296,10 @@ async def unregister_attendance(
 
 
 async def get_my_events(db: AsyncSession, user_id: int):
-    ids = (
+    attendance_rows = (
         (
             await db.execute(
-                select(models.EventAttendance.event_id).where(
+                select(models.EventAttendance).where(
                     models.EventAttendance.user_id == user_id
                 )
             )
@@ -276,8 +307,17 @@ async def get_my_events(db: AsyncSession, user_id: int):
         .scalars()
         .all()
     )
-    if not ids:
+    if not attendance_rows:
         return []
+    missing_qr = [row for row in attendance_rows if not row.qr_code]
+    if missing_qr:
+        for row in missing_qr:
+            row.qr_code = str(uuid.uuid4())
+        await db.commit()
+        for row in missing_qr:
+            await db.refresh(row)
+    ids = [row.event_id for row in attendance_rows]
+    qr_map = {row.event_id: row.qr_code for row in attendance_rows}
     q = select(models.Event).where(models.Event.id.in_(ids))
     events = (await db.execute(q)).scalars().all()
     counts = await _attendance_counts(db, ids)
@@ -304,6 +344,7 @@ async def get_my_events(db: AsyncSession, user_id: int):
                 ],
                 "is_active": getattr(event, "is_active", True),
                 "is_registered": True,
+                "my_qr_code": qr_map.get(event.id),
                 "speaker": getattr(event, "speaker", None),
                 "image_url": getattr(event, "image_url", None),
             }
