@@ -32,6 +32,16 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
 
 
+def _coerce_expires(value: Optional[int | str]) -> int:
+    try:
+        seconds = int(value) if value is not None else 3600
+    except (TypeError, ValueError):
+        seconds = 3600
+    # Spotify may technically return small values during testing; make sure
+    # we always refresh slightly before the real expiry to avoid rapid loops.
+    return max(seconds, 30)
+
+
 def _disconnect_user(
     user: User, *, clear_refresh: bool = False, clear_profile: bool = False
 ) -> None:
@@ -88,12 +98,14 @@ async def _save_tokens(
     access: str,
     refresh: Optional[str],
     scope: Optional[str],
-    expires_in: int,
+    expires_in: int | str | None,
 ):
     user.spotify_access_token = access
     if refresh:
         user.spotify_refresh_token = refresh
-    user.spotify_token_expires_at = _now_utc() + timedelta(seconds=expires_in - 10)
+    seconds = _coerce_expires(expires_in)
+    # Refresh a little earlier to compensate for latency and clock skew.
+    user.spotify_token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
     user.spotify_scope = scope or ""
     user.spotify_is_connected = True
     await db.commit()
@@ -101,12 +113,26 @@ async def _save_tokens(
 
 
 async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
-    if not user.spotify_access_token:
-        return None
+    """Return a usable Spotify access token, refreshing it when possible.
+
+    Previously we returned ``None`` when ``spotify_access_token`` was empty,
+    even if a refresh token was still stored. After the backend was restarted,
+    some users ended up in that exact state and the frontend kept showing the
+    stale fallback data until they manually reconnected the integration. To
+    avoid forcing a re-link, we now treat a missing access token the same way
+    as an expired one and trigger the refresh flow when a refresh token exists.
+    """
+
+    now = _now_utc()
+    token = user.spotify_access_token
     exp = _ensure_utc(user.spotify_token_expires_at)
-    if exp and exp > _now_utc():
-        return user.spotify_access_token
+    if token and exp and exp > now:
+        return token
     if not user.spotify_refresh_token:
+        if not token and not user.spotify_is_connected:
+            # The user never connected Spotify or already disconnected it;
+            # returning ``None`` allows the caller to fall back gracefully.
+            return None
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
         raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
@@ -127,13 +153,18 @@ async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
         await db.commit()
         raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     data = r.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     await _save_tokens(
         db,
         user,
-        data["access_token"],
+        access_token,
         data.get("refresh_token"),
         data.get("scope"),
-        int(data.get("expires_in", 3600)),
+        data.get("expires_in"),
     )
     return user.spotify_access_token
 
