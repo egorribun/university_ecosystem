@@ -6,6 +6,7 @@ import {
   ensurePushSubscription,
   getExistingPushSubscription,
   getPersistedTopics,
+  hasPushConsent,
   isPushSupported,
   resolveServiceWorkerRegistration,
   setPushConsent,
@@ -369,8 +370,16 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         }
         setPushInitializing(true)
         const storedTopics = getPersistedTopics()
+        if (storedTopics !== undefined) {
+          applyServerTopics(storedTopics)
+        }
+        const consented = hasPushConsent()
         let sub: PushSubscription | null = null
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        if (
+          consented &&
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted"
+        ) {
           sub = await ensurePushSubscription({
             topics: storedTopics,
             requestPermission: false,
@@ -381,9 +390,11 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         if (!active) return
         setPushSubscription(sub)
         if (sub) {
-          setPushConsent(true)
-          const persisted = getPersistedTopics() ?? storedTopics ?? []
-          if (persisted) {
+          if (consented) {
+            setPushConsent(true)
+          }
+          const persisted = getPersistedTopics()
+          if (persisted !== undefined) {
             applyServerTopics(persisted)
           }
         }

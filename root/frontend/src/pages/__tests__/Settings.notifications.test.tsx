@@ -17,6 +17,7 @@ const hoistedMocks = vi.hoisted(() => ({
   setPushConsentMock: vi.fn(),
   getExistingPushSubscriptionMock: vi.fn(),
   getPersistedTopicsMock: vi.fn(),
+  hasPushConsentMock: vi.fn(() => false),
   isPushSupportedMock: vi.fn(() => true),
 })) as {
   deleteSubscriptionMock: ReturnType<typeof vi.fn>
@@ -24,6 +25,7 @@ const hoistedMocks = vi.hoisted(() => ({
   setPushConsentMock: ReturnType<typeof vi.fn>
   getExistingPushSubscriptionMock: ReturnType<typeof vi.fn>
   getPersistedTopicsMock: ReturnType<typeof vi.fn>
+  hasPushConsentMock: ReturnType<typeof vi.fn>
   isPushSupportedMock: ReturnType<typeof vi.fn>
 }
 
@@ -43,6 +45,7 @@ vi.mock("@/push/subscribe", async () => {
     setPushConsent: hoistedMocks.setPushConsentMock,
     getExistingPushSubscription: hoistedMocks.getExistingPushSubscriptionMock,
     getPersistedTopics: hoistedMocks.getPersistedTopicsMock,
+    hasPushConsent: hoistedMocks.hasPushConsentMock,
     isPushSupported: hoistedMocks.isPushSupportedMock,
   }
 })
@@ -53,6 +56,7 @@ const {
   setPushConsentMock,
   getExistingPushSubscriptionMock,
   getPersistedTopicsMock,
+  hasPushConsentMock,
   isPushSupportedMock,
 } = hoistedMocks
 
@@ -142,6 +146,8 @@ beforeEach(() => {
   getExistingPushSubscriptionMock.mockReset()
   getExistingPushSubscriptionMock.mockResolvedValue(null)
   setPushConsentMock.mockReset()
+  hasPushConsentMock.mockReset()
+  hasPushConsentMock.mockReturnValue(false)
   isPushSupportedMock.mockReset()
   isPushSupportedMock.mockReturnValue(true)
   ensurePushSubscriptionMock.mockReset()
@@ -169,6 +175,7 @@ describe("usePushPreferences notifications flow", () => {
     ensurePushSubscriptionMock.mockResolvedValue(subscription)
     getPersistedTopicsMock.mockReturnValue(["news", "schedule"])
     MockNotification.permission = "granted"
+    hasPushConsentMock.mockReturnValue(true)
 
     const onNotify = vi.fn()
     const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
@@ -185,7 +192,7 @@ describe("usePushPreferences notifications flow", () => {
     const ensureArgs = ensurePushSubscriptionMock.mock.calls[1][0]
     expect(ensureArgs.registration).toBe(registration)
     expect(ensureArgs.requestPermission).toBe(true)
-    expect(ensureArgs.topics).toEqual(["schedule", "news", "events", "system"])
+    expect(ensureArgs.topics).toEqual(["schedule", "news"])
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
@@ -204,6 +211,7 @@ describe("usePushPreferences notifications flow", () => {
     ensurePushSubscriptionMock.mockResolvedValue(subscription)
     getPersistedTopicsMock.mockReturnValue(["news", "schedule", "system"])
     MockNotification.permission = "granted"
+    hasPushConsentMock.mockReturnValue(true)
     registration.pushManager.getSubscription.mockResolvedValue(subscription)
 
     const onNotify = vi.fn()
@@ -233,6 +241,7 @@ describe("usePushPreferences notifications flow", () => {
       .mockReturnValueOnce(["news", "schedule", "system"])
       .mockReturnValueOnce(["news", "schedule"])
     MockNotification.permission = "granted"
+    hasPushConsentMock.mockReturnValue(true)
 
     const { result } = renderHook(() => usePushPreferences(), { wrapper })
 
