@@ -340,22 +340,25 @@ export async function ensurePushSubscription(
 type UnsubscribePushOptions = {
   registration?: ServiceWorkerRegistration
   preserveConsent?: boolean
+  preserveTopics?: boolean
 }
 
-function clearPushLocals(preserveConsent?: boolean) {
-  if (!preserveConsent) {
+function clearPushLocals(options?: Pick<UnsubscribePushOptions, "preserveConsent" | "preserveTopics">) {
+  if (!options?.preserveConsent) {
     try {
       localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
     } catch {}
   }
   removeStoredValue(PUSH_LAST_SYNC_STORAGE_KEY)
   removeStoredValue(PUSH_SUB_STORAGE_KEY)
-  removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+  if (!options?.preserveTopics) {
+    removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+  }
 }
 
 export async function unsubscribePush(options?: UnsubscribePushOptions) {
   if (!("serviceWorker" in navigator)) {
-    clearPushLocals(options?.preserveConsent)
+    clearPushLocals(options)
     return false
   }
 
@@ -364,13 +367,13 @@ export async function unsubscribePush(options?: UnsubscribePushOptions) {
   )
 
   if (!registration) {
-    clearPushLocals(options?.preserveConsent)
+    clearPushLocals(options)
     return false
   }
 
   const subscription = await registration.pushManager.getSubscription()
   if (!subscription) {
-    clearPushLocals(options?.preserveConsent)
+    clearPushLocals(options)
     return true
   }
 
@@ -387,7 +390,7 @@ export async function unsubscribePush(options?: UnsubscribePushOptions) {
 
   const ok = await subscription.unsubscribe()
 
-  clearPushLocals(options?.preserveConsent)
+  clearPushLocals(options)
 
   return ok && (deleted || !endpoint)
 }

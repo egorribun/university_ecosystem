@@ -51,4 +51,34 @@ describe("unsubscribePush", () => {
     expect(localStorage.getItem(SUB_KEY)).toBeNull()
     expect(localStorage.getItem(TOPICS_KEY)).toBeNull()
   })
+
+  it("keeps stored topics when preserveTopics is requested", async () => {
+    localStorage.setItem(CONSENT_KEY, "granted")
+    localStorage.setItem(LAST_SYNC_KEY, "123")
+    localStorage.setItem(SUB_KEY, "{}")
+    localStorage.setItem(TOPICS_KEY, "[\"news\"]")
+
+    const neverReady = new Promise<ServiceWorkerRegistration>(() => {})
+    const getRegistration = vi.fn().mockResolvedValue(undefined)
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: neverReady,
+        getRegistration,
+      },
+    })
+
+    const resultPromise = unsubscribePush({ preserveTopics: true })
+
+    await vi.advanceTimersByTimeAsync(2100)
+
+    const result = await resultPromise
+    expect(result).toBe(false)
+
+    expect(localStorage.getItem(CONSENT_KEY)).toBeNull()
+    expect(localStorage.getItem(LAST_SYNC_KEY)).toBeNull()
+    expect(localStorage.getItem(SUB_KEY)).toBeNull()
+    expect(localStorage.getItem(TOPICS_KEY)).toBe('["news"]')
+  })
 })

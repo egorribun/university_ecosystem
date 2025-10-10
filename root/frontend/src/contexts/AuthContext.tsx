@@ -351,7 +351,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } finally {
       try {
-        await unsubscribePush({ preserveConsent: true })
+        await unsubscribePush({ preserveConsent: true, preserveTopics: true })
       } catch (error) {
         console.error("Failed to unsubscribe push subscription on logout", error)
       } finally {
