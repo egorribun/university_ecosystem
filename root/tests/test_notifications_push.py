@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
@@ -15,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models.models import PushSubscription
+from app.routers.notifications import _serialize_subscription
 from app.services import webpush as webpush_module
 
 
@@ -109,6 +111,25 @@ async def test_subscribe_persists_subscription(
     assert stored.p256dh == payload["keys"]["p256dh"]
     assert stored.auth == payload["keys"]["auth"]
     assert stored.topics == ["system", "news"]
+
+
+def test_serialize_subscription_handles_missing_created_at():
+    legacy = SimpleNamespace(
+        id=1,
+        user_id=2,
+        endpoint="https://example.test/legacy",
+        p256dh="p256",
+        auth="auth",
+        created_at=None,
+        user_agent="UA/1.0",
+        last_seen_at=None,
+        topics=["system"],
+    )
+
+    result = _serialize_subscription(legacy)
+
+    assert result.created_at is not None
+    assert result.user_agent == "UA/1.0"
 
 
 @pytest.mark.anyio
