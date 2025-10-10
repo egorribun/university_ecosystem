@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-import pytest
 import httpx
+import pytest
 from httpx import AsyncClient
 
 from app.api.routes import _spotify_fallback_now_playing
