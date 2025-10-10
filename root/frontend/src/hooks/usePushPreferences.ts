@@ -9,6 +9,7 @@ import {
   hasPushConsent,
   isPushSupported,
   resolveServiceWorkerRegistration,
+  setPersistedTopics,
   setPushConsent,
 } from "@/push/subscribe"
 import { currentUserQueryKey } from "@/contexts/AuthContext"
@@ -52,9 +53,23 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
 
   const topicKeys = useMemo(() => NOTIFICATION_TOPIC_KEYS, [])
-  const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(
-    () => ({ ...DEFAULT_NOTIFICATION_TOPICS }),
-  )
+  const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(() => {
+    const stored = getPersistedTopics()
+    if (stored === undefined) {
+      return { ...DEFAULT_NOTIFICATION_TOPICS }
+    }
+    const initial: Record<NotificationTopicKey, boolean> = {} as Record<NotificationTopicKey, boolean>
+    for (const key of NOTIFICATION_TOPIC_KEYS) {
+      initial[key] = false
+    }
+    for (const raw of stored) {
+      const normalized = raw.toString().trim().toLowerCase()
+      if ((NOTIFICATION_TOPIC_KEYS as string[]).includes(normalized)) {
+        initial[normalized as NotificationTopicKey] = true
+      }
+    }
+    return initial
+  })
   const [pushSupported, setPushSupported] = useState(() => isPushSupported())
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
     if (typeof window === "undefined" || typeof Notification === "undefined") return "default"
@@ -243,6 +258,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         const previousState = topicState
         const nextState = { ...topicState, [key]: checked }
         setTopicState(nextState)
+        setPersistedTopics(topicKeys.filter(topic => nextState[topic]))
         if (!notificationsEnabled || pushBusy) return
         if (!isPushSupported()) {
           setTopicState(previousState)

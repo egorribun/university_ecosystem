@@ -17,6 +17,7 @@ const hoistedMocks = vi.hoisted(() => ({
   setPushConsentMock: vi.fn(),
   getExistingPushSubscriptionMock: vi.fn(),
   getPersistedTopicsMock: vi.fn(),
+  setPersistedTopicsMock: vi.fn(),
   hasPushConsentMock: vi.fn(() => false),
   isPushSupportedMock: vi.fn(() => true),
 })) as {
@@ -25,6 +26,7 @@ const hoistedMocks = vi.hoisted(() => ({
   setPushConsentMock: ReturnType<typeof vi.fn>
   getExistingPushSubscriptionMock: ReturnType<typeof vi.fn>
   getPersistedTopicsMock: ReturnType<typeof vi.fn>
+  setPersistedTopicsMock: ReturnType<typeof vi.fn>
   hasPushConsentMock: ReturnType<typeof vi.fn>
   isPushSupportedMock: ReturnType<typeof vi.fn>
 }
@@ -45,6 +47,7 @@ vi.mock("@/push/subscribe", async () => {
     setPushConsent: hoistedMocks.setPushConsentMock,
     getExistingPushSubscription: hoistedMocks.getExistingPushSubscriptionMock,
     getPersistedTopics: hoistedMocks.getPersistedTopicsMock,
+    setPersistedTopics: hoistedMocks.setPersistedTopicsMock,
     hasPushConsent: hoistedMocks.hasPushConsentMock,
     isPushSupported: hoistedMocks.isPushSupportedMock,
   }
@@ -56,6 +59,7 @@ const {
   setPushConsentMock,
   getExistingPushSubscriptionMock,
   getPersistedTopicsMock,
+  setPersistedTopicsMock,
   hasPushConsentMock,
   isPushSupportedMock,
 } = hoistedMocks
@@ -154,6 +158,7 @@ beforeEach(() => {
   ensurePushSubscriptionMock.mockResolvedValue(null)
   getPersistedTopicsMock.mockReset()
   getPersistedTopicsMock.mockReturnValue(undefined)
+  setPersistedTopicsMock.mockReset()
   deleteSubscriptionMock.mockReset()
 
   queryClient = new QueryClient()
@@ -255,7 +260,24 @@ describe("usePushPreferences notifications flow", () => {
     expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
     const updateArgs = ensurePushSubscriptionMock.mock.calls[1][0]
     expect(updateArgs.topics).toEqual(["schedule", "news"])
+    expect(setPersistedTopicsMock).toHaveBeenCalledWith(["schedule", "news"])
     expect(result.current.topicState.system).toBe(false)
+  })
+
+  it("persists topic selection locally when notifications are disabled", async () => {
+    ensurePushSubscriptionMock.mockResolvedValue(null)
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    expect(result.current.notificationsEnabled).toBe(false)
+
+    const handler = result.current.handleTopicToggle("news")
+    await act(async () => {
+      await handler({} as ChangeEvent<HTMLInputElement>, false)
+    })
+
+    expect(setPersistedTopicsMock).toHaveBeenCalledWith(["schedule", "events", "system"])
+    expect(result.current.topicState.news).toBe(false)
   })
 
   it("notifies user when permission is denied", async () => {
