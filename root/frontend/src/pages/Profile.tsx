@@ -43,7 +43,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useNowPlaying } from "@/hooks/useNowPlaying";
+import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
 import { addVersionParam, resolveMediaUrl } from "@/utils/media";
 
@@ -318,7 +318,9 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
   const nowPlayingQuery = useNowPlaying(spotifyConnected);
+  const { refetch: refetchNowPlaying } = nowPlayingQuery;
   const nowPlaying = nowPlayingQuery.data ?? null;
+  const prevSpotifyConnectedRef = useRef(spotifyConnected);
   const showNowPlaying = Boolean(
     spotifyConnected &&
       nowPlaying &&
@@ -385,6 +387,8 @@ export default function Profile() {
     if (s !== null) {
       if (s !== "error") {
         void queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
+        void queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey });
+        void refetchNowPlaying({ throwOnError: false });
         setSnack({ text: "Spotify подключён", sev: "success" });
       } else {
         setSnack({ text: "Ошибка подключения Spotify", sev: "error" });
@@ -393,7 +397,14 @@ export default function Profile() {
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "");
       window.history.replaceState({}, "", next);
     }
-  }, [queryClient]);
+  }, [queryClient, refetchNowPlaying]);
+
+  useEffect(() => {
+    if (spotifyConnected && !prevSpotifyConnectedRef.current) {
+      void refetchNowPlaying({ throwOnError: false });
+    }
+    prevSpotifyConnectedRef.current = spotifyConnected;
+  }, [spotifyConnected, refetchNowPlaying]);
 
   useEffect(() => {
     if (!user) return;
