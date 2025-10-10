@@ -5,7 +5,7 @@ import logging
 from threading import Lock
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, JSON, String, inspect
+from sqlalchemy import JSON, Column, DateTime, String, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +35,9 @@ def _ensure_columns(bind) -> None:
     columns = {col["name"] for col in inspector.get_columns(table_name)}
     preparer = bind.dialect.identifier_preparer
 
-    def _add_column(column: Column, *, default_sql: str | None = None, not_null: bool = False) -> None:
+    def _add_column(
+        column: Column, *, default_sql: str | None = None, not_null: bool = False
+    ) -> None:
         column_name = preparer.quote(column.name)
         type_sql = column.type.compile(bind.dialect)
         parts = [column_name, type_sql]
@@ -43,7 +45,9 @@ def _ensure_columns(bind) -> None:
             parts.append(f"DEFAULT {default_sql}")
         if not_null:
             parts.append("NOT NULL")
-        statement = f"ALTER TABLE {preparer.quote(table_name)} ADD COLUMN {' '.join(parts)}"
+        statement = (
+            f"ALTER TABLE {preparer.quote(table_name)} ADD COLUMN {' '.join(parts)}"
+        )
         bind.exec_driver_sql(statement)
 
     if "user_agent" not in columns:
@@ -67,7 +71,6 @@ def _ensure_columns(bind) -> None:
             default_sql=default_expr,
             not_null=True,
         )
-
 
 
 async def ensure_push_subscription_schema(db: AsyncSession) -> None:

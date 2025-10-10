@@ -49,21 +49,32 @@ async def test_ensure_push_subscription_schema_upgrades_existing_table(
             columns = {
                 column["name"] for column in inspector.get_columns("push_subscriptions")
             }
-            assert {"endpoint", "user_agent", "last_seen_at", "created_at", "topics"}.issubset(
-                columns
-            )
+            assert {
+                "endpoint",
+                "user_agent",
+                "last_seen_at",
+                "created_at",
+                "topics",
+            }.issubset(columns)
             created_at = next(
-                (col for col in inspector.get_columns("push_subscriptions") if col["name"] == "created_at"),
+                (
+                    col
+                    for col in inspector.get_columns("push_subscriptions")
+                    if col["name"] == "created_at"
+                ),
                 None,
             )
             assert created_at is not None
             assert created_at.get("default") is not None
             topics = next(
-                (col for col in inspector.get_columns("push_subscriptions") if col["name"] == "topics"),
+                (
+                    col
+                    for col in inspector.get_columns("push_subscriptions")
+                    if col["name"] == "topics"
+                ),
                 None,
             )
             assert topics is not None
             assert topics.get("default") is not None
 
         await conn.run_sync(_assert_schema)
-
