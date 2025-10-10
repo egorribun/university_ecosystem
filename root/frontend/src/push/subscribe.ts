@@ -8,7 +8,7 @@ const PUSH_SUB_STORAGE_KEY = "push:last_payload"
 const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 
 const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
-const SERVICE_WORKER_READY_TIMEOUT_MS = 5000
+const SERVICE_WORKER_READY_TIMEOUT_MS = 2000
 
 type NormalizedTopics = string[] | undefined
 
