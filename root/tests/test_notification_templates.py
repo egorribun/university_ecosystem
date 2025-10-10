@@ -47,6 +47,59 @@ def test_build_payload_news_template_merges_overrides():
     assert payload["data"]["foo"] == "bar"
 
 
+def test_build_payload_schedule_reminder_template():
+    payload = build_payload(
+        "schedule.reminder",
+        {
+            "subject": "Менеджмент",
+            "lesson_type": "Семинар",
+            "teacher": "Иванов И.И.",
+            "room": "203",
+            "starts_at": "2025-03-25T09:40:00+03:00",
+            "date": "25.03",
+            "time": "09:40",
+            "lesson_id": 512,
+        },
+    )
+
+    assert payload["title"] == "Скоро пара: Менеджмент"
+    options = payload["options"]
+    assert options["tag"].startswith("schedule-reminder:512")
+    assert options["renotify"] is True
+    assert "Семинар" in options["body"]
+    assert "Иванов" in options["body"]
+    data = payload["data"]
+    assert data["category"] == "schedule"
+    assert data["lessonId"] == "512"
+    assert data["subject"] == "Менеджмент"
+    assert data["room"] == "ауд. 203"
+
+
+def test_build_payload_events_template():
+    payload = build_payload(
+        "events.new",
+        {
+            "title": "День открытых дверей",
+            "summary": "Презентация новых программ",
+            "location": "Актовый зал",
+            "speaker": "Команда приёмной комиссии",
+            "event_type": "Презентация",
+            "starts_at": "2025-04-10T15:00:00+03:00",
+            "id": 77,
+        },
+    )
+
+    assert payload["title"] == "День открытых дверей"
+    options = payload["options"]
+    assert options["renotify"] is False
+    assert options["tag"] == "event:77"
+    assert "Презентация" in options["body"]
+    data = payload["data"]
+    assert data["eventId"] == "77"
+    assert data["location"] == "Актовый зал"
+    assert data["category"] == "events"
+
+
 def test_build_payload_system_message_template():
     payload = build_payload(
         "system.message",

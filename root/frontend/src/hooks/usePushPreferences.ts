@@ -12,17 +12,26 @@ import {
 import { currentUserQueryKey } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
 
-export type NotificationTopicKey = "news" | "schedule" | "system"
+export type NotificationTopicKey = "news" | "schedule" | "events" | "system"
 
 export const NOTIFICATION_TOPIC_LABELS: Record<NotificationTopicKey, string> = {
-  news: "Новости",
   schedule: "Расписание",
+  news: "Новости",
+  events: "Мероприятия",
   system: "Системные",
 }
 
+export const NOTIFICATION_TOPIC_KEYS: NotificationTopicKey[] = [
+  "schedule",
+  "news",
+  "events",
+  "system",
+]
+
 export const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
-  news: true,
   schedule: true,
+  news: true,
+  events: true,
   system: true,
 }
 
@@ -40,12 +49,9 @@ const SAFARI_IOS_GUIDE_URL = "https://support.apple.com/ru-ru/guide/iphone/iph42
 export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
 
-  const topicKeys = useMemo(
-    () => Object.keys(NOTIFICATION_TOPIC_LABELS) as NotificationTopicKey[],
-    [],
-  )
+  const topicKeys = useMemo(() => NOTIFICATION_TOPIC_KEYS, [])
   const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(
-    DEFAULT_NOTIFICATION_TOPICS,
+    () => ({ ...DEFAULT_NOTIFICATION_TOPICS }),
   )
   const [pushSupported, setPushSupported] = useState(() => isPushSupported())
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
@@ -208,15 +214,19 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     } finally {
       setPushBusy(false)
     }
-  }, [notify])
+  }, [invalidatePushQueries, notify])
 
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) =>
       async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+        const previousState = topicState
         const nextState = { ...topicState, [key]: checked }
         setTopicState(nextState)
         if (!notificationsEnabled || pushBusy) return
-        if (!isPushSupported()) return
+        if (!isPushSupported()) {
+          setTopicState(previousState)
+          return
+        }
         setPushBusy(true)
         const topicsToSend = topicKeys.filter(topic => nextState[topic])
         try {
@@ -233,14 +243,23 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
               text: "Подписка недоступна: проверьте разрешения браузера",
               sev: "warning",
             })
+            setTopicState(previousState)
             return
           }
           const persisted = getPersistedTopics() ?? topicsToSend
           applyServerTopics(persisted)
           setPushSubscription(sub)
           invalidatePushQueries()
+          const label = NOTIFICATION_TOPIC_LABELS[key]
+          if (label) {
+            notify({
+              text: `Тема «${label}» ${checked ? "включена" : "отключена"}`,
+              sev: "success",
+            })
+          }
         } catch (error) {
           console.error("Failed to update topics", error)
+          setTopicState(previousState)
           notify({ text: "Не удалось обновить настройки уведомлений", sev: "error" })
         } finally {
           setPushBusy(false)

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover - for type checking only
     from app.models.models import PushSubscription
 
-ALLOWED_PUSH_TOPICS: set[str] = {"news", "schedule", "system"}
+ALLOWED_PUSH_TOPICS: set[str] = {"news", "schedule", "events", "system"}
 
 
 def normalize_topic(value: str | None) -> str | None:

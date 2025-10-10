@@ -185,13 +185,18 @@ describe("usePushPreferences notifications flow", () => {
     const ensureArgs = ensurePushSubscriptionMock.mock.calls[1][0]
     expect(ensureArgs.registration).toBe(registration)
     expect(ensureArgs.requestPermission).toBe(true)
-    expect(ensureArgs.topics).toEqual(["news", "schedule", "system"])
+    expect(ensureArgs.topics).toEqual(["schedule", "news", "events", "system"])
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Уведомления включены", sev: "success" }),
     )
-    expect(result.current.topicState).toMatchObject({ news: true, schedule: true, system: false })
+    expect(result.current.topicState).toMatchObject({
+      news: true,
+      schedule: true,
+      events: false,
+      system: false,
+    })
   })
 
   it("disables notifications and removes subscription", async () => {
@@ -240,7 +245,7 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
     const updateArgs = ensurePushSubscriptionMock.mock.calls[1][0]
-    expect(updateArgs.topics).toEqual(["news", "schedule"])
+    expect(updateArgs.topics).toEqual(["schedule", "news"])
     expect(result.current.topicState.system).toBe(false)
   })
 

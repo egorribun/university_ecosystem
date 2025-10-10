@@ -323,7 +323,7 @@ export default function InstallPrompt() {
                   ) : notificationPermission === "default" ? (
                     <Stack spacing={1}>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        Разрешите уведомления, чтобы получать новости, расписание и важные напоминания.
+                        Разрешите уведомления, чтобы получать расписание, мероприятия и важные новости.
                       </Typography>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Button
