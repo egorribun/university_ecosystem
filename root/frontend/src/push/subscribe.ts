@@ -141,6 +141,14 @@ export async function resolveServiceWorkerRegistration(
   }
 
   try {
+    const { registerServiceWorker } = await import("./register-sw")
+    const registered = await registerServiceWorker()
+    if (registered) return registered
+  } catch (error) {
+    console.warn("Failed to auto-register service worker", error)
+  }
+
+  try {
     return (await navigator.serviceWorker.getRegistration()) ?? null
   } catch (error) {
     console.warn("Failed to get service worker registration after timeout", error)
