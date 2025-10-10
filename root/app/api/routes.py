@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
@@ -605,6 +605,20 @@ async def get_event(
     q = await db.get(models.Event, id)
     if not q:
         raise HTTPException(status_code=404, detail="Событие не найдено")
+    attendance = (
+        await db.execute(
+            select(models.EventAttendance).where(
+                and_(
+                    models.EventAttendance.event_id == q.id,
+                    models.EventAttendance.user_id == user.id,
+                )
+            )
+        )
+    ).scalar_one_or_none()
+    if attendance and not attendance.qr_code:
+        attendance.qr_code = str(uuid.uuid4())
+        await db.commit()
+        await db.refresh(attendance)
     files = (
         (
             await db.execute(
@@ -624,6 +638,8 @@ async def get_event(
     out = schemas.EventOut.from_orm(q)
     out.files = [schemas.EventFileOut.from_orm(f) for f in files]
     out.participant_count = participant_count
+    out.is_registered = attendance is not None
+    out.my_qr_code = attendance.qr_code if attendance else None
     return out
 
 

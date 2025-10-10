@@ -204,6 +204,7 @@ class EventOut(OrmModel):
     files: List[EventFileOut] = Field(default_factory=list)
     participant_count: int = 0
     is_registered: Optional[bool] = None
+    my_qr_code: Optional[str] = None
 
 
 class EventAttendanceCreate(BaseModel):

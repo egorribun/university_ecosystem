@@ -46,6 +46,7 @@ type EventCardProps = {
   files: any[]
   is_active: boolean
   is_registered?: boolean
+  my_qr_code?: string
   speaker?: string
   image_url?: string
   onChange?: () => void
@@ -75,6 +76,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   participant_count,
   is_active,
   is_registered = false,
+  my_qr_code,
   speaker,
   image_url,
   onChange
@@ -117,12 +119,28 @@ const EventCardComponent: FC<EventCardProps> = ({
   useEffect(() => setCount(participant_count), [participant_count])
 
   useEffect(() => {
-    if (!registered || qr) return
+    if (!registered) {
+      setQr(undefined)
+      try {
+        localStorage.removeItem(qrKey(id, user))
+      } catch {}
+      return
+    }
+    if (my_qr_code) {
+      setQr(my_qr_code)
+      try {
+        localStorage.setItem(qrKey(id, user), my_qr_code)
+      } catch {}
+    }
+  }, [registered, my_qr_code, id, user])
+
+  useEffect(() => {
+    if (!registered || qr || my_qr_code) return
     try {
       const stored = localStorage.getItem(qrKey(id, user))
       if (stored) setQr(stored)
     } catch {}
-  }, [registered, qr, id, user])
+  }, [registered, qr, my_qr_code, id, user])
 
   useLayoutEffect(() => {
     try {
@@ -753,6 +771,7 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.participant_count === next.participant_count &&
   prev.is_active === next.is_active &&
   prev.is_registered === next.is_registered &&
+  prev.my_qr_code === next.my_qr_code &&
   prev.speaker === next.speaker &&
   prev.image_url === next.image_url &&
   prev.onChange === next.onChange &&
