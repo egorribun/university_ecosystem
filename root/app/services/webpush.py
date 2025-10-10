@@ -21,6 +21,7 @@ from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription
 from app.services.notification_templates import render_notification_template
+from app.services.push_schema import ensure_push_subscription_schema_sync
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,10 @@ logger.setLevel(logging.NOTSET)
 url = make_url(settings.database_url)
 if url.drivername.endswith("+asyncpg"):
     url = url.set(drivername="postgresql+psycopg")
+elif url.drivername.endswith("+aiosqlite"):
+    url = url.set(drivername="sqlite")
 _sync_engine = create_engine(str(url), pool_pre_ping=True, future=True)
+ensure_push_subscription_schema_sync(_sync_engine)
 _Session = sessionmaker(bind=_sync_engine, autocommit=False, autoflush=False)
 
 _OPTION_KEYS: set[str] = {

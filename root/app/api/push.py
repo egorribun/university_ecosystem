@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
+from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import WebPushResult, send_web_push
 
@@ -85,6 +86,7 @@ async def subscribe(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    await ensure_push_subscription_schema(session)
     endpoint = payload.endpoint.strip()
     p256dh = payload.keys.p256dh.strip()
     auth = payload.keys.auth.strip()
@@ -129,6 +131,7 @@ async def unsubscribe(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    await ensure_push_subscription_schema(session)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(status_code=400, detail="invalid subscription")
@@ -177,6 +180,7 @@ async def disable_user_push(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    await ensure_push_subscription_schema(session)
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
     target = await session.get(User, payload.user_id)
@@ -214,6 +218,7 @@ async def send_test(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PushSendResponse:
+    await ensure_push_subscription_schema(session)
     res = await session.execute(
         select(PushSubscription)
         .options(selectinload(PushSubscription.user))
@@ -261,6 +266,7 @@ async def broadcast(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PushSendResponse:
+    await ensure_push_subscription_schema(session)
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
     res = await session.execute(

@@ -21,6 +21,7 @@ from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
+from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import (
     normalize_topic,
     normalize_topics,
@@ -208,6 +209,7 @@ async def subscribe(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
+    await ensure_push_subscription_schema(db)
     endpoint, p256dh, auth = await _validate_subscription_payload(payload)
 
     client_host = request.client.host if request.client else None
@@ -309,6 +311,7 @@ async def update_subscription_topics(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
+    await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(
@@ -350,6 +353,7 @@ async def unsubscribe(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, bool]:
+    await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(
@@ -411,6 +415,7 @@ async def send_test(
     user: Annotated[User, Depends(get_current_user)],
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
+    await ensure_push_subscription_schema(db)
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
