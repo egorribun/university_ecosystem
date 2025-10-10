@@ -116,6 +116,12 @@ const EventCardComponent: FC<EventCardProps> = ({
 
   const [snack, setSnack] = useState<string>("")
 
+  const eventEnded = useMemo(() => {
+    const normalizedEnds = normalizeDate(ends_at)
+    const endDate = dayjs(normalizedEnds.replace(" ", "T"))
+    return endDate.isValid() && endDate.isBefore(dayjs())
+  }, [ends_at])
+
   const syncRegistrationState = useCallback(async (): Promise<
     "registered" | "unregistered" | null
   > => {
@@ -563,6 +569,12 @@ const EventCardComponent: FC<EventCardProps> = ({
         </Typography>
       </Box>
 
+      {eventEnded && (
+        <Typography color="error.main" fontWeight={700} sx={{ mb: 1 }}>
+          Мероприятие завершено
+        </Typography>
+      )}
+
       <Box display="flex" gap={1} alignItems="center" sx={{ mb: 1 }}>
         <PlaceIcon sx={{ fontSize: 20, color: "var(--nav-link)" }} />
         <Typography color="text.secondary" fontSize={16}>
@@ -588,7 +600,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         <Typography fontSize={15}>Участников: {count}</Typography>
       </Box>
 
-      {is_active && !registered && user?.role !== "admin" && user?.role !== "teacher" && (
+      {is_active && !eventEnded && !registered && user?.role !== "admin" && user?.role !== "teacher" && (
         <Button
           variant="contained"
           color="primary"
@@ -600,7 +612,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         </Button>
       )}
 
-      {is_active && registered && (
+      {is_active && !eventEnded && registered && (
         <Box display="flex" alignItems="center" gap={2} mt={2}>
           <Button
             variant="outlined"

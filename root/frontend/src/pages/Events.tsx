@@ -345,7 +345,8 @@ const Events = () => {
           spacing={1.5}
           alignItems="center"
           mb={isMobile ? 2 : 5}
-          mt={isMobile ? 1 : 2}
+          mt={isMobile ? 2 : 3}
+          sx={{ flexWrap: "wrap" }}
         >
           <TextField
             label="Поиск"
