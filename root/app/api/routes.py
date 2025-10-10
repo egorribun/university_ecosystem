@@ -39,6 +39,7 @@ from app.core.database import get_db
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
+from app.services.notifications import notify_about_event, notify_about_news
 from app.utils.files import save_image
 
 router = APIRouter()
@@ -437,7 +438,14 @@ async def create_event(
 ):
     if user.role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="forbidden")
-    return await crud.create_event(db, data, user_id=user.id)
+    record = await crud.create_event(db, data, user_id=user.id)
+    try:
+        await notify_about_event(db, record)
+    except Exception:
+        logger.exception(
+            "Failed to dispatch event notification", extra={"event_id": record.id}
+        )
+    return record
 
 
 @router.get("/events", response_model=List[schemas.EventOut])
@@ -671,6 +679,12 @@ async def create_news(
     record = await crud.create_news(db, data)
     cache = get_cache()
     await cache.invalidate(_NEWS_LIST_CACHE_KEY)
+    try:
+        await notify_about_news(db, record)
+    except Exception:
+        logger.exception(
+            "Failed to dispatch news notification", extra={"news_id": record.id}
+        )
     return record
 
 

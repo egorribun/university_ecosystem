@@ -1,10 +1,22 @@
-import { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  ChangeEvent,
+  FocusEvent,
+} from "react";
 import { isAxiosError } from "axios";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "@/hooks/useNotifications";
-import { usePushPreferences, NOTIFICATION_TOPIC_LABELS } from "@/hooks/usePushPreferences";
+import {
+  usePushPreferences,
+  NOTIFICATION_TOPIC_LABELS,
+} from "@/hooks/usePushPreferences";
+import type { NotificationTopicKey } from "@/hooks/usePushPreferences";
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
 import api from "../api/client";
 import {
@@ -35,7 +47,8 @@ import {
   FormGroup,
   FormControl,
   FormHelperText,
-  Link
+  Link,
+  CircularProgress
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import TextField from "@mui/material/TextField";
@@ -51,6 +64,10 @@ import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import CelebrationOutlinedIcon from "@mui/icons-material/CelebrationOutlined";
+import SecurityOutlinedIcon from "@mui/icons-material/SecurityOutlined";
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
 import spotifyLogo from "@/assets/spotify_icon.png";
@@ -61,6 +78,25 @@ type ThemeMode = "system" | "light" | "dark";
 
 const DEFAULT_DND_START = "22:00";
 const DEFAULT_DND_END = "07:00";
+
+const TOPIC_DETAILS: Record<NotificationTopicKey, { description: string; icon: JSX.Element }> = {
+  schedule: {
+    description: "Напоминания о предстоящих парах и изменения расписания.",
+    icon: <EventAvailableIcon fontSize="small" />,
+  },
+  news: {
+    description: "Свежие новости университета и важные объявления.",
+    icon: <ArticleOutlinedIcon fontSize="small" />,
+  },
+  events: {
+    description: "Анонсы мероприятий, встреч и открытых лекций.",
+    icon: <CelebrationOutlinedIcon fontSize="small" />,
+  },
+  system: {
+    description: "Сервисные сообщения о безопасности и работе приложения.",
+    icon: <SecurityOutlinedIcon fontSize="small" />,
+  },
+};
 
 const toInputTime = (value: unknown): string => {
   if (!value) return "";
@@ -538,6 +574,9 @@ export default function Settings() {
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy}
+                          startIcon={
+                            pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                          }
                         >
                           Проверить разрешение
                         </Button>
@@ -549,13 +588,18 @@ export default function Settings() {
                   ) : notificationPermission === "default" ? (
                     <Stack spacing={1.5}>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        Включите уведомления, чтобы первым узнавать о расписании, новостях и важных изменениях.
+                        Включите уведомления, чтобы первым узнавать о расписании, мероприятиях и важных новостях.
                       </Typography>
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy || pushInitializing}
+                          startIcon={
+                            pushBusy || pushInitializing ? (
+                              <CircularProgress size={18} color="inherit" />
+                            ) : undefined
+                          }
                         >
                           Разрешить уведомления
                         </Button>
@@ -602,26 +646,85 @@ export default function Settings() {
                         component="fieldset"
                         variant="standard"
                         disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                        sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
+                        sx={{
+                          opacity: notificationsEnabled ? 1 : 0.6,
+                          transition: "opacity 0.2s ease",
+                        }}
                       >
-                        <FormGroup>
-                          {topicKeys.map(key => (
-                            <FormControlLabel
-                              key={key}
-                              control={
-                                <Switch
-                                  checked={topicState[key]}
-                                  onChange={handleTopicToggle(key)}
-                                  disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                                />
-                              }
-                              label={
-                                <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
-                              }
-                            />
-                          ))}
-                        </FormGroup>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            borderRadius: 2,
+                            bgcolor: "transparent",
+                            borderColor: "var(--glass-border)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <List disablePadding>
+                            {topicKeys.map((key, index) => {
+                              const meta = TOPIC_DETAILS[key];
+                              const label = NOTIFICATION_TOPIC_LABELS[key];
+                              return (
+                                <ListItem
+                                  key={key}
+                                  divider={index !== topicKeys.length - 1}
+                                  sx={{
+                                    py: 1.4,
+                                    pl: 1.2,
+                                    pr: { xs: 1.5, sm: 2 },
+                                    color: "var(--page-text)",
+                                  }}
+                                  secondaryAction={
+                                    <Switch
+                                      edge="end"
+                                      checked={Boolean(topicState[key])}
+                                      onChange={handleTopicToggle(key)}
+                                      disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                                      inputProps={{
+                                        "aria-label": `Тема уведомлений ${label}`,
+                                      }}
+                                    />
+                                  }
+                                >
+                                  <ListItemAvatar sx={{ minWidth: 56 }}>
+                                    <Avatar
+                                      sx={{
+                                        bgcolor: "var(--glass-bg)",
+                                        color: "var(--link-color)",
+                                        width: 40,
+                                        height: 40,
+                                      }}
+                                    >
+                                      {meta?.icon}
+                                    </Avatar>
+                                  </ListItemAvatar>
+                                  <ListItemText
+                                    primary={
+                                      <Typography
+                                        variant="subtitle1"
+                                        fontWeight={600}
+                                        sx={{ color: "var(--page-text)" }}
+                                      >
+                                        {label}
+                                      </Typography>
+                                    }
+                                    secondary={
+                                      meta?.description ? (
+                                        <Typography
+                                          variant="body2"
+                                          sx={{ color: "var(--page-text)", opacity: 0.72 }}
+                                        >
+                                          {meta.description}
+                                        </Typography>
+                                      ) : null
+                                    }
+                                  />
+                                </ListItem>
+                              );
+                            })}
+                          </List>
+                        </Paper>
+                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 1 }}>
                           Активные темы: {selectedTopicsDescription}
                         </FormHelperText>
                       </FormControl>

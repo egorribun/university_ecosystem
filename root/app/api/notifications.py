@@ -9,6 +9,10 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import NotificationOut, NotificationsListOut
+from app.services.notifications import (
+    build_schedule_reminder_message,
+    create_notifications_for_users,
+)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -143,10 +147,8 @@ async def check_schedule_and_generate(
     )
     lessons = (await db.execute(q)).scalars().all()
 
-    created_any = False
     for les in lessons:
-        title = f"Скоро пара: {les.subject}"
-        body = f"Начало в {les.start_time.strftime('%H:%M')} — {les.room or 'аудитория не указана'}"
+        title, body, tag, data_payload = build_schedule_reminder_message(les)
         url = "/schedule"
 
         dupe = select(func.count(Notification.id)).where(
@@ -160,21 +162,23 @@ async def check_schedule_and_generate(
         exists = (await db.execute(dupe)).scalar_one() or 0
         if exists:
             continue
-
-        db.add(
-            Notification(
-                user_id=user.id,
-                type="schedule",
-                title=title,
-                body=body,
-                url=url,
-                created_at=now,
-                read=False,
-            )
+        await create_notifications_for_users(
+            db,
+            title=title,
+            body=body,
+            type="schedule.reminder",
+            url=url,
+            tag=tag,
+            payload_data=data_payload,
+            actions=[
+                {
+                    "action": "open-schedule",
+                    "title": "Открыть расписание",
+                    "url": url,
+                }
+            ],
+            user_ids=[user.id],
+            topic="schedule",
         )
-        created_any = True
-
-    if created_any:
-        await db.commit()
 
     return await list_notifications(db=db, user=user, limit=20, cursor=None)
