@@ -6,7 +6,7 @@ from threading import Lock
 from typing import Optional
 
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import PushSubscription
@@ -56,7 +56,15 @@ def ensure_push_subscription_schema_sync(engine: Optional[Engine]) -> None:
         if _sync_ready:
             return
         try:
-            _create_schema(engine)
+            with engine.connect() as connection:
+                _create_schema(connection)
+        except OperationalError as exc:
+            logger.warning(
+                "Push subscription schema creation skipped; database is unavailable: %s",
+                exc,
+                exc_info=False,
+            )
+            return
         except SQLAlchemyError:
             logger.exception(
                 "Failed to ensure push subscription schema using sync engine"
