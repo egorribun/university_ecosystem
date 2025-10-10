@@ -57,6 +57,8 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows";
 import LogoutIcon from "@mui/icons-material/Logout";
+import type { JSX } from "react";
+
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";

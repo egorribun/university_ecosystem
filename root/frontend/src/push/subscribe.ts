@@ -141,7 +141,7 @@ export async function resolveServiceWorkerRegistration(
   }
 
   try {
-    return await navigator.serviceWorker.getRegistration()
+    return (await navigator.serviceWorker.getRegistration()) ?? null
   } catch (error) {
     console.warn("Failed to get service worker registration after timeout", error)
     return null
