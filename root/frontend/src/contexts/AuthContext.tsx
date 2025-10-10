@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
+import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 
 type UserState = any | null
 
@@ -245,6 +246,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () =>
       window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
   }, [handleUnauthorized])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onSpotifyReauth = () => {
+      setUser((prev) => {
+        if (!prev) return prev
+        if (!prev.spotify_connected && !prev.spotify_is_connected) return prev
+        return {
+          ...prev,
+          spotify_connected: false,
+          spotify_is_connected: false,
+          spotify_display_name: null,
+        }
+      })
+      void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
+    }
+    window.addEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
+    return () =>
+      window.removeEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
+  }, [queryClient, setUser])
 
   const login = useCallback(
     async (email: string, password: string) => {
