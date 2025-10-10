@@ -5,6 +5,7 @@ import logging
 from threading import Lock
 from typing import Optional
 
+from sqlalchemy import Column, DateTime, JSON, String, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,52 @@ def _create_schema(bind) -> None:
     PushSubscription.__table__.create(bind=bind, checkfirst=True)
 
 
+def _ensure_columns(bind) -> None:
+    table_name = PushSubscription.__tablename__
+    inspector = inspect(bind)
+    tables = {name for name in inspector.get_table_names()}
+    if table_name not in tables:
+        _create_schema(bind)
+        inspector = inspect(bind)
+
+    columns = {col["name"] for col in inspector.get_columns(table_name)}
+    preparer = bind.dialect.identifier_preparer
+
+    def _add_column(column: Column, *, default_sql: str | None = None, not_null: bool = False) -> None:
+        column_name = preparer.quote(column.name)
+        type_sql = column.type.compile(bind.dialect)
+        parts = [column_name, type_sql]
+        if default_sql:
+            parts.append(f"DEFAULT {default_sql}")
+        if not_null:
+            parts.append("NOT NULL")
+        statement = f"ALTER TABLE {preparer.quote(table_name)} ADD COLUMN {' '.join(parts)}"
+        bind.exec_driver_sql(statement)
+
+    if "user_agent" not in columns:
+        _add_column(PushSubscription.__table__.c.user_agent)
+    if "last_seen_at" not in columns:
+        _add_column(PushSubscription.__table__.c.last_seen_at)
+    if "created_at" not in columns:
+        created_at_col = PushSubscription.__table__.c.created_at
+        default_clause = created_at_col.server_default
+        default_sql = None
+        if default_clause is not None:
+            default_sql = str(default_clause.arg.compile(dialect=bind.dialect))
+        _add_column(created_at_col, default_sql=default_sql, not_null=True)
+    if "topics" not in columns:
+        if bind.dialect.name.startswith("postgresql"):
+            default_expr = "'[]'::jsonb"
+        else:
+            default_expr = "'[]'"
+        _add_column(
+            PushSubscription.__table__.c.topics,
+            default_sql=default_expr,
+            not_null=True,
+        )
+
+
+
 async def ensure_push_subscription_schema(db: AsyncSession) -> None:
     global _async_ready, _sync_ready
     if _async_ready:
@@ -35,7 +82,7 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
 
             def _sync_create(sync_session) -> None:
                 connection = sync_session.connection()
-                _create_schema(connection)
+                _ensure_columns(connection)
 
             await db.run_sync(_sync_create)
         except SQLAlchemyError:
@@ -57,7 +104,7 @@ def ensure_push_subscription_schema_sync(engine: Optional[Engine]) -> None:
             return
         try:
             with engine.connect() as connection:
-                _create_schema(connection)
+                _ensure_columns(connection)
         except OperationalError as exc:
             logger.warning(
                 "Push subscription schema creation skipped; database is unavailable: %s",
