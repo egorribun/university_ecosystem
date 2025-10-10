@@ -96,13 +96,16 @@ class PushSubscriptionOut(BaseModel):
 
 def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionOut:
     topics = normalize_topics(subscription.topics or [])
+    created_at = subscription.created_at
+    if created_at is None:
+        created_at = subscription.last_seen_at or datetime.now(UTC)
     data = {
         "id": subscription.id,
         "user_id": subscription.user_id,
         "endpoint": subscription.endpoint,
         "p256dh": subscription.p256dh,
         "auth": subscription.auth,
-        "created_at": subscription.created_at,
+        "created_at": created_at,
         "user_agent": subscription.user_agent,
         "last_seen_at": subscription.last_seen_at,
         "updated_at": subscription.last_seen_at,
@@ -266,6 +269,8 @@ async def subscribe(
             existing.user_id = user.id
             existing.user_agent = user_agent or None
             existing.last_seen_at = now
+            if existing.created_at is None:
+                existing.created_at = now
             existing.topics = _resolve_topics()
             await db.commit()
             await db.refresh(existing)
@@ -280,6 +285,8 @@ async def subscribe(
                 last_seen_at=now,
                 topics=_resolve_topics(),
             )
+            if subscription.created_at is None:
+                subscription.created_at = now
             db.add(subscription)
             await db.commit()
             await db.refresh(subscription)
