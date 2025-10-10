@@ -34,3 +34,14 @@ export async function sendTest(): Promise<SendTestNotificationResponse> {
   const { data } = await api.post<SendTestNotificationResponse>("/push/test")
   return data
 }
+
+type VapidPublicKeyResponse = {
+  publicKey?: string | null
+}
+
+export async function getVapidPublicKey(): Promise<string | null> {
+  const { data } = await api.get<VapidPublicKeyResponse>("/push/vapid-public-key")
+  const raw = typeof data?.publicKey === "string" ? data.publicKey : null
+  const normalized = raw?.trim()
+  return normalized ? normalized : null
+}
