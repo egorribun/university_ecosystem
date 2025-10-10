@@ -8,6 +8,7 @@ const PUSH_SUB_STORAGE_KEY = "push:last_payload"
 const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 
 const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
+const SERVICE_WORKER_READY_TIMEOUT_MS = 2000
 
 type NormalizedTopics = string[] | undefined
 
@@ -106,6 +107,47 @@ export function setPushConsent(consented: boolean): void {
   } catch {}
 }
 
+export async function resolveServiceWorkerRegistration(
+  registration?: ServiceWorkerRegistration,
+): Promise<ServiceWorkerRegistration | null> {
+  if (registration) return registration
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return null
+  }
+
+  try {
+    const existing = await navigator.serviceWorker.getRegistration()
+    if (existing) return existing
+  } catch (error) {
+    console.warn("Failed to get existing service worker registration", error)
+  }
+
+  try {
+    const readyPromise = navigator.serviceWorker.ready
+      .then(reg => reg)
+      .catch(error => {
+        console.warn("Service worker ready promise rejected", error)
+        return null
+      })
+
+    const timeout = new Promise<ServiceWorkerRegistration | null>(resolve => {
+      setTimeout(() => resolve(null), SERVICE_WORKER_READY_TIMEOUT_MS)
+    })
+
+    const resolved = await Promise.race([readyPromise, timeout])
+    if (resolved) return resolved
+  } catch (error) {
+    console.warn("Failed to await service worker readiness", error)
+  }
+
+  try {
+    return (await navigator.serviceWorker.getRegistration()) ?? null
+  } catch (error) {
+    console.warn("Failed to get service worker registration after timeout", error)
+    return null
+  }
+}
+
 export async function fetchVapidPublicKey(): Promise<string | null> {
   const rawKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
   if (typeof rawKey === "string") {
@@ -158,7 +200,12 @@ export async function ensurePushSubscription(
   }
 
   const task = (async () => {
-    const reg = options?.registration ?? (await navigator.serviceWorker.ready)
+    const reg = await resolveServiceWorkerRegistration(options?.registration)
+
+    if (!reg) {
+      console.warn("Cannot ensure push subscription without service worker registration")
+      return null
+    }
 
     if (Notification.permission === "denied") {
       return null
@@ -262,37 +309,6 @@ function clearPushLocals(preserveConsent?: boolean) {
   removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
 }
 
-async function resolveServiceWorkerRegistration(
-  provided?: ServiceWorkerRegistration,
-): Promise<ServiceWorkerRegistration | null> {
-  if (provided) return provided
-
-  try {
-    const existing = await navigator.serviceWorker.getRegistration()
-    if (existing) return existing
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn("Failed to get existing service worker registration", error)
-    }
-  }
-
-  try {
-    const withTimeout = Promise.race<
-      ServiceWorkerRegistration | null | undefined
-    >([
-      navigator.serviceWorker.ready,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
-    ])
-    const registration = await withTimeout
-    return registration ?? null
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn("Failed to await service worker readiness", error)
-    }
-    return null
-  }
-}
-
 export async function unsubscribePush(options?: UnsubscribePushOptions) {
   if (!("serviceWorker" in navigator)) {
     clearPushLocals(options?.preserveConsent)
@@ -345,7 +361,8 @@ export async function getExistingPushSubscription(
   registration?: ServiceWorkerRegistration
 ): Promise<PushSubscription | null> {
   if (!isPushSupported()) return null
-  const reg = registration ?? (await navigator.serviceWorker.ready)
+  const reg = await resolveServiceWorkerRegistration(registration)
+  if (!reg) return null
   try {
     const sub = await reg.pushManager.getSubscription()
     return sub

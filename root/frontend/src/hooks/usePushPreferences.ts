@@ -7,6 +7,7 @@ import {
   getExistingPushSubscription,
   getPersistedTopics,
   isPushSupported,
+  resolveServiceWorkerRegistration,
   setPushConsent,
 } from "@/push/subscribe"
 import { currentUserQueryKey } from "@/contexts/AuthContext"
@@ -138,7 +139,11 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     }
     setPushBusy(true)
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await resolveServiceWorkerRegistration()
+      if (!registration) {
+        notify({ text: "Сервис-воркер ещё не готов", sev: "info" })
+        return
+      }
       const sub = await ensurePushSubscription({
         registration,
         topics: selectedTopics,
@@ -177,7 +182,11 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     }
     setPushBusy(true)
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await resolveServiceWorkerRegistration()
+      if (!registration) {
+        notify({ text: "Сервис-воркер недоступен", sev: "warning" })
+        return
+      }
       const sub = await registration.pushManager.getSubscription()
       if (!sub) {
         setPushSubscription(null)
@@ -230,7 +239,12 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         setPushBusy(true)
         const topicsToSend = topicKeys.filter(topic => nextState[topic])
         try {
-          const registration = await navigator.serviceWorker.ready
+          const registration = await resolveServiceWorkerRegistration()
+          if (!registration) {
+            setTopicState(previousState)
+            notify({ text: "Сервис-воркер недоступен", sev: "warning" })
+            return
+          }
           const sub = await ensurePushSubscription({
             registration,
             topics: topicsToSend,
