@@ -250,7 +250,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (typeof window === "undefined") return
     const onSpotifyReauth = () => {
-      setUser((prev) => {
+      setUser((prev: UserState) => {
         if (!prev) return prev
         if (!prev.spotify_connected && !prev.spotify_is_connected) return prev
         return {
