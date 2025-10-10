@@ -16,8 +16,8 @@ from sqlalchemy.orm import sessionmaker
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models.models import PushSubscription
-from app.services import webpush as webpush_module
 from app.routers.notifications import _serialize_subscription
+from app.services import webpush as webpush_module
 
 
 @pytest.fixture
