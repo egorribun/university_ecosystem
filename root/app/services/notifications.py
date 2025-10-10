@@ -22,6 +22,7 @@ from app.models.models import (
     User,
 )
 from app.services.notification_templates import render_notification_template
+from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import send_web_push
 
@@ -225,6 +226,7 @@ async def create_notifications_for_users(
     await db.execute(insert(Notification).values(rows))
     await db.commit()
     if settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY:
+        await ensure_push_subscription_schema(db)
         subs = (
             (
                 await db.execute(
