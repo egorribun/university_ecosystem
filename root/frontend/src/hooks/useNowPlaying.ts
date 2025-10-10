@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
-import api from "@/api/client"
+import api, { SKIP_UNAUTHORIZED_HEADER } from "@/api/client"
 import type { NowPlaying } from "@/types/spotify"
 
 export const nowPlayingQueryKey = ["spotify", "now-playing"] as const
+export const SPOTIFY_REAUTH_EVENT = "spotify:reauth-required"
 
 const isTestEnv = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
@@ -101,6 +102,7 @@ export const fetchNowPlaying = async () => {
   try {
     const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
       validateStatus: (status) => status === 204 || (status >= 200 && status < 300),
+      headers: { [SKIP_UNAUTHORIZED_HEADER]: "1" },
     })
 
     clearRateLimit()
@@ -108,12 +110,21 @@ export const fetchNowPlaying = async () => {
     if (res.status === 204) return null
     return normalizeNowPlaying(res.data)
   } catch (error) {
-    if (isAxiosError(error) && error.response?.status === 429) {
-      const header = error.response.headers?.["retry-after"]
-      const raw = Array.isArray(header) ? header[0] : header
-      const parsed = raw != null ? Number.parseFloat(String(raw)) : NaN
-      const waitMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : RATE_LIMIT_FALLBACK_MS
-      scheduleRateLimit(waitMs + RATE_LIMIT_BUFFER_MS)
+    if (isAxiosError(error)) {
+      if (error.response?.status === 401) {
+        clearRateLimit()
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(SPOTIFY_REAUTH_EVENT))
+        }
+        return null
+      }
+      if (error.response?.status === 429) {
+        const header = error.response.headers?.["retry-after"]
+        const raw = Array.isArray(header) ? header[0] : header
+        const parsed = raw != null ? Number.parseFloat(String(raw)) : NaN
+        const waitMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : RATE_LIMIT_FALLBACK_MS
+        scheduleRateLimit(waitMs + RATE_LIMIT_BUFFER_MS)
+      }
     }
     throw error
   }

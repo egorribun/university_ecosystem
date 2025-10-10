@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
+import httpx
 from httpx import AsyncClient
 
 from app.api.routes import _spotify_fallback_now_playing
@@ -138,3 +139,45 @@ async def test_now_playing_uses_last_known_track_from_fallback(
     assert body["track_id"] == "track-xyz"
     assert body["track_name"] == "Fallback Song"
     assert body["artists"] == ["Fallback Artist"]
+
+
+async def test_now_playing_returns_401_when_refresh_fails(
+    async_client: AsyncClient, user_factory, db_session, monkeypatch
+) -> None:
+    password = "SpotifyP@ss3"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    user.spotify_access_token = "expired"
+    user.spotify_refresh_token = "refresh"
+    user.spotify_token_expires_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+    user.spotify_is_connected = True
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    class DummyResponse:
+        status_code = 400
+        headers: dict[str, str] = {}
+
+        def json(self) -> dict[str, str]:
+            return {}
+
+    original_post = httpx.AsyncClient.post
+
+    async def fake_post(self, url, *args, **kwargs):
+        if str(url).endswith("/api/token"):
+            return DummyResponse()
+        return await original_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr("httpx.AsyncClient.post", fake_post)
+
+    headers = await _login(async_client, user, password)
+
+    response = await async_client.get("/spotify/now-playing", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Требуется переподключить Spotify"
+
+    await db_session.refresh(user)
+    assert user.spotify_is_connected is False
+    assert user.spotify_access_token is None

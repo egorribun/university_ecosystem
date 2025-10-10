@@ -32,6 +32,21 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
 
 
+def _disconnect_user(
+    user: User, *, clear_refresh: bool = False, clear_profile: bool = False
+) -> None:
+    user.spotify_access_token = None
+    if clear_refresh:
+        user.spotify_refresh_token = None
+        user.spotify_scope = None
+    user.spotify_token_expires_at = None
+    user.spotify_is_connected = False
+    user.spotify_is_playing = False
+    if clear_profile:
+        user.spotify_display_name = None
+        user.spotify_user_id = None
+
+
 def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
     artists: list[str] = []
     if user.spotify_last_artist_name:
@@ -86,11 +101,15 @@ async def _save_tokens(
 
 
 async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
-    if not user.spotify_access_token or not user.spotify_refresh_token:
+    if not user.spotify_access_token:
         return None
     exp = _ensure_utc(user.spotify_token_expires_at)
     if exp and exp > _now_utc():
         return user.spotify_access_token
+    if not user.spotify_refresh_token:
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
             "https://accounts.spotify.com/api/token",
@@ -104,7 +123,9 @@ async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
             },
         )
     if r.status_code != 200:
-        return None
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     data = r.json()
     await _save_tokens(
         db,
@@ -255,13 +276,6 @@ async def now_playing(
 async def disconnect(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    user.spotify_access_token = None
-    user.spotify_refresh_token = None
-    user.spotify_token_expires_at = None
-    user.spotify_scope = None
-    user.spotify_display_name = None
-    user.spotify_user_id = None
-    user.spotify_is_connected = False
-    user.spotify_is_playing = False
+    _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
     return {"ok": True}
