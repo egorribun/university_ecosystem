@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from threading import Lock
 from typing import Optional
 
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import PushSubscription
@@ -13,6 +15,8 @@ _async_ready = False
 _async_lock = asyncio.Lock()
 _sync_ready = False
 _sync_lock = Lock()
+
+logger = logging.getLogger(__name__)
 
 
 def _create_schema(bind) -> None:
@@ -27,13 +31,21 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
         if _async_ready:
             return
 
-        def _sync_create(sync_session) -> None:
-            connection = sync_session.connection()
-            _create_schema(connection)
+        try:
 
-        await db.run_sync(_sync_create)
-        _async_ready = True
-        _sync_ready = True
+            def _sync_create(sync_session) -> None:
+                connection = sync_session.connection()
+                _create_schema(connection)
+
+            await db.run_sync(_sync_create)
+        except SQLAlchemyError:
+            logger.exception(
+                "Failed to ensure push subscription schema using async session"
+            )
+            return
+        else:
+            _async_ready = True
+            _sync_ready = True
 
 
 def ensure_push_subscription_schema_sync(engine: Optional[Engine]) -> None:
@@ -43,6 +55,13 @@ def ensure_push_subscription_schema_sync(engine: Optional[Engine]) -> None:
     with _sync_lock:
         if _sync_ready:
             return
-        _create_schema(engine)
-        _sync_ready = True
-        _async_ready = True
+        try:
+            _create_schema(engine)
+        except SQLAlchemyError:
+            logger.exception(
+                "Failed to ensure push subscription schema using sync engine"
+            )
+            return
+        else:
+            _sync_ready = True
+            _async_ready = True
