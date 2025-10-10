@@ -6,8 +6,8 @@ from threading import Lock
 from typing import Optional
 
 from sqlalchemy.engine import Engine
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import PushSubscription
 
@@ -32,13 +32,16 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
             return
 
         try:
+
             def _sync_create(sync_session) -> None:
                 connection = sync_session.connection()
                 _create_schema(connection)
 
             await db.run_sync(_sync_create)
         except SQLAlchemyError:
-            logger.exception("Failed to ensure push subscription schema using async session")
+            logger.exception(
+                "Failed to ensure push subscription schema using async session"
+            )
             return
         else:
             _async_ready = True
@@ -55,7 +58,9 @@ def ensure_push_subscription_schema_sync(engine: Optional[Engine]) -> None:
         try:
             _create_schema(engine)
         except SQLAlchemyError:
-            logger.exception("Failed to ensure push subscription schema using sync engine")
+            logger.exception(
+                "Failed to ensure push subscription schema using sync engine"
+            )
             return
         else:
             _sync_ready = True
