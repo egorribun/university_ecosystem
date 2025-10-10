@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import logging
 import secrets
@@ -11,7 +10,6 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-import httpx
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -32,6 +30,9 @@ from starlette.responses import RedirectResponse
 
 from app import crud
 from app.api.deps import get_current_user
+from app.api.spotify import (
+    _fallback_now_playing as _spotify_fallback_now_playing,  # noqa: F401
+)
 from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.database import get_db
@@ -426,214 +427,6 @@ async def delete_schedule(
     cache = get_cache()
     await cache.invalidate(_schedule_cache_key(group_id))
     return {"ok": True}
-
-
-def _spotify_auth_header() -> str:
-    raw = f"{settings.spotify_client_id}:{settings.spotify_client_secret}".encode()
-    return "Basic " + base64.b64encode(raw).decode()
-
-
-async def _spotify_refresh_if_needed(db: AsyncSession, user: models.User) -> None:
-    if not getattr(user, "spotify_access_token", None) or not getattr(
-        user, "spotify_refresh_token", None
-    ):
-        raise HTTPException(status_code=400, detail="Spotify не подключён")
-    now = datetime.now(timezone.utc)
-    if getattr(
-        user, "spotify_token_expires_at", None
-    ) and user.spotify_token_expires_at > now + timedelta(seconds=30):
-        return
-    async with httpx.AsyncClient(timeout=10) as client:
-        data = {
-            "grant_type": "refresh_token",
-            "refresh_token": user.spotify_refresh_token,
-        }
-        headers = {
-            "Authorization": _spotify_auth_header(),
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        r = await client.post(
-            "https://accounts.spotify.com/api/token", data=data, headers=headers
-        )
-        if r.status_code != 200:
-            raise HTTPException(
-                status_code=400, detail="Не удалось обновить токен Spotify"
-            )
-        j = r.json()
-        user.spotify_access_token = j.get("access_token") or user.spotify_access_token
-        expires_in = j.get("expires_in") or 3600
-        user.spotify_token_expires_at = now + timedelta(seconds=int(expires_in))
-        await db.commit()
-        await db.refresh(user)
-
-
-def _spotify_fallback_now_playing(user: models.User) -> schemas.SpotifyNowPlayingOut:
-    artists: list[str] = []
-    last_artists = getattr(user, "spotify_last_artist_name", None)
-    if last_artists:
-        artists = [name.strip() for name in last_artists.split(",") if name.strip()]
-
-    has_payload = any(
-        (
-            getattr(user, "spotify_last_track_id", None),
-            getattr(user, "spotify_last_track_name", None),
-            artists,
-        )
-    )
-
-    if not has_payload:
-        return schemas.SpotifyNowPlayingOut(
-            is_playing=False, fetched_at=datetime.now(timezone.utc)
-        )
-
-    return schemas.SpotifyNowPlayingOut(
-        is_playing=False,
-        progress_ms=None,
-        duration_ms=None,
-        track_id=getattr(user, "spotify_last_track_id", None),
-        track_name=getattr(user, "spotify_last_track_name", None),
-        artists=artists,
-        album_name=getattr(user, "spotify_last_album_name", None),
-        album_image_url=getattr(user, "spotify_last_album_image_url", None),
-        track_url=getattr(user, "spotify_last_track_url", None),
-        preview_url=None,
-        fetched_at=datetime.now(timezone.utc),
-    )
-
-
-@router.get("/spotify/auth-url", response_model=schemas.SpotifyAuthURL)
-async def spotify_auth_url(req: Request, user: models.User = Depends(get_current_user)):
-    if not settings.spotify_client_id or not settings.spotify_redirect_uri:
-        raise HTTPException(status_code=500, detail="Spotify не сконфигурирован")
-    state = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
-    scope = (
-        settings.spotify_scopes
-        or "user-read-currently-playing user-read-playback-state"
-    )
-    params = {
-        "response_type": "code",
-        "client_id": settings.spotify_client_id,
-        "redirect_uri": settings.spotify_redirect_uri,
-        "scope": scope,
-        "state": state or secrets.token_urlsafe(16),
-        "show_dialog": "false",
-    }
-    return {"url": "https://accounts.spotify.com/authorize?" + urlencode(params)}
-
-
-@router.get("/spotify/callback")
-async def spotify_callback(
-    request: Request,
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-):
-    if error or not code:
-        url = settings.app_base_url_clean + "/profile?spotify=error"
-        return RedirectResponse(url)
-    uid = None
-    if state:
-        try:
-            payload = decode_token(state)
-            uid = int(payload.get("sub")) if payload and payload.get("sub") else None
-        except Exception:
-            uid = None
-    if not uid:
-        url = settings.app_base_url_clean + "/profile?spotify=error"
-        return RedirectResponse(url)
-    user = await db.get(models.User, uid)
-    if not user or not user.is_active:
-        url = settings.app_base_url_clean + "/profile?spotify=error"
-        return RedirectResponse(url)
-    async with httpx.AsyncClient(timeout=10) as client:
-        data = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": settings.spotify_redirect_uri,
-        }
-        headers = {
-            "Authorization": _spotify_auth_header(),
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        r = await client.post(
-            "https://accounts.spotify.com/api/token", data=data, headers=headers
-        )
-    if r.status_code != 200:
-        url = settings.app_base_url_clean + "/profile?spotify=error"
-        return RedirectResponse(url)
-    j = r.json()
-    now = datetime.now(timezone.utc)
-    user.spotify_access_token = j.get("access_token")
-    user.spotify_refresh_token = j.get("refresh_token") or user.spotify_refresh_token
-    user.spotify_token_expires_at = now + timedelta(
-        seconds=int(j.get("expires_in") or 3600)
-    )
-    user.spotify_scope = j.get("scope") or settings.spotify_scopes
-    if hasattr(user, "spotify_connected"):
-        setattr(user, "spotify_connected", True)
-    if hasattr(user, "spotify_is_connected"):
-        setattr(user, "spotify_is_connected", True)
-    await db.commit()
-    url = settings.app_base_url_clean + "/profile?spotify=connected"
-    return RedirectResponse(url)
-
-
-@router.get("/spotify/now-playing", response_model=schemas.SpotifyNowPlayingOut)
-async def spotify_now_playing(
-    db: AsyncSession = Depends(get_db), user: models.User = Depends(get_current_user)
-):
-    await _spotify_refresh_if_needed(db, user)
-    token = user.spotify_access_token
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(
-            "https://api.spotify.com/v1/me/player/currently-playing",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-    now = datetime.now(timezone.utc)
-    if r.status_code == 204:
-        if hasattr(user, "spotify_is_playing"):
-            user.spotify_is_playing = False
-            user.spotify_last_checked_at = now
-            await db.commit()
-        return _spotify_fallback_now_playing(user)
-    if r.status_code == 200:
-        data = r.json() or {}
-        item = data.get("item") or {}
-        artists = [a.get("name") for a in (item.get("artists") or []) if a.get("name")]
-        album = item.get("album") or {}
-        images = album.get("images") or []
-        album_img = images[0]["url"] if images else None
-        out = schemas.SpotifyNowPlayingOut(
-            is_playing=bool(data.get("is_playing")),
-            progress_ms=data.get("progress_ms"),
-            duration_ms=item.get("duration_ms"),
-            track_id=item.get("id"),
-            track_name=item.get("name"),
-            artists=artists,
-            album_name=album.get("name"),
-            album_image_url=album_img,
-            track_url=(item.get("external_urls") or {}).get("spotify"),
-            preview_url=item.get("preview_url"),
-            fetched_at=now,
-        )
-        try:
-            if hasattr(user, "spotify_is_playing"):
-                user.spotify_is_playing = out.is_playing
-                user.spotify_last_checked_at = now
-                user.spotify_last_track_id = out.track_id
-                user.spotify_last_track_name = out.track_name
-                user.spotify_last_artist_name = ", ".join(out.artists)
-                user.spotify_last_album_name = out.album_name
-                user.spotify_last_track_url = out.track_url
-                user.spotify_last_album_image_url = out.album_image_url
-                await db.commit()
-        except Exception:
-            pass
-        return out
-    if r.status_code == 401:
-        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
-    return _spotify_fallback_now_playing(user)
 
 
 @router.post("/events", response_model=schemas.EventOut)
