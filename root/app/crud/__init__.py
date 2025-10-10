@@ -170,12 +170,16 @@ async def get_all_events(
     qr_map: Dict[int, Optional[str]] = {}
     if user_id:
         attendance_rows = (
-            await db.execute(
-                select(models.EventAttendance).where(
-                    models.EventAttendance.user_id == user_id
+            (
+                await db.execute(
+                    select(models.EventAttendance).where(
+                        models.EventAttendance.user_id == user_id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         missing_qr = [row for row in attendance_rows if not row.qr_code]
         if missing_qr:
             for row in missing_qr:
@@ -293,12 +297,16 @@ async def unregister_attendance(
 
 async def get_my_events(db: AsyncSession, user_id: int):
     attendance_rows = (
-        await db.execute(
-            select(models.EventAttendance).where(
-                models.EventAttendance.user_id == user_id
+        (
+            await db.execute(
+                select(models.EventAttendance).where(
+                    models.EventAttendance.user_id == user_id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not attendance_rows:
         return []
     missing_qr = [row for row in attendance_rows if not row.qr_code]
