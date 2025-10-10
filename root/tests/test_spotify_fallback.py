@@ -181,3 +181,63 @@ async def test_now_playing_returns_401_when_refresh_fails(
     await db_session.refresh(user)
     assert user.spotify_is_connected is False
     assert user.spotify_access_token is None
+
+
+async def test_now_playing_refreshes_when_access_token_missing(
+    async_client: AsyncClient, user_factory, db_session, monkeypatch
+) -> None:
+    password = "SpotifyP@ss4"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    user.spotify_access_token = None
+    user.spotify_refresh_token = "refresh"
+    user.spotify_token_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    user.spotify_is_connected = True
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    class RefreshResponse:
+        status_code = 200
+        headers: dict[str, str] = {}
+
+        def json(self) -> dict[str, str]:
+            return {"access_token": "fresh", "expires_in": 120}
+
+    class NowPlayingResponse:
+        status_code = 204
+        headers: dict[str, str] = {}
+
+        def json(self) -> dict[str, str]:
+            return {}
+
+    refresh_called = False
+
+    original_post = httpx.AsyncClient.post
+    original_get = httpx.AsyncClient.get
+
+    async def fake_post(self, url, *args, **kwargs):
+        nonlocal refresh_called
+        if str(url) == "https://accounts.spotify.com/api/token":
+            refresh_called = True
+            return RefreshResponse()
+        return await original_post(self, url, *args, **kwargs)
+
+    async def fake_get(self, url, *args, **kwargs):
+        if str(url) == "https://api.spotify.com/v1/me/player/currently-playing":
+            return NowPlayingResponse()
+        return await original_get(self, url, *args, **kwargs)
+
+    monkeypatch.setattr("httpx.AsyncClient.post", fake_post)
+    monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
+
+    headers = await _login(async_client, user, password)
+
+    response = await async_client.get("/spotify/now-playing", headers=headers)
+
+    assert response.status_code == 204
+    assert refresh_called is True
+
+    await db_session.refresh(user)
+    assert user.spotify_access_token == "fresh"
+    assert user.spotify_is_connected is True
