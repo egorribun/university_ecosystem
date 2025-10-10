@@ -35,6 +35,26 @@ export function getPersistedTopics(): string[] | undefined {
   return parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY)) ?? undefined
 }
 
+export function setPersistedTopics(topics: string[] | null | undefined): void {
+  if (topics == null) {
+    removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+    return
+  }
+
+  const normalized: string[] = []
+  const seen = new Set<string>()
+  for (const topic of topics) {
+    if (!topic) continue
+    const trimmed = topic.toString().trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    normalized.push(trimmed)
+  }
+
+  normalized.sort()
+  setStoredValue(PUSH_TOPICS_STORAGE_KEY, JSON.stringify(normalized))
+}
+
 function sleep(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms))
 }
@@ -74,7 +94,7 @@ async function persistSubscriptionWithBackoff(
       const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
       setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
       setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
-      setStoredValue(PUSH_TOPICS_STORAGE_KEY, JSON.stringify(normalizedTopics))
+      setPersistedTopics(normalizedTopics)
       return response
     } catch (error) {
       attempt += 1
