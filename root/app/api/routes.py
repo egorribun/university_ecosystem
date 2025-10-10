@@ -442,7 +442,9 @@ async def create_event(
     try:
         await notify_about_event(db, record)
     except Exception:
-        logger.exception("Failed to dispatch event notification", extra={"event_id": record.id})
+        logger.exception(
+            "Failed to dispatch event notification", extra={"event_id": record.id}
+        )
     return record
 
 
@@ -680,7 +682,9 @@ async def create_news(
     try:
         await notify_about_news(db, record)
     except Exception:
-        logger.exception("Failed to dispatch news notification", extra={"news_id": record.id})
+        logger.exception(
+            "Failed to dispatch news notification", extra={"news_id": record.id}
+        )
     return record
 
 

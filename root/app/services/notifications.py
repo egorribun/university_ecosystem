@@ -13,10 +13,17 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.models.models import Event, News, Notification, PushSubscription, Schedule, User
+from app.models.models import (
+    Event,
+    News,
+    Notification,
+    PushSubscription,
+    Schedule,
+    User,
+)
+from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import send_web_push
-from app.services.notification_templates import render_notification_template
 
 
 def _current_local_time() -> dt.time:
@@ -83,7 +90,9 @@ def build_schedule_reminder_message(
     }
     template = render_notification_template("schedule.reminder", payload_input)
     default_title = (
-        f"Скоро пара: {lesson.subject}" if getattr(lesson, "subject", None) else "Скоро пара"
+        f"Скоро пара: {lesson.subject}"
+        if getattr(lesson, "subject", None)
+        else "Скоро пара"
     )
     summary_parts: list[str] = []
     if getattr(lesson, "lesson_type", None):
@@ -91,7 +100,9 @@ def build_schedule_reminder_message(
     room_value = getattr(lesson, "room", None)
     if room_value:
         room_text = str(room_value)
-        summary_parts.append(room_text if room_text.lower().startswith("ауд") else f"ауд. {room_text}")
+        summary_parts.append(
+            room_text if room_text.lower().startswith("ауд") else f"ауд. {room_text}"
+        )
     if getattr(lesson, "teacher", None):
         summary_parts.append(str(lesson.teacher))
     when_line = f"{start_local.strftime('%d.%m')} · {start_local.strftime('%H:%M')}"
@@ -119,16 +130,21 @@ def build_schedule_reminder_message(
         title = str(template.get("title") or default_title)
         body = str(template.get("body") or default_body)
         tag = str(template.get("tag") or default_tag)
-        template_data = template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        template_data = (
+            template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        )
         merged_data = {**default_data}
         if isinstance(template_data, Mapping):
             merged_data.update(template_data)
     else:
-        title, body, tag, merged_data = default_title, default_body, default_tag, default_data
+        title, body, tag, merged_data = (
+            default_title,
+            default_body,
+            default_tag,
+            default_data,
+        )
     filtered_data = {
-        key: value
-        for key, value in merged_data.items()
-        if value not in (None, "")
+        key: value for key, value in merged_data.items() if value not in (None, "")
     }
     return title, body, tag, filtered_data
 
@@ -333,7 +349,9 @@ async def notify_about_news(db: AsyncSession, news: News) -> int:
     }
     template = render_notification_template("news.new", template_payload)
     default_title = (
-        f"Новая новость: {news.title}" if getattr(news, "title", None) else "Новая новость"
+        f"Новая новость: {news.title}"
+        if getattr(news, "title", None)
+        else "Новая новость"
     )
     default_body = summary or "Откройте новость, чтобы узнать подробности."
     default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
@@ -342,7 +360,9 @@ async def notify_about_news(db: AsyncSession, news: News) -> int:
         body = str(template.get("body") or default_body)
         resolved_url = str(template.get("url") or url)
         tag = str(template.get("tag") or default_tag)
-        template_data = template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        template_data = (
+            template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        )
         payload_data = dict(template_data) if isinstance(template_data, Mapping) else {}
     else:
         title, body, resolved_url, tag = default_title, default_body, url, default_tag
@@ -373,7 +393,9 @@ async def notify_about_news(db: AsyncSession, news: News) -> int:
 
 
 async def notify_about_event(db: AsyncSession, event: Event) -> int:
-    summary = _plain_text(getattr(event, "description", None) or getattr(event, "about", None), limit=220)
+    summary = _plain_text(
+        getattr(event, "description", None) or getattr(event, "about", None), limit=220
+    )
     url = f"/events/{event.id}" if getattr(event, "id", None) else "/events"
     start_dt = _ensure_aware(getattr(event, "starts_at", None))
     start_local = start_dt.astimezone()
@@ -391,7 +413,9 @@ async def notify_about_event(db: AsyncSession, event: Event) -> int:
     }
     template = render_notification_template("events.new", template_payload)
     default_title = (
-        f"Новое мероприятие: {event.title}" if getattr(event, "title", None) else "Новое мероприятие"
+        f"Новое мероприятие: {event.title}"
+        if getattr(event, "title", None)
+        else "Новое мероприятие"
     )
     details = [start_local.strftime("%d.%m · %H:%M")]
     if getattr(event, "location", None):
@@ -412,7 +436,9 @@ async def notify_about_event(db: AsyncSession, event: Event) -> int:
         body = str(template.get("body") or default_body)
         resolved_url = str(template.get("url") or url)
         tag = str(template.get("tag") or default_tag)
-        template_data = template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        template_data = (
+            template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        )
         payload_data = dict(template_data) if isinstance(template_data, Mapping) else {}
     else:
         title, body, resolved_url, tag = default_title, default_body, url, default_tag

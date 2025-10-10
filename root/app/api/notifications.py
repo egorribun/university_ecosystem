@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.models import Notification, Schedule, User
+from app.schemas.schemas import NotificationOut, NotificationsListOut
 from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
 )
-from app.schemas.schemas import NotificationOut, NotificationsListOut
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
