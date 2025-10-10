@@ -1,4 +1,4 @@
-import { deleteSubscription, saveSubscription } from "@/api/notifications"
+import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
 
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 5
@@ -9,6 +9,7 @@ const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 
 const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
 const SERVICE_WORKER_READY_TIMEOUT_MS = 2000
+let cachedVapidPublicKey: string | null | undefined
 
 type NormalizedTopics = string[] | undefined
 
@@ -156,16 +157,32 @@ export async function resolveServiceWorkerRegistration(
   }
 }
 
-export async function fetchVapidPublicKey(): Promise<string | null> {
+export async function resolveVapidPublicKey(): Promise<string | null> {
+  if (cachedVapidPublicKey !== undefined) {
+    return cachedVapidPublicKey
+  }
+
   const rawKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
   if (typeof rawKey === "string") {
     const normalized = rawKey.trim()
-    if (normalized) return normalized
+    if (normalized) {
+      cachedVapidPublicKey = normalized
+      return cachedVapidPublicKey
+    }
   }
-  if (import.meta.env.DEV) {
-    console.warn("VITE_VAPID_PUBLIC_KEY is not configured")
+
+  try {
+    const serverKey = await getVapidPublicKey()
+    cachedVapidPublicKey = serverKey ?? null
+    if (!cachedVapidPublicKey && import.meta.env.DEV) {
+      console.warn("VAPID public key is not configured on the server")
+    }
+    return cachedVapidPublicKey
+  } catch (error) {
+    console.warn("Failed to fetch VAPID public key", error)
+    cachedVapidPublicKey = null
+    return null
   }
-  return null
 }
 
 export function urlBase64ToUint8Array(base64String: string) {
@@ -229,9 +246,8 @@ export async function ensurePushSubscription(
       }
     }
 
-    const key = (
-      options?.vapidPublicKey || (await fetchVapidPublicKey()) || ""
-    ).trim()
+    const resolvedKey = options?.vapidPublicKey ?? (await resolveVapidPublicKey())
+    const key = (resolvedKey ?? "").trim()
     if (!key) {
       return null
     }
