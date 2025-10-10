@@ -270,4 +270,46 @@ describe("usePushPreferences notifications flow", () => {
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("denied")
   })
+
+  it("asks user to confirm permission prompt when subscription is unavailable", async () => {
+    ensurePushSubscriptionMock.mockResolvedValue(null)
+    MockNotification.permission = "default"
+
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Подтвердите запрос на отправку уведомлений, чтобы получать пуши",
+        sev: "info",
+      }),
+    )
+    expect(result.current.notificationsEnabled).toBe(false)
+    expect(result.current.notificationPermission).toBe("default")
+  })
+
+  it("informs user when subscription cannot be created despite granted permission", async () => {
+    ensurePushSubscriptionMock.mockResolvedValue(null)
+    MockNotification.permission = "granted"
+
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Не удалось оформить подписку на push-уведомления",
+        sev: "error",
+      }),
+    )
+    expect(result.current.notificationsEnabled).toBe(false)
+    expect(result.current.notificationPermission).toBe("granted")
+  })
 })

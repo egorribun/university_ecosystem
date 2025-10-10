@@ -151,7 +151,18 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       })
       const permission = Notification.permission
       setNotificationPermission(permission)
-      if (permission !== "granted" || !sub) {
+      if (!sub) {
+        const text =
+          permission === "denied"
+            ? "Разрешите уведомления в настройках браузера, чтобы получать пуши"
+            : permission === "default"
+              ? "Подтвердите запрос на отправку уведомлений, чтобы получать пуши"
+              : "Не удалось оформить подписку на push-уведомления"
+        notify({ text, sev: permission === "granted" ? "error" : "info" })
+        setPushSubscription(sub)
+        return
+      }
+      if (permission !== "granted") {
         notify({
           text: "Разрешите уведомления в настройках браузера, чтобы получать пуши",
           sev: "info",
