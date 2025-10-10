@@ -10,7 +10,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "../api/client"
+import { isAxiosError } from "axios"
+import api from "../api/client"
 import {
   Typography, Button, Box, Stack, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -115,6 +116,37 @@ const EventCardComponent: FC<EventCardProps> = ({
 
   const [snack, setSnack] = useState<string>("")
 
+  const syncRegistrationState = useCallback(async (): Promise<
+    "registered" | "unregistered" | null
+  > => {
+    try {
+      const res = await api.get(`/events/${id}`)
+      const event = res.data
+      const nextRegistered = Boolean(event?.is_registered)
+      if (typeof event?.participant_count === "number") {
+        setCount(event.participant_count)
+      }
+      if (nextRegistered) {
+        const code = event?.my_qr_code
+        if (code) {
+          setQr(code)
+          try {
+            localStorage.setItem(qrKey(id, user), code)
+          } catch {}
+        }
+      } else {
+        setQr(undefined)
+        try {
+          localStorage.removeItem(qrKey(id, user))
+        } catch {}
+      }
+      setRegistered(nextRegistered)
+      return nextRegistered ? "registered" : "unregistered"
+    } catch {
+      return null
+    }
+  }, [id, user])
+
   useEffect(() => setRegistered(is_registered), [is_registered])
   useEffect(() => setCount(participant_count), [participant_count])
 
@@ -216,15 +248,32 @@ const EventCardComponent: FC<EventCardProps> = ({
     if (e) e.stopPropagation()
     setLoading(true)
     try {
-      const res = await axios.post("/events/attendance", { event_id: id })
+      const res = await api.post("/events/attendance", { event_id: id })
       const code: string = res.data.qr_code
       setRegistered(true)
       setQr(code)
       setCount((c) => c + 1)
       setSnack("Вы зарегистрированы на мероприятие")
       try { localStorage.setItem(qrKey(id, user), code) } catch {}
-    } catch {
-      setSnack("Не удалось зарегистрироваться")
+    } catch (error) {
+      const shouldResync =
+        isAxiosError(error) &&
+        (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK" || !error.response ||
+          (typeof error.response?.status === "number" && error.response.status >= 500))
+
+      if (shouldResync) {
+        const restored = await syncRegistrationState()
+        if (restored === "registered") {
+          setSnack("Вы зарегистрированы на мероприятие")
+          return
+        }
+      }
+
+      const detail =
+        (isAxiosError(error) && typeof error.response?.data?.detail === "string"
+          ? error.response?.data?.detail
+          : null) || "Не удалось зарегистрироваться"
+      setSnack(detail)
     } finally {
       setLoading(false)
     }
@@ -234,14 +283,31 @@ const EventCardComponent: FC<EventCardProps> = ({
     if (e) e.stopPropagation()
     setLoading(true)
     try {
-      await axios.delete("/events/attendance", { data: { event_id: id } })
+      await api.delete("/events/attendance", { data: { event_id: id } })
       setRegistered(false)
       setQr(undefined)
       setCount((c) => Math.max(0, c - 1))
       setSnack("Регистрация отменена")
       try { localStorage.removeItem(qrKey(id, user)) } catch {}
-    } catch {
-      setSnack("Не удалось отменить регистрацию")
+    } catch (error) {
+      const shouldResync =
+        isAxiosError(error) &&
+        (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK" || !error.response ||
+          (typeof error.response?.status === "number" && error.response.status >= 500))
+
+      if (shouldResync) {
+        const restored = await syncRegistrationState()
+        if (restored === "unregistered") {
+          setSnack("Регистрация отменена")
+          return
+        }
+      }
+
+      const detail =
+        (isAxiosError(error) && typeof error.response?.data?.detail === "string"
+          ? error.response?.data?.detail
+          : null) || "Не удалось отменить регистрацию"
+      setSnack(detail)
     } finally {
       setLoading(false)
     }
@@ -250,7 +316,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   const handleDelete = async () => {
     setLoading(true)
     try {
-      await axios.delete(`/events/${id}`)
+      await api.delete(`/events/${id}`)
       try { localStorage.removeItem(qrKey(id, user)) } catch {}
       setSnack("Мероприятие удалено")
       onChange && onChange()
@@ -270,7 +336,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         setImageLoading(true)
         const data = new FormData()
         data.append("file", newImage)
-        const uploadRes = await axios.post(`/events/upload_image`, data, {
+        const uploadRes = await api.post(`/events/upload_image`, data, {
           headers: { "Content-Type": "multipart/form-data" }
         })
         imgUrl = uploadRes.data.url
@@ -282,7 +348,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         starts_at: normalizeDate(editData.starts_at),
         ends_at: normalizeDate(editData.ends_at)
       }
-      await axios.patch(`/events/${id}`, payload)
+      await api.patch(`/events/${id}`, payload)
       setEditData((prev) => ({ ...prev, image_url: imgUrl }))
       closeEditDialog()
       onChange && onChange()
@@ -552,7 +618,14 @@ const EventCardComponent: FC<EventCardProps> = ({
                 <SmartImage
                   srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
                   alt="QR"
-                  style={{ height: 64, width: 64, borderRadius: 8, background: "#fff", cursor: "pointer", display: "block" }}
+                  style={{
+                    width: "clamp(52px, 8vw, 76px)",
+                    height: "clamp(52px, 8vw, 76px)",
+                    borderRadius: 8,
+                    background: "#fff",
+                    cursor: "pointer",
+                    display: "block",
+                  }}
                   onClick={(e) => {
                     e.stopPropagation()
                     setQrOpen(true)
@@ -581,34 +654,41 @@ const EventCardComponent: FC<EventCardProps> = ({
                 }) as DialogProps["onClose"]}
                 PaperProps={{
                   onClick: (event: ReactMouseEvent<HTMLDivElement>) => event.stopPropagation(),
-                  sx: { borderRadius: 2, p: 2 }
+                  sx: {
+                    borderRadius: 2,
+                    p: { xs: 2, sm: 3 },
+                    maxWidth: "min(92vw, 92vh)",
+                    width: "fit-content",
+                    mx: { xs: 2, sm: "auto" },
+                  }
                 }}
                 BackdropProps={{ sx: { backdropFilter: "blur(2px)" } }}
               >
                 <Box display="flex" flexDirection="column" alignItems="center">
                   <Box
                     sx={{
-                      p: 2,
+                      p: { xs: 1.5, sm: 2.5 },
                       borderRadius: 2,
                       bgcolor: "#fff",
                       boxShadow: 1,
+                      width: "100%",
+                      maxWidth: "min(76vw, 76vh, 520px)",
                     }}
                   >
-                  <Box
-                    component="img"
-                    src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                    alt="QR"
-                    sx={{
-                      width: "clamp(220px, calc(min(85vw, 85vh) - 32px), 520px)",
-                      aspectRatio: "1 / 1",
-                      display: "block",
-                      userSelect: "none"
-                    }}
-                    loading="eager"
-                    decoding="async"
-                    width={600}
-                    height={600}
-                  />
+                    <Box
+                      component="img"
+                      src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
+                      alt="QR"
+                      sx={{
+                        width: "min(70vw, 70vh, 460px)",
+                        maxWidth: "100%",
+                        aspectRatio: "1 / 1",
+                        display: "block",
+                        userSelect: "none",
+                      }}
+                      loading="eager"
+                      decoding="async"
+                    />
                   </Box>
                   <Button sx={{ mt: 2 }} variant="outlined" onClick={() => setQrOpen(false)}>
                     Закрыть
