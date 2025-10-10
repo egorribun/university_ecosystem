@@ -21,13 +21,13 @@ from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
+from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import (
     normalize_topic,
     normalize_topics,
     resolve_topics,
     subscription_supports_topic,
 )
-from app.services.push_schema import ensure_push_subscription_schema
 from app.services.webpush import WebPushResult, send_web_push
 
 logger = logging.getLogger(__name__)
