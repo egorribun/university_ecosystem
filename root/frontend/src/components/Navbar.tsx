@@ -476,12 +476,28 @@ const Navbar = () => {
               <button
                 type="button"
                 className="menu-btn-settings"
-                style={{ background: "none", border: "none", padding: 0, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 22 }}
                 onClick={() => go("/settings")}
                 aria-label="Настройки"
                 title="Настройки"
               >
-                <span role="img" aria-label="Настройки">⚙️</span>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <g stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+                    <path d="M5 7h14" />
+                    <path d="M5 12h14" />
+                    <path d="M5 17h14" />
+                  </g>
+                  <circle cx="9" cy="7" r="2" fill="currentColor" />
+                  <circle cx="15" cy="12" r="2" fill="currentColor" />
+                  <circle cx="11" cy="17" r="2" fill="currentColor" />
+                </svg>
               </button>
             </div>
           ))}
