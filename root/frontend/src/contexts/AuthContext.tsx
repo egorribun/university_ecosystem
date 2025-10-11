@@ -10,7 +10,11 @@ import {
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
-import { softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
+import {
+  hasPushConsent,
+  softSyncPushSubscription,
+  unsubscribePush,
+} from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 
@@ -298,7 +302,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(profile ?? null)
 
         if (typeof window !== "undefined" && typeof Notification !== "undefined") {
-          if (Notification.permission === "granted") {
+          if (Notification.permission === "granted" && hasPushConsent()) {
             void (async () => {
               try {
                 await softSyncPushSubscription()
