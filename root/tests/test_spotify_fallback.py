@@ -241,3 +241,46 @@ async def test_now_playing_refreshes_when_access_token_missing(
     await db_session.refresh(user)
     assert user.spotify_access_token == "fresh"
     assert user.spotify_is_connected is True
+
+
+async def test_now_playing_disconnects_on_unauthorized_response(
+    async_client: AsyncClient, user_factory, db_session, monkeypatch
+) -> None:
+    password = "SpotifyP@ss5"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    user.spotify_access_token = "valid"
+    user.spotify_refresh_token = "refresh"
+    user.spotify_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    user.spotify_is_connected = True
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    class UnauthorizedResponse:
+        status_code = 401
+        headers: dict[str, str] = {}
+
+        def json(self) -> dict[str, str]:
+            return {"error": {"status": 401, "message": "The access token expired"}}
+
+    original_get = httpx.AsyncClient.get
+
+    async def fake_get(self, url, *args, **kwargs):
+        if str(url) == "https://api.spotify.com/v1/me/player/currently-playing":
+            return UnauthorizedResponse()
+        return await original_get(self, url, *args, **kwargs)
+
+    monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
+
+    headers = await _login(async_client, user, password)
+
+    response = await async_client.get("/spotify/now-playing", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Требуется переподключить Spotify"
+
+    await db_session.refresh(user)
+    assert user.spotify_is_connected is False
+    assert user.spotify_access_token is None
+    assert user.spotify_refresh_token is None
