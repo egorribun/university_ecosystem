@@ -11,6 +11,8 @@ import {
 } from "vitest"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 
+const AUTH_USER_ID = 123
+
 const hoistedMocks = vi.hoisted(() => ({
   deleteSubscriptionMock: vi.fn(),
   ensurePushSubscriptionMock: vi.fn(),
@@ -31,6 +33,8 @@ const hoistedMocks = vi.hoisted(() => ({
   isPushSupportedMock: ReturnType<typeof vi.fn>
 }
 
+const authState: { user: any } = { user: { id: AUTH_USER_ID } }
+
 vi.mock("@/api/notifications", async () => {
   const actual = await vi.importActual<typeof import("@/api/notifications")>("@/api/notifications")
   return {
@@ -50,6 +54,16 @@ vi.mock("@/push/subscribe", async () => {
     setPersistedTopics: hoistedMocks.setPersistedTopicsMock,
     hasPushConsent: hoistedMocks.hasPushConsentMock,
     isPushSupported: hoistedMocks.isPushSupportedMock,
+  }
+})
+
+vi.mock("@/contexts/AuthContext", async () => {
+  const actual = await vi.importActual<typeof import("@/contexts/AuthContext")>(
+    "@/contexts/AuthContext",
+  )
+  return {
+    ...actual,
+    useAuth: () => authState,
   }
 })
 
@@ -119,6 +133,8 @@ beforeEach(() => {
     configurable: true,
     writable: true,
   })
+
+  authState.user = { id: AUTH_USER_ID }
 
   const pushManager = {
     getSubscription: vi.fn(),
@@ -260,7 +276,10 @@ describe("usePushPreferences notifications flow", () => {
     expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
     const updateArgs = ensurePushSubscriptionMock.mock.calls[1][0]
     expect(updateArgs.topics).toEqual(["schedule", "news"])
-    expect(setPersistedTopicsMock).toHaveBeenCalledWith(["schedule", "news"])
+    expect(setPersistedTopicsMock).toHaveBeenCalledWith(
+      ["schedule", "news"],
+      expect.objectContaining({ userId: AUTH_USER_ID }),
+    )
     expect(result.current.topicState.system).toBe(false)
   })
 
@@ -276,7 +295,10 @@ describe("usePushPreferences notifications flow", () => {
       await handler({} as ChangeEvent<HTMLInputElement>, false)
     })
 
-    expect(setPersistedTopicsMock).toHaveBeenCalledWith(["schedule", "events", "system"])
+    expect(setPersistedTopicsMock).toHaveBeenCalledWith(
+      ["schedule", "events", "system"],
+      expect.objectContaining({ userId: AUTH_USER_ID }),
+    )
     expect(result.current.topicState.news).toBe(false)
   })
 

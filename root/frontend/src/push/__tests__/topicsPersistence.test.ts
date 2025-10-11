@@ -85,6 +85,15 @@ describe("push topic persistence", () => {
     expect(Object.keys(raw?.perUser ?? {})).toEqual(["2"])
   })
 
+  it("reads stored topics for a specific user even when none is active", () => {
+    setActiveUser(5)
+    setPersistedTopics(["system"])
+
+    setActiveUser(null)
+
+    expect(getPersistedTopics({ userId: 5 })).toEqual(["system"])
+  })
+
   it("stores shared topics when user is unknown", () => {
     setActiveUser(null)
     setPersistedTopics(["system"])

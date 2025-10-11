@@ -15,6 +15,17 @@ let cachedVapidPublicKey: string | null | undefined
 
 type NormalizedTopics = string[] | undefined
 
+type MaybeUserId = string | number | null | undefined
+
+function normalizeUserId(input: MaybeUserId): string | null {
+  if (input == null) return null
+  if (typeof input === "string" || typeof input === "number") {
+    const normalized = String(input).trim()
+    return normalized ? normalized : null
+  }
+  return null
+}
+
 function normalizeTopics(input: unknown): string[] | undefined {
   if (!Array.isArray(input)) return undefined
   const normalized: string[] = []
@@ -39,13 +50,8 @@ function readActiveUserId(): string | null {
     const data =
       parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data?: unknown }).data : parsed
     if (!data || typeof data !== "object") return null
-    const id = (data as Record<string, unknown>).id
-    if (id == null) return null
-    if (typeof id === "string" || typeof id === "number") {
-      const normalized = String(id).trim()
-      return normalized ? normalized : null
-    }
-    return null
+    const id = (data as Record<string, unknown>).id as MaybeUserId
+    return normalizeUserId(id)
   } catch {
     return null
   }
@@ -53,10 +59,10 @@ function readActiveUserId(): string | null {
 
 function parseTopicsPayload(
   raw: string | null,
-  options?: { userId?: string | null },
+  options?: { userId?: MaybeUserId },
 ): string[] | undefined {
   if (!raw) return undefined
-  const userId = options?.userId ?? readActiveUserId()
+  const userId = normalizeUserId(options?.userId) ?? readActiveUserId()
   try {
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) {
@@ -94,12 +100,12 @@ function parseTopicsPayload(
   }
 }
 
-export function parseStoredTopics(raw: string | null): NormalizedTopics {
-  return parseTopicsPayload(raw)
+export function parseStoredTopics(raw: string | null, options?: { userId?: MaybeUserId }): NormalizedTopics {
+  return parseTopicsPayload(raw, options)
 }
 
-export function getPersistedTopics(): string[] | undefined {
-  return parseTopicsPayload(getStoredValue(PUSH_TOPICS_STORAGE_KEY)) ?? undefined
+export function getPersistedTopics(options?: { userId?: MaybeUserId }): string[] | undefined {
+  return parseTopicsPayload(getStoredValue(PUSH_TOPICS_STORAGE_KEY), options) ?? undefined
 }
 
 function buildTopicsPayload(
@@ -285,8 +291,12 @@ function buildTopicsPayload(
   return JSON.stringify(payload)
 }
 
-export function setPersistedTopics(topics: string[] | null | undefined): void {
-  const userId = readActiveUserId()
+export function setPersistedTopics(
+  topics: string[] | null | undefined,
+  options?: { userId?: MaybeUserId },
+): void {
+  const normalizedUserId = normalizeUserId(options?.userId)
+  const userId = normalizedUserId ?? readActiveUserId()
   const currentRaw = getStoredValue(PUSH_TOPICS_STORAGE_KEY)
   const payload = buildTopicsPayload(topics, currentRaw, userId)
   if (payload === null) {

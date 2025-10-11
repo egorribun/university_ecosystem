@@ -12,7 +12,7 @@ import {
   setPersistedTopics,
   setPushConsent,
 } from "@/push/subscribe"
-import { currentUserQueryKey } from "@/contexts/AuthContext"
+import { currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
 
 export type NotificationTopicKey = "news" | "schedule" | "events" | "system"
@@ -53,8 +53,10 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
 
   const topicKeys = useMemo(() => NOTIFICATION_TOPIC_KEYS, [])
+  const { user } = useAuth()
+  const activeUserId = user?.id ?? null
   const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(() => {
-    const stored = getPersistedTopics()
+    const stored = getPersistedTopics({ userId: activeUserId })
     if (stored === undefined) {
       return { ...DEFAULT_NOTIFICATION_TOPICS }
     }
@@ -186,7 +188,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         setPushSubscription(sub)
         return
       }
-      const persistedTopics = getPersistedTopics() ?? selectedTopics
+      const persistedTopics = getPersistedTopics({ userId: activeUserId }) ?? selectedTopics
       applyServerTopics(persistedTopics)
       setPushSubscription(sub)
       setPushConsent(true)
@@ -199,7 +201,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       setPushBusy(false)
       setPushInitializing(false)
     }
-  }, [applyServerTopics, invalidatePushQueries, notify, selectedTopics])
+  }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics])
 
   const disableNotifications = useCallback(async () => {
     if (!isPushSupported()) {
@@ -258,7 +260,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         const previousState = topicState
         const nextState = { ...topicState, [key]: checked }
         setTopicState(nextState)
-        setPersistedTopics(topicKeys.filter(topic => nextState[topic]))
+        setPersistedTopics(topicKeys.filter(topic => nextState[topic]), { userId: activeUserId })
         if (!notificationsEnabled || pushBusy) return
         if (!isPushSupported()) {
           setTopicState(previousState)
@@ -288,7 +290,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
             setTopicState(previousState)
             return
           }
-          const persisted = getPersistedTopics() ?? topicsToSend
+          const persisted = getPersistedTopics({ userId: activeUserId }) ?? topicsToSend
           applyServerTopics(persisted)
           setPushSubscription(sub)
           invalidatePushQueries()
@@ -308,6 +310,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         }
       },
     [
+      activeUserId,
       applyServerTopics,
       invalidatePushQueries,
       notificationsEnabled,
@@ -385,7 +388,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           return
         }
         setPushInitializing(true)
-        const storedTopics = getPersistedTopics()
+        const storedTopics = getPersistedTopics({ userId: activeUserId })
         if (storedTopics !== undefined) {
           applyServerTopics(storedTopics)
         }
@@ -409,7 +412,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           if (consented) {
             setPushConsent(true)
           }
-          const persisted = getPersistedTopics()
+          const persisted = getPersistedTopics({ userId: activeUserId })
           if (persisted !== undefined) {
             applyServerTopics(persisted)
           }
@@ -426,7 +429,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     return () => {
       active = false
     }
-  }, [applyServerTopics])
+  }, [activeUserId, applyServerTopics])
 
   return {
     topicKeys,
