@@ -6,7 +6,9 @@ from app.auth.security import get_password_hash
 from app.models.models import Notification
 
 
-async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, email: str, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -46,15 +48,23 @@ async def test_clear_notifications_removes_only_current_user(
     assert body["deleted"] == 2
 
     remaining_user = (
-        await db_session.execute(
-            select(Notification).where(Notification.user_id == user.id)
+        (
+            await db_session.execute(
+                select(Notification).where(Notification.user_id == user.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     remaining_other = (
-        await db_session.execute(
-            select(Notification).where(Notification.user_id == other.id)
+        (
+            await db_session.execute(
+                select(Notification).where(Notification.user_id == other.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     assert remaining_user == []
     assert len(remaining_other) == 1
