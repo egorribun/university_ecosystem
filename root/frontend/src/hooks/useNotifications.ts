@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 
 export type NotificationItem = {
@@ -43,13 +43,19 @@ export function useNotifications() {
   })
   const markRead = useMutation({
     mutationFn: async (id: number) => {
-      await api.post(`/notifications/${id}/read`)
+      await api.patch(`/notifications/${id}/read`)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
   const markAll = useMutation({
     mutationFn: async () => {
       await api.post("/notifications/read-all")
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  })
+  const clearAll = useMutation({
+    mutationFn: async () => {
+      await api.delete("/notifications")
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
@@ -61,5 +67,8 @@ export function useNotifications() {
     isLoading: list.isLoading,
     markRead: (id: number) => markRead.mutate(id),
     markAll: () => markAll.mutate(),
+    clearAll: clearAll.mutate,
+    isMarkingAll: markAll.isPending,
+    isClearing: clearAll.isPending,
   }
 }
