@@ -6,6 +6,8 @@ const PERSIST_BASE_DELAY_MS = 500
 const PUSH_LAST_SYNC_STORAGE_KEY = "push:last_sync"
 const PUSH_SUB_STORAGE_KEY = "push:last_payload"
 const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
+const PUSH_TOPICS_STORAGE_VERSION = 2
+const PROFILE_CACHE_STORAGE_KEY = "ecosystem.profile.cache.v1"
 
 const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
 const SERVICE_WORKER_READY_TIMEOUT_MS = 2000
@@ -13,46 +15,285 @@ let cachedVapidPublicKey: string | null | undefined
 
 type NormalizedTopics = string[] | undefined
 
-export function parseStoredTopics(raw: string | null): NormalizedTopics {
+function normalizeTopics(input: unknown): string[] | undefined {
+  if (!Array.isArray(input)) return undefined
+  const normalized: string[] = []
+  const seen = new Set<string>()
+  for (const entry of input) {
+    if (entry == null) continue
+    const trimmed = entry.toString().trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    normalized.push(trimmed)
+  }
+  normalized.sort()
+  return normalized
+}
+
+function readActiveUserId(): string | null {
+  if (typeof localStorage === "undefined") return null
+  try {
+    const rawProfile = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    if (!rawProfile) return null
+    const parsed = JSON.parse(rawProfile)
+    const data =
+      parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data?: unknown }).data : parsed
+    if (!data || typeof data !== "object") return null
+    const id = (data as Record<string, unknown>).id
+    if (id == null) return null
+    if (typeof id === "string" || typeof id === "number") {
+      const normalized = String(id).trim()
+      return normalized ? normalized : null
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function parseTopicsPayload(
+  raw: string | null,
+  options?: { userId?: string | null },
+): string[] | undefined {
   if (!raw) return undefined
+  const userId = options?.userId ?? readActiveUserId()
   try {
     const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return undefined
-    const topics: string[] = []
-    for (const entry of parsed) {
-      if (typeof entry !== "string") continue
-      const normalized = entry.trim()
-      if (!normalized) continue
-      topics.push(normalized)
+    if (Array.isArray(parsed)) {
+      return normalizeTopics(parsed)
     }
-    return topics.length ? topics : []
+    if (!parsed || typeof parsed !== "object") return undefined
+
+    const payload = parsed as {
+      version?: unknown
+      topics?: unknown
+      shared?: unknown
+      perUser?: unknown
+    }
+
+    if (userId) {
+      const perUser = payload.perUser
+      if (perUser && typeof perUser === "object") {
+        const userTopics = normalizeTopics((perUser as Record<string, unknown>)[userId])
+        if (userTopics !== undefined) {
+          return userTopics
+        }
+      }
+    }
+
+    const shared =
+      "shared" in payload && payload.shared !== undefined ? payload.shared : (payload as { topics?: unknown }).topics
+    const sharedTopics = normalizeTopics(shared)
+    if (sharedTopics !== undefined) {
+      return sharedTopics
+    }
+
+    return undefined
   } catch {
     return undefined
   }
 }
 
+export function parseStoredTopics(raw: string | null): NormalizedTopics {
+  return parseTopicsPayload(raw)
+}
+
 export function getPersistedTopics(): string[] | undefined {
-  return parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY)) ?? undefined
+  return parseTopicsPayload(getStoredValue(PUSH_TOPICS_STORAGE_KEY)) ?? undefined
+}
+
+function buildTopicsPayload(
+  nextTopics: string[] | null | undefined,
+  existingRaw: string | null,
+  userId: string | null,
+): string | null {
+  if (nextTopics == null) {
+    if (!userId) {
+      if (!existingRaw) {
+        return null
+      }
+
+      try {
+        const parsed = JSON.parse(existingRaw)
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          return null
+        }
+
+        const payload = parsed as {
+          perUser?: unknown
+        }
+
+        if (!payload.perUser || typeof payload.perUser !== "object") {
+          return null
+        }
+
+        const perUserEntries: Record<string, string[]> = {}
+        for (const [key, value] of Object.entries(payload.perUser as Record<string, unknown>)) {
+          const normalizedEntry = normalizeTopics(value)
+          if (normalizedEntry !== undefined) {
+            perUserEntries[key] = normalizedEntry
+          }
+        }
+
+        if (Object.keys(perUserEntries).length === 0) {
+          return null
+        }
+
+        return JSON.stringify({
+          version: PUSH_TOPICS_STORAGE_VERSION,
+          perUser: perUserEntries,
+        })
+      } catch {
+        return null
+      }
+    }
+
+    if (!existingRaw) {
+      return null
+    }
+
+    try {
+      const parsed = JSON.parse(existingRaw)
+      if (Array.isArray(parsed)) {
+        return null
+      }
+      if (!parsed || typeof parsed !== "object") {
+        return null
+      }
+
+      const payload = parsed as {
+        version?: unknown
+        shared?: unknown
+        topics?: unknown
+        perUser?: unknown
+      }
+
+      const sharedTopics = normalizeTopics(
+        "shared" in payload && payload.shared !== undefined
+          ? payload.shared
+          : (payload as { topics?: unknown }).topics,
+      )
+
+      const perUserEntries: Record<string, string[]> = {}
+      if (payload.perUser && typeof payload.perUser === "object") {
+        for (const [key, value] of Object.entries(payload.perUser as Record<string, unknown>)) {
+          if (key === userId) continue
+          const normalizedEntry = normalizeTopics(value)
+          if (normalizedEntry !== undefined) {
+            perUserEntries[key] = normalizedEntry
+          }
+        }
+      }
+
+      const hasPerUser = Object.keys(perUserEntries).length > 0
+
+      if (!hasPerUser && sharedTopics === undefined) {
+        return null
+      }
+
+      const normalizedPayload: Record<string, unknown> = {
+        version: PUSH_TOPICS_STORAGE_VERSION,
+      }
+
+      if (hasPerUser) {
+        normalizedPayload.perUser = perUserEntries
+      }
+
+      if (sharedTopics !== undefined) {
+        normalizedPayload.shared = sharedTopics
+      }
+
+      return JSON.stringify(normalizedPayload)
+    } catch {
+      return null
+    }
+  }
+
+  const normalizedTopics = normalizeTopics(nextTopics) ?? []
+
+  const payload: Record<string, unknown> = {
+    version: PUSH_TOPICS_STORAGE_VERSION,
+  }
+
+  if (userId) {
+    const perUser: Record<string, string[]> = {}
+
+    if (existingRaw) {
+      try {
+        const parsed = JSON.parse(existingRaw)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          if (parsed.perUser && typeof parsed.perUser === "object") {
+            for (const [key, value] of Object.entries(parsed.perUser as Record<string, unknown>)) {
+              const normalizedEntry = normalizeTopics(value)
+              if (normalizedEntry !== undefined) {
+                perUser[key] = normalizedEntry
+              }
+            }
+          }
+          const sharedTopics = normalizeTopics(
+            "shared" in parsed && parsed.shared !== undefined
+              ? parsed.shared
+              : (parsed as { topics?: unknown }).topics,
+          )
+          if (sharedTopics !== undefined) {
+            payload.shared = sharedTopics
+          }
+        } else if (Array.isArray(parsed)) {
+          const sharedTopics = normalizeTopics(parsed)
+          if (sharedTopics !== undefined) {
+            payload.shared = sharedTopics
+          }
+        }
+      } catch {
+        /* ignore malformed data */
+      }
+    }
+
+    perUser[userId] = normalizedTopics
+
+    if (Object.keys(perUser).length > 0) {
+      payload.perUser = perUser
+    }
+  } else {
+    const perUserEntries: Record<string, string[]> = {}
+
+    if (existingRaw) {
+      try {
+        const parsed = JSON.parse(existingRaw)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          if (parsed.perUser && typeof parsed.perUser === "object") {
+            for (const [key, value] of Object.entries(parsed.perUser as Record<string, unknown>)) {
+              const normalizedEntry = normalizeTopics(value)
+              if (normalizedEntry !== undefined) {
+                perUserEntries[key] = normalizedEntry
+              }
+            }
+          }
+        }
+      } catch {
+        /* ignore malformed data */
+      }
+    }
+
+    if (Object.keys(perUserEntries).length > 0) {
+      payload.perUser = perUserEntries
+    }
+
+    payload.shared = normalizedTopics
+  }
+
+  return JSON.stringify(payload)
 }
 
 export function setPersistedTopics(topics: string[] | null | undefined): void {
-  if (topics == null) {
+  const userId = readActiveUserId()
+  const currentRaw = getStoredValue(PUSH_TOPICS_STORAGE_KEY)
+  const payload = buildTopicsPayload(topics, currentRaw, userId)
+  if (payload === null) {
     removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
     return
   }
-
-  const normalized: string[] = []
-  const seen = new Set<string>()
-  for (const topic of topics) {
-    if (!topic) continue
-    const trimmed = topic.toString().trim()
-    if (!trimmed || seen.has(trimmed)) continue
-    seen.add(trimmed)
-    normalized.push(trimmed)
-  }
-
-  normalized.sort()
-  setStoredValue(PUSH_TOPICS_STORAGE_KEY, JSON.stringify(normalized))
+  setStoredValue(PUSH_TOPICS_STORAGE_KEY, payload)
 }
 
 function sleep(ms: number) {
