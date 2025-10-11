@@ -11,12 +11,7 @@ import { isAxiosError } from "axios";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNotifications } from "@/hooks/useNotifications";
-import {
-  usePushPreferences,
-  NOTIFICATION_TOPIC_LABELS,
-} from "@/hooks/usePushPreferences";
-import type { NotificationTopicKey } from "@/hooks/usePushPreferences";
+import { usePushPreferences } from "@/hooks/usePushPreferences";
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
 import api from "../api/client";
 import {
@@ -46,8 +41,6 @@ import {
   Switch,
   FormGroup,
   FormControl,
-  FormHelperText,
-  Link,
   CircularProgress
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
@@ -57,19 +50,10 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows";
 import LogoutIcon from "@mui/icons-material/Logout";
-import type { JSX } from "react";
 
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";
-import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
-import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
-import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import EventAvailableIcon from "@mui/icons-material/EventAvailable";
-import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
-import CelebrationOutlinedIcon from "@mui/icons-material/CelebrationOutlined";
-import SecurityOutlinedIcon from "@mui/icons-material/SecurityOutlined";
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
 import spotifyLogo from "@/assets/spotify_icon.png";
@@ -80,25 +64,6 @@ type ThemeMode = "system" | "light" | "dark";
 
 const DEFAULT_DND_START = "22:00";
 const DEFAULT_DND_END = "07:00";
-
-const TOPIC_DETAILS: Record<NotificationTopicKey, { description: string; icon: JSX.Element }> = {
-  schedule: {
-    description: "Напоминания о предстоящих парах и изменения расписания.",
-    icon: <EventAvailableIcon fontSize="small" />,
-  },
-  news: {
-    description: "Свежие новости университета и важные объявления.",
-    icon: <ArticleOutlinedIcon fontSize="small" />,
-  },
-  events: {
-    description: "Анонсы мероприятий, встреч и открытых лекций.",
-    icon: <CelebrationOutlinedIcon fontSize="small" />,
-  },
-  system: {
-    description: "Сервисные сообщения о безопасности и работе приложения.",
-    icon: <SecurityOutlinedIcon fontSize="small" />,
-  },
-};
 
 const toInputTime = (value: unknown): string => {
   if (!value) return "";
@@ -124,7 +89,6 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
   const queryClient = useQueryClient();
-  const { unreadCount } = useNotifications();
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
 
@@ -132,20 +96,14 @@ export default function Settings() {
   const theme = (storedMode ?? "system") as ThemeMode;
 
   const {
-    topicKeys,
-    topicState,
     pushSupported,
     notificationPermission,
     notificationsEnabled,
     pushBusy,
     pushInitializing,
     permissionText,
-    selectedTopicsDescription,
     enableNotifications,
     disableNotifications,
-    handleTopicToggle,
-    safariIOS,
-    safariGuideUrl
   } = usePushPreferences({ onNotify: setSnack });
 
   const [dndEnabled, setDndEnabled] = useState(false);
@@ -562,15 +520,6 @@ export default function Settings() {
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                         После изменения настроек браузера нажмите «Проверить разрешение», чтобы обновить статус.
                       </Typography>
-                      {safariIOS && (
-                        <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления.{" "}
-                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
-                            Инструкция
-                          </Link>
-                          .
-                        </Alert>
-                      )}
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                         <Button
                           variant="contained"
@@ -609,15 +558,6 @@ export default function Settings() {
                           Текущее состояние: {permissionText}.
                         </Typography>
                       </Stack>
-                      {safariIOS && (
-                        <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления.{" "}
-                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
-                            Инструкция
-                          </Link>
-                          .
-                        </Alert>
-                      )}
                     </Stack>
                   ) : (
                     <>
@@ -631,177 +571,50 @@ export default function Settings() {
                                 disabled={pushBusy || pushInitializing}
                               />
                             }
-                            label={
-                              <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                                {notificationsEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
-                                <span>Включить уведомления</span>
-                              </Stack>
-                            }
+                            label={<span style={{ color: "var(--page-text)" }}>Включить уведомления</span>}
                           />
                         </FormGroup>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          Разрешение браузера: {permissionText}
-                        </FormHelperText>
                       </FormControl>
 
-                      <FormControl
-                        component="fieldset"
-                        variant="standard"
-                        disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                        sx={{
-                          opacity: notificationsEnabled ? 1 : 0.6,
-                          transition: "opacity 0.2s ease",
-                        }}
+                      <FormControl component="fieldset" variant="standard">
+                        <FormGroup>
+                          <FormControlLabel
+                            control={
+                              <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
+                            }
+                            label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
+                          />
+                        </FormGroup>
+                      </FormControl>
+
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.5}
+                        alignItems={{ sm: "center" }}
                       >
-                        <Paper
-                          variant="outlined"
-                          sx={{
-                            borderRadius: 2,
-                            bgcolor: "transparent",
-                            borderColor: "var(--glass-border)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <List disablePadding>
-                            {topicKeys.map((key, index) => {
-                              const meta = TOPIC_DETAILS[key];
-                              const label = NOTIFICATION_TOPIC_LABELS[key];
-                              return (
-                                <ListItem
-                                  key={key}
-                                  divider={index !== topicKeys.length - 1}
-                                  sx={{
-                                    py: 1.4,
-                                    pl: 1.2,
-                                    pr: { xs: 1.5, sm: 2 },
-                                    color: "var(--page-text)",
-                                  }}
-                                  secondaryAction={
-                                    <Switch
-                                      edge="end"
-                                      checked={Boolean(topicState[key])}
-                                      onChange={handleTopicToggle(key)}
-                                      disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                                      inputProps={{
-                                        "aria-label": `Тема уведомлений ${label}`,
-                                      }}
-                                    />
-                                  }
-                                >
-                                  <ListItemAvatar sx={{ minWidth: 56 }}>
-                                    <Avatar
-                                      sx={{
-                                        bgcolor: "var(--glass-bg)",
-                                        color: "var(--link-color)",
-                                        width: 40,
-                                        height: 40,
-                                      }}
-                                    >
-                                      {meta?.icon}
-                                    </Avatar>
-                                  </ListItemAvatar>
-                                  <ListItemText
-                                    primary={
-                                      <Typography
-                                        variant="subtitle1"
-                                        fontWeight={600}
-                                        sx={{ color: "var(--page-text)" }}
-                                      >
-                                        {label}
-                                      </Typography>
-                                    }
-                                    secondary={
-                                      meta?.description ? (
-                                        <Typography
-                                          variant="body2"
-                                          sx={{ color: "var(--page-text)", opacity: 0.72 }}
-                                        >
-                                          {meta.description}
-                                        </Typography>
-                                      ) : null
-                                    }
-                                  />
-                                </ListItem>
-                              );
-                            })}
-                          </List>
-                        </Paper>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 1 }}>
-                          Активные темы: {selectedTopicsDescription}
-                        </FormHelperText>
-                      </FormControl>
-
-                      <Divider sx={{ my: 1.2 }} />
-
-                      <Stack spacing={1.2}>
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                          <DoNotDisturbOnIcon fontSize="small" />
-                          <Typography variant="subtitle1" sx={{ color: "var(--page-text)" }}>
-                            Режим «Не беспокоить»
-                          </Typography>
-                        </Stack>
-
-                        <FormControl component="fieldset" variant="standard">
-                          <FormGroup>
-                            <FormControlLabel
-                              control={
-                                <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
-                              }
-                              label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
-                            />
-                          </FormGroup>
-                          <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                            Уведомления будут доставляться без звука в указанный интервал.
-                          </FormHelperText>
-                        </FormControl>
-
-                        <Stack
-                          direction={{ xs: "column", sm: "row" }}
-                          spacing={1.5}
-                          alignItems={{ sm: "center" }}
-                        >
-                          <TextField
-                            type="time"
-                            label="С"
-                            value={dndStart}
-                            onChange={handleDndStartChange}
-                            onBlur={handleDndStartBlur}
-                            disabled={!dndEnabled || dndSaving}
-                            size="small"
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ maxWidth: { xs: "100%", sm: 200 } }}
-                          />
-                          <TextField
-                            type="time"
-                            label="До"
-                            value={dndEnd}
-                            onChange={handleDndEndChange}
-                            onBlur={handleDndEndBlur}
-                            disabled={!dndEnabled || dndSaving}
-                            size="small"
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ maxWidth: { xs: "100%", sm: 200 } }}
-                          />
-                        </Stack>
-
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)" }}>
-                          Интервал задаётся в часовом поясе устройства и может пересекать полночь.
-                        </FormHelperText>
-
-                        <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ color: "var(--page-text)" }}>
-                          <InfoOutlinedIcon fontSize="small" sx={{ mt: 0.3 }} />
-                          <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                            На iOS при установке веб-приложения как PWA уведомления часто приходят без звука — это
-                            ограничение системы.
-                          </Typography>
-                        </Stack>
+                        <TextField
+                          type="time"
+                          label="С"
+                          value={dndStart}
+                          onChange={handleDndStartChange}
+                          onBlur={handleDndStartBlur}
+                          disabled={!dndEnabled || dndSaving}
+                          size="small"
+                          InputLabelProps={{ shrink: true }}
+                          sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                        />
+                        <TextField
+                          type="time"
+                          label="До"
+                          value={dndEnd}
+                          onChange={handleDndEndChange}
+                          onBlur={handleDndEndBlur}
+                          disabled={!dndEnabled || dndSaving}
+                          size="small"
+                          InputLabelProps={{ shrink: true }}
+                          sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                        />
                       </Stack>
-
-                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        {notificationsEnabled
-                          ? `Непрочитанные: ${unreadCount}.`
-                          : "Уведомления сейчас отключены."}
-                      </Typography>
                     </>
                   )}
                 </Stack>
