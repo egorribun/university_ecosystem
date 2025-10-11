@@ -13,12 +13,23 @@ import {
 } from "@mui/material"
 import NotificationsIcon from "@mui/icons-material/Notifications"
 import DoneIcon from "@mui/icons-material/Done"
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep"
 import { useNotifications } from "@/hooks/useNotifications"
 
 export default function NotificationsBell() {
-  const { data, unreadCount, isLoading, markRead, markAll } = useNotifications()
+  const {
+    data,
+    unreadCount,
+    isLoading,
+    markRead,
+    markAll,
+    clearAll,
+    isMarkingAll,
+    isClearing,
+  } = useNotifications()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const open = Boolean(anchor)
+  const hasNotifications = data.length > 0
   return (
     <>
       <IconButton
@@ -40,19 +51,41 @@ export default function NotificationsBell() {
       >
         <Box sx={{ p: 1 }}>
           <Box
-            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", px: 1, py: 0.5 }}
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              px: 1,
+              py: 0.5,
+              gap: 1,
+            }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
               Уведомления
             </Typography>
-            <Button
-              size="small"
-              startIcon={<DoneIcon />}
-              onClick={() => markAll()}
-              disabled={isLoading || data.length === 0}
-            >
-              Прочитать все
-            </Button>
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button
+                size="small"
+                startIcon={<DoneIcon fontSize="small" />}
+                onClick={() => markAll()}
+                disabled={isLoading || !hasNotifications || isMarkingAll || isClearing}
+              >
+                Прочитать все
+              </Button>
+              <Button
+                size="small"
+                startIcon={<DeleteSweepIcon fontSize="small" />}
+                color="error"
+                onClick={() =>
+                  clearAll(undefined, {
+                    onSuccess: () => setAnchor(null),
+                  })
+                }
+                disabled={isLoading || !hasNotifications || isClearing}
+              >
+                Очистить
+              </Button>
+            </Box>
           </Box>
           <List dense disablePadding>
             {isLoading ? (

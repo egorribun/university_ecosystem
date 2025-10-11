@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy import and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -120,6 +120,19 @@ async def mark_all_read(
     await db.commit()
     updated = result.rowcount or 0
     return {"ok": True, "updated": int(updated)}
+
+
+@router.delete("")
+async def clear_notifications(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        delete(Notification).where(Notification.user_id == user.id)
+    )
+    await db.commit()
+    deleted = result.rowcount or 0
+    return {"ok": True, "deleted": int(deleted)}
 
 
 @router.post("/check-schedule", response_model=NotificationsListOut)
