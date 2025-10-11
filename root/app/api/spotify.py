@@ -254,6 +254,10 @@ async def now_playing(
         user.spotify_last_checked_at = _now_utc()
         await db.commit()
         return Response(status_code=204)
+    if r.status_code == 401:
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     if r.status_code == 429:
         retry_after_header = r.headers.get("Retry-After")
         try:
