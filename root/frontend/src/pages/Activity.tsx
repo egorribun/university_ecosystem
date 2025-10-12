@@ -24,7 +24,7 @@ import {
   Divider,
   useMediaQuery,
 } from "@mui/material"
-import { alpha, useTheme, darken, lighten } from "@mui/material/styles"
+import { alpha, useTheme, lighten } from "@mui/material/styles"
 import {
   motion,
   AnimatePresence,
