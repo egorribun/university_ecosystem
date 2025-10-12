@@ -38,19 +38,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Switch,
-  FormGroup,
-  FormControl,
+  TextField,
   CircularProgress
 } from "@mui/material";
-import { useColorScheme } from "@mui/material/styles";
-import TextField from "@mui/material/TextField";
+import { useColorScheme, styled, alpha, darken, lighten } from "@mui/material/styles";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows";
 import LogoutIcon from "@mui/icons-material/Logout";
-
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";
@@ -76,14 +72,143 @@ const toServerTime = (value: string | null): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^\d{2}:\d{2}$/.test(trimmed)) {
-    return `${trimmed}:00`;
-  }
-  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
   return trimmed;
 };
+
+const ModernSwitch = styled("span")(({ theme }) => {
+  const on = theme.palette.primary.main;
+  const trackBg = theme.palette.mode === "dark"
+    ? alpha("#fff", 0.12)
+    : alpha("#000", 0.08);
+  const trackBorder = theme.palette.mode === "dark"
+    ? alpha("#fff", 0.24)
+    : alpha("#000", 0.12);
+  const ring = alpha(on, 0.35);
+
+  return {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    width: 52,
+    height: 28,
+    padding: 2,
+    borderRadius: 999,
+    cursor: "pointer",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
+    "& input": {
+      opacity: 0,
+      width: 0,
+      height: 0,
+      position: "absolute",
+    },
+    "& .ms-track": {
+      position: "absolute",
+      inset: 0,
+      borderRadius: 999,
+      background: trackBg,
+      border: `1px solid ${trackBorder}`,
+      transition: "background-color .2s ease, border-color .2s ease",
+      boxSizing: "border-box",
+    },
+    "& .ms-thumb": {
+      position: "relative",
+      zIndex: 1,
+      width: 22,
+      height: 22,
+      borderRadius: "50%",
+      background: theme.palette.common.white,
+      boxShadow:
+        theme.palette.mode === "dark"
+          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
+          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
+      transform: "translateX(0)",
+      transition: "transform .18s cubic-bezier(.2,.9,.22,1), box-shadow .18s ease",
+    },
+    "&.ms-checked .ms-track": {
+      background: alpha(on, theme.palette.mode === "dark" ? 0.55 : 0.2),
+      borderColor: alpha(on, 0.6),
+    },
+    "&.ms-checked .ms-thumb": {
+      transform: "translateX(24px)",
+      boxShadow:
+        theme.palette.mode === "dark"
+          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
+          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
+    },
+    "&.ms-hover .ms-track": {
+      background: theme.palette.mode === "dark"
+        ? alpha("#fff", 0.16)
+        : alpha("#000", 0.1),
+    },
+    "&.ms-focus .ms-ring": {
+      boxShadow: `0 0 0 3px ${ring}`,
+      opacity: 1,
+      transform: "scale(1)",
+    },
+    "& .ms-ring": {
+      position: "absolute",
+      inset: -2,
+      borderRadius: 999,
+      boxShadow: "0 0 0 0px transparent",
+      transition: "box-shadow .18s ease, transform .18s ease, opacity .18s ease",
+      pointerEvents: "none",
+      opacity: 0,
+      transform: "scale(.98)",
+    },
+    "&.ms-disabled": {
+      cursor: "not-allowed",
+      opacity: 0.6,
+    },
+  };
+});
+
+function SwitchControl({
+  checked,
+  disabled,
+  onChange,
+  inputId,
+  "aria-label": ariaLabel,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (e: ChangeEvent<HTMLInputElement>, checked: boolean) => void;
+  inputId?: string;
+  "aria-label"?: string;
+}) {
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  return (
+    <ModernSwitch
+      className={[
+        checked ? "ms-checked" : "",
+        disabled ? "ms-disabled" : "",
+        hover ? "ms-hover" : "",
+        focus ? "ms-focus" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <span className="ms-ring" />
+      <span className="ms-track" />
+      <span className="ms-thumb" />
+      <input
+        id={inputId}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(e, e.target.checked)}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+      />
+    </ModernSwitch>
+  );
+}
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -94,43 +219,6 @@ export default function Settings() {
 
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
-
-  const switchSx = useMemo(
-    () => ({
-      "& .MuiSwitch-track": {
-        borderRadius: 999,
-        border: "1px solid color-mix(in srgb, var(--page-text) 22%, transparent)",
-        backgroundColor: "color-mix(in srgb, var(--page-text) 12%, transparent)",
-        opacity: 1,
-      },
-      "& .MuiSwitch-thumb": {
-        boxShadow: "0 2px 6px color-mix(in srgb, var(--page-text) 22%, transparent)",
-      },
-      "& .MuiSwitch-switchBase": {
-        color: "var(--page-text)",
-      },
-      "& .MuiSwitch-switchBase.Mui-checked": {
-        color: "#fff",
-        "& + .MuiSwitch-track": {
-          backgroundColor: "color-mix(in srgb, var(--link-color) 75%, transparent)",
-          borderColor: "color-mix(in srgb, var(--link-color) 65%, transparent)",
-          opacity: 1,
-        },
-      },
-      "& .MuiSwitch-switchBase.Mui-disabled": {
-        color: "color-mix(in srgb, var(--page-text) 40%, transparent)",
-      },
-      "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track": {
-        backgroundColor: "color-mix(in srgb, var(--page-text) 10%, transparent)",
-        borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
-        opacity: 0.6,
-      },
-      "& .MuiSwitch-switchBase.Mui-focusVisible + .MuiSwitch-track": {
-        boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 25%, transparent)",
-      },
-    }),
-    []
-  );
 
   const timeFieldSx = useMemo(
     () => ({
@@ -344,7 +432,6 @@ export default function Settings() {
       if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL");
       window.location.assign(safeUrl);
     } catch (error) {
-      console.error("Failed to initiate Spotify auth", error);
       setSnack({ text: "Не удалось открыть авторизацию Spotify", sev: "error" });
     }
   };
@@ -356,12 +443,10 @@ export default function Settings() {
         queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
         queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
       ]);
-
       try {
         const profile = await fetchCurrentUser();
         setUser(profile ?? null);
-      } catch (error) {
-        console.warn("Failed to refresh user after Spotify disconnect", error);
+      } catch {
         setUser((prev: ReturnType<typeof useAuth>["user"]) =>
           prev
             ? {
@@ -373,10 +458,8 @@ export default function Settings() {
             : prev,
         );
       }
-
       setSnack({ text: "Spotify отключён", sev: "success" });
-    } catch (error) {
-      console.error("Failed to disconnect Spotify", error);
+    } catch {
       setSnack({ text: "Не удалось отключить Spotify", sev: "error" });
     }
   };
@@ -443,9 +526,7 @@ export default function Settings() {
       setAvatarBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      await api.post("/users/me/avatar", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refreshMe();
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар обновлён", sev: "success" });
@@ -478,9 +559,7 @@ export default function Settings() {
       setCoverBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      await api.post("/users/me/cover", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refreshMe();
       setCoverVersion(Date.now());
       setSnack({ text: "Обложка обновлена", sev: "success" });
@@ -546,31 +625,19 @@ export default function Settings() {
                 <FormControlLabel
                   value="system"
                   control={<Radio />}
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <DesktopWindowsIcon /> <span>Система</span>
-                    </Stack>
-                  }
+                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><DesktopWindowsIcon /> <span>Система</span></Stack>}
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="light"
                   control={<Radio />}
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <LightModeIcon /> <span>Светлая</span>
-                    </Stack>
-                  }
+                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><LightModeIcon /> <span>Светлая</span></Stack>}
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="dark"
                   control={<Radio />}
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <DarkModeIcon /> <span>Тёмная</span>
-                    </Stack>
-                  }
+                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><DarkModeIcon /> <span>Тёмная</span></Stack>}
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
               </RadioGroup>
@@ -591,8 +658,7 @@ export default function Settings() {
                   {notificationPermission === "denied" ? (
                     <Stack spacing={1.5}>
                       <Alert severity="error" variant="outlined">
-                        Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для
-                        «Экосистема ГУУ».
+                        Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для «Экосистема ГУУ».
                       </Alert>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                         После изменения настроек браузера нажмите «Проверить разрешение», чтобы обновить статус.
@@ -602,9 +668,7 @@ export default function Settings() {
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy}
-                          startIcon={
-                            pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                          }
+                          startIcon={pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
                         >
                           Проверить разрешение
                         </Button>
@@ -623,11 +687,7 @@ export default function Settings() {
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy || pushInitializing}
-                          startIcon={
-                            pushBusy || pushInitializing ? (
-                              <CircularProgress size={18} color="inherit" />
-                            ) : undefined
-                          }
+                          startIcon={pushBusy || pushInitializing ? <CircularProgress size={18} color="inherit" /> : undefined}
                         >
                           Разрешить уведомления
                         </Button>
@@ -638,43 +698,43 @@ export default function Settings() {
                     </Stack>
                   ) : (
                     <>
-                      <FormControl component="fieldset" variant="standard">
-                        <FormGroup>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={notificationsEnabled}
-                                onChange={handleNotificationsToggle}
-                                disabled={pushBusy || pushInitializing}
-                                sx={switchSx}
-                              />
-                            }
-                            label={<span style={{ color: "var(--page-text)" }}>Включить уведомления</span>}
+                      <FormControlLabel
+                        sx={{
+                          minHeight: 44,
+                          alignItems: "center",
+                          columnGap: 1.25,
+                          m: 0
+                        }}
+                        control={
+                          <SwitchControl
+                            checked={notificationsEnabled}
+                            onChange={handleNotificationsToggle}
+                            disabled={pushBusy || pushInitializing}
+                            aria-label="Включить уведомления"
                           />
-                        </FormGroup>
-                      </FormControl>
+                        }
+                        label={<span style={{ color: "var(--page-text)", fontWeight: 700 }}>Включить уведомления</span>}
+                      />
 
-                      <FormControl component="fieldset" variant="standard">
-                        <FormGroup>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={dndEnabled}
-                                onChange={handleDndToggle}
-                                disabled={dndSaving}
-                                sx={switchSx}
-                              />
-                            }
-                            label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
+                      <FormControlLabel
+                        sx={{
+                          minHeight: 44,
+                          alignItems: "center",
+                          columnGap: 1.25,
+                          m: 0
+                        }}
+                        control={
+                          <SwitchControl
+                            checked={dndEnabled}
+                            onChange={handleDndToggle}
+                            disabled={dndSaving}
+                            aria-label="Включить тихий период"
                           />
-                        </FormGroup>
-                      </FormControl>
+                        }
+                        label={<span style={{ color: "var(--page-text)", fontWeight: 700 }}>Включить тихий период</span>}
+                      />
 
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={1.5}
-                        alignItems={{ sm: "center" }}
-                      >
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
                         <TextField
                           type="time"
                           label="С"
@@ -727,12 +787,7 @@ export default function Settings() {
                     src={avatarSrc}
                     alt={(user as any)?.full_name || "avatar"}
                     sx={{ width: 48, height: 48 }}
-                    imgProps={{
-                      onError: handleAvatarError,
-                      loading: "lazy",
-                      decoding: "async",
-                      referrerPolicy: "no-referrer",
-                    }}
+                    imgProps={{ onError: handleAvatarError, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
                   />
                 </ListItemAvatar>
                 <ListItemText primary="Фото профиля" secondary="PNG/JPG/WebP/AVIF/GIF, до 12 МБ" />
