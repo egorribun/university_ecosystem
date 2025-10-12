@@ -194,8 +194,10 @@ const Events = () => {
           style={{ '--fade-delay': '260ms' } as CSSProperties }
           sx={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 380px))",
             gap: { xs: 2, sm: 3 },
+            justifyContent: "center",
+            justifyItems: "center",
             minHeight: "180px",
           }}
         >
