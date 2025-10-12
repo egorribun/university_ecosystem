@@ -1,6 +1,19 @@
 :root {
   --nav-bg: #F5F6F7;
   --nav-text: #10151b;
+  --nav-heading: #10151b;
+  --nav-surface: #ffffff;
+  --nav-surface-border: rgba(16,42,79,.12);
+  --nav-surface-shadow: 0 0 8px rgba(0,0,0,0.13);
+  --nav-control-bg: rgba(255,255,255,.92);
+  --nav-control-border: rgba(16,42,79,.12);
+  --nav-control-color: #153654;
+  --nav-control-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 10px 24px rgba(22,43,76,.16);
+  --nav-control-hover-bg: #fff;
+  --nav-control-hover-border: rgba(16,42,79,.24);
+  --nav-control-hover-color: #102a43;
+  --nav-control-hover-shadow: 0 14px 30px rgba(22,43,76,.2), inset 0 1px 0 rgba(255,255,255,.9);
+  --nav-contrast: #ffffff;
   --nav-link: #005EA2;
   --nav-link-hover: #1A4480;
   --btn-bg: #F7F9FB;
@@ -18,9 +31,20 @@
   --link-color: #005EA2;
   --menu-hover-bg: #E8F0FA;
   --menu-hover-text: #0F2A47;
+  --danger-bg: #fff4f4;
+  --danger-border: #fae1e1;
+  --danger-hover-bg: #ffe8ec;
+  --danger-hover-text: #232323;
+  --danger-active-bg: #e53935;
+  --danger-contrast: #ffffff;
+  --danger-shadow: 0 10px 22px #e5393540;
   --option-bg: #fff;
   --option-hover-bg: #F2F7FC;
   --option-shadow: 0 2px 14px #C7D1DE70;
+  --switch-track: #485063;
+  --switch-track-active: #363d49;
+  --switch-knob: #232635;
+  --switch-knob-active: #181a1e;
   --font-ui: "Oxygen","Manrope","Inter","Segoe UI",Arial,"Helvetica Neue",Helvetica,sans-serif;
   --font-display: "Varela","Manrope","Inter","Segoe UI",Arial,"Helvetica Neue",Helvetica,sans-serif;
   --fs-h1: clamp(1.9rem, 1.2rem + 2.2vw, 3rem);
@@ -89,6 +113,19 @@
 body.dark {
   --nav-bg: #0E1116;
   --nav-text: #E6EBF2;
+  --nav-heading: #E6EBF2;
+  --nav-surface: rgba(17,22,30,.94);
+  --nav-surface-border: rgba(105,169,220,.24);
+  --nav-surface-shadow: 0 0 14px rgba(8,12,18,.65);
+  --nav-control-bg: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+  --nav-control-border: rgba(255,255,255,.18);
+  --nav-control-color: rgba(230,235,242,.92);
+  --nav-control-shadow: inset 0 1px 0 rgba(255,255,255,.24);
+  --nav-control-hover-bg: rgba(255,255,255,.2);
+  --nav-control-hover-border: rgba(255,255,255,.32);
+  --nav-control-hover-color: #ffffff;
+  --nav-control-hover-shadow: 0 12px 28px rgba(6,18,43,.32), inset 0 1px 0 rgba(255,255,255,.3);
+  --nav-contrast: #0B0F15;
   --nav-link: #69A9DC;
   --nav-link-hover: #B5D4EA;
   --btn-bg: #11161E;
@@ -96,6 +133,13 @@ body.dark {
   --page-bg: #0B0F15;
   --page-text: #E6EBF2;
   --card-bg: #11161E;
+  --danger-bg: rgba(229,57,53,.12);
+  --danger-border: rgba(229,57,53,.35);
+  --danger-hover-bg: rgba(229,57,53,.24);
+  --danger-hover-text: #ffecec;
+  --danger-active-bg: #e53935;
+  --danger-contrast: #0B0F15;
+  --danger-shadow: 0 12px 26px rgba(229,57,53,.35);
   --badge-lec: #7FB6E6;
   --badge-prac: #4ADE80;
   --badge-lab: #FBBF24;
@@ -123,6 +167,10 @@ body.dark {
   --glass-alpha: .05;
   --hint-fg: rgba(255,255,255,.72);
   --placeholder-fg: rgba(255,255,255,.64);
+  --switch-track: #202734;
+  --switch-track-active: #2d3646;
+  --switch-knob: #bcd9ff;
+  --switch-knob-active: #ffffff;
   --ue-focus-ring: 0 0 0 1px rgba(11,15,21,.92), 0 0 0 4px rgba(105,169,220,.5)
 }
 ::selection { background: var(--selection-bg); color: var(--selection-text) }
@@ -233,23 +281,23 @@ h3 { font-size: var(--fs-h3) }
 .menu-link.settings:hover,
 .menu-link.settings:focus { background: var(--menu-hover-bg); color: var(--menu-hover-text) !important; box-shadow: 0 2px 10px #0001 }
 .menu-link.logout {
-  color: #e53935 !important;
-  background: #fff4f4;
-  border: 1.5px solid #fae1e1;
+  color: var(--danger-text, #e53935) !important;
+  background: var(--danger-bg);
+  border: 1.5px solid var(--danger-border);
   font-weight: 800;
   transition: background var(--anim-fast), color var(--anim-fast), box-shadow var(--anim-fast), border-color var(--anim-fast)
 }
 .menu-link.logout:hover,.menu-link.logout:focus {
-  background: #ffe8ec;
-  color: #232323 !important;
-  border-color: #e53935;
-  box-shadow: 0 10px 22px #e5393540;
+  background: var(--danger-hover-bg);
+  color: var(--danger-hover-text) !important;
+  border-color: var(--danger-text, #e53935);
+  box-shadow: var(--danger-shadow);
   transform: scale(1.08)
 }
 .menu-link.logout:active {
-  background: #e53935;
-  color: #fff !important;
-  border-color: #c62828;
+  background: var(--danger-active-bg);
+  color: var(--danger-contrast) !important;
+  border-color: color-mix(in srgb, var(--danger-active-bg) 80%, transparent);
   box-shadow: 0 2px 8px #e5393550
 }
 .menu-btn-logout {
@@ -274,7 +322,7 @@ h3 { font-size: var(--fs-h3) }
   position: absolute;
   cursor: pointer;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: #485063;
+  background: var(--switch-track);
   border-radius: 999px;
   transition: background var(--anim-med);
   width: 64px; height: 32px;
@@ -284,14 +332,14 @@ h3 { font-size: var(--fs-h3) }
   position: absolute;
   top: 5.5px; left: 7px;
   width: 21px; height: 21px;
-  background: #232635;
+  background: var(--switch-knob);
   border-radius: 50%;
   transition: left .33s cubic-bezier(.6,.03,.29,1.46), background var(--anim-med);
   z-index: 1;
   box-shadow: 0 4px 18px 0 #0002, 0 1.5px 8px 0 #0001
 }
-.theme-switch input:checked + .theme-slider .theme-knob { left: 37px; background: #181a1e }
-.theme-switch input:checked + .theme-slider { background: #363d49 }
+.theme-switch input:checked + .theme-slider .theme-knob { left: 37px; background: var(--switch-knob-active) }
+.theme-switch input:checked + .theme-slider { background: var(--switch-track-active) }
 .theme-emoji { position: absolute; z-index: 2; font-size: 21px; pointer-events: none; transition: opacity var(--anim-med), transform var(--anim-med); line-height: 1; top: 50%; transform: translateY(-50%) }
 .theme-sun { left: 7px; top: 14px }
 .theme-moon { right: 8px }
@@ -603,43 +651,28 @@ body,html { overflow-x: hidden }
   height: 38px;
   padding: 0;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
-  color: rgba(255,255,255,.92);
+  border: 1px solid var(--nav-control-border);
+  background: var(--nav-control-bg);
+  color: var(--nav-control-color);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.24);
+  box-shadow: var(--nav-control-shadow);
   backdrop-filter: saturate(160%) blur(12px);
   transition: background var(--anim-fast), color var(--anim-fast), border-color var(--anim-fast), box-shadow var(--anim-fast), transform var(--anim-fast);
 }
 .menu-btn-settings svg {
-  width: 18px;
-  height: 18px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
 }
 .menu-btn-settings:hover,
 .menu-btn-settings:focus-visible {
-  background: rgba(255,255,255,.2);
-  border-color: rgba(255,255,255,.32);
-  color: #fff;
+  background: var(--nav-control-hover-bg);
+  border-color: var(--nav-control-hover-border);
+  color: var(--nav-control-hover-color);
   transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(6,18,43,.32), inset 0 1px 0 rgba(255,255,255,.3);
-}
-body:not(.dark) .menu-btn-settings {
-  background: rgba(255,255,255,.92);
-  border-color: rgba(16,42,79,.12);
-  color: #153654;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 10px 24px rgba(22,43,76,.16);
-  backdrop-filter: blur(16px);
-}
-body:not(.dark) .menu-btn-settings:hover,
-body:not(.dark) .menu-btn-settings:focus-visible {
-  background: #fff;
-  border-color: rgba(16,42,79,.24);
-  color: #102a43;
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(22,43,76,.2), inset 0 1px 0 rgba(255,255,255,.9);
+  box-shadow: var(--nav-control-hover-shadow);
 }
 .menu-link.settings { transition: transform 0.27s cubic-bezier(.42,0,.58,1); display: inline-flex; align-items: center; justify-content: center }
 .menu-link.settings:hover { transform: rotate(140deg) scale(1.15) }

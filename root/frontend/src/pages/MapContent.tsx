@@ -127,14 +127,15 @@ export default function MapContent() {
   return (
     <>
       <Paper
-        sx={{
+        sx={(theme) => ({
           width: "100%",
           borderRadius: 0,
           boxShadow: 5,
-          bgcolor: "var(--card-bg,#fff)",
-          color: "var(--page-text,#222)",
+          bgcolor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
           p: 0,
-        }}
+          transition: "background-color 0.2s ease, color 0.2s ease",
+        })}
       >
         <Box ref={containerRef} className="map-page" sx={{ background: theme.palette.mode === "dark" ? "#0b0d12" : "#f6f7fb" }}>
           <Box className="glass glass--panel glass--sheen map-head">

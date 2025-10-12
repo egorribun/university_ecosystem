@@ -234,32 +234,32 @@ const EventDetail = () => {
     <Button
       onClick={handleBack}
       startIcon={<ArrowBackIcon />}
-      sx={{
+      sx={(theme) => ({
         mb: 3,
         alignSelf: 'flex-start',
         fontWeight: 700,
         borderRadius: 2.5,
-        background: 'linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)',
-        color: '#fff',
+        background: `linear-gradient(100deg, ${theme.palette.primary.main} 20%, ${theme.palette.primary.light} 100%)`,
+        color: theme.palette.primary.contrastText,
         fontSize: 'clamp(0.98rem, 2.1vw, 1.17rem)',
         letterSpacing: '0.02em',
         px: { xs: 1.6, sm: 2.3, md: 2.9, lg: 3.5 },
         py: { xs: 0.9, sm: 1.12, md: 1.2, lg: 1.28 },
         width: { xs: '100%', sm: 'auto' },
         minWidth: { xs: 0, sm: 0 },
-        boxShadow: '0 2px 18px #1976d238, 0 1.5px 8px #0001',
+        boxShadow: '0 2px 18px rgba(25,118,210,0.22), 0 1.5px 8px rgba(0,0,0,0.08)',
         transition: 'transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s',
         '&:hover': {
-          background: 'linear-gradient(100deg, #1976d2 20%, #449aff 100%)',
-          color: '#eaf6ff',
+          background: `linear-gradient(100deg, ${theme.palette.primary.dark} 20%, ${theme.palette.primary.main} 100%)`,
+          color: theme.palette.primary.contrastText,
           transform: 'scale(1.06)',
-          boxShadow: '0 6px 28px #1d5fff40, 0 2.5px 10px #0002'
+          boxShadow: '0 6px 28px rgba(29,95,255,0.25), 0 2.5px 10px rgba(0,0,0,0.16)'
         },
         '&:active': { transform: 'scale(0.98)' },
         position: { xs: 'static', md: 'sticky' },
         top: { md: 12 },
         zIndex: 99
-      }}
+      })}
     >
       Назад
     </Button>

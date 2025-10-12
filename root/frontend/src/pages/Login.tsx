@@ -186,7 +186,24 @@ const Login = () => {
             <Box sx={{ minHeight: 20, textAlign: "left" }}>{caps && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}</Box>
             <Box sx={{ minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }} aria-live="assertive">{submitError && <Typography color="error" fontSize={15}>{submitError}</Typography>}</Box>
             <FormControlLabel control={<Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={submitting} />} label="Запомнить email" sx={{ mt: -0.5 }} />
-            <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 1, fontWeight: 600, borderRadius: 2, fontSize: 17, py: 1.2, bgcolor: "var(--nav-link)", color: "#fff", touchAction: "manipulation", "&:hover": { bgcolor: "var(--nav-link-hover)" } }}>
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              fullWidth
+              disabled={submitting}
+              sx={(theme) => ({
+                mt: 1,
+                fontWeight: 600,
+                borderRadius: 2,
+                fontSize: 17,
+                py: 1.2,
+                bgcolor: theme.palette.primary.main,
+                color: theme.palette.primary.contrastText,
+                touchAction: "manipulation",
+                '&:hover': { bgcolor: theme.palette.primary.dark },
+              })}
+            >
               {submitting ? <CircularProgress size={26} color="inherit" /> : "Войти"}
             </Button>
           </Stack>
