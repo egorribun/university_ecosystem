@@ -1,6 +1,4 @@
-import asyncio
 import logging
-import uuid
 from typing import List
 
 from fastapi import (
@@ -18,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
-from app.core.config import settings
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
 from app.services.notifications import notify_about_event
+from app.utils.files import save_attachment
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +107,8 @@ async def upload_event_file(
         raise HTTPException(status_code=404, detail="Событие не найдено")
     if user.role not in ("admin", "teacher") and event.created_by != user.id:
         raise HTTPException(status_code=403, detail="forbidden")
-    ext = file.filename.split(".")[-1].lower()
-    filename = f"event_{id}_{uuid.uuid4()}.{ext}"
-    base_dir = settings.static_dir_path
-    folder = base_dir / "event_files"
-    await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
-    file_path = folder / filename
-    data = await file.read()
-    await asyncio.to_thread(file_path.write_bytes, data)
-    ef = models.EventFile(event_id=id, file_url=f"/static/event_files/{filename}")
+    url = await save_attachment(file, "event_files", f"event_{id}")
+    ef = models.EventFile(event_id=id, file_url=url)
     db.add(ef)
     await db.commit()
     await db.refresh(ef)
