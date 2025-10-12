@@ -1120,13 +1120,13 @@ export default function Profile() {
         <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>QR-код</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1.2, minHeight: 320 }}>
           <Box
-            sx={{
-              background: "#fff",
+            sx={(theme) => ({
+              background: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.9 : 1),
               p: 2,
               borderRadius: 3,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`
-            }}
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, theme.palette.mode === "dark" ? 0.65 : 0.4)}`,
+            })}
           >
             <QRCodeSVG
               value={buildVCard()}

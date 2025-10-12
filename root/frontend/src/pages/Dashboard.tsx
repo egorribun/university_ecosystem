@@ -19,6 +19,8 @@ import {
   LinearProgress
 } from "@mui/material"
 import { Link, useNavigate } from "react-router-dom"
+import { alpha } from "@mui/material/styles"
+import type { Theme } from "@mui/material/styles"
 
 type NewsItem = { id: number; title: string; content: string; created_at?: string; pinned?: boolean }
 type EventItem = { id: number; title: string; description?: string; starts_at?: string; location?: string }
@@ -59,23 +61,24 @@ function DateBullet({ date }: { date?: string }) {
     <Tooltip title={full} enterDelay={150}>
       <Box
         aria-label={`Дата публикации: ${full}`}
-          sx={{
-            width: 44,
+        sx={(theme) => ({
+          width: 44,
           height: 44,
           minWidth: 44,
           minHeight: 44,
           flex: "0 0 44px",
           borderRadius: "50%",
-          background: "linear-gradient(120deg,#1d5fff,#65b2ff)",
-          color: "#fff",
+          background: `linear-gradient(120deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
+          color: theme.palette.primary.contrastText,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           fontWeight: 800,
           lineHeight: 1,
-          userSelect: "none"
-        }}
+          userSelect: "none",
+          boxShadow: "0 8px 22px rgba(0,0,0,0.12)",
+        })}
       >
         <Box sx={{ fontSize: 14 }}>{dd}</Box>
         <Box sx={{ fontSize: 10, opacity: 0.9 }}>{mm}</Box>
@@ -280,8 +283,32 @@ export default function Dashboard() {
   useEffect(() => { fetchSchedule() }, [fetchSchedule])
 
   const headerGradient = isNarrow ? "linear-gradient(100deg,var(--hero-grad-start) 50%,var(--hero-grad-end) 100%)" : "linear-gradient(100deg,var(--hero-grad-start) 40%,var(--hero-grad-end) 100%)"
-  const focusRing = "0 0 0 3px #2563eb33, 0 0 0 6px #2563eb1f"
-  const btnSx = { borderRadius: 2, fontWeight: 700, px: 1.8, py: 0.5, whiteSpace: "nowrap", transition: "background .16s,color .16s,border-color .16s,box-shadow .16s, transform .16s", "&:hover": { background: "linear-gradient(100deg,#1976d2 20%,#449aff 100%)", color: "#fff", borderColor: "transparent", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&:focus-visible": { boxShadow: focusRing, outline: "none" } }
+  const getButtonSx = useCallback(
+    (theme: Theme) => ({
+      borderRadius: 2,
+      fontWeight: 700,
+      px: 1.8,
+      py: 0.5,
+      whiteSpace: "nowrap",
+      transition: "background .16s,color .16s,border-color .16s,box-shadow .16s, transform .16s",
+      color: theme.palette.text.primary,
+      borderColor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.4 : 0.24),
+      '&:hover': {
+        background: `linear-gradient(100deg, ${theme.palette.primary.main} 20%, ${theme.palette.primary.light} 100%)`,
+        color: theme.palette.primary.contrastText,
+        borderColor: "transparent",
+        transform: "translateY(-1px)",
+      },
+      '&:active': {
+        transform: "translateY(0)",
+      },
+      '&:focus-visible': {
+        boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.24)}, 0 0 0 6px ${alpha(theme.palette.primary.main, 0.12)}`,
+        outline: "none",
+      },
+    }),
+    []
+  )
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -327,12 +354,13 @@ export default function Dashboard() {
           left: 8,
           top: 8,
           padding: "8px 12px",
-          background: "#1d5fff",
-          color: "#fff",
+          background: "var(--nav-link)",
+          color: "var(--nav-contrast)",
           borderRadius: 8,
           transform: "translateY(-200%)",
           transition: "transform .2s",
-          zIndex: 5000
+          zIndex: 5000,
+          boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
         }}
         onFocus={(e) => { ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)" }}
         onBlur={(e) => { ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-200%)" }}
@@ -387,7 +415,12 @@ export default function Dashboard() {
             </Stack>
           </Box>
           <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
-            <Button variant="outlined" onClick={() => navigate("/profile")} sx={{ ...btnSx, px: 2.2, py: 0.9 }} aria-label="Открыть профиль">
+            <Button
+              variant="outlined"
+              onClick={() => navigate("/profile")}
+              sx={(theme) => ({ ...getButtonSx(theme), px: 2.2, py: 0.9 })}
+              aria-label="Открыть профиль"
+            >
               Профиль
             </Button>
           </Box>
@@ -412,7 +445,7 @@ export default function Dashboard() {
                   to="/schedule"
                   size="small"
                   variant="outlined"
-                  sx={{ ...btnSx, px: 3, py: 0.9 }}
+                  sx={(theme) => ({ ...getButtonSx(theme), px: 3, py: 0.9 })}
                   aria-label="Перейти к полному расписанию"
                   onPointerDown={warmSchedulePage}
                   onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
@@ -492,7 +525,7 @@ export default function Dashboard() {
                 to="/news"
                 size="small"
                 variant="outlined"
-                sx={btnSx}
+                sx={(theme) => getButtonSx(theme)}
                 aria-label="Смотреть все новости"
                 onPointerDown={() => { warmNewsPage(); prefetchData("news") }}
                 onKeyDown={(event) => {
@@ -563,7 +596,7 @@ export default function Dashboard() {
                 to="/events"
                 size="small"
                 variant="outlined"
-                sx={btnSx}
+                sx={(theme) => getButtonSx(theme)}
                 aria-label="Смотреть все события"
                 onPointerDown={() => { warmEventsPage(); prefetchData("events") }}
                 onKeyDown={(event) => {
@@ -581,7 +614,7 @@ export default function Dashboard() {
                 size="small"
                 variant={eventsScope === "today" ? "contained" : "outlined"}
                 onClick={() => setEventsScope("today")}
-                sx={btnSx}
+                sx={(theme) => getButtonSx(theme)}
                 aria-pressed={eventsScope === "today"}
               >
                 Сегодня
@@ -590,7 +623,7 @@ export default function Dashboard() {
                 size="small"
                 variant={eventsScope === "week" ? "contained" : "outlined"}
                 onClick={() => setEventsScope("week")}
-                sx={btnSx}
+                sx={(theme) => getButtonSx(theme)}
                 aria-pressed={eventsScope === "week"}
               >
                 Неделя
