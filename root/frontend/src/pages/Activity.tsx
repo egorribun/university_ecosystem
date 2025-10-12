@@ -161,6 +161,7 @@ function AnimatedRing({
 
 export default function Activity() {
   const theme = useTheme()
+  const isDark = theme.palette.mode === "dark"
   const reduce = useReducedMotion()
   const isSm = useMediaQuery(theme.breakpoints.down("sm"))
   const isMd = useMediaQuery(theme.breakpoints.down("md"))
@@ -513,13 +514,17 @@ export default function Activity() {
                   p: 0.5,
                   gap: 0.5,
                   background:
-                    theme.palette.mode === "dark"
-                      ? alpha(theme.palette.common.white, 0.06)
+                    isDark
+                      ? alpha(theme.palette.common.white, 0.08)
                       : alpha(theme.palette.primary.main, 0.1),
                   border:
-                    theme.palette.mode === "dark"
-                      ? `1px solid ${alpha(theme.palette.common.white, 0.12)}`
+                    isDark
+                      ? `1px solid ${alpha(theme.palette.common.white, 0.16)}`
                       : `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+                  boxShadow:
+                    isDark
+                      ? `0 10px 30px ${alpha(theme.palette.common.black, 0.45)}`
+                      : undefined,
                   "& .MuiToggleButton-root": {
                     textTransform: "none",
                     px: 1.6,
@@ -528,40 +533,46 @@ export default function Activity() {
                     border: 0,
                     fontWeight: 700,
                     color:
-                      theme.palette.mode === "dark"
-                        ? alpha(theme.palette.common.white, 0.7)
+                      isDark
+                        ? alpha(theme.palette.common.white, 0.9)
                         : alpha(theme.palette.text.primary, 0.8),
+                    backgroundColor: isDark
+                      ? alpha(theme.palette.common.white, 0.14)
+                      : "transparent",
                     transition: theme.transitions.create(["background-color", "color"], {
                       duration: theme.transitions.duration.shortest,
                     }),
                     "&:hover": {
                       background:
-                        theme.palette.mode === "dark"
-                          ? alpha(theme.palette.common.white, 0.1)
+                        isDark
+                          ? alpha(theme.palette.common.white, 0.2)
                           : alpha(theme.palette.primary.main, 0.12),
                     },
                     "&:not(.Mui-selected)": {
-                      backgroundColor: "transparent",
+                      backgroundColor: isDark
+                        ? alpha(theme.palette.common.white, 0.16)
+                        : "transparent",
+                      boxShadow: isDark
+                        ? `0 1px 6px ${alpha(theme.palette.common.black, 0.35)}`
+                        : undefined,
                     },
                   },
                   "& .Mui-selected": {
                     background:
-                      theme.palette.mode === "dark"
-                        ? theme.palette.primary.main
+                      isDark
+                        ? lighten(theme.palette.primary.main, 0.12)
                         : lighten(theme.palette.primary.main, 0.35),
                     color:
-                      theme.palette.mode === "dark"
-                        ? theme.palette.primary.contrastText
-                        : theme.palette.primary.contrastText,
+                      theme.palette.primary.contrastText,
                     boxShadow:
-                      theme.palette.mode === "dark"
-                        ? `0 4px 16px ${alpha(theme.palette.primary.main, 0.45)}`
+                      isDark
+                        ? `0 6px 20px ${alpha(theme.palette.primary.main, 0.55)}`
                         : `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
                   },
                   "& .Mui-selected:hover": {
                     background:
-                      theme.palette.mode === "dark"
-                        ? lighten(theme.palette.primary.main, 0.08)
+                      isDark
+                        ? lighten(theme.palette.primary.main, 0.18)
                         : lighten(theme.palette.primary.main, 0.3),
                   },
                 }}
