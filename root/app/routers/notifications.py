@@ -4,18 +4,17 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
-from app.api.push import NotifyBody
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
@@ -34,6 +33,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/push", tags=["push"])
 legacy_router = APIRouter(prefix="/webpush", tags=["webpush"])
+
+
+class NotificationAction(BaseModel):
+    action: str = Field(..., description="Notification action identifier")
+    title: str = Field(..., description="Action button title")
+    url: str | None = Field(default=None, description="Optional URL to open")
+    icon: str | None = Field(default=None, description="Optional icon URL")
+
+    @field_validator("action", "title", mode="before")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+
+class NotifyBody(BaseModel):
+    title: str
+    body: str | None = None
+    url: str | None = None
+    tag: str | None = None
+    badge: str | None = None
+    type: str | None = None
+    ttl: int | None = None
+    urgency: str | None = "normal"
+    topic: str | None = None
+    actions: list[NotificationAction] | None = None
+    data: dict[str, Any] | None = None
+
+    @field_validator("topic", mode="before")
+    @classmethod
+    def _normalize_topic(cls, value):
+        return normalize_topic(value)
 
 
 class PushSubscriptionKeys(BaseModel):
@@ -145,7 +177,14 @@ class PushSubscriptionDelete(BaseModel):
         return str(value).strip()
 
 
+class DisableUserPushRequest(BaseModel):
+    user_id: int = Field(
+        ..., ge=1, description="ID пользователя, для которого нужно отключить push"
+    )
+
+
 class SendTestResponse(BaseModel):
+    total: int = 0
     sent: int
     removed: int
     failed: int
@@ -166,6 +205,30 @@ class PushTestRequest(NotifyBody):
     )
     url: str | None = Field(
         default=None, description="URL to open when clicking the notification"
+    )
+
+
+async def _deliver_to_subscription(
+    subscription: PushSubscription, payload: dict[str, Any]
+) -> WebPushResult:
+    return await run_in_threadpool(send_web_push, subscription, payload)
+
+
+def _aggregate_results(
+    results: list[WebPushResult], *, failure_detail: str
+) -> SendTestResponse:
+    sent = sum(1 for r in results if r.status == "sent")
+    removed = sum(1 for r in results if r.status == "gone")
+    failed = sum(1 for r in results if r.status == "error")
+    detail = None
+    if results and sent == 0 and failed:
+        detail = failure_detail
+    return SendTestResponse(
+        total=len(results),
+        sent=sent,
+        removed=removed,
+        failed=failed,
+        detail=detail,
     )
 
 
@@ -477,7 +540,7 @@ async def send_test(
     )
     if not subscriptions:
         return SendTestResponse(
-            sent=0, removed=0, failed=0, detail="No subscriptions found"
+            total=0, sent=0, removed=0, failed=0, detail="No subscriptions found"
         )
 
     normalized_topic = normalize_topic(payload.topic if payload else None) or "system"
@@ -499,37 +562,122 @@ async def send_test(
             if value is not None:
                 message[field] = value
 
-    sent = 0
-    removed = 0
-    failed = 0
     now_time = datetime.now().astimezone().time()
+    results: list[WebPushResult] = []
     for sub in subscriptions:
         if not subscription_supports_topic(sub, normalized_topic):
             continue
         prepared = prepare_push_payload_for_user(
             message, getattr(sub, "user", None), now_time=now_time
         )
-        result: WebPushResult = await run_in_threadpool(send_web_push, sub, prepared)
-        if result.status == "sent":
-            sent += 1
-        elif result.status == "gone":
-            removed += 1
-        else:
-            failed += 1
+        result = await _deliver_to_subscription(sub, prepared)
+        results.append(result)
+    summary = _aggregate_results(
+        results, failure_detail="Не удалось отправить тестовое уведомление"
+    )
     logger.info(
         "push.test.summary",
         extra={
             "user_id": user.id,
             "target_user_id": target.id,
-            "sent": sent,
-            "removed": removed,
-            "failed": failed,
+            "sent": summary.sent,
+            "removed": summary.removed,
+            "failed": summary.failed,
         },
     )
-    detail = None
-    if failed and not sent:
-        detail = "Не удалось отправить тестовое уведомление"
-    return SendTestResponse(sent=sent, removed=removed, failed=failed, detail=detail)
+    return summary
+
+
+@router.post("/admin/disable-user")
+async def disable_user_push(
+    payload: DisableUserPushRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, int | bool]:
+    await ensure_push_subscription_schema(db)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="forbidden"
+        )
+
+    target = await db.get(User, payload.user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
+
+    existing = (
+        (
+            await db.execute(
+                select(PushSubscription.id).where(PushSubscription.user_id == target.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not existing:
+        return {"ok": True, "removed": 0}
+
+    await db.execute(delete(PushSubscription).where(PushSubscription.user_id == target.id))
+    await db.commit()
+    logger.info(
+        "push.admin.disable_all",
+        extra={
+            "user_id": user.id,
+            "target_user_id": target.id,
+            "removed": len(existing),
+        },
+    )
+    return {"ok": True, "removed": len(existing)}
+
+
+@router.post("/broadcast", response_model=SendTestResponse)
+async def broadcast(
+    data: NotifyBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> SendTestResponse:
+    await ensure_push_subscription_schema(db)
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    subscriptions = (
+        (
+            await db.execute(
+                select(PushSubscription).options(selectinload(PushSubscription.user))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    topic = normalize_topic(data.topic)
+    payload = data.model_dump(exclude_none=True)
+    if topic:
+        payload["topic"] = topic
+    else:
+        payload.pop("topic", None)
+
+    now_time = datetime.now().astimezone().time()
+    results: list[WebPushResult] = []
+    for subscription in subscriptions:
+        if not subscription_supports_topic(subscription, topic):
+            continue
+        prepared = prepare_push_payload_for_user(
+            payload, getattr(subscription, "user", None), now_time=now_time
+        )
+        results.append(await _deliver_to_subscription(subscription, prepared))
+
+    summary = _aggregate_results(results, failure_detail="Не удалось отправить уведомления")
+    logger.info(
+        "push.broadcast.summary",
+        extra={
+            "user_id": user.id,
+            "total": summary.total,
+            "sent": summary.sent,
+            "removed": summary.removed,
+            "failed": summary.failed,
+        },
+    )
+    return summary
 
 
 legacy_router.add_api_route(
@@ -557,6 +705,17 @@ legacy_router.add_api_route(
 legacy_router.add_api_route(
     "/send-test",
     send_test,
+    methods=["POST"],
+    response_model=SendTestResponse,
+)
+legacy_router.add_api_route(
+    "/admin/disable-user",
+    disable_user_push,
+    methods=["POST"],
+)
+legacy_router.add_api_route(
+    "/broadcast",
+    broadcast,
     methods=["POST"],
     response_model=SendTestResponse,
 )
