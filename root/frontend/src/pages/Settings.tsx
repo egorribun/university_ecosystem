@@ -97,48 +97,36 @@ export default function Settings() {
 
   const switchSx = useMemo(
     () => ({
-      width: 46,
-      height: 26,
-      padding: 0,
-      "& .MuiSwitch-switchBase": {
-        padding: 0,
-        margin: 1,
-        transitionDuration: "200ms",
-        color: "var(--page-text)",
-        "&.Mui-checked": {
-          transform: "translateX(20px)",
-          color: "#fff",
-          "& + .MuiSwitch-track": {
-            backgroundColor: "color-mix(in srgb, var(--link-color) 75%, transparent)",
-            borderColor: "color-mix(in srgb, var(--link-color) 65%, transparent)",
-            opacity: 1,
-          },
-        },
-        "&.Mui-disabled": {
-          color: "color-mix(in srgb, var(--page-text) 40%, transparent)",
-          "& + .MuiSwitch-track": {
-            opacity: 0.6,
-          },
-        },
-        "&.Mui-focusVisible + .MuiSwitch-track": {
-          boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 25%, transparent)",
-        },
-      },
-      "& .MuiSwitch-thumb": {
-        width: 24,
-        height: 24,
-        boxShadow: "0 2px 6px color-mix(in srgb, var(--page-text) 22%, transparent)",
-      },
       "& .MuiSwitch-track": {
         borderRadius: 999,
         border: "1px solid color-mix(in srgb, var(--page-text) 22%, transparent)",
         backgroundColor: "color-mix(in srgb, var(--page-text) 12%, transparent)",
         opacity: 1,
-        boxSizing: "border-box",
+      },
+      "& .MuiSwitch-thumb": {
+        boxShadow: "0 2px 6px color-mix(in srgb, var(--page-text) 22%, transparent)",
+      },
+      "& .MuiSwitch-switchBase": {
+        color: "var(--page-text)",
+      },
+      "& .MuiSwitch-switchBase.Mui-checked": {
+        color: "#fff",
+        "& + .MuiSwitch-track": {
+          backgroundColor: "color-mix(in srgb, var(--link-color) 75%, transparent)",
+          borderColor: "color-mix(in srgb, var(--link-color) 65%, transparent)",
+          opacity: 1,
+        },
+      },
+      "& .MuiSwitch-switchBase.Mui-disabled": {
+        color: "color-mix(in srgb, var(--page-text) 40%, transparent)",
       },
       "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track": {
         backgroundColor: "color-mix(in srgb, var(--page-text) 10%, transparent)",
         borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
+        opacity: 0.6,
+      },
+      "& .MuiSwitch-switchBase.Mui-focusVisible + .MuiSwitch-track": {
+        boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 25%, transparent)",
       },
     }),
     []
