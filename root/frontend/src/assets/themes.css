@@ -21,6 +21,26 @@
   --option-bg: #fff;
   --option-hover-bg: #F2F7FC;
   --option-shadow: 0 2px 14px #C7D1DE70;
+  --nav-utility-text: rgba(255,255,255,.92);
+  --nav-utility-strong: #fff;
+  --nav-logo-bg: #ffffff;
+  --nav-logo-shadow: 0 0 12px rgba(17,47,78,.18);
+  --nav-avatar-border: rgba(16,42,79,.16);
+  --nav-avatar-bg: #ffffff;
+  --nav-avatar-shadow: 0 0 10px rgba(17,47,78,.12);
+  --nav-drawer-divider: rgba(16,42,79,.08);
+  --nav-drawer-icon-bg: #ffffff;
+  --nav-drawer-icon-shadow: 0 0 10px rgba(17,47,78,.12);
+  --nav-skeleton-bg: rgba(17,47,78,.12);
+  --nav-settings-bg: rgba(255,255,255,.92);
+  --nav-settings-border: rgba(16,42,79,.12);
+  --nav-settings-color: #153654;
+  --nav-settings-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 10px 24px rgba(22,43,76,.16);
+  --nav-settings-bg-hover: #ffffff;
+  --nav-settings-border-hover: rgba(16,42,79,.24);
+  --nav-settings-color-hover: #102a43;
+  --nav-settings-shadow-hover: 0 14px 30px rgba(22,43,76,.2), inset 0 1px 0 rgba(255,255,255,.9);
+  --nav-settings-translate-hover: -2px;
   --font-ui: "Oxygen","Manrope","Inter","Segoe UI",Arial,"Helvetica Neue",Helvetica,sans-serif;
   --font-display: "Varela","Manrope","Inter","Segoe UI",Arial,"Helvetica Neue",Helvetica,sans-serif;
   --fs-h1: clamp(1.9rem, 1.2rem + 2.2vw, 3rem);
@@ -121,6 +141,26 @@ body.dark {
   --glass-tint-2: rgba(255,255,255,.02);
   --glass-tint-3: rgba(255,255,255,.01);
   --glass-alpha: .05;
+  --nav-utility-text: rgba(230,235,242,.9);
+  --nav-utility-strong: #ffffff;
+  --nav-logo-bg: rgba(10,18,28,.78);
+  --nav-logo-shadow: 0 0 12px rgba(0,0,0,.45);
+  --nav-avatar-border: rgba(255,255,255,.22);
+  --nav-avatar-bg: rgba(11,17,23,.74);
+  --nav-avatar-shadow: 0 0 10px rgba(0,0,0,.5);
+  --nav-drawer-divider: rgba(255,255,255,.08);
+  --nav-drawer-icon-bg: rgba(11,17,23,.78);
+  --nav-drawer-icon-shadow: 0 0 12px rgba(0,0,0,.5);
+  --nav-skeleton-bg: rgba(255,255,255,.18);
+  --nav-settings-bg: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+  --nav-settings-border: rgba(255,255,255,.18);
+  --nav-settings-color: rgba(255,255,255,.92);
+  --nav-settings-shadow: inset 0 1px 0 rgba(255,255,255,.24);
+  --nav-settings-bg-hover: rgba(255,255,255,.2);
+  --nav-settings-border-hover: rgba(255,255,255,.32);
+  --nav-settings-color-hover: #ffffff;
+  --nav-settings-shadow-hover: 0 12px 28px rgba(6,18,43,.32), inset 0 1px 0 rgba(255,255,255,.3);
+  --nav-settings-translate-hover: -1px;
   --hint-fg: rgba(255,255,255,.72);
   --placeholder-fg: rgba(255,255,255,.64);
   --ue-focus-ring: 0 0 0 1px rgba(11,15,21,.92), 0 0 0 4px rgba(105,169,220,.5)
@@ -603,43 +643,29 @@ body,html { overflow-x: hidden }
   height: 38px;
   padding: 0;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
-  color: rgba(255,255,255,.92);
+  border: 1px solid var(--nav-settings-border);
+  background: var(--nav-settings-bg);
+  color: var(--nav-settings-color);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.24);
+  box-shadow: var(--nav-settings-shadow);
   backdrop-filter: saturate(160%) blur(12px);
+  transform: translateY(0);
   transition: background var(--anim-fast), color var(--anim-fast), border-color var(--anim-fast), box-shadow var(--anim-fast), transform var(--anim-fast);
 }
 .menu-btn-settings svg {
-  width: 18px;
-  height: 18px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
 }
 .menu-btn-settings:hover,
 .menu-btn-settings:focus-visible {
-  background: rgba(255,255,255,.2);
-  border-color: rgba(255,255,255,.32);
-  color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(6,18,43,.32), inset 0 1px 0 rgba(255,255,255,.3);
-}
-body:not(.dark) .menu-btn-settings {
-  background: rgba(255,255,255,.92);
-  border-color: rgba(16,42,79,.12);
-  color: #153654;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 10px 24px rgba(22,43,76,.16);
-  backdrop-filter: blur(16px);
-}
-body:not(.dark) .menu-btn-settings:hover,
-body:not(.dark) .menu-btn-settings:focus-visible {
-  background: #fff;
-  border-color: rgba(16,42,79,.24);
-  color: #102a43;
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(22,43,76,.2), inset 0 1px 0 rgba(255,255,255,.9);
+  background: var(--nav-settings-bg-hover);
+  border-color: var(--nav-settings-border-hover);
+  color: var(--nav-settings-color-hover);
+  transform: translateY(var(--nav-settings-translate-hover));
+  box-shadow: var(--nav-settings-shadow-hover);
 }
 .menu-link.settings { transition: transform 0.27s cubic-bezier(.42,0,.58,1); display: inline-flex; align-items: center; justify-content: center }
 .menu-link.settings:hover { transform: rotate(140deg) scale(1.15) }
