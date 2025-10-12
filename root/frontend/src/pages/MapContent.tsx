@@ -38,6 +38,19 @@ export default function MapContent() {
   const loadSeq = useRef(0)
   const loadTimer = useRef<number | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const toggleBaseColor = theme.palette.mode === "dark"
+    ? alpha(theme.palette.common.white, 0.88)
+    : alpha(theme.palette.text.primary, 0.88)
+  const toggleSelectedColor = theme.palette.common.white
+  const toggleSelectedBg = theme.palette.mode === "dark"
+    ? alpha(theme.palette.primary.light, 0.45)
+    : alpha(theme.palette.primary.main, 0.24)
+  const toggleHoverColor = theme.palette.mode === "dark"
+    ? theme.palette.common.white
+    : theme.palette.primary.main
+  const inactiveIconColor = theme.palette.mode === "dark"
+    ? alpha(theme.palette.common.white, 0.88)
+    : alpha(theme.palette.text.primary, 0.88)
 
   useEffect(() => {
     const qs = new URLSearchParams(location.search)
@@ -234,15 +247,45 @@ export default function MapContent() {
                   onChange={(_, v: LayerMode | null) => { if (v) setLayer(v) }}
                   sx={{
                     "& .MuiToggleButtonGroup-grouped": { border: 0, px: 1.5, m: 0 },
-                    "& .MuiToggleButton-root": { borderRadius: 0, touchAction: "manipulation" },
-                    "& .MuiToggleButton-root.Mui-selected": { bgcolor: alpha(theme.palette.primary.main, 0.14) }
+                    "& .MuiToggleButton-root": {
+                      borderRadius: 0,
+                      touchAction: "manipulation",
+                      color: toggleBaseColor,
+                      transition: "color 160ms ease",
+                      "& .MuiSvgIcon-root": {
+                        color: "inherit",
+                        transition: "color 160ms ease"
+                      },
+                      "&:hover": {
+                        color: toggleHoverColor,
+                        "& .MuiSvgIcon-root": { color: "inherit" }
+                      }
+                    },
+                    "& .MuiToggleButton-root.Mui-selected": {
+                      bgcolor: toggleSelectedBg,
+                      color: toggleSelectedColor,
+                      "&:hover": {
+                        bgcolor: toggleSelectedBg
+                      }
+                    },
+                    "& .MuiToggleButton-root.Mui-selected .MuiSvgIcon-root": { color: "inherit" }
                   }}
                 >
                   <ToggleButton value="map" disableRipple aria-label="Схема">
-                    <MapIcon fontSize="small" />{!isMobile && <Box ml={1}>Карта</Box>}
+                    <MapIcon fontSize="small" sx={{ color: "inherit" }} />
+                    {!isMobile && (
+                      <Box component="span" ml={1} sx={{ color: "inherit" }}>
+                        Карта
+                      </Box>
+                    )}
                   </ToggleButton>
                   <ToggleButton value="hybrid" disableRipple aria-label="Спутник">
-                    <SatelliteAltIcon fontSize="small" />{!isMobile && <Box ml={1}>Спутник</Box>}
+                    <SatelliteAltIcon fontSize="small" sx={{ color: "inherit" }} />
+                    {!isMobile && (
+                      <Box component="span" ml={1} sx={{ color: "inherit" }}>
+                        Спутник
+                      </Box>
+                    )}
                   </ToggleButton>
                 </ToggleButtonGroup>
               </Box>
@@ -252,9 +295,16 @@ export default function MapContent() {
                   aria-label="Пробки"
                   onClick={() => setTraffic(v => !v)}
                   className="glass glass--btn"
-                  sx={{ touchAction: "manipulation" }}
+                  sx={{
+                    touchAction: "manipulation",
+                    color: traffic ? theme.palette.error.light : inactiveIconColor,
+                    transition: "color 160ms ease",
+                    "&:hover": {
+                      color: traffic ? theme.palette.error.main : toggleHoverColor
+                    }
+                  }}
                 >
-                  <TrafficIcon color={traffic ? "error" : "inherit"} />
+                  <TrafficIcon sx={{ color: "inherit" }} />
                 </IconButton>
               </Tooltip>
             </Stack>
