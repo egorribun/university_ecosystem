@@ -44,12 +44,16 @@ export default function SpotifyConnect() {
     setActionLoading(true)
     try {
       await api.post("/spotify/disconnect")
-      setUser({
-        ...user,
-        spotify_connected: false,
-        spotify_is_connected: false,
-        spotify_display_name: null,
-      })
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              spotify_connected: false,
+              spotify_is_connected: false,
+              spotify_display_name: null,
+            }
+          : prev
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
         queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),

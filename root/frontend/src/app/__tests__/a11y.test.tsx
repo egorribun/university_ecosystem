@@ -12,6 +12,7 @@ import { routerFutureFlags } from "@/App";
 import { checkA11y } from "@/tests/axeTest";
 import { createQueryClient } from "@/app/queryClient";
 import api from "@/api/client";
+import type { User } from "@/types/User";
 
 vi.mock("@/components/NotificationsBell", () => ({
   default: ({ iconColor }: { iconColor?: string }) => (
@@ -54,26 +55,33 @@ vi.mock("@/hooks/useNowPlaying", async () => {
   };
 });
 
-const baseUser = {
-  id: "user-1",
-  full_name: "Тестовый Пользователь",
+const baseUser: User = {
+  id: 1,
   email: "user@example.com",
+  full_name: "Тестовый Пользователь",
   role: "student",
-  group_id: "group-1",
-  telegram: "@testuser",
-  about: "Студент ГУУ",
-  achievements: "Победитель олимпиады|ГУУ|2023",
-  institute: "Институт цифровых технологий",
-  course: "3",
-  record_book_number: "123456",
-  status: "Студент",
-  program: "Информатика",
-  track: "Разработка",
-  department: "Кафедра ИТ",
-  position: "",
+  group_id: 1,
   avatar_url: "",
   cover_url: "",
+  about: "Студент ГУУ",
+  record_book_number: "123456",
+  status: "Студент",
+  institute: "Институт цифровых технологий",
+  course: "3",
+  education_level: null,
+  track: "Разработка",
+  program: "Информатика",
+  telegram: "@testuser",
+  achievements: "Победитель олимпиады|ГУУ|2023",
+  department: "Кафедра ИТ",
+  position: "",
   spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: false,
+  dnd_enabled: false,
+  dnd_start: null,
+  dnd_end: null,
+  is_active: true,
 };
 
 const activeClients: QueryClient[] = [];

@@ -7,6 +7,7 @@ import api from "@/api/client";
 import { createQueryClient } from "@/app/queryClient";
 import { AuthContext } from "@/contexts/AuthContext";
 import Settings from "@/pages/Settings";
+import type { User } from "@/types/User";
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ unreadCount: 0 }),
@@ -32,15 +33,33 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   NOTIFICATION_TOPIC_LABELS: {},
 }));
 
-const baseUser = {
+const baseUser: User = {
   id: 1,
-  full_name: "Test User",
   email: "test@example.com",
+  full_name: "Test User",
   role: "student",
+  group_id: null,
   avatar_url: "/media/avatars/original.png",
   cover_url: "/media/covers/original.jpg",
+  about: null,
+  record_book_number: null,
+  status: null,
+  institute: null,
+  course: null,
+  education_level: null,
+  track: null,
+  program: null,
+  telegram: null,
+  achievements: null,
+  department: null,
+  position: null,
   spotify_connected: false,
+  spotify_display_name: null,
   spotify_is_connected: false,
+  dnd_enabled: false,
+  dnd_start: null,
+  dnd_end: null,
+  is_active: true,
 };
 
 const renderSettings = () => {
@@ -95,7 +114,7 @@ describe("Settings media actions", () => {
     await waitFor(() => expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1));
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']");
 
-    const avatar = await screen.findByAltText(baseUser.full_name);
+    const avatar = await screen.findByAltText(baseUser.full_name ?? "");
     const initialSrc = avatar.getAttribute("src");
 
     const file = new File(["avatar"], "avatar.png", { type: "image/png" });
