@@ -185,21 +185,47 @@ const Events = () => {
 
   const normalizedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events])
 
+  const layoutConfig = useMemo(() => {
+    if (isMobile) {
+      return {
+        gridTemplateColumns: "minmax(0, 1fr)",
+        gap: { xs: 2, sm: 2 },
+        cardMaxWidth: "100%"
+      }
+    }
+
+    if (normalizedEvents.length === 2) {
+      const expandedWidth = "clamp(360px, 42vw, 620px)"
+      return {
+        gridTemplateColumns: `repeat(2, minmax(${expandedWidth}, 1fr))`,
+        gap: { xs: 2, sm: 2.5, md: 3 },
+        cardMaxWidth: expandedWidth
+      }
+    }
+
+    const defaultWidth = "clamp(300px, 30vw, 420px)"
+    return {
+      gridTemplateColumns: `repeat(auto-fit, minmax(${defaultWidth}, 1fr))`,
+      gap: { xs: 2, sm: 3 },
+      cardMaxWidth: defaultWidth
+    }
+  }, [isMobile, normalizedEvents.length])
+
+  const { gridTemplateColumns, gap, cardMaxWidth } = layoutConfig
+
   const eventsContent = useMemo(
     () => {
       const skeletonCount = isMobile ? 3 : 6
-      const isTwoCardLayout = !isMobile && normalizedEvents.length === 2
       return (
         <Box
           data-fade
           style={{ '--fade-delay': '260ms' } as CSSProperties }
           sx={{
             display: "grid",
-            gridTemplateColumns: isTwoCardLayout
-              ? "repeat(auto-fit, minmax(420px, 1fr))"
-              : "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: isTwoCardLayout ? { xs: 2, sm: 2.5 } : { xs: 2, sm: 3 },
+            gridTemplateColumns,
+            gap,
             minHeight: "180px",
+            transition: "grid-template-columns 0.28s ease, gap 0.28s ease"
           }}
         >
           {loading &&
@@ -218,8 +244,18 @@ const Events = () => {
 
           {!loading &&
             normalizedEvents.map((event) => (
-              <Box key={event.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                <EventCard {...event} onChange={handleRefresh} />
+              <Box
+                key={event.id}
+                sx={{
+                  display: "flex",
+                  width: "100%",
+                  height: "100%",
+                  maxWidth: cardMaxWidth,
+                  mx: "auto",
+                  transition: "max-width 0.28s ease"
+                }}
+              >
+                <EventCard {...event} onChange={handleRefresh} maxWidth={cardMaxWidth} />
               </Box>
             ))}
 
@@ -233,7 +269,7 @@ const Events = () => {
         </Box>
       )
     },
-    [handleRefresh, isMobile, loading, normalizedEvents],
+    [cardMaxWidth, gap, gridTemplateColumns, handleRefresh, isMobile, loading, normalizedEvents],
   )
 
   return (

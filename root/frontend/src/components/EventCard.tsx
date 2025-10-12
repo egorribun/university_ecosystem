@@ -51,6 +51,7 @@ type EventCardProps = {
   speaker?: string
   image_url?: string
   onChange?: () => void
+  maxWidth?: number | string
 }
 
 const normalizeDate = (dt: string) => (dt.length === 16 ? dt + ":00" : dt)
@@ -80,7 +81,8 @@ const EventCardComponent: FC<EventCardProps> = ({
   my_qr_code,
   speaker,
   image_url,
-  onChange
+  onChange,
+  maxWidth
 }) => {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -397,7 +399,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       className="event-card"
       sx={{
         width: "100%",
-        maxWidth: 700,
+        maxWidth: maxWidth ?? 700,
         minHeight: 320,
         borderRadius: { xs: "1.1rem", sm: "1.2rem" },
         background: "var(--card-bg)",
@@ -405,7 +407,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         position: "relative",
         cursor: editOpen ? "default" : "pointer",
         boxShadow: 5,
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
+        transition: "transform 0.25s ease, box-shadow 0.25s ease, max-width 0.25s ease",
         willChange: "transform",
         p: { xs: 2, sm: 3 },
         overflow: "hidden",
