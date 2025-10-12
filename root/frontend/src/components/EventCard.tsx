@@ -411,11 +411,9 @@ const EventCardComponent: FC<EventCardProps> = ({
         p: { xs: 2, sm: 3 },
         overflow: "hidden",
         ...cardHoverSx({
-          disabled: editOpen,
-          hoverTransform: isMobile ? "none" : "scale(1.03)",
-          activeTransform: editOpen ? "none" : "scale(0.997)"
+          disabled: editOpen || qrOpen,
+          extraTransitions: ["max-width 0.25s ease"],
         }),
-        transition: "transform 0.25s ease, box-shadow 0.25s ease, max-width 0.25s ease",
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
           outlineOffset: "2px"

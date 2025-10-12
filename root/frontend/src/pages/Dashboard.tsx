@@ -298,7 +298,9 @@ export default function Dashboard() {
     }
   }
 
+  const cardHoverBase = cardHoverSx()
   const homeCardSx = {
+    ...cardHoverBase,
     p: 2.2,
     borderRadius: "2rem",
     background: "var(--card-bg)",
@@ -351,7 +353,7 @@ export default function Dashboard() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 2,
-            ...cardHoverSx(),
+            ...cardHoverBase,
             border: { xs: "1px solid color-mix(in srgb, var(--page-text) 10%, transparent)" }
           }}
         >
@@ -390,7 +392,7 @@ export default function Dashboard() {
             gap: { xs: 2, md: 3 }
           }}
         >
-          <Box data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" }, ...cardHoverSx() }} aria-busy={loadingSched}>
+          <Box data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" } }} aria-busy={loadingSched}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
                 Сегодня в расписании
@@ -473,7 +475,7 @@ export default function Dashboard() {
             )}
           </Box>
 
-          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" }, ...cardHoverSx() }} aria-busy={loadingNews}>
+          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" } }} aria-busy={loadingNews}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>Новости</Typography>
               <Button
@@ -544,7 +546,7 @@ export default function Dashboard() {
             )}
           </Box>
 
-          <Box data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" }, ...cardHoverSx() }} aria-busy={loadingEvents}>
+          <Box data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" } }} aria-busy={loadingEvents}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>События</Typography>
               <Button

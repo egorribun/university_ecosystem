@@ -6,19 +6,30 @@ type CardHoverOptions = {
   hoverTransform?: string | null
   hoverBoxShadow?: string | null
   activeTransform?: string | null
+  extraTransitions?: string[]
 }
 
 export const cardHoverSx = ({
   disabled = false,
   hoverTransform = "scale(1.03)",
   hoverBoxShadow = "0 12px 28px rgba(0,0,0,0.18)",
-  activeTransform = "scale(0.997)"
+  activeTransform = "scale(0.997)",
+  extraTransitions = [],
 }: CardHoverOptions = {}): SxProps<Theme> => {
+  const transitions = [
+    "transform 0.25s ease",
+    "box-shadow 0.25s ease",
+    ...extraTransitions,
+  ].filter((transition): transition is string => Boolean(transition?.trim?.() ?? transition))
+  const reducedTransitions = transitions.filter(
+    transition => !transition.toLowerCase().startsWith("transform"),
+  )
+
   const base: SxProps<Theme> = {
-    transition: "transform 0.25s ease, box-shadow 0.25s ease",
+    transition: transitions.join(", ") || undefined,
     willChange: "transform",
     "@media (prefers-reduced-motion: reduce)": {
-      transition: "box-shadow 0.25s ease"
+      transition: reducedTransitions.join(", ") || "box-shadow 0.25s ease",
     }
   }
 
