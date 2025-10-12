@@ -28,7 +28,7 @@ async def _read_limited(upload: UploadFile, limit: int) -> bytes:
     data = await upload.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="file too large",
         )
     return data
@@ -95,4 +95,47 @@ async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
     path = target_dir / name
     await asyncio.to_thread(path.write_bytes, data)
     # Return canonical public URL without accidental duplicate slashes.
+    return f"/static/{sanitized_subdir}/{name}"
+
+
+async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
+    declared_raw = (upload.content_type or "").strip()
+    declared_type = declared_raw.split(";", 1)[0].strip().lower()
+    allowed_types = settings.event_file_allowed_mime_types_set
+    if not declared_type or (allowed_types and declared_type not in allowed_types):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="unsupported media type",
+        )
+
+    original_name = upload.filename or ""
+    ext = Path(original_name).suffix.lower()
+    ext_without_dot = ext[1:] if ext.startswith(".") else ext
+    if not ext_without_dot and declared_type:
+        guessed = _ext_from_mime(declared_type).lower()
+        ext = guessed
+        ext_without_dot = guessed[1:] if guessed.startswith(".") else guessed
+
+    allowed_exts = settings.event_file_allowed_extensions_set
+    if not ext_without_dot or (allowed_exts and ext_without_dot not in allowed_exts):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="unsupported file extension",
+        )
+
+    try:
+        limit = int(settings.event_file_max_size_bytes)
+    except (TypeError, ValueError):
+        limit = 0
+    if limit <= 0:
+        limit = 1
+    data = await _read_limited(upload, limit)
+
+    name = _gen_name(prefix, ext)
+    base = settings.static_dir_path
+    sanitized_subdir = subdir.strip("/ ")
+    target_dir = base / sanitized_subdir
+    await asyncio.to_thread(_ensure_dir, target_dir)
+    path = target_dir / name
+    await asyncio.to_thread(path.write_bytes, data)
     return f"/static/{sanitized_subdir}/{name}"
