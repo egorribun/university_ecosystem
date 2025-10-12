@@ -6,8 +6,8 @@ import pytest
 from fastapi import UploadFile
 from starlette.datastructures import Headers
 
-from app.utils import files
 from app.core.config import settings
+from app.utils import files
 
 
 def test_normalize_filename_prefix_basic():
