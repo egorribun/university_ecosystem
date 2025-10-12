@@ -615,8 +615,14 @@ body,html { overflow-x: hidden }
   transition: background var(--anim-fast), color var(--anim-fast), border-color var(--anim-fast), box-shadow var(--anim-fast), transform var(--anim-fast);
 }
 .menu-btn-settings svg {
-  width: 18px;
-  height: 18px;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 1350px) {
+  .menu-btn-settings svg {
+    width: 20px;
+    height: 20px;
+  }
 }
 .menu-btn-settings:hover,
 .menu-btn-settings:focus-visible {
