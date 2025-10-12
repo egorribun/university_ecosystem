@@ -1,3 +1,4 @@
+import asyncio
 import mimetypes
 import re
 import secrets
@@ -90,9 +91,8 @@ async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
     base = settings.static_dir_path
     sanitized_subdir = subdir.strip("/ ")
     target_dir = base / sanitized_subdir
-    _ensure_dir(target_dir)
+    await asyncio.to_thread(_ensure_dir, target_dir)
     path = target_dir / name
-    with open(path, "wb") as f:
-        f.write(data)
+    await asyncio.to_thread(path.write_bytes, data)
     # Return canonical public URL without accidental duplicate slashes.
     return f"/static/{sanitized_subdir}/{name}"

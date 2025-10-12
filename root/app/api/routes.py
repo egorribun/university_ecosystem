@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -513,10 +514,10 @@ async def upload_event_file(
     filename = f"event_{id}_{uuid.uuid4()}.{ext}"
     base_dir = settings.static_dir_path
     folder = base_dir / "event_files"
-    folder.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
     file_path = folder / filename
     data = await file.read()
-    file_path.write_bytes(data)
+    await asyncio.to_thread(file_path.write_bytes, data)
     ef = models.EventFile(event_id=id, file_url=f"/static/event_files/{filename}")
     db.add(ef)
     await db.commit()
