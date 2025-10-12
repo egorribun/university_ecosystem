@@ -168,6 +168,12 @@ export default function Activity() {
   const isXl = useMediaQuery(theme.breakpoints.up("xl"))
   const ringSize = isSm ? 68 : isMd ? 84 : isXl ? 104 : 96
 
+  const darkToggleBase = alpha(theme.palette.common.white, 0.9)
+  const darkToggleHover = alpha(theme.palette.common.white, 0.96)
+  const darkToggleBorder = alpha(theme.palette.common.white, 0.24)
+  const darkToggleSelected = lighten(theme.palette.primary.main, 0.6)
+  const darkToggleText = theme.palette.grey[900]
+
   const [period, setPeriod] = useState<"30d" | "90d" | "180d">("90d")
   const [attendance, setAttendance] = useState<AttendanceStats | null>(null)
   const [grades, setGrades] = useState<GradeStats | null>(null)
@@ -513,18 +519,15 @@ export default function Activity() {
                   borderRadius: 999,
                   p: 0.5,
                   gap: 0.5,
-                  background:
-                    isDark
-                      ? alpha(theme.palette.common.white, 0.08)
-                      : alpha(theme.palette.primary.main, 0.1),
-                  border:
-                    isDark
-                      ? `1px solid ${alpha(theme.palette.common.white, 0.16)}`
-                      : `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
-                  boxShadow:
-                    isDark
-                      ? `0 10px 30px ${alpha(theme.palette.common.black, 0.45)}`
-                      : undefined,
+                  background: isDark
+                    ? alpha(theme.palette.common.white, 0.08)
+                    : alpha(theme.palette.primary.main, 0.1),
+                  border: isDark
+                    ? `1px solid ${darkToggleBorder}`
+                    : `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+                  boxShadow: isDark
+                    ? `0 12px 34px ${alpha(theme.palette.common.black, 0.46)}`
+                    : undefined,
                   "& .MuiToggleButton-root": {
                     textTransform: "none",
                     px: 1.6,
@@ -532,48 +535,41 @@ export default function Activity() {
                     borderRadius: 999,
                     border: 0,
                     fontWeight: 700,
-                    color:
-                      isDark
-                        ? alpha(theme.palette.common.white, 0.9)
-                        : alpha(theme.palette.text.primary, 0.8),
-                    backgroundColor: isDark
-                      ? alpha(theme.palette.common.white, 0.14)
-                      : "transparent",
-                    transition: theme.transitions.create(["background-color", "color"], {
-                      duration: theme.transitions.duration.shortest,
-                    }),
+                    color: isDark ? darkToggleText : alpha(theme.palette.text.primary, 0.8),
+                    backgroundColor: isDark ? darkToggleBase : "transparent",
+                    transition: theme.transitions.create(
+                      ["background-color", "color", "box-shadow"],
+                      {
+                        duration: theme.transitions.duration.shortest,
+                      }
+                    ),
+                    boxShadow: isDark
+                      ? `0 2px 10px ${alpha(theme.palette.common.black, 0.32)}`
+                      : undefined,
                     "&:hover": {
-                      background:
-                        isDark
-                          ? alpha(theme.palette.common.white, 0.2)
-                          : alpha(theme.palette.primary.main, 0.12),
+                      background: isDark
+                        ? darkToggleHover
+                        : alpha(theme.palette.primary.main, 0.12),
                     },
                     "&:not(.Mui-selected)": {
-                      backgroundColor: isDark
-                        ? alpha(theme.palette.common.white, 0.16)
-                        : "transparent",
                       boxShadow: isDark
-                        ? `0 1px 6px ${alpha(theme.palette.common.black, 0.35)}`
+                        ? `0 1px 5px ${alpha(theme.palette.common.black, 0.25)}`
                         : undefined,
                     },
                   },
                   "& .Mui-selected": {
-                    background:
-                      isDark
-                        ? lighten(theme.palette.primary.main, 0.12)
-                        : lighten(theme.palette.primary.main, 0.35),
-                    color:
-                      theme.palette.primary.contrastText,
-                    boxShadow:
-                      isDark
-                        ? `0 6px 20px ${alpha(theme.palette.primary.main, 0.55)}`
-                        : `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
+                    background: isDark
+                      ? darkToggleSelected
+                      : lighten(theme.palette.primary.main, 0.35),
+                    color: isDark ? theme.palette.primary.dark : theme.palette.primary.contrastText,
+                    boxShadow: isDark
+                      ? `0 8px 24px ${alpha(theme.palette.primary.main, 0.45)}`
+                      : `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
                   },
                   "& .Mui-selected:hover": {
-                    background:
-                      isDark
-                        ? lighten(theme.palette.primary.main, 0.18)
-                        : lighten(theme.palette.primary.main, 0.3),
+                    background: isDark
+                      ? lighten(darkToggleSelected, 0.12)
+                      : lighten(theme.palette.primary.main, 0.3),
                   },
                 }}
               >
