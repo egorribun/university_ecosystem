@@ -512,10 +512,14 @@ export default function Activity() {
                   borderRadius: 999,
                   p: 0.5,
                   gap: 0.5,
-                  background: alpha(
-                    theme.palette.primary.main,
-                    theme.palette.mode === "dark" ? 0.12 : 0.1
-                  ),
+                  background:
+                    theme.palette.mode === "dark"
+                      ? alpha(theme.palette.common.white, 0.04)
+                      : alpha(theme.palette.primary.main, 0.1),
+                  border:
+                    theme.palette.mode === "dark"
+                      ? `1px solid ${alpha(theme.palette.common.white, 0.08)}`
+                      : `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
                   "& .MuiToggleButton-root": {
                     textTransform: "none",
                     px: 1.6,
@@ -523,14 +527,35 @@ export default function Activity() {
                     borderRadius: 999,
                     border: 0,
                     fontWeight: 700,
-                    color: theme.palette.text.primary,
+                    color:
+                      theme.palette.mode === "dark"
+                        ? alpha(theme.palette.common.white, 0.72)
+                        : alpha(theme.palette.text.primary, 0.8),
+                    transition: theme.transitions.create(["background-color", "color"], {
+                      duration: theme.transitions.duration.shortest,
+                    }),
+                    "&:hover": {
+                      background:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.common.white, 0.08)
+                          : alpha(theme.palette.primary.main, 0.12),
+                    },
                   },
                   "& .Mui-selected": {
                     background:
                       theme.palette.mode === "dark"
-                        ? darken(theme.palette.background.paper, 0.4)
-                        : lighten(theme.palette.background.paper, 0.4),
-                    color: theme.palette.text.primary,
+                        ? alpha(theme.palette.primary.main, 0.25)
+                        : lighten(theme.palette.primary.main, 0.35),
+                    color:
+                      theme.palette.mode === "dark"
+                        ? theme.palette.primary.light
+                        : theme.palette.primary.contrastText,
+                  },
+                  "& .Mui-selected:hover": {
+                    background:
+                      theme.palette.mode === "dark"
+                        ? alpha(theme.palette.primary.main, 0.3)
+                        : lighten(theme.palette.primary.main, 0.3),
                   },
                 }}
               >
