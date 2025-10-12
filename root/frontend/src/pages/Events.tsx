@@ -188,14 +188,17 @@ const Events = () => {
   const eventsContent = useMemo(
     () => {
       const skeletonCount = isMobile ? 3 : 6
+      const isTwoCardLayout = !isMobile && normalizedEvents.length === 2
       return (
         <Box
           data-fade
           style={{ '--fade-delay': '260ms' } as CSSProperties }
           sx={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: { xs: 2, sm: 3 },
+            gridTemplateColumns: isTwoCardLayout
+              ? "repeat(auto-fit, minmax(420px, 1fr))"
+              : "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: isTwoCardLayout ? { xs: 2, sm: 2.5 } : { xs: 2, sm: 3 },
             minHeight: "180px",
           }}
         >
