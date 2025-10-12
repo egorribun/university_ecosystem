@@ -1,15 +1,16 @@
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
+from starlette.requests import Request
 
-from app.api.push import (
+from app.models.models import PushSubscription
+from app.routers.notifications import (
     DisableUserPushRequest,
     NotifyBody,
     broadcast,
     disable_user_push,
     send_test,
 )
-from app.models.models import PushSubscription
 from app.services.webpush import WebPushResult
 
 
@@ -19,7 +20,7 @@ async def test_push_test_returns_aggregated_stats(
     user_factory,
     monkeypatch,
 ) -> None:
-    user = await user_factory()
+    user = await user_factory(role="admin")
     subscriptions = [
         PushSubscription(
             endpoint=f"https://example.com/sub-{idx}",
@@ -62,9 +63,12 @@ async def test_push_test_returns_aggregated_stats(
     async def _fake_deliver(*args, **kwargs):
         return next(results)
 
-    monkeypatch.setattr("app.api.push._deliver_to_subscription", _fake_deliver)
+    monkeypatch.setattr(
+        "app.routers.notifications._deliver_to_subscription", _fake_deliver
+    )
 
-    response = await send_test(data=None, session=db_session, user=user)
+    request = Request({"type": "http"})
+    response = await send_test(request=request, db=db_session, user=user, payload=None)
     assert response.model_dump() == {
         "total": 3,
         "sent": 1,
@@ -104,10 +108,12 @@ async def test_push_broadcast_reports_failures(
             error="Service Unavailable",
         )
 
-    monkeypatch.setattr("app.api.push._deliver_to_subscription", _fail_deliver)
+    monkeypatch.setattr(
+        "app.routers.notifications._deliver_to_subscription", _fail_deliver
+    )
 
     payload = NotifyBody(title="System", body="Maintenance", url="/")
-    response = await broadcast(data=payload, session=db_session, user=admin)
+    response = await broadcast(data=payload, db=db_session, user=admin)
     assert response.model_dump() == {
         "total": 2,
         "sent": 0,
@@ -146,7 +152,7 @@ async def test_admin_disable_user_push_removes_subscriptions(
     await db_session.commit()
 
     payload = DisableUserPushRequest(user_id=target.id)
-    response = await disable_user_push(payload=payload, session=db_session, user=admin)
+    response = await disable_user_push(payload=payload, db=db_session, user=admin)
 
     assert response == {"ok": True, "removed": 2}
     remaining = (
@@ -179,7 +185,7 @@ async def test_admin_disable_user_push_requires_admin(db_session, user_factory) 
     target = await user_factory()
     payload = DisableUserPushRequest(user_id=target.id)
     with pytest.raises(HTTPException) as exc:
-        await disable_user_push(payload=payload, session=db_session, user=requester)
+        await disable_user_push(payload=payload, db=db_session, user=requester)
     assert exc.value.status_code == 403
 
 
@@ -188,5 +194,5 @@ async def test_admin_disable_user_push_missing_user(db_session, user_factory) ->
     admin = await user_factory(role="admin")
     payload = DisableUserPushRequest(user_id=9999)
     with pytest.raises(HTTPException) as exc:
-        await disable_user_push(payload=payload, session=db_session, user=admin)
+        await disable_user_push(payload=payload, db=db_session, user=admin)
     assert exc.value.status_code == 404

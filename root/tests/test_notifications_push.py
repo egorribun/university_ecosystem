@@ -270,6 +270,7 @@ async def test_send_test_filters_and_cleans_subscriptions(
     assert response.status_code == 200
     body = response.json()
     assert body == {
+        "total": 3,
         "sent": 1,
         "removed": 2,
         "failed": 0,
