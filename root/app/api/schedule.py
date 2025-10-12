@@ -11,7 +11,6 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
 
-
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
 

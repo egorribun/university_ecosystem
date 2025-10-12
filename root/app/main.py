@@ -12,8 +12,8 @@ from app.api.misc import router as misc_router
 from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
 from app.api.schedule import router as schedule_api_router
-from app.api.users import router as users_router
 from app.api.spotify import router as spotify_router
+from app.api.users import router as users_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
