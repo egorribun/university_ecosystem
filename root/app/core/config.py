@@ -142,9 +142,7 @@ class Settings(BaseSettings):
         "application/vnd.ms-excel,"
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    event_file_allowed_extensions: str | list[str] = (
-        ".pdf,.txt,.doc,.docx,.xls,.xlsx"
-    )
+    event_file_allowed_extensions: str | list[str] = ".pdf,.txt,.doc,.docx,.xls,.xlsx"
     event_file_max_size_bytes: int = 10 * 1024 * 1024
 
     @field_validator("coep_value")
