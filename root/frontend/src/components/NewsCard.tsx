@@ -4,7 +4,6 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Stack, Button, useMediaQuery
 } from "@mui/material"
-import { alpha } from "@mui/material/styles"
 import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -237,15 +236,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             aria-controls={menuAnchor ? menuId : undefined}
             aria-haspopup="true"
             aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-            sx={(theme) => ({
+            sx={{
               position: "absolute",
               top: 10,
               right: 10,
               zIndex: 2,
-              bgcolor: alpha(theme.palette.background.paper, 0.88),
-              '&:hover': { bgcolor: theme.palette.background.paper },
-              boxShadow: '0 6px 16px rgba(0,0,0,0.1)',
-            })}
+              bgcolor: "rgba(255,255,255,0.82)",
+              "&:hover": { bgcolor: "#fff" }
+            }}
             onClick={e => {
               e.stopPropagation()
               setMenuAnchor(e.currentTarget)

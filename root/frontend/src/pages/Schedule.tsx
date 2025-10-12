@@ -537,12 +537,7 @@ export default function Schedule() {
           <Chip
             size="small"
             label={lesson.lesson_type ?? ""}
-            sx={(theme) => ({
-              height: 22,
-              fontWeight: 700,
-              color: theme.palette.getContrastText(getLessonTypeColor(lesson.lesson_type)),
-              background: getLessonTypeColor(lesson.lesson_type),
-            })}
+            sx={{ height: 22, fontWeight: 700, color: "#fff", background: getLessonTypeColor(lesson.lesson_type) }}
           />
           <Chip
             size="small"
@@ -804,17 +799,7 @@ export default function Schedule() {
                       >
                         <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
                         <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" sx={{ pl: 1 }}>
-                          <Chip
-                            size="small"
-                            label={lesson.lesson_type ?? ""}
-                            className="chip-type"
-                            sx={(theme) => ({
-                              background: getLessonTypeColor(lesson.lesson_type),
-                              color: theme.palette.getContrastText(getLessonTypeColor(lesson.lesson_type)),
-                              height: 24,
-                              fontWeight: 700,
-                            })}
-                          />
+                          <Chip size="small" label={lesson.lesson_type ?? ""} className="chip-type" sx={{ background: getLessonTypeColor(lesson.lesson_type), color: "#fff", height: 24, fontWeight: 700 }} />
                           <Chip size="small" className="chip-time" icon={<AccessTimeIcon sx={{ fontSize: 16 }} />} label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`} />
                         </Stack>
                         <Typography fontWeight={700} fontSize="1.02rem" sx={{ color: "var(--page-text)", pl: 1, mt: 0.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -850,7 +835,7 @@ export default function Schedule() {
       <PageFadeIn>
         <style>{`
         @media print {
-          body { background: var(--card-bg,#fff) !important; color: var(--page-text,#000) !important; }
+          body { background: #fff !important; }
           .no-print { display: none !important; }
           table { box-shadow: none !important; }
           .MuiTableCell-root { border: 1px solid #999 !important; }
@@ -942,19 +927,9 @@ export default function Schedule() {
               <Box>
                 <Box mb={1}>
                   <b>Тип:</b>{" "}
-                  <Box
-                    component="span"
-                    sx={(theme) => ({
-                      color: theme.palette.getContrastText(getLessonTypeColor(dialogLesson.lesson_type)),
-                      background: getLessonTypeColor(dialogLesson.lesson_type),
-                      borderRadius: 5,
-                      px: 1,
-                      py: "2px",
-                      fontWeight: 700,
-                    })}
-                  >
+                  <span style={{ color: "#fff", background: getLessonTypeColor(dialogLesson.lesson_type), borderRadius: 5, padding: "2px 8px" }}>
                     {dialogLesson.lesson_type ?? ""}
-                  </Box>
+                  </span>
                 </Box>
                 <Box><b>Время:</b> {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}</Box>
                 <Box><b>Преподаватель:</b> {dialogLesson.teacher}</Box>
