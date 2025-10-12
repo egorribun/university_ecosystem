@@ -15,6 +15,7 @@ import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import SmartImage from "@/components/SmartImage"
+import { cardHoverSx } from "@/constants/cardHover"
 import { sanitizeNewsText } from "@/utils/sanitize"
 
 dayjs.extend(utc)
@@ -200,21 +201,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         display: "flex",
         flexDirection: "column",
         minHeight: 340,
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
-        willChange: "transform",
-        "&:hover": {
-          transform: hoveringDisabled ? "none" : "scale(1.03)",
-          boxShadow: hoveringDisabled ? 5 : "0 12px 28px rgba(0,0,0,0.18)"
-        },
-        "&:active": {
-          transform: hoveringDisabled ? "none" : "scale(0.997)"
-        },
+        ...cardHoverSx({ disabled: hoveringDisabled }),
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
           outlineOffset: "2px"
-        },
-        "@media (prefers-reduced-motion: reduce)": {
-          transition: "box-shadow 0.25s ease"
         }
       }}
       role="button"

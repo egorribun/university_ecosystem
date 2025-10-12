@@ -19,6 +19,7 @@ import {
   LinearProgress
 } from "@mui/material"
 import { Link, useNavigate } from "react-router-dom"
+import { cardHoverSx } from "@/constants/cardHover"
 
 type NewsItem = { id: number; title: string; content: string; created_at?: string; pinned?: boolean }
 type EventItem = { id: number; title: string; description?: string; starts_at?: string; location?: string }
@@ -297,18 +298,6 @@ export default function Dashboard() {
     }
   }
 
-  const newsLikeHover = {
-    transition: "transform 0.25s ease, box-shadow 0.25s ease",
-    willChange: "transform",
-    "&:hover": {
-      transform: "scale(1.03)",
-      boxShadow: "0 12px 28px rgba(0,0,0,0.18)"
-    },
-    "&:active": {
-      transform: "scale(0.997)"
-    }
-  } as const
-
   const homeCardSx = {
     p: 2.2,
     borderRadius: "2rem",
@@ -362,7 +351,7 @@ export default function Dashboard() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 2,
-            ...newsLikeHover,
+            ...cardHoverSx(),
             border: { xs: "1px solid color-mix(in srgb, var(--page-text) 10%, transparent)" }
           }}
         >
@@ -401,7 +390,7 @@ export default function Dashboard() {
             gap: { xs: 2, md: 3 }
           }}
         >
-          <Box data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" }, ...newsLikeHover }} aria-busy={loadingSched}>
+          <Box data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" }, ...cardHoverSx() }} aria-busy={loadingSched}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
                 Сегодня в расписании
@@ -484,7 +473,7 @@ export default function Dashboard() {
             )}
           </Box>
 
-          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" }, ...newsLikeHover }} aria-busy={loadingNews}>
+          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" }, ...cardHoverSx() }} aria-busy={loadingNews}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>Новости</Typography>
               <Button
@@ -555,7 +544,7 @@ export default function Dashboard() {
             )}
           </Box>
 
-          <Box data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" }, ...newsLikeHover }} aria-busy={loadingEvents}>
+          <Box data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" }, ...cardHoverSx() }} aria-busy={loadingEvents}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>События</Typography>
               <Button
