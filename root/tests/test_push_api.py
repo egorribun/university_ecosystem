@@ -1,8 +1,9 @@
 import pytest
 from fastapi import HTTPException
-from starlette.requests import Request
 from sqlalchemy import select
+from starlette.requests import Request
 
+from app.models.models import PushSubscription
 from app.routers.notifications import (
     DisableUserPushRequest,
     NotifyBody,
@@ -10,7 +11,6 @@ from app.routers.notifications import (
     disable_user_push,
     send_test,
 )
-from app.models.models import PushSubscription
 from app.services.webpush import WebPushResult
 
 
@@ -63,7 +63,9 @@ async def test_push_test_returns_aggregated_stats(
     async def _fake_deliver(*args, **kwargs):
         return next(results)
 
-    monkeypatch.setattr("app.routers.notifications._deliver_to_subscription", _fake_deliver)
+    monkeypatch.setattr(
+        "app.routers.notifications._deliver_to_subscription", _fake_deliver
+    )
 
     request = Request({"type": "http"})
     response = await send_test(request=request, db=db_session, user=user, payload=None)
@@ -106,7 +108,9 @@ async def test_push_broadcast_reports_failures(
             error="Service Unavailable",
         )
 
-    monkeypatch.setattr("app.routers.notifications._deliver_to_subscription", _fail_deliver)
+    monkeypatch.setattr(
+        "app.routers.notifications._deliver_to_subscription", _fail_deliver
+    )
 
     payload = NotifyBody(title="System", body="Maintenance", url="/")
     response = await broadcast(data=payload, db=db_session, user=admin)

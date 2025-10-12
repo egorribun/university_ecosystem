@@ -596,13 +596,13 @@ async def disable_user_push(
 ) -> dict[str, int | bool]:
     await ensure_push_subscription_schema(db)
     if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="forbidden"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     target = await db.get(User, payload.user_id)
     if not target:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found"
+        )
 
     existing = (
         (
@@ -616,7 +616,9 @@ async def disable_user_push(
     if not existing:
         return {"ok": True, "removed": 0}
 
-    await db.execute(delete(PushSubscription).where(PushSubscription.user_id == target.id))
+    await db.execute(
+        delete(PushSubscription).where(PushSubscription.user_id == target.id)
+    )
     await db.commit()
     logger.info(
         "push.admin.disable_all",
@@ -666,7 +668,9 @@ async def broadcast(
         )
         results.append(await _deliver_to_subscription(subscription, prepared))
 
-    summary = _aggregate_results(results, failure_detail="Не удалось отправить уведомления")
+    summary = _aggregate_results(
+        results, failure_detail="Не удалось отправить уведомления"
+    )
     logger.info(
         "push.broadcast.summary",
         extra={
