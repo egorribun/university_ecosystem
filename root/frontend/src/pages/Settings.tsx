@@ -95,6 +95,83 @@ export default function Settings() {
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
 
+  const switchSx = useMemo(
+    () => ({
+      "& .MuiSwitch-track": {
+        borderRadius: 999,
+        border: "1px solid color-mix(in srgb, var(--page-text) 22%, transparent)",
+        backgroundColor: "color-mix(in srgb, var(--page-text) 12%, transparent)",
+        opacity: 1,
+      },
+      "& .MuiSwitch-thumb": {
+        boxShadow: "0 2px 6px color-mix(in srgb, var(--page-text) 22%, transparent)",
+      },
+      "& .MuiSwitch-switchBase": {
+        color: "var(--page-text)",
+      },
+      "& .MuiSwitch-switchBase.Mui-checked": {
+        color: "#fff",
+        "& + .MuiSwitch-track": {
+          backgroundColor: "color-mix(in srgb, var(--link-color) 75%, transparent)",
+          borderColor: "color-mix(in srgb, var(--link-color) 65%, transparent)",
+          opacity: 1,
+        },
+      },
+      "& .MuiSwitch-switchBase.Mui-disabled": {
+        color: "color-mix(in srgb, var(--page-text) 40%, transparent)",
+      },
+      "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track": {
+        backgroundColor: "color-mix(in srgb, var(--page-text) 10%, transparent)",
+        borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
+        opacity: 0.6,
+      },
+      "& .MuiSwitch-switchBase.Mui-focusVisible + .MuiSwitch-track": {
+        boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 25%, transparent)",
+      },
+    }),
+    []
+  );
+
+  const timeFieldSx = useMemo(
+    () => ({
+      maxWidth: { xs: "100%", sm: 200 },
+      "& .MuiOutlinedInput-root": {
+        borderRadius: 2.5,
+        overflow: "hidden",
+        backgroundColor: "var(--card-bg)",
+        "& fieldset": {
+          borderColor: "color-mix(in srgb, var(--page-text) 24%, transparent)",
+          borderWidth: 1,
+        },
+        "&:hover fieldset": {
+          borderColor: "color-mix(in srgb, var(--page-text) 32%, transparent)",
+        },
+        "&.Mui-focused": {
+          boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 22%, transparent)",
+        },
+        "&.Mui-focused fieldset": {
+          borderColor: "var(--link-color)",
+        },
+        "&.Mui-disabled": {
+          backgroundColor: "color-mix(in srgb, var(--page-text) 6%, transparent)",
+        },
+        "&.Mui-disabled fieldset": {
+          borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
+        },
+      },
+      "& .MuiInputBase-input": {
+        textAlign: "center",
+        fontVariantNumeric: "tabular-nums",
+      },
+      "& .MuiInputLabel-root": {
+        px: 0.75,
+        backgroundColor: "var(--card-bg)",
+        color: "var(--page-text)",
+      },
+    }),
+    []
+  );
+
   const {
     pushSupported,
     notificationPermission,
@@ -569,6 +646,7 @@ export default function Settings() {
                                 checked={notificationsEnabled}
                                 onChange={handleNotificationsToggle}
                                 disabled={pushBusy || pushInitializing}
+                                sx={switchSx}
                               />
                             }
                             label={<span style={{ color: "var(--page-text)" }}>Включить уведомления</span>}
@@ -580,7 +658,12 @@ export default function Settings() {
                         <FormGroup>
                           <FormControlLabel
                             control={
-                              <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
+                              <Switch
+                                checked={dndEnabled}
+                                onChange={handleDndToggle}
+                                disabled={dndSaving}
+                                sx={switchSx}
+                              />
                             }
                             label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
                           />
@@ -601,7 +684,7 @@ export default function Settings() {
                           disabled={!dndEnabled || dndSaving}
                           size="small"
                           InputLabelProps={{ shrink: true }}
-                          sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                          sx={timeFieldSx}
                         />
                         <TextField
                           type="time"
@@ -612,7 +695,7 @@ export default function Settings() {
                           disabled={!dndEnabled || dndSaving}
                           size="small"
                           InputLabelProps={{ shrink: true }}
-                          sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                          sx={timeFieldSx}
                         />
                       </Stack>
                     </>
