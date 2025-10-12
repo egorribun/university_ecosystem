@@ -4,8 +4,9 @@ import httpx
 import pytest
 from httpx import AsyncClient
 
-from app.api.routes import _spotify_fallback_now_playing
 from app.api.spotify import _fallback_now_playing
+
+_spotify_fallback_now_playing = _fallback_now_playing
 from app.auth.security import get_password_hash
 from app.models.models import User as ModelUser
 
