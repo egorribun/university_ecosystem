@@ -17,7 +17,6 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   IconButton, Menu, MenuItem, useMediaQuery, Tooltip, Snackbar
 } from "@mui/material"
-import { alpha } from "@mui/material/styles"
 import type { DialogProps } from "@mui/material/Dialog"
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
 import PlaceIcon from "@mui/icons-material/Place"
@@ -446,15 +445,14 @@ const EventCardComponent: FC<EventCardProps> = ({
             aria-controls={menuAnchor ? menuId : undefined}
             aria-haspopup="true"
             aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-            sx={(theme) => ({
+            sx={{
               position: "absolute",
               top: 10,
               right: 10,
               zIndex: 2,
-              bgcolor: alpha(theme.palette.background.paper, 0.88),
-              '&:hover': { bgcolor: theme.palette.background.paper },
-              boxShadow: '0 6px 16px rgba(0,0,0,0.1)',
-            })}
+              bgcolor: "rgba(255,255,255,0.82)",
+              "&:hover": { bgcolor: "#fff" }
+            }}
             onClick={(e) => {
               e.stopPropagation()
               setMenuAnchor(e.currentTarget)
@@ -636,7 +634,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                     width: "clamp(52px, 8vw, 76px)",
                     height: "clamp(52px, 8vw, 76px)",
                     borderRadius: 8,
-                    background: "var(--card-bg)",
+                    background: "#fff",
                     cursor: "pointer",
                     display: "block",
                   }}
@@ -680,14 +678,14 @@ const EventCardComponent: FC<EventCardProps> = ({
               >
                 <Box display="flex" flexDirection="column" alignItems="center">
                   <Box
-                    sx={(theme) => ({
+                    sx={{
                       p: { xs: 1.5, sm: 2.5 },
                       borderRadius: 2,
-                      bgcolor: theme.palette.background.paper,
+                      bgcolor: "#fff",
                       boxShadow: 1,
                       width: "100%",
                       maxWidth: "min(76vw, 76vh, 520px)",
-                    })}
+                    }}
                   >
                     <Box
                       component="img"

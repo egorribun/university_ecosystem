@@ -1,4 +1,4 @@
-import { alpha, extendTheme, responsiveFontSizes } from "@mui/material/styles";
+import { extendTheme, responsiveFontSizes } from "@mui/material/styles";
 
 const spacingScale = {
   "2xs": "0.25rem",
@@ -289,14 +289,6 @@ const baseTheme = extendTheme({
             paddingInline: `max(${spacingVars.sm}, ${theme.spacing(2)})`,
             paddingBlock: `max(${spacingVars["2xs"]}, ${theme.spacing(1)})`,
             minHeight: "44px",
-            fontWeight: 700,
-            color: theme.palette.text.primary,
-            '&.MuiButton-contained': {
-              color: theme.palette.primary.contrastText,
-            },
-            '&.MuiButton-contained:hover': {
-              boxShadow: 'none',
-            },
           }
         },
       },
@@ -331,32 +323,11 @@ const baseTheme = extendTheme({
             minHeight: "44px",
             borderRadius: radiusVars.md,
             paddingInline: spacingVars.sm,
-            color: theme.palette.text.secondary,
             "&:focus-visible": {
               boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
             },
-            "&.Mui-selected": {
-              color: theme.palette.text.primary,
-              backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.24 : 0.16),
-            },
-            "&.Mui-selected:hover": {
-              backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.28 : 0.22),
-            },
           }
         },
-      },
-    },
-    MuiToggleButtonGroup: {
-      styleOverrides: {
-        root: ({ theme }) => ({
-          borderRadius: theme.vars?.radiusScale?.pill ?? radiusScale.pill,
-          padding: theme.spacing(0.5),
-          gap: theme.spacing(0.5),
-          backgroundColor: alpha(
-            theme.palette.text.primary,
-            theme.palette.mode === "dark" ? 0.14 : 0.08
-          ),
-        }),
       },
     },
     MuiListItemButton: {
@@ -397,73 +368,6 @@ const baseTheme = extendTheme({
         root: {
           borderRadius: "var(--ue-radius-lg)",
         },
-      },
-    },
-    MuiOutlinedInput: {
-      styleOverrides: {
-        root: ({ theme }) => ({
-          backgroundColor: alpha(
-            theme.palette.background.paper,
-            theme.palette.mode === "dark" ? 0.72 : 0.96,
-          ),
-          transition: "background-color 0.2s ease, box-shadow 0.2s ease",
-          '&:hover .MuiOutlinedInput-notchedOutline': {
-            borderColor: alpha(theme.palette.primary.main, 0.45),
-          },
-          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-            borderColor: alpha(theme.palette.primary.main, 0.65),
-          },
-          '&.Mui-disabled': {
-            backgroundColor: alpha(theme.palette.action.disabledBackground, 0.45),
-          },
-        }),
-        input: ({ theme }) => ({
-          paddingBlock: `calc(${theme.spacing(1)} - 1px)`,
-        }),
-        notchedOutline: ({ theme }) => ({
-          borderColor: alpha(theme.palette.text.primary, 0.18),
-        }),
-      },
-    },
-    MuiSwitch: {
-      styleOverrides: {
-        root: ({ theme }) => ({
-          padding: theme.spacing(1),
-          width: 56,
-          '& .MuiSwitch-switchBase': {
-            padding: 2,
-            '&.Mui-checked': {
-              transform: 'translateX(20px)',
-              color: theme.palette.mode === 'dark' ? theme.palette.common.black : theme.palette.common.white,
-              '& + .MuiSwitch-track': {
-                backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.6 : 0.45),
-                opacity: 1,
-              },
-            },
-            '&.Mui-disabled + .MuiSwitch-track': {
-              opacity: 0.4,
-            },
-            '&.Mui-disabled .MuiSwitch-thumb': {
-              color: alpha(theme.palette.text.primary, 0.3),
-            },
-          },
-          '& .MuiSwitch-thumb': {
-            width: 22,
-            height: 22,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.22)',
-            backgroundColor:
-              theme.palette.mode === 'dark'
-                ? alpha(theme.palette.primary.light, 0.9)
-                : theme.palette.common.white,
-          },
-          '& .MuiSwitch-track': {
-            borderRadius: 999,
-            opacity: 1,
-            backgroundColor: theme.palette.mode === 'dark'
-              ? alpha(theme.palette.text.primary, 0.28)
-              : alpha(theme.palette.text.primary, 0.16),
-          },
-        }),
       },
     },
     MuiDialog: {

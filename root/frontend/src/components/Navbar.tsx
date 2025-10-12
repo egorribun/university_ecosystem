@@ -10,11 +10,7 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL;
 
 const navTextColor = "var(--nav-text)";
-const navHeadingColor = "var(--nav-heading, var(--nav-text))";
 const navBgColor = "var(--nav-bg)";
-const navSurfaceColor = "var(--nav-surface, var(--card-bg))";
-const navSurfaceShadow = "var(--nav-surface-shadow, 0 0 8px rgba(0,0,0,0.13))";
-const navSurfaceBorder = "var(--nav-surface-border, rgba(0,0,0,0.12))";
 
 const focusableSelectors =
   'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])';
@@ -339,19 +335,7 @@ const Navbar = () => {
             }}
             style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? "8px" : "10px", minWidth: 0, padding: "6px 6px", borderRadius: 12, textDecoration: "none" }}
           >
-            <div
-              style={{
-                width: `${logoWrapSize}px`,
-                height: `${logoWrapSize}px`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "50%",
-                background: navSurfaceColor,
-                boxShadow: navSurfaceShadow,
-                border: `1px solid ${navSurfaceBorder}`,
-              }}
-            >
+            <div style={{ width: `${logoWrapSize}px`, height: `${logoWrapSize}px`, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#fff", boxShadow: "0 0 8px rgba(0,0,0,0.13)" }}>
               <img
                 src={guuLogo}
                 alt="ГУУ"
@@ -362,16 +346,7 @@ const Navbar = () => {
                 decoding="async"
               />
             </div>
-            <span
-              style={{
-                color: navHeadingColor,
-                fontWeight: 800,
-                fontSize: titleFont,
-                whiteSpace: "nowrap",
-                letterSpacing: ".2px",
-                textShadow: "0 1px 2px rgba(0,0,0,0.12)",
-              }}
-            >
+            <span style={{ color: "#fff", fontWeight: 800, fontSize: titleFont, whiteSpace: "nowrap", letterSpacing: ".2px" }}>
               Экосистема ГУУ
             </span>
           </Link>
@@ -391,8 +366,8 @@ const Navbar = () => {
                     height: avatarSize,
                     borderRadius: "50%",
                     objectFit: "cover",
-                  border: "1px solid var(--btn-border)",
-                  background: navSurfaceColor,
+                    border: "1px solid #d7d7d7",
+                    background: "#fff",
                     cursor: "pointer",
                     display: "block",
                   }}
@@ -410,19 +385,7 @@ const Navbar = () => {
               <button
                 type="button"
                 className="burger-btn"
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  width: burgerBtnSize,
-                  height: burgerBtnSize,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  color: navHeadingColor,
-                  borderRadius: 10,
-                }}
+                style={{ background: "none", border: "none", padding: 0, width: burgerBtnSize, height: burgerBtnSize, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", borderRadius: 10 }}
                 onClick={() => setMobileMenu(v => !v)}
                 aria-label={mobileMenu ? "Закрыть меню" : "Открыть меню"}
                 aria-expanded={mobileMenu}
@@ -463,24 +426,9 @@ const Navbar = () => {
 
           {!isMobile && loading ? (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px" }} aria-hidden="true">
-              <Skeleton
-                variant="circular"
-                width={36}
-                height={36}
-                sx={{ bgcolor: "color-mix(in srgb, var(--nav-contrast, #ffffff) 18%, transparent)" }}
-              />
-              <Skeleton
-                variant="rectangular"
-                width={96}
-                height={18}
-                sx={{ borderRadius: 1, bgcolor: "color-mix(in srgb, var(--nav-contrast, #ffffff) 18%, transparent)" }}
-              />
-              <Skeleton
-                variant="circular"
-                width={32}
-                height={32}
-                sx={{ bgcolor: "color-mix(in srgb, var(--nav-contrast, #ffffff) 18%, transparent)" }}
-              />
+              <Skeleton variant="circular" width={36} height={36} sx={{ bgcolor: "rgba(255,255,255,0.25)" }} />
+              <Skeleton variant="rectangular" width={96} height={18} sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }} />
+              <Skeleton variant="circular" width={32} height={32} sx={{ bgcolor: "rgba(255,255,255,0.25)" }} />
             </div>
           ) : (!isMobile && isAuth && user && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px", minWidth: 0, whiteSpace: "nowrap" }}>
@@ -496,8 +444,8 @@ const Navbar = () => {
                   height: "36px",
                   borderRadius: "50%",
                   objectFit: "cover",
-                  border: "1.5px solid var(--btn-border)",
-                  background: navSurfaceColor,
+                  border: "1.5px solid #ccc",
+                  background: "#fff",
                   cursor: "pointer",
                   display: "block",
                 }}
@@ -513,7 +461,7 @@ const Navbar = () => {
                   border: "none",
                   padding: 0,
                   margin: 0,
-                  color: navHeadingColor,
+                  color: "#fff",
                   fontWeight: 600,
                   whiteSpace: "nowrap",
                   cursor: "pointer",
@@ -571,29 +519,8 @@ const Navbar = () => {
             style={{ width: 270, maxWidth: "88vw", background: navBgColor, height: "100vh", boxShadow: "2px 0 22px #0003", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", transition: prefersReducedMotion ? "none" : "transform 0.35s cubic-bezier(.52,1.29,.47,.97)", transform: mobileMenu ? "translateX(0)" : "translateX(-120%)", justifyContent: "flex-start", position: "relative" }}
             onClick={e => e.stopPropagation()}
           >
-            <div
-              style={{
-                width: "100%",
-                padding: "18px 0 10px 22px",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                borderBottom: `1px solid color-mix(in srgb, ${navTextColor} 12%, transparent)`,
-              }}
-            >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: navSurfaceColor,
-                  boxShadow: navSurfaceShadow,
-                  border: `1px solid ${navSurfaceBorder}`,
-                }}
-              >
+            <div style={{ width: "100%", padding: "18px 0 10px 22px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #ede2d2" }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", boxShadow: "0 0 6px rgba(0,0,0,0.10)" }}>
                 <img
                   src={guuLogo}
                   alt="ГУУ"
