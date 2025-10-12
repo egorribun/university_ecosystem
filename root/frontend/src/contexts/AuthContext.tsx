@@ -1,5 +1,6 @@
 import {
   createContext,
+  type Dispatch,
   useCallback,
   useContext,
   useEffect,
@@ -7,6 +8,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type SetStateAction,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
@@ -17,10 +19,11 @@ import {
 } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import type { User } from "@/types/User"
 
-type UserState = any | null
+type UserState = User | null
 
-type SetUserArg = UserState | ((prev: UserState) => UserState)
+type SetUserArg = SetStateAction<UserState>
 
 type AuthContextType = {
   isAuth: boolean
@@ -28,8 +31,14 @@ type AuthContextType = {
   logout: () => Promise<void>
   user: UserState
   loading: boolean
-  setUser: (user: SetUserArg) => void
+  setUser: Dispatch<SetUserArg>
   refresh: () => Promise<void>
+}
+
+const noopSetUser: Dispatch<SetUserArg> = (_value) => {
+  if (import.meta.env.DEV) {
+    console.warn("AuthContext setUser called outside provider")
+  }
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -38,7 +47,7 @@ export const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   user: null,
   loading: false,
-  setUser: () => {},
+  setUser: noopSetUser,
   refresh: async () => {},
 })
 
@@ -48,21 +57,28 @@ export const currentUserQueryKey = ["users", "me"] as const
 
 const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
 
-const readCachedUser = (): any | undefined => {
+const isUser = (value: unknown): value is User => {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as Partial<User>
+  return typeof candidate.id === "number" && typeof candidate.email === "string"
+}
+
+const readCachedUser = (): User | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_KEY)
     if (!raw) return undefined
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(raw) as unknown
     if (parsed && typeof parsed === "object" && "data" in parsed) {
-      return (parsed as { data: unknown }).data
+      const data = (parsed as { data: unknown }).data
+      return isUser(data) ? data : undefined
     }
-    return parsed
+    return isUser(parsed) ? parsed : undefined
   } catch {
     return undefined
   }
 }
 
-const persistUserToCache = (value: any | null) => {
+const persistUserToCache = (value: User | null) => {
   try {
     if (value != null) {
       localStorage.setItem(
@@ -90,7 +106,7 @@ type FetchCurrentUserOptions = {
 }
 
 export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {}) => {
-  const response = await api.get("/users/me", { signal })
+  const response = await api.get<User>("/users/me", { signal })
   return response.data
 }
 
@@ -118,14 +134,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const setUser = useCallback(
     (value: SetUserArg) => {
       setUserState((prev: UserState) => {
-        const previous = prev ?? null
         const next =
           typeof value === "function"
-            ? (value as (prev: UserState) => UserState)(previous)
+            ? (value as (prev: UserState) => UserState)(prev)
             : value
         const normalized: UserState = next ?? null
         persistUserToCache(normalized)
-        queryClient.setQueryData(currentUserQueryKey, normalized)
+        queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
       })
     },
@@ -134,7 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (cachedUserRef.current !== null) {
-      queryClient.setQueryData(currentUserQueryKey, cachedUserRef.current)
+      queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUserRef.current)
       cachedUserRef.current = null
     }
   }, [queryClient])
@@ -172,7 +187,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
-        setUser(profile ?? null)
+        setUser(profile)
       } catch (error) {
         if (controller.signal.aborted) return
         if (isAxiosError(error) && error.response?.status === 401) {
@@ -209,7 +224,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setInitializing(true)
       const profile = await fetchCurrentUser({ signal: controller.signal })
-      setUser(profile ?? null)
+      setUser(profile)
     } catch (error) {
       if (controller.signal.aborted) return
       if (isAxiosError(error) && error.response?.status === 401) {
@@ -299,7 +314,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         applyToken(nextToken)
 
         const profile = await fetchCurrentUser({ signal: controller.signal })
-        setUser(profile ?? null)
+        setUser(profile)
 
         if (typeof window !== "undefined" && typeof Notification !== "undefined") {
           if (Notification.permission === "granted" && hasPushConsent()) {
@@ -365,7 +380,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [handleUnauthorized])
 
-  const user = userState ?? null
+  const user = userState
   const isAuth = Boolean(token && user)
   const loading = initializing || authOperation
 

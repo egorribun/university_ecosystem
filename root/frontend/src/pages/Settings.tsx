@@ -14,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePushPreferences } from "@/hooks/usePushPreferences";
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
 import api from "../api/client";
+import type { User } from "@/types/User";
 import {
   Box,
   Paper,
@@ -279,7 +280,7 @@ export default function Settings() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
 
-  const syncDndFromUser = useCallback((value: any) => {
+  const syncDndFromUser = useCallback((value: User | null) => {
     const enabled = Boolean(value?.dnd_enabled);
     const start = toInputTime(value?.dnd_start);
     const end = toInputTime(value?.dnd_end);
@@ -293,9 +294,9 @@ export default function Settings() {
       if (dndSaving) return;
       const normalizedStart = nextStart ? nextStart.trim() : null;
       const normalizedEnd = nextEnd ? nextEnd.trim() : null;
-      const prevEnabled = Boolean((user as any)?.dnd_enabled);
-      const prevStart = toInputTime((user as any)?.dnd_start);
-      const prevEnd = toInputTime((user as any)?.dnd_end);
+      const prevEnabled = Boolean(user?.dnd_enabled);
+      const prevStart = toInputTime(user?.dnd_start);
+      const prevEnd = toInputTime(user?.dnd_end);
       if (
         nextEnabled === prevEnabled &&
         (!nextEnabled ||
@@ -310,7 +311,7 @@ export default function Settings() {
       }
       setDndSaving(true);
       try {
-        const payload: Record<string, any> = { dnd_enabled: nextEnabled };
+        const payload: Record<string, unknown> = { dnd_enabled: nextEnabled };
         if (nextEnabled) {
           payload.dnd_start = toServerTime(normalizedStart);
           payload.dnd_end = toServerTime(normalizedEnd);
@@ -318,7 +319,7 @@ export default function Settings() {
           payload.dnd_start = null;
           payload.dnd_end = null;
         }
-        const res = await api.put("/users/me", payload);
+        const res = await api.put<User>("/users/me", payload);
         setUser(res.data);
         syncDndFromUser(res.data);
         const wasEnabled = prevEnabled;
@@ -327,16 +328,22 @@ export default function Settings() {
         else if (!nextEnabled && wasEnabled) message = 'Режим "Не беспокоить" выключен';
         else message = 'Настройки режима "Не беспокоить" обновлены';
         setSnack({ text: message, sev: "success" });
-      } catch (error: any) {
+      } catch (error: unknown) {
         let message = 'Не удалось обновить настройки режима "Не беспокоить"';
-        const detail = error?.response?.data?.detail;
-        if (typeof detail === "string") message = detail;
-        else if (Array.isArray(detail)) {
-          const collected = detail
-            .map((item: any) => (item?.msg ? String(item.msg) : ""))
-            .filter(Boolean)
-            .join("; ");
-          if (collected) message = collected;
+        if (isAxiosError(error)) {
+          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+          if (typeof detail === "string") message = detail;
+          else if (Array.isArray(detail)) {
+            const collected = detail
+              .map((item: unknown) =>
+                item && typeof item === "object" && "msg" in item
+                  ? String((item as { msg?: unknown }).msg)
+                  : ""
+              )
+              .filter(Boolean)
+              .join("; ");
+            if (collected) message = collected;
+          }
         }
         setSnack({ text: message, sev: "error" });
         syncDndFromUser(user);
@@ -422,8 +429,8 @@ export default function Settings() {
     [disableNotifications, enableNotifications, pushBusy, pushInitializing]
   );
 
-  const spotifyConnected = Boolean((user as any)?.spotify_connected || (user as any)?.spotify_is_connected);
-  const spotifyName = (user as any)?.spotify_display_name || "";
+  const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
+  const spotifyName = user?.spotify_display_name ?? "";
 
   const connectSpotify = async () => {
     try {
@@ -445,9 +452,9 @@ export default function Settings() {
       ]);
       try {
         const profile = await fetchCurrentUser();
-        setUser(profile ?? null);
+        setUser(profile);
       } catch {
-        setUser((prev: ReturnType<typeof useAuth>["user"]) =>
+        setUser((prev) =>
           prev
             ? {
                 ...prev,
@@ -472,8 +479,8 @@ export default function Settings() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
 
-  const avatarUrl = (user as any)?.avatar_url as string | undefined;
-  const coverUrl = (user as any)?.cover_url as string | undefined;
+  const avatarUrl = user?.avatar_url ?? undefined;
+  const coverUrl = user?.cover_url ?? undefined;
 
   const avatarSrc = useMemo(() => {
     const resolved = resolveMediaUrl(avatarUrl);
@@ -495,7 +502,7 @@ export default function Settings() {
   const triggerCoverPick = () => coverInputRef.current?.click();
 
   const refreshMe = useCallback(async () => {
-    const fresh = await queryClient.fetchQuery({
+    const fresh = await queryClient.fetchQuery<User>({
       queryKey: currentUserQueryKey,
       queryFn: fetchCurrentUser,
       staleTime: 0,
@@ -506,11 +513,13 @@ export default function Settings() {
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
-      const detail = (error.response?.data as any)?.detail;
+      const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
       if (typeof detail === "string") return detail;
       if (Array.isArray(detail)) {
         const combined = detail
-          .map((item) => (item && typeof item === "object" && "msg" in item ? String(item.msg) : ""))
+          .map((item) =>
+            item && typeof item === "object" && "msg" in item ? String((item as { msg?: unknown }).msg) : ""
+          )
           .filter(Boolean)
           .join("; ");
         if (combined) return combined;
@@ -785,7 +794,7 @@ export default function Settings() {
                 <ListItemAvatar>
                   <Avatar
                     src={avatarSrc}
-                    alt={(user as any)?.full_name || "avatar"}
+                    alt={user?.full_name || "avatar"}
                     sx={{ width: 48, height: 48 }}
                     imgProps={{ onError: handleAvatarError, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
                   />

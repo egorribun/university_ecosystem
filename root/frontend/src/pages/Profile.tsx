@@ -422,7 +422,7 @@ export default function Profile() {
       affiliation: user.institute || user.department || "",
       url: typeof window !== "undefined" ? window.location.href : "",
       image: (() => {
-        const media = resolveMediaUrl(user.avatar_url);
+        const media = resolveMediaUrl(user.avatar_url ?? undefined);
         return media ? addVersionParam(media, avatarVersion) : "";
       })()
     });
@@ -443,12 +443,12 @@ export default function Profile() {
     );
 
   const avatarImageUrl = useMemo(() => {
-    const media = resolveMediaUrl(user?.avatar_url);
+    const media = resolveMediaUrl(user?.avatar_url ?? undefined);
     return media ? addVersionParam(media, avatarVersion) : DEFAULT_AVATAR;
   }, [user?.avatar_url, avatarVersion]);
 
   const coverImageUrl = useMemo(() => {
-    const media = resolveMediaUrl(user?.cover_url);
+    const media = resolveMediaUrl(user?.cover_url ?? undefined);
     return media ? addVersionParam(media, coverVersion) : profileBg;
   }, [user?.cover_url, coverVersion]);
 
@@ -747,7 +747,7 @@ export default function Profile() {
                       <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
                         <Avatar
                           src={avatarImageUrl}
-                          alt={user?.full_name}
+                          alt={user?.full_name ?? undefined}
                           imgProps={{
                             onError: handleAvatarImgError,
                             loading: "lazy",
