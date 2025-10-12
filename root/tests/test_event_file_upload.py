@@ -5,12 +5,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import UploadFile
 
-from app.api import routes
+from app.api import events
 from app.core.config import settings
 from app.models import models
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio("asyncio")
 async def test_upload_event_file_offloads_io(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -37,11 +37,11 @@ async def test_upload_event_file_offloads_io(
         calls.append((func, args, kwargs))
         return func(*args, **kwargs)
 
-    monkeypatch.setattr(routes, "asyncio", asyncio)
-    monkeypatch.setattr(routes.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(events, "asyncio", asyncio)
+    monkeypatch.setattr(events.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
-    result = await routes.upload_event_file(event.id, upload, db=db_session, user=admin)
+    result = await events.upload_event_file(event.id, upload, db=db_session, user=admin)
 
     assert result.event_id == event.id
     assert result.file_url.startswith("/static/event_files/")
