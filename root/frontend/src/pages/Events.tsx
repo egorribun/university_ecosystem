@@ -185,70 +185,52 @@ const Events = () => {
 
   const normalizedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events])
 
-  const mobileContent = useMemo(
-    () => (
-      <Stack data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } spacing={2} mt={1}>
-        {loading &&
-          Array.from({ length: 3 }).map((_, i) => (
-            <Box key={`event-skel-mobile-${i}`} sx={{ p: 0 }}>
-              <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2 }} />
-              <Skeleton height={28} sx={{ mt: 1 }} />
-              <Skeleton height={20} width="85%" />
-            </Box>
-          ))}
-        {!loading &&
-          normalizedEvents.map((event) => (
-            <EventCard key={event.id} {...event} onChange={handleRefresh} />
-          ))}
-        {!loading && normalizedEvents.length === 0 && (
-          <Typography fontSize={20} color="text.secondary" align="center" mt={8}>
-            Нет мероприятий
-          </Typography>
-        )}
-      </Stack>
-    ),
-    [handleRefresh, loading, normalizedEvents],
-  )
+  const eventsContent = useMemo(
+    () => {
+      const skeletonCount = isMobile ? 3 : 6
+      return (
+        <Box
+          data-fade
+          style={{ '--fade-delay': '260ms' } as CSSProperties }
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: { xs: 2, sm: 3 },
+            minHeight: "180px",
+          }}
+        >
+          {loading &&
+            Array.from({ length: skeletonCount }).map((_, i) => (
+              <Box key={`event-skel-${i}`}>
+                <Skeleton
+                  variant="rectangular"
+                  height={isMobile ? 160 : 200}
+                  sx={{ borderRadius: 2 }}
+                />
+                <Skeleton height={isMobile ? 28 : 32} sx={{ mt: 1 }} />
+                <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
+                {!isMobile && <Skeleton height={20} width="60%" />}
+              </Box>
+            ))}
 
-  const desktopContent = useMemo(
-    () => (
-      <Box
-        data-fade
-        style={{ '--fade-delay': '260ms' } as CSSProperties }
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: { xs: 2, sm: 3 },
-          minHeight: "180px",
-        }}
-      >
-        {loading &&
-          Array.from({ length: 6 }).map((_, i) => (
-            <Box key={`event-skel-desktop-${i}`}>
-              <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2 }} />
-              <Skeleton height={32} sx={{ mt: 1 }} />
-              <Skeleton height={20} width="80%" />
-              <Skeleton height={20} width="60%" />
-            </Box>
-          ))}
+          {!loading &&
+            normalizedEvents.map((event) => (
+              <Box key={event.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
+                <EventCard {...event} onChange={handleRefresh} />
+              </Box>
+            ))}
 
-        {!loading &&
-          normalizedEvents.map((event) => (
-            <Box key={event.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-              <EventCard {...event} onChange={handleRefresh} />
+          {!loading && normalizedEvents.length === 0 && (
+            <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
+              <Typography fontSize={24} className="events-empty-text">
+                Нет мероприятий
+              </Typography>
             </Box>
-          ))}
-
-        {!loading && normalizedEvents.length === 0 && (
-          <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
-            <Typography fontSize={24} className="events-empty-text">
-              Нет мероприятий
-            </Typography>
-          </Box>
-        )}
-      </Box>
-    ),
-    [handleRefresh, loading, normalizedEvents],
+          )}
+        </Box>
+      )
+    },
+    [handleRefresh, isMobile, loading, normalizedEvents],
   )
 
   return (
@@ -474,7 +456,7 @@ const Events = () => {
           </Stack>
         </Popover>
 
-        {isMobile ? mobileContent : desktopContent}
+        {eventsContent}
 
         <Dialog open={createOpen} onClose={closeCreate}>
           <DialogTitle>Создать мероприятие</DialogTitle>
