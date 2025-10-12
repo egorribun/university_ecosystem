@@ -535,7 +535,7 @@ export default function Activity() {
                     borderRadius: 999,
                     border: 0,
                     fontWeight: 700,
-                    color: isDark ? darkToggleText : alpha(theme.palette.text.primary, 0.8),
+                    color: theme.palette.common.white,
                     backgroundColor: isDark ? darkToggleBase : "transparent",
                     transition: theme.transitions.create(
                       ["background-color", "color", "box-shadow"],
@@ -561,7 +561,7 @@ export default function Activity() {
                     background: isDark
                       ? darkToggleSelected
                       : lighten(theme.palette.primary.main, 0.35),
-                    color: isDark ? theme.palette.primary.dark : theme.palette.primary.contrastText,
+                    color: theme.palette.common.white,
                     boxShadow: isDark
                       ? `0 8px 24px ${alpha(theme.palette.primary.main, 0.45)}`
                       : `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
