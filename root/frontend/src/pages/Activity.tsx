@@ -172,7 +172,6 @@ export default function Activity() {
   const darkToggleHover = alpha(theme.palette.common.white, 0.96)
   const darkToggleBorder = alpha(theme.palette.common.white, 0.24)
   const darkToggleSelected = lighten(theme.palette.primary.main, 0.6)
-  const darkToggleText = theme.palette.grey[900]
 
   const [period, setPeriod] = useState<"30d" | "90d" | "180d">("90d")
   const [attendance, setAttendance] = useState<AttendanceStats | null>(null)
