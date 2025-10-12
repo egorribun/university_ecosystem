@@ -194,22 +194,12 @@ const Events = () => {
       }
     }
 
-    if (normalizedEvents.length === 2) {
-      const expandedWidth = "clamp(360px, 42vw, 620px)"
-      return {
-        gridTemplateColumns: `repeat(2, minmax(${expandedWidth}, 1fr))`,
-        gap: { xs: 2, sm: 2.5, md: 3 },
-        cardMaxWidth: expandedWidth
-      }
-    }
-
-    const defaultWidth = "clamp(300px, 30vw, 420px)"
     return {
-      gridTemplateColumns: `repeat(auto-fit, minmax(${defaultWidth}, 1fr))`,
-      gap: { xs: 2, sm: 3 },
-      cardMaxWidth: defaultWidth
+      gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+      gap: { xs: 2, sm: 2.5, md: 3 },
+      cardMaxWidth: "100%"
     }
-  }, [isMobile, normalizedEvents.length])
+  }, [isMobile])
 
   const { gridTemplateColumns, gap, cardMaxWidth } = layoutConfig
 
@@ -250,8 +240,6 @@ const Events = () => {
                   display: "flex",
                   width: "100%",
                   height: "100%",
-                  maxWidth: cardMaxWidth,
-                  mx: "auto",
                   transition: "max-width 0.28s ease"
                 }}
               >
