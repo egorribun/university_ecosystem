@@ -27,6 +27,7 @@ import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
+import { cardHoverSx } from "@/constants/cardHover"
 
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -407,28 +408,20 @@ const EventCardComponent: FC<EventCardProps> = ({
         position: "relative",
         cursor: editOpen ? "default" : "pointer",
         boxShadow: 5,
-        transition: "transform 0.25s ease, box-shadow 0.25s ease, max-width 0.25s ease",
-        willChange: "transform",
         p: { xs: 2, sm: 3 },
         overflow: "hidden",
-        "&:hover": !editOpen
-          ? {
-              transform: isMobile ? "none" : "scale(1.03)",
-              boxShadow: "0 12px 28px rgba(0,0,0,0.18)"
-            }
-          : undefined,
-        "&:active": {
-          transform: editOpen ? "none" : "scale(0.997)"
-        },
+        ...cardHoverSx({
+          disabled: editOpen,
+          hoverTransform: isMobile ? "none" : "scale(1.03)",
+          activeTransform: editOpen ? "none" : "scale(0.997)"
+        }),
+        transition: "transform 0.25s ease, box-shadow 0.25s ease, max-width 0.25s ease",
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
           outlineOffset: "2px"
         },
         pointerEvents: qrOpen ? "none" : "auto",
-        filter: qrOpen ? "grayscale(0.12) opacity(0.92)" : "none",
-        "@media (prefers-reduced-motion: reduce)": {
-          transition: "box-shadow 0.25s ease"
-        }
+        filter: qrOpen ? "grayscale(0.12) opacity(0.92)" : "none"
       }}
       role="button"
       tabIndex={0}
