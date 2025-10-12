@@ -335,18 +335,7 @@ const Navbar = () => {
             }}
             style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? "8px" : "10px", minWidth: 0, padding: "6px 6px", borderRadius: 12, textDecoration: "none" }}
           >
-            <div
-              style={{
-                width: `${logoWrapSize}px`,
-                height: `${logoWrapSize}px`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "50%",
-                background: "var(--nav-logo-bg)",
-                boxShadow: "var(--nav-logo-shadow)"
-              }}
-            >
+            <div style={{ width: `${logoWrapSize}px`, height: `${logoWrapSize}px`, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#fff", boxShadow: "0 0 8px rgba(0,0,0,0.13)" }}>
               <img
                 src={guuLogo}
                 alt="ГУУ"
@@ -357,15 +346,7 @@ const Navbar = () => {
                 decoding="async"
               />
             </div>
-            <span
-              style={{
-                color: "var(--nav-utility-strong)",
-                fontWeight: 800,
-                fontSize: titleFont,
-                whiteSpace: "nowrap",
-                letterSpacing: ".2px"
-              }}
-            >
+            <span style={{ color: "#fff", fontWeight: 800, fontSize: titleFont, whiteSpace: "nowrap", letterSpacing: ".2px" }}>
               Экосистема ГУУ
             </span>
           </Link>
@@ -380,32 +361,31 @@ const Navbar = () => {
                   fallback={avatarFallback}
                   alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
                   title="Открыть профиль"
-                style={{
-                  width: avatarSize,
-                  height: avatarSize,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  border: "1px solid var(--nav-avatar-border)",
-                  background: "var(--nav-avatar-bg)",
-                  boxShadow: "var(--nav-avatar-shadow)",
-                  cursor: "pointer",
-                  display: "block",
-                }}
-                onClick={() => go("/profile")}
-              />
+                  style={{
+                    width: avatarSize,
+                    height: avatarSize,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "1px solid #d7d7d7",
+                    background: "#fff",
+                    cursor: "pointer",
+                    display: "block",
+                  }}
+                  onClick={() => go("/profile")}
+                />
               ) : (
                 <Skeleton
                   variant="circular"
                   width={avatarSize}
                   height={avatarSize}
-                  sx={{ bgcolor: "var(--nav-skeleton-bg)" }}
+                  sx={{ bgcolor: "rgba(255,255,255,0.32)" }}
                   aria-hidden="true"
                 />
               )}
               <button
                 type="button"
                 className="burger-btn"
-                style={{ background: "none", border: "none", padding: 0, width: burgerBtnSize, height: burgerBtnSize, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--nav-utility-strong)", borderRadius: 10 }}
+                style={{ background: "none", border: "none", padding: 0, width: burgerBtnSize, height: burgerBtnSize, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", borderRadius: 10 }}
                 onClick={() => setMobileMenu(v => !v)}
                 aria-label={mobileMenu ? "Закрыть меню" : "Открыть меню"}
                 aria-expanded={mobileMenu}
@@ -446,9 +426,9 @@ const Navbar = () => {
 
           {!isMobile && loading ? (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px" }} aria-hidden="true">
-              <Skeleton variant="circular" width={36} height={36} sx={{ bgcolor: "var(--nav-skeleton-bg)" }} />
-              <Skeleton variant="rectangular" width={96} height={18} sx={{ borderRadius: 1, bgcolor: "var(--nav-skeleton-bg)" }} />
-              <Skeleton variant="circular" width={32} height={32} sx={{ bgcolor: "var(--nav-skeleton-bg)" }} />
+              <Skeleton variant="circular" width={36} height={36} sx={{ bgcolor: "rgba(255,255,255,0.25)" }} />
+              <Skeleton variant="rectangular" width={96} height={18} sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }} />
+              <Skeleton variant="circular" width={32} height={32} sx={{ bgcolor: "rgba(255,255,255,0.25)" }} />
             </div>
           ) : (!isMobile && isAuth && user && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px", minWidth: 0, whiteSpace: "nowrap" }}>
@@ -464,9 +444,8 @@ const Navbar = () => {
                   height: "36px",
                   borderRadius: "50%",
                   objectFit: "cover",
-                  border: "1.5px solid var(--nav-avatar-border)",
-                  background: "var(--nav-avatar-bg)",
-                  boxShadow: "var(--nav-avatar-shadow)",
+                  border: "1.5px solid #ccc",
+                  background: "#fff",
                   cursor: "pointer",
                   display: "block",
                 }}
@@ -482,7 +461,7 @@ const Navbar = () => {
                   border: "none",
                   padding: 0,
                   margin: 0,
-                  color: "var(--nav-utility-text)",
+                  color: "#fff",
                   fontWeight: 600,
                   whiteSpace: "nowrap",
                   cursor: "pointer",
@@ -502,15 +481,15 @@ const Navbar = () => {
                 title="Настройки"
               >
                 <svg
-                  width="24"
-                  height="24"
+                  width="20"
+                  height="20"
                   viewBox="0 0 24 24"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
                   aria-hidden="true"
                   focusable="false"
                 >
-                  <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <g stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
                     <path d="M5 7h14" />
                     <path d="M5 12h14" />
                     <path d="M5 17h14" />
@@ -540,8 +519,8 @@ const Navbar = () => {
             style={{ width: 270, maxWidth: "88vw", background: navBgColor, height: "100vh", boxShadow: "2px 0 22px #0003", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", transition: prefersReducedMotion ? "none" : "transform 0.35s cubic-bezier(.52,1.29,.47,.97)", transform: mobileMenu ? "translateX(0)" : "translateX(-120%)", justifyContent: "flex-start", position: "relative" }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ width: "100%", padding: "18px 0 10px 22px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--nav-drawer-divider)" }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--nav-drawer-icon-bg)", boxShadow: "var(--nav-drawer-icon-shadow)" }}>
+            <div style={{ width: "100%", padding: "18px 0 10px 22px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #ede2d2" }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", boxShadow: "0 0 6px rgba(0,0,0,0.10)" }}>
                 <img
                   src={guuLogo}
                   alt="ГУУ"
