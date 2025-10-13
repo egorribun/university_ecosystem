@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
 
 import fakeredis.aioredis
@@ -73,6 +73,7 @@ from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
+from app.utils import ratelimit as ratelimit_module
 
 
 @pytest.fixture(scope="session")
@@ -122,6 +123,15 @@ async def configure_rate_limit(
         yield
     finally:
         await _rate_limit_redis_client.flushall()
+
+
+@pytest.fixture(autouse=True)
+def reset_sensitive_rate_limiter() -> Iterator[None]:
+    ratelimit_module.limiter.reset()
+    try:
+        yield
+    finally:
+        ratelimit_module.limiter.reset()
 
 
 @pytest.fixture

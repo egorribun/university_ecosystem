@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import User
 from app.schemas.schemas import Token, UserCreate
+from app.utils.ratelimit import sensitive_route_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -59,7 +60,11 @@ def _clear_access_token_cookie(response: Response) -> None:
     )
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def login(
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
@@ -100,7 +105,11 @@ async def login(
     return {"access_token": token, "token_type": "bearer"}
 
 
-@router.post("/login-json", response_model=Token)
+@router.post(
+    "/login-json",
+    response_model=Token,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def login_json(
     payload: LoginIn,
     response: Response,
