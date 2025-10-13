@@ -110,13 +110,19 @@ async def test_create_notifications_records_webpush_deliveries(
     assert created == 1
 
     notifications = (
-        await db_session.execute(select(Notification).where(Notification.user_id == user.id))
-    ).scalars().all()
+        (
+            await db_session.execute(
+                select(Notification).where(Notification.user_id == user.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(notifications) == 1
 
     deliveries = (
-        await db_session.execute(select(NotificationDelivery))
-    ).scalars().all()
+        (await db_session.execute(select(NotificationDelivery))).scalars().all()
+    )
     assert len(deliveries) == 1
     delivery = deliveries[0]
     assert delivery.notification_id == notifications[0].id
@@ -153,8 +159,8 @@ async def test_create_notifications_records_skip_without_credentials(
     assert created == 1
 
     deliveries = (
-        await db_session.execute(select(NotificationDelivery))
-    ).scalars().all()
+        (await db_session.execute(select(NotificationDelivery))).scalars().all()
+    )
     assert len(deliveries) == 1
     delivery = deliveries[0]
     assert delivery.status == "skipped_no_credentials"
