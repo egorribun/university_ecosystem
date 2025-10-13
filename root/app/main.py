@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import text
 
 from app.api.events import router as events_router
@@ -28,8 +30,6 @@ from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
-from redis.asyncio import Redis
-from redis.exceptions import RedisError
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
