@@ -646,10 +646,9 @@ async def _scheduler_loop(
                     poll_seconds * (2 ** min(consecutive_failures, 5)),
                     max_backoff_seconds,
                 )
-                logger.exception(
-                    "Failed to generate schedule reminders (attempt %s)",
-                    consecutive_failures,
-                )
+                message = "Failed to generate schedule reminders (attempt %s)"
+                logger.exception(message, consecutive_failures)
+                logging.getLogger().error(message, consecutive_failures)
             else:
                 consecutive_failures = 0
 

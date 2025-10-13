@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
 from app.models import models
+from app.models.enums import UserRole
 from app.schemas import schemas
 
 
@@ -27,14 +28,17 @@ _EVENT_TIME_PAIR_ERROR = "Укажите время начала и оконча
 
 
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
+    raw_role = getattr(user_in, "role", None)
+    requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
+
     code = None
-    if hasattr(user_in, "invite_code") and getattr(user_in, "role", "student") in (
-        "teacher",
-        "admin",
+    if hasattr(user_in, "invite_code") and requested_role in (
+        UserRole.TEACHER,
+        UserRole.ADMIN,
     ):
         code_q = select(models.InviteCode).where(
             models.InviteCode.code == user_in.invite_code,
-            models.InviteCode.role == user_in.role,
+            models.InviteCode.role == requested_role.value,
             models.InviteCode.is_active.is_(True),
             models.InviteCode.is_used.is_(False),
         )
@@ -55,7 +59,7 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         email=user_in.email.strip(),
         hashed_password=hashed_password,
         full_name=user_in.full_name,
-        role=getattr(user_in, "role", "student"),
+        role=requested_role.value,
         group_id=getattr(user_in, "group_id", None),
         avatar_url=getattr(user_in, "avatar_url", None),
         cover_url=getattr(user_in, "cover_url", None),

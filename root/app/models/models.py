@@ -18,17 +18,26 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.models.enums import UserRole
+
+ROLE_VALUES_SQL = ", ".join(f"'{role.value}'" for role in UserRole)
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            f"role IN ({ROLE_VALUES_SQL})",
+            name="ck_users_role_valid",
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
     full_name = Column(String)
-    role = Column(String, nullable=False, default="student", index=True)
+    role = Column(String, nullable=False, default=UserRole.STUDENT.value, index=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
     is_active = Column(Boolean, default=True, index=True)
 
@@ -189,6 +198,12 @@ class News(Base):
 
 class InviteCode(Base):
     __tablename__ = "invite_codes"
+    __table_args__ = (
+        CheckConstraint(
+            f"role IN ({ROLE_VALUES_SQL})",
+            name="ck_invite_codes_role_valid",
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     code = Column(String, unique=True, nullable=False, index=True)

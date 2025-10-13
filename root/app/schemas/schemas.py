@@ -3,6 +3,8 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
+from app.models.enums import UserRole
+
 
 class OrmModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -24,7 +26,7 @@ class ResetPasswordIn(BaseModel):
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
-    role: Optional[str] = "student"
+    role: UserRole = UserRole.STUDENT
     group_id: Optional[int] = None
     avatar_url: Optional[str] = None
     cover_url: Optional[str] = None
@@ -61,7 +63,7 @@ class UserOut(OrmModel, UserBase):
 class UserAdminUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
-    role: Optional[str] = None
+    role: Optional[UserRole] = None
     group_id: Optional[int] = None
 
 
