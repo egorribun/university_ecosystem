@@ -47,11 +47,13 @@ export default function useFocusTrap<T extends HTMLElement>({
       return undefined;
     }
 
-    const fallbackTarget =
-      fallbackFocus ?? (() => {
-        if (container.tabIndex < 0) container.tabIndex = -1;
-        return container;
-      });
+    const fallbackTarget: FocusTarget =
+      typeof fallbackFocus !== "undefined"
+        ? fallbackFocus
+        : (() => {
+            if (container.tabIndex < 0) container.tabIndex = -1;
+            return container;
+          }) as FocusTarget;
 
     const options: FocusTrapOptions = {
       allowOutsideClick,

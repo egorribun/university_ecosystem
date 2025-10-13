@@ -53,9 +53,23 @@ describe("useScrollRestoration", () => {
     Object.defineProperty(scrollRoot, "scrollHeight", { value: 600, configurable: true });
     Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true });
     Object.defineProperty(scrollRoot, "scrollTop", { value: 120, writable: true, configurable: true });
-    scrollRoot.scrollTo = vi.fn(({ top }: ScrollToOptions) => {
-      scrollRoot.scrollTop = typeof top === "number" ? top : 0;
-    }) as unknown as (options: ScrollToOptions) => void;
+    scrollRoot.scrollTo = vi
+      .fn((options?: ScrollToOptions | number, y?: number) => {
+        if (typeof options === "number") {
+          scrollRoot.scrollTop = options;
+          return;
+        }
+
+        if (typeof options === "object" && options !== null) {
+          const { top } = options;
+          scrollRoot.scrollTop = typeof top === "number" ? top : 0;
+          return;
+        }
+
+        if (typeof y === "number") {
+          scrollRoot.scrollTop = y;
+        }
+      }) as typeof scrollRoot.scrollTo;
     document.body.appendChild(scrollRoot);
 
     window.sessionStorage.clear();
