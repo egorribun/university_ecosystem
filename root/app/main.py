@@ -8,7 +8,6 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.api.events import router as events_router
-from app.api.misc import router as misc_router
 from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
 from app.api.schedule import router as schedule_api_router
@@ -141,4 +140,3 @@ app.include_router(users_router)
 app.include_router(events_router)
 app.include_router(news_router)
 app.include_router(schedule_api_router)
-app.include_router(misc_router)
