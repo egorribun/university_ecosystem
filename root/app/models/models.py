@@ -137,6 +137,10 @@ class Event(Base):
     image_url = Column(String)
     about = Column(Text)
 
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
+    )
+
 
 class EventAttendance(Base):
     __tablename__ = "event_attendance"
