@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
-from starlette.datastructures import Headers
 from sqlalchemy import select
+from starlette.datastructures import Headers
 
 from app.api import events
 from app.core.config import settings
