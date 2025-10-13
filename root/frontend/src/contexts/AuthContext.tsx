@@ -55,40 +55,137 @@ export const useAuth = () => useContext(AuthContext)
 
 export const currentUserQueryKey = ["users", "me"] as const
 
-const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
-const PROFILE_CACHE_MIGRATION_KEY = `${PROFILE_CACHE_KEY}:cookie-auth`
+const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
+const PROFILE_CACHE_SCHEMA_VERSION = 2
+const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
+const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
+const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
+const PROFILE_CACHE_SIGNING_SALT = "ecosystem-profile-cache-salt"
 
-const isUser = (value: unknown): value is User => {
-  if (!value || typeof value !== "object") return false
-  const candidate = value as Partial<User>
-  return typeof candidate.id === "number" && typeof candidate.email === "string"
+type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
+
+type CachedProfileEnvelope = {
+  version: number
+  expiresAt: number
+  data: CachedUserSnapshot
+  signature: string
+}
+
+type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
+
+const encodeBase64 = (value: string): string => {
+  if (typeof globalThis === "undefined") return value
+  const encoder = globalThis.btoa
+  if (typeof encoder !== "function") return value
+  try {
+    const utf8 = encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_, hex) =>
+      String.fromCharCode(Number.parseInt(hex, 16))
+    )
+    return encoder(utf8)
+  } catch {
+    return value
+  }
+}
+
+const signSnapshot = (payload: CacheSignaturePayload): string => {
+  const json = JSON.stringify(payload)
+  return encodeBase64(`${PROFILE_CACHE_SIGNING_SALT}:${json}`)
 }
 
 const migrateProfileCache = () => {
   if (typeof localStorage === "undefined") return
   try {
-    const migrated = localStorage.getItem(PROFILE_CACHE_MIGRATION_KEY)
-    if (!migrated) {
-      localStorage.removeItem(PROFILE_CACHE_KEY)
-      localStorage.setItem(PROFILE_CACHE_MIGRATION_KEY, new Date().toISOString())
+    const storedVersion = localStorage.getItem(PROFILE_CACHE_VERSION_KEY)
+    if (storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
+      for (const legacyKey of LEGACY_PROFILE_CACHE_KEYS) {
+        localStorage.removeItem(legacyKey)
+      }
+      if (storedVersion && storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
+        localStorage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
+      }
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      localStorage.setItem(
+        PROFILE_CACHE_VERSION_KEY,
+        String(PROFILE_CACHE_SCHEMA_VERSION)
+      )
     }
   } catch {
     /* ignore */
   }
 }
 
+const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
+  id: snapshot.id,
+  email: "",
+  full_name: snapshot.full_name,
+  role: null,
+  group_id: null,
+  avatar_url: snapshot.avatar_url,
+  cover_url: null,
+  about: null,
+  record_book_number: null,
+  status: null,
+  institute: null,
+  course: null,
+  education_level: null,
+  track: null,
+  program: null,
+  telegram: null,
+  achievements: null,
+  department: null,
+  position: null,
+  spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: null,
+  dnd_enabled: false,
+  dnd_start: null,
+  dnd_end: null,
+  is_active: false,
+})
+
 const readCachedUser = (): User | undefined => {
   if (typeof localStorage === "undefined") return undefined
   try {
-    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
-    const parsed = JSON.parse(raw) as unknown
-    if (parsed && typeof parsed === "object" && "data" in parsed) {
-      const data = (parsed as { data: unknown }).data
-      return isUser(data) ? data : undefined
+    const parsed = JSON.parse(raw) as CachedProfileEnvelope | unknown
+    if (!parsed || typeof parsed !== "object") return undefined
+    const candidate = parsed as Partial<CachedProfileEnvelope>
+    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
     }
-    return isUser(parsed) ? parsed : undefined
+    if (
+      typeof candidate.expiresAt !== "number" ||
+      !candidate.data ||
+      typeof candidate.signature !== "string"
+    ) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    if (candidate.expiresAt <= Date.now()) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    const payload: CacheSignaturePayload = {
+      version: candidate.version,
+      expiresAt: candidate.expiresAt,
+      data: candidate.data as CachedUserSnapshot,
+    }
+    const expectedSignature = signSnapshot(payload)
+    if (candidate.signature !== expectedSignature) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    const snapshot = candidate.data as CachedUserSnapshot
+    if (!snapshot || typeof snapshot.id !== "number") {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    return createOptimisticUser(snapshot)
   } catch {
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
     return undefined
   }
 }
@@ -97,12 +194,28 @@ const persistUserToCache = (value: User | null) => {
   if (typeof localStorage === "undefined") return
   try {
     if (value != null) {
+      const snapshot: CachedUserSnapshot = {
+        id: value.id,
+        full_name: value.full_name,
+        avatar_url: value.avatar_url,
+      }
+      const payload: CacheSignaturePayload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+        data: snapshot,
+      }
+      const envelope: CachedProfileEnvelope = {
+        ...payload,
+        signature: signSnapshot(payload),
+      }
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
       localStorage.setItem(
-        PROFILE_CACHE_KEY,
-        JSON.stringify({ data: value, savedAt: new Date().toISOString() })
+        PROFILE_CACHE_VERSION_KEY,
+        String(PROFILE_CACHE_SCHEMA_VERSION)
       )
     } else {
-      localStorage.removeItem(PROFILE_CACHE_KEY)
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
     }
   } catch {
     /* ignore */
