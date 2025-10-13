@@ -259,9 +259,12 @@ class NotificationDelivery(Base):
     )
     channel = Column(String, nullable=False, default="inapp", index=True)
     status = Column(String, nullable=False, default="delivered", index=True)
-    delivered_at = Column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+    attempted_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
+    delivered_at = Column(DateTime(timezone=True), index=True)
+    status_code = Column(Integer)
+    detail = Column(Text)
 
     notification = relationship("Notification", back_populates="deliveries")
 
