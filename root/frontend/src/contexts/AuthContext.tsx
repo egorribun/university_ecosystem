@@ -17,7 +17,7 @@ import {
   softSyncPushSubscription,
   unsubscribePush,
 } from "@/push/subscribe"
-import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
+import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { User } from "@/types/User"
 
@@ -56,6 +56,7 @@ export const useAuth = () => useContext(AuthContext)
 export const currentUserQueryKey = ["users", "me"] as const
 
 const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
+const PROFILE_CACHE_MIGRATION_KEY = `${PROFILE_CACHE_KEY}:cookie-auth`
 
 const isUser = (value: unknown): value is User => {
   if (!value || typeof value !== "object") return false
@@ -63,7 +64,21 @@ const isUser = (value: unknown): value is User => {
   return typeof candidate.id === "number" && typeof candidate.email === "string"
 }
 
+const migrateProfileCache = () => {
+  if (typeof localStorage === "undefined") return
+  try {
+    const migrated = localStorage.getItem(PROFILE_CACHE_MIGRATION_KEY)
+    if (!migrated) {
+      localStorage.removeItem(PROFILE_CACHE_KEY)
+      localStorage.setItem(PROFILE_CACHE_MIGRATION_KEY, new Date().toISOString())
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 const readCachedUser = (): User | undefined => {
+  if (typeof localStorage === "undefined") return undefined
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_KEY)
     if (!raw) return undefined
@@ -79,6 +94,7 @@ const readCachedUser = (): User | undefined => {
 }
 
 const persistUserToCache = (value: User | null) => {
+  if (typeof localStorage === "undefined") return
   try {
     if (value != null) {
       localStorage.setItem(
@@ -93,14 +109,6 @@ const persistUserToCache = (value: User | null) => {
   }
 }
 
-const readStoredToken = () => {
-  try {
-    return localStorage.getItem("token")
-  } catch {
-    return null
-  }
-}
-
 type FetchCurrentUserOptions = {
   signal?: AbortSignal
 }
@@ -110,26 +118,19 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
   return response.data
 }
 
+const initializeCachedUser = (): UserState => {
+  if (typeof window === "undefined") return null
+  migrateProfileCache()
+  return readCachedUser() ?? null
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
-  const cachedUserRef = useRef<UserState>(readCachedUser() ?? null)
-  const [token, setToken] = useState<string | null>(() => readStoredToken())
-  const [userState, setUserState] = useState<UserState>(cachedUserRef.current)
-  const [initializing, setInitializing] = useState<boolean>(
-    () => Boolean(cachedUserRef.current || token)
-  )
+  const [userState, setUserState] = useState<UserState>(initializeCachedUser)
+  const cachedUserRef = useRef<UserState>(userState)
+  const [initializing, setInitializing] = useState<boolean>(true)
   const [authOperation, setAuthOperation] = useState(false)
-  const bootstrapSkipRef = useRef(false)
   const activeRequestRef = useRef<AbortController | null>(null)
-
-  const applyToken = useCallback((value: string | null) => {
-    setToken(value)
-    setAuthToken(value ?? undefined)
-  }, [])
-
-  useEffect(() => {
-    setAuthToken(token ?? undefined)
-  }, [token])
 
   const setUser = useCallback(
     (value: SetUserArg) => {
@@ -155,27 +156,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [queryClient])
 
   const clearProfile = useCallback(() => {
-    activeRequestRef.current?.abort()
+    const controller = activeRequestRef.current
+    controller?.abort()
+    activeRequestRef.current = null
     setUser(null)
     cachedUserRef.current = null
   }, [setUser])
 
   const handleUnauthorized = useCallback(() => {
-    activeRequestRef.current?.abort()
-    applyToken(null)
     clearProfile()
+    setAuthOperation(false)
     setInitializing(false)
-  }, [applyToken, clearProfile])
+  }, [clearProfile])
 
   useEffect(() => {
-    if (!token) {
-      clearProfile()
+    if (typeof window === "undefined") {
       setInitializing(false)
-      return
-    }
-
-    if (bootstrapSkipRef.current) {
-      bootstrapSkipRef.current = false
       return
     }
 
@@ -196,11 +192,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         console.error("Failed to fetch current user", error)
       } finally {
+        if (!controller.signal.aborted && activeRequestRef.current === controller) {
+          activeRequestRef.current = null
+        }
         if (!controller.signal.aborted) {
           setInitializing(false)
-          if (activeRequestRef.current === controller) {
-            activeRequestRef.current = null
-          }
         }
       }
     })()
@@ -208,15 +204,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       controller.abort()
     }
-  }, [clearProfile, handleUnauthorized, setUser, token])
+  }, [handleUnauthorized, setUser])
 
   const refresh = useCallback(async () => {
-    if (!token) {
-      clearProfile()
-      setInitializing(false)
-      return
-    }
-
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
@@ -233,30 +223,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       throw error
     } finally {
+      if (!controller.signal.aborted && activeRequestRef.current === controller) {
+        activeRequestRef.current = null
+      }
       if (!controller.signal.aborted) {
         setInitializing(false)
-        if (activeRequestRef.current === controller) {
-          activeRequestRef.current = null
-        }
       }
     }
-  }, [clearProfile, handleUnauthorized, setUser, token])
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === "token") {
-        const stored = readStoredToken()
-        if (stored) {
-          applyToken(stored)
-        } else {
-          handleUnauthorized()
-        }
-      }
-    }
-    window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
-  }, [applyToken, handleUnauthorized])
+  }, [handleUnauthorized, setUser])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -298,20 +272,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       try {
         setAuthOperation(true)
-        const { data } = await api.post("/auth/login", payload, {
+        setInitializing(true)
+        await api.post("/auth/login", payload, {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           signal: controller.signal,
         })
 
-        const nextToken: string | undefined =
-          data?.access_token ?? data?.accessToken ?? data?.token ?? undefined
-
-        if (!nextToken) {
-          throw new Error("Не удалось получить токен авторизации")
-        }
-
-        bootstrapSkipRef.current = true
-        applyToken(nextToken)
+        if (controller.signal.aborted) return
 
         const profile = await fetchCurrentUser({ signal: controller.signal })
         setUser(profile)
@@ -346,16 +313,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         throw new Error("Не удалось войти")
       } finally {
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null
+        }
+        setAuthOperation(false)
         if (!controller.signal.aborted) {
-          setAuthOperation(false)
           setInitializing(false)
-          if (activeRequestRef.current === controller) {
-            activeRequestRef.current = null
-          }
         }
       }
     },
-    [applyToken, handleUnauthorized, setUser]
+    [handleUnauthorized, setUser]
   )
 
   const logout = useCallback(async () => {
@@ -381,7 +348,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [handleUnauthorized])
 
   const user = userState
-  const isAuth = Boolean(token && user)
+  const isAuth = Boolean(user)
   const loading = initializing || authOperation
 
   const value = useMemo(
