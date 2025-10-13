@@ -122,6 +122,38 @@ async def test_upload_event_file_rejects_forbidden_type(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_upload_event_file_rejects_mismatched_magic_bytes(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    pdf_payload = b"%PDF-1.7\n" + b"0" * 100
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(pdf_payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(
+        settings,
+        "event_file_allowed_mime_types",
+        ["text/plain", "application/pdf"],
+    )
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt", ".pdf"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(event.id, upload, db=db_session, user=admin)
+
+    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert excinfo.value.detail == "content type mismatch"
+    folder = tmp_path / "event_files"
+    assert not folder.exists()
+
+
+@pytest.mark.anyio("asyncio")
 async def test_update_event_replaces_image_removes_old_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):

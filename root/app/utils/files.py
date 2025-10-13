@@ -4,7 +4,7 @@ import mimetypes
 import re
 import secrets
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException, UploadFile, status
@@ -22,6 +22,14 @@ _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+
+try:  # pragma: no cover - exercised indirectly via detect_mime_type
+    import magic  # type: ignore[import]
+except ImportError:  # pragma: no cover - handled at runtime
+    magic = None  # type: ignore[assignment]
+
+_MAGIC_NOT_INITIALIZED: Final[object] = object()
+_magic_mime_detector: Any = _MAGIC_NOT_INITIALIZED
 
 
 def _ensure_dir(p: Path) -> None:
@@ -51,6 +59,66 @@ def _detect_image_mime(data: bytes) -> str | None:
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
     return None
+
+
+def _normalize_mime_type(value: str | None) -> str:
+    if not value:
+        return ""
+    normalized = value.strip().lower()
+    if ";" in normalized:
+        normalized = normalized.split(";", 1)[0].strip()
+    return normalized
+
+
+def detect_mime_type(data: bytes) -> str | None:
+    """Best-effort MIME type detection for arbitrary payloads."""
+
+    global _magic_mime_detector
+
+    if not data:
+        return None
+
+    detector: Any | None
+    if _magic_mime_detector is _MAGIC_NOT_INITIALIZED:
+        detector = None
+        if magic is not None:  # pragma: no branch - trivial branch
+            try:
+                detector = magic.Magic(mime=True)  # type: ignore[attr-defined]
+            except Exception:  # pragma: no cover - depends on runtime env
+                logger.warning(
+                    "Failed to initialize libmagic MIME detector", exc_info=True
+                )
+                detector = None
+        _magic_mime_detector = detector
+    else:
+        detector = _magic_mime_detector  # type: ignore[assignment]
+
+    if detector is not None:
+        try:
+            result = detector.from_buffer(data)  # type: ignore[call-arg]
+        except AttributeError:  # pragma: no cover - fallback path
+            try:
+                result = (
+                    magic.from_buffer(data, mime=True) if magic is not None else None
+                )
+            except Exception:  # pragma: no cover - depends on runtime env
+                logger.warning("libmagic failed to detect MIME type", exc_info=True)
+                result = None
+        except Exception:  # pragma: no cover - depends on runtime env
+            logger.warning("libmagic failed to detect MIME type", exc_info=True)
+            result = None
+        if isinstance(result, bytes):
+            detected = result.decode("ascii", "ignore")
+        elif isinstance(result, str):
+            detected = result
+        else:
+            detected = ""
+        normalized = _normalize_mime_type(detected)
+        if normalized:
+            return normalized
+
+    # Fall back to lightweight signature checks for common image formats.
+    return _normalize_mime_type(_detect_image_mime(data)) or None
 
 
 def normalize_filename_prefix(prefix: str) -> str:
@@ -104,7 +172,7 @@ async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
 
 async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
     declared_raw = (upload.content_type or "").strip()
-    declared_type = declared_raw.split(";", 1)[0].strip().lower()
+    declared_type = _normalize_mime_type(declared_raw)
     allowed_types = settings.event_file_allowed_mime_types_set
     if not declared_type or (allowed_types and declared_type not in allowed_types):
         raise HTTPException(
@@ -115,17 +183,8 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
     original_name = upload.filename or ""
     ext = Path(original_name).suffix.lower()
     ext_without_dot = ext[1:] if ext.startswith(".") else ext
-    if not ext_without_dot and declared_type:
-        guessed = _ext_from_mime(declared_type).lower()
-        ext = guessed
-        ext_without_dot = guessed[1:] if guessed.startswith(".") else guessed
 
     allowed_exts = settings.event_file_allowed_extensions_set
-    if not ext_without_dot or (allowed_exts and ext_without_dot not in allowed_exts):
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported file extension",
-        )
 
     try:
         limit = int(settings.event_file_max_size_bytes)
@@ -135,7 +194,65 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
         limit = 1
     data = await _read_limited(upload, limit)
 
-    name = _gen_name(prefix, ext)
+    detected_type = detect_mime_type(data) or ""
+    if detected_type:
+        if allowed_types and detected_type not in allowed_types:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="unsupported media type",
+            )
+        if declared_type and detected_type != declared_type:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="content type mismatch",
+            )
+
+    def _ext_without_dot_from_mime(mime: str) -> str:
+        candidate = _ext_from_mime(mime).lower()
+        return candidate[1:] if candidate.startswith(".") else candidate
+
+    detected_ext_without_dot = (
+        _ext_without_dot_from_mime(detected_type) if detected_type else ""
+    )
+    declared_ext_without_dot = (
+        _ext_without_dot_from_mime(declared_type) if declared_type else ""
+    )
+
+    if (
+        detected_ext_without_dot
+        and allowed_exts
+        and detected_ext_without_dot not in allowed_exts
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="unsupported file extension",
+        )
+
+    candidate_exts: tuple[str, ...] = (
+        ext_without_dot,
+        detected_ext_without_dot,
+        declared_ext_without_dot,
+    )
+    chosen_ext_without_dot = next(
+        (
+            candidate
+            for candidate in candidate_exts
+            if candidate and (not allowed_exts or candidate in allowed_exts)
+        ),
+        "",
+    )
+
+    if not chosen_ext_without_dot and allowed_exts:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="unsupported file extension",
+        )
+
+    if not chosen_ext_without_dot:
+        chosen_ext_without_dot = declared_ext_without_dot or detected_ext_without_dot
+
+    ext_for_name = f".{chosen_ext_without_dot}" if chosen_ext_without_dot else ""
+    name = _gen_name(prefix, ext_for_name)
     base = settings.static_dir_path
     sanitized_subdir = subdir.strip("/ ")
     target_dir = base / sanitized_subdir
