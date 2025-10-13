@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 import socket
+import time
 import uuid
 from contextlib import suppress
 from contextvars import ContextVar
-from typing import Any, Iterable, Mapping
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Iterable, Mapping
 
 from fastapi import FastAPI
 from opentelemetry import metrics, trace
@@ -26,7 +30,25 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
+import uvicorn
+
+try:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        CollectorRegistry,
+        Counter,
+        Gauge,
+        generate_latest,
+    )
+except Exception:  # pragma: no cover - optional dependency guard
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
+    CollectorRegistry = None  # type: ignore[assignment]
+    Counter = None  # type: ignore[assignment]
+    Gauge = None  # type: ignore[assignment]
+
+    def generate_latest(_: object) -> bytes:  # type: ignore[misc]
+        raise RuntimeError("prometheus-client is required for worker metrics")
 
 try:
     from sentry_sdk import init as sentry_init
@@ -303,3 +325,186 @@ def shutdown_observability() -> None:
     if _otel_logger_provider is not None:
         with suppress(Exception):
             _otel_logger_provider.shutdown()
+
+
+def _sanitize_metric_name(name: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
+    return normalized or "worker"
+
+
+@dataclass
+class WorkerMetrics:
+    """Prometheus-compatible counters for long-running workers."""
+
+    name: str
+    registry: CollectorRegistry
+    runs_total: Counter
+    failures_total: Counter
+    notifications_created_total: Counter
+    last_run_timestamp: Gauge
+    last_success_timestamp: Gauge
+    heartbeat_timestamp: Gauge
+    _last_run: float | None = None
+    _last_success: float | None = None
+    _last_failure: float | None = None
+
+    def mark_startup(self) -> None:
+        now = time.time()
+        self.heartbeat_timestamp.set(now)
+        self._last_run = now
+
+    def record_success(self, notifications_created: int = 0) -> None:
+        self._record_cycle(success=True, notifications_created=notifications_created)
+
+    def record_failure(self) -> None:
+        self._record_cycle(success=False, notifications_created=0)
+
+    def _record_cycle(self, *, success: bool, notifications_created: int) -> None:
+        now = time.time()
+        self.last_run_timestamp.set(now)
+        self.heartbeat_timestamp.set(now)
+        self._last_run = now
+        if notifications_created:
+            self.notifications_created_total.inc(notifications_created)
+        if success:
+            self.runs_total.inc()
+            self.last_success_timestamp.set(now)
+            self._last_success = now
+        else:
+            self.failures_total.inc()
+            self._last_failure = now
+
+    @property
+    def last_run(self) -> float | None:
+        return self._last_run
+
+    @property
+    def last_success(self) -> float | None:
+        return self._last_success
+
+    @property
+    def last_failure(self) -> float | None:
+        return self._last_failure
+
+    @property
+    def status(self) -> str:
+        if (
+            self._last_failure is not None
+            and (self._last_success is None or self._last_failure > self._last_success)
+        ):
+            return "degraded"
+        return "ok"
+
+
+def create_worker_metrics(name: str) -> WorkerMetrics:
+    if CollectorRegistry is None or Counter is None or Gauge is None:  # pragma: no cover - safety
+        raise RuntimeError("prometheus-client is required to create worker metrics")
+
+    metric_name = _sanitize_metric_name(name)
+    registry = CollectorRegistry()
+    runs = Counter(
+        f"{metric_name}_runs_total",
+        "Total successful scheduler iterations",
+        registry=registry,
+    )
+    failures = Counter(
+        f"{metric_name}_failures_total",
+        "Total failed scheduler iterations",
+        registry=registry,
+    )
+    notifications_created = Counter(
+        f"{metric_name}_notifications_created_total",
+        "Total notifications created by the scheduler",
+        registry=registry,
+    )
+    last_run = Gauge(
+        f"{metric_name}_last_run_timestamp_seconds",
+        "Timestamp of the last scheduler iteration",
+        registry=registry,
+    )
+    last_success = Gauge(
+        f"{metric_name}_last_success_timestamp_seconds",
+        "Timestamp of the last successful scheduler iteration",
+        registry=registry,
+    )
+    heartbeat = Gauge(
+        f"{metric_name}_heartbeat_timestamp_seconds",
+        "Heartbeat timestamp updated on every scheduler iteration",
+        registry=registry,
+    )
+
+    metrics = WorkerMetrics(
+        name=name,
+        registry=registry,
+        runs_total=runs,
+        failures_total=failures,
+        notifications_created_total=notifications_created,
+        last_run_timestamp=last_run,
+        last_success_timestamp=last_success,
+        heartbeat_timestamp=heartbeat,
+    )
+    metrics.mark_startup()
+    return metrics
+
+
+def create_worker_monitoring_app(
+    *, worker_name: str, metrics: WorkerMetrics
+) -> FastAPI:
+    """Build a lightweight ASGI app exposing worker metrics and health."""
+
+    app = FastAPI(title=f"{worker_name} worker monitor", docs_url=None, redoc_url=None)
+
+    @app.get("/healthz")
+    async def healthz() -> JSONResponse:
+        payload = {
+            "status": metrics.status,
+            "worker": worker_name,
+            "last_run": metrics.last_run,
+            "last_success": metrics.last_success,
+            "last_failure": metrics.last_failure,
+        }
+        return JSONResponse(payload)
+
+    @app.get("/metrics")
+    async def metrics_endpoint() -> Response:
+        content = generate_latest(metrics.registry)
+        return Response(content, media_type=CONTENT_TYPE_LATEST)
+
+    return app
+
+
+async def start_worker_monitoring_server(
+    app: FastAPI, *, host: str, port: int
+) -> Callable[[], Awaitable[None]]:
+    """Start an embedded Uvicorn server for worker monitoring endpoints."""
+
+    if port <= 0:
+        raise ValueError("port must be a positive integer")
+
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        loop="asyncio",
+        access_log=False,
+        log_config=None,
+        lifespan="on",
+    )
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    await server.started.wait()
+
+    async def _stop() -> None:
+        if not server.should_exit:
+            server.should_exit = True
+        await task
+
+    return _stop
+
+
+def configure_worker_observability(*, worker_name: str | None = None) -> None:
+    """Configure logging for standalone worker processes."""
+
+    _configure_logging()
+    if worker_name:
+        logging.getLogger(__name__).info("Worker %s observability configured", worker_name)

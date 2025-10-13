@@ -44,3 +44,10 @@ server {
 ```
 
 > Альтернатива: указывайте `VITE_BACKEND_ORIGIN=https://api.example.com` и отдавайте `/media`/`/static` напрямую с API-домена (без прокси), сохраняя полное HTTPS-соединение.
+
+## Notifications worker
+
+- Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
+- При запуске API и воркера в разных процессах выключите встроенный планировщик в API, установив `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
+- Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
+- В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
