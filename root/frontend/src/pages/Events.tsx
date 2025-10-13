@@ -3,6 +3,7 @@ import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
 import { useEffect, useState, useCallback, useMemo, type SyntheticEvent, type CSSProperties } from "react"
 import axios from "../api/client"
+import type { Event } from "@/types/Event"
 import {
   Box, Tabs, Tab, TextField, Typography, Button,
   Dialog, DialogTitle, DialogContent, Stack, useMediaQuery,
@@ -49,7 +50,7 @@ const Events = () => {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [events, setEvents] = useState<any[]>([])
+  const [events, setEvents] = useState<Event[]>([])
   const [tab, setTab] = useState<EventTabKey>("active")
   const [search, setSearch] = useState("")
   const [type, setType] = useState("")
@@ -108,8 +109,8 @@ const Events = () => {
 
       const res =
         tab === "my"
-          ? await axios.get("/events/my", { signal })
-          : await axios.get("/events", { params, signal })
+          ? await axios.get<Event[]>("/events/my", { signal })
+          : await axios.get<Event[]>("/events", { params, signal })
 
       setEvents(Array.isArray(res.data) ? res.data : [])
     } catch (err: any) {
@@ -139,7 +140,7 @@ const Events = () => {
     try {
       const formData = new FormData()
       formData.append("file", file)
-      const res = await axios.post("/events/upload_image", formData, {
+      const res = await axios.post<{ url: string }>("/events/upload_image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
       setEventData((prev) => ({ ...prev, image_url: res.data.url }))
@@ -150,7 +151,7 @@ const Events = () => {
 
   const handleCreateEvent = async () => {
     try {
-      const res = await axios.post("/events", {
+      const res = await axios.post<Event>("/events", {
         ...eventData,
         starts_at: eventData.starts_at,
         ends_at: eventData.ends_at,

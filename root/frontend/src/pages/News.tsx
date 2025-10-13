@@ -167,7 +167,7 @@ const News = () => {
       if (imageFile) {
         const data = new FormData()
         data.append("file", imageFile)
-        const res = await axios.post("/news/upload_image", data, {
+        const res = await axios.post<{ url: string }>("/news/upload_image", data, {
           headers: { "Content-Type": "multipart/form-data" },
         })
         image_url = res.data?.url || ""

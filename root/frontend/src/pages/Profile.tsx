@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, useRef, useCallback, memo } from "
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import type { User } from "@/types/User";
 import profileBg from "../assets/background.jpg";
 import guuLogo from "../assets/guu_logo.png";
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
@@ -591,7 +592,7 @@ export default function Profile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await api.put("/users/me", {
+      const res = await api.put<User>("/users/me", {
         full_name: fullName,
         email,
         about,

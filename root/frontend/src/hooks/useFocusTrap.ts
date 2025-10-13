@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import type { FocusTrap, Options as FocusTrapOptions } from "focus-trap";
 import { createFocusTrap } from "focus-trap";
 
-type FocusTarget = FocusTrapOptions["initialFocus"];
+type InitialFocusTarget = FocusTrapOptions["initialFocus"];
+type FallbackFocusTarget = FocusTrapOptions["fallbackFocus"];
 
 export interface UseFocusTrapOptions {
   /** Whether the focus trap should be active. */
@@ -10,9 +11,9 @@ export interface UseFocusTrapOptions {
   /** Callback invoked when the underlying trap deactivates. */
   onDeactivate?: () => void;
   /** Element focused when the trap activates. */
-  initialFocus?: FocusTarget;
+  initialFocus?: InitialFocusTarget;
   /** Fallback target if no focusable element is found. */
-  fallbackFocus?: FocusTarget;
+  fallbackFocus?: FallbackFocusTarget;
   /** Allow clicks outside of the trap without deactivating it. */
   allowOutsideClick?: boolean;
   /** Whether focus should return to the previously focused element. */
@@ -47,13 +48,13 @@ export default function useFocusTrap<T extends HTMLElement>({
       return undefined;
     }
 
-    const fallbackTarget: FocusTarget =
+    const fallbackTarget: FallbackFocusTarget =
       typeof fallbackFocus !== "undefined"
         ? fallbackFocus
         : (() => {
             if (container.tabIndex < 0) container.tabIndex = -1;
             return container;
-          }) as FocusTarget;
+          }) as FallbackFocusTarget;
 
     const options: FocusTrapOptions = {
       allowOutsideClick,
