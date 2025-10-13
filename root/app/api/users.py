@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
+from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,10 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
         )
 
 
-@password_router.post("/forgot")
+@password_router.post(
+    "/forgot",
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def forgot_password(
     payload: schemas.ForgotPasswordIn,
     bg: BackgroundTasks,
@@ -149,7 +153,10 @@ async def forgot_password(
     return {"ok": True}
 
 
-@password_router.post("/reset")
+@password_router.post(
+    "/reset",
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def reset_password(
     payload: schemas.ResetPasswordIn, db: AsyncSession = Depends(get_db)
 ):
