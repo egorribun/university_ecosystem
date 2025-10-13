@@ -6,6 +6,7 @@ from typing import Awaitable, Callable
 from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
+from app.core.rate_limit import parse_rate_limit
 
 DEFAULT_LIMIT = 5
 DEFAULT_WINDOW_SECONDS = 60
@@ -57,48 +58,12 @@ class MemoryLimiter:
 limiter = MemoryLimiter()
 
 
-def _parse_rate_limit(value: str | None) -> tuple[int, int]:
-    if not value:
-        return DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS
-
-    normalized = value.strip().lower()
-    if not normalized:
-        return DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS
-
-    normalized = normalized.replace("per", "/")
-    if "/" in normalized:
-        parts = normalized.split("/", 1)
-    else:
-        parts = normalized.split()
-
-    if len(parts) != 2:
-        return DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS
-
-    count_raw, unit_raw = (part.strip() for part in parts)
-    try:
-        count = int(count_raw)
-    except ValueError:
-        return DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS
-
-    unit_key = unit_raw.rstrip("s")
-    seconds = _TIME_UNITS.get(unit_raw) or _TIME_UNITS.get(unit_key)
-    if seconds is None:
-        try:
-            seconds = int(unit_raw)
-        except ValueError:
-            return DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS
-
-    if count <= 0 or seconds <= 0:
-        return DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS
-
-    return count, seconds
-
-
 def _resolve_limits(
     override_limit: int | None, override_window: int | None
 ) -> tuple[int, int]:
-    default_limit, default_window = _parse_rate_limit(
-        settings.rate_limit_sensitive_value
+    default_limit, default_window = parse_rate_limit(
+        settings.rate_limit_sensitive_value,
+        fallback=(DEFAULT_LIMIT, DEFAULT_WINDOW_SECONDS),
     )
     limit = default_limit if override_limit is None else override_limit
     window = default_window if override_window is None else override_window
