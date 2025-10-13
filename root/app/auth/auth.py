@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -9,6 +11,7 @@ from app.auth.security import (
     get_password_hash,
     verify_and_update_password,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import User
 from app.schemas.schemas import Token, UserCreate
@@ -21,8 +24,44 @@ class LoginIn(BaseModel):
     password: str
 
 
+def _token_cookie_expiration() -> tuple[int | None, datetime | None]:
+    try:
+        minutes = int(settings.access_token_expire_minutes)
+    except (TypeError, ValueError):
+        return None, None
+
+    max_age = minutes * 60
+    expires = datetime.now(UTC) + timedelta(minutes=minutes)
+    return max_age, expires
+
+
+def _set_access_token_cookie(response: Response, token: str) -> None:
+    max_age, expires = _token_cookie_expiration()
+    response.set_cookie(
+        "access_token",
+        token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=max_age,
+        expires=expires,
+        path="/",
+    )
+
+
+def _clear_access_token_cookie(response: Response) -> None:
+    response.delete_cookie(
+        "access_token",
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="strict",
+    )
+
+
 @router.post("/login", response_model=Token)
 async def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_db),
 ):
@@ -57,11 +96,16 @@ async def login(
         await db.commit()
         await db.refresh(user)
     token = create_access_token(str(user_id))
+    _set_access_token_cookie(response, token)
     return {"access_token": token, "token_type": "bearer"}
 
 
 @router.post("/login-json", response_model=Token)
-async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
+async def login_json(
+    payload: LoginIn,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     email = payload.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
@@ -93,6 +137,7 @@ async def login_json(payload: LoginIn, db: AsyncSession = Depends(get_db)):
         await db.commit()
         await db.refresh(user)
     token = create_access_token(str(user_id))
+    _set_access_token_cookie(response, token)
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -125,7 +170,5 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 async def logout(response: Response):
     """Terminate the client session."""
 
-    response.delete_cookie("Authorization")
-    response.delete_cookie("token")
-    response.delete_cookie("access_token")
+    _clear_access_token_cookie(response)
     return {"status": "ok"}
