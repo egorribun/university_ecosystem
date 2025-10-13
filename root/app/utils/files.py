@@ -85,7 +85,9 @@ def detect_mime_type(data: bytes) -> str | None:
             try:
                 detector = magic.Magic(mime=True)  # type: ignore[attr-defined]
             except Exception:  # pragma: no cover - depends on runtime env
-                logger.warning("Failed to initialize libmagic MIME detector", exc_info=True)
+                logger.warning(
+                    "Failed to initialize libmagic MIME detector", exc_info=True
+                )
                 detector = None
         _magic_mime_detector = detector
     else:
@@ -96,7 +98,9 @@ def detect_mime_type(data: bytes) -> str | None:
             result = detector.from_buffer(data)  # type: ignore[call-arg]
         except AttributeError:  # pragma: no cover - fallback path
             try:
-                result = magic.from_buffer(data, mime=True) if magic is not None else None
+                result = (
+                    magic.from_buffer(data, mime=True) if magic is not None else None
+                )
             except Exception:  # pragma: no cover - depends on runtime env
                 logger.warning("libmagic failed to detect MIME type", exc_info=True)
                 result = None
@@ -207,10 +211,18 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
         candidate = _ext_from_mime(mime).lower()
         return candidate[1:] if candidate.startswith(".") else candidate
 
-    detected_ext_without_dot = _ext_without_dot_from_mime(detected_type) if detected_type else ""
-    declared_ext_without_dot = _ext_without_dot_from_mime(declared_type) if declared_type else ""
+    detected_ext_without_dot = (
+        _ext_without_dot_from_mime(detected_type) if detected_type else ""
+    )
+    declared_ext_without_dot = (
+        _ext_without_dot_from_mime(declared_type) if declared_type else ""
+    )
 
-    if detected_ext_without_dot and allowed_exts and detected_ext_without_dot not in allowed_exts:
+    if (
+        detected_ext_without_dot
+        and allowed_exts
+        and detected_ext_without_dot not in allowed_exts
+    ):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="unsupported file extension",
@@ -225,11 +237,7 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
         (
             candidate
             for candidate in candidate_exts
-            if candidate
-            and (
-                not allowed_exts
-                or candidate in allowed_exts
-            )
+            if candidate and (not allowed_exts or candidate in allowed_exts)
         ),
         "",
     )
