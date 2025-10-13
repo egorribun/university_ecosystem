@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import datetime, time, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -30,6 +30,37 @@ def test_user_profile_update_accepts_dnd_interval():
         dnd_end=time(7, 0),
     )
     assert payload.dnd_enabled is True
+
+
+def test_event_create_requires_end_after_start():
+    starts = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        schemas.EventCreate(
+            title="Test",
+            starts_at=starts,
+            ends_at=starts,
+        )
+
+
+def test_event_update_requires_both_timestamps():
+    starts = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        schemas.EventUpdate(starts_at=starts)
+
+
+def test_event_update_requires_order():
+    starts = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        schemas.EventUpdate(starts_at=starts, ends_at=starts)
+
+
+def test_event_update_accepts_valid_interval():
+    starts = datetime.now(timezone.utc)
+    payload = schemas.EventUpdate(
+        starts_at=starts,
+        ends_at=starts + timedelta(hours=1),
+    )
+    assert payload.starts_at == starts
 
 
 async def test_user_out_contract(user_factory):

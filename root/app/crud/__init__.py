@@ -22,6 +22,10 @@ def _ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+_EVENT_TIME_ORDER_ERROR = "Время окончания должно быть позже времени начала мероприятия"
+_EVENT_TIME_PAIR_ERROR = "Укажите время начала и окончания мероприятия одновременно"
+
+
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
     code = None
     if hasattr(user_in, "invite_code") and getattr(user_in, "role", "student") in (
@@ -222,6 +226,8 @@ async def get_all_events(
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
     starts_at = _ensure_utc(event.starts_at)
     ends_at = _ensure_utc(event.ends_at)
+    if ends_at <= starts_at:
+        raise ValueError(_EVENT_TIME_ORDER_ERROR)
     record = models.Event(
         title=event.title,
         description=event.description,
@@ -235,7 +241,48 @@ async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: in
         image_url=getattr(event, "image_url", None),
     )
     db.add(record)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "ck_event_time_order" in str(exc.orig):
+            raise ValueError(_EVENT_TIME_ORDER_ERROR) from None
+        raise
+    await db.refresh(record)
+    return record
+
+
+async def update_event(
+    db: AsyncSession, record: models.Event, data: schemas.EventUpdate
+) -> models.Event:
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        return record
+    if "starts_at" in updates:
+        updates["starts_at"] = _ensure_utc(updates["starts_at"])
+    if "ends_at" in updates:
+        updates["ends_at"] = _ensure_utc(updates["ends_at"])
+    starts_set = "starts_at" in updates
+    ends_set = "ends_at" in updates
+    if starts_set ^ ends_set:
+        raise ValueError(_EVENT_TIME_PAIR_ERROR)
+    if starts_set or ends_set:
+        starts_at = updates.get("starts_at", record.starts_at)
+        ends_at = updates.get("ends_at", record.ends_at)
+        if starts_at is None or ends_at is None:
+            raise ValueError(_EVENT_TIME_PAIR_ERROR)
+        if ends_at <= starts_at:
+            raise ValueError(_EVENT_TIME_ORDER_ERROR)
+    for field, value in updates.items():
+        setattr(record, field, value)
+    db.add(record)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "ck_event_time_order" in str(exc.orig):
+            raise ValueError(_EVENT_TIME_ORDER_ERROR) from None
+        raise
     await db.refresh(record)
     return record
 

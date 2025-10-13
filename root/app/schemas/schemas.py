@@ -173,6 +173,12 @@ class EventCreate(BaseModel):
     image_url: Optional[str] = None
     about: Optional[str] = None
 
+    @model_validator(mode="after")
+    def _validate_time_order(self):  # type: ignore[override]
+        if self.ends_at <= self.starts_at:
+            raise ValueError("Время окончания должно быть позже времени начала мероприятия")
+        return self
+
 
 class EventUpdate(BaseModel):
     title: Optional[str] = None
@@ -185,6 +191,26 @@ class EventUpdate(BaseModel):
     speaker: Optional[str] = None
     image_url: Optional[str] = None
     about: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_time_updates(self):  # type: ignore[override]
+        provided = self.model_fields_set
+        starts_set = "starts_at" in provided
+        ends_set = "ends_at" in provided
+        if starts_set ^ ends_set:
+            raise ValueError(
+                "Укажите время начала и окончания мероприятия одновременно"
+            )
+        if starts_set or ends_set:
+            if self.starts_at is None or self.ends_at is None:
+                raise ValueError(
+                    "Укажите время начала и окончания мероприятия одновременно"
+                )
+            if self.ends_at <= self.starts_at:
+                raise ValueError(
+                    "Время окончания должно быть позже времени начала мероприятия"
+                )
+        return self
 
 
 class EventOut(OrmModel):

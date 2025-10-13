@@ -153,10 +153,10 @@ async def update_event(
         raise HTTPException(status_code=404, detail="Событие не найдено")
     if user.role not in ("admin", "teacher") and q.created_by != user.id:
         raise HTTPException(status_code=403, detail="forbidden")
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(q, field, value)
-    await db.commit()
-    await db.refresh(q)
+    try:
+        q = await crud.update_event(db, q, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     files = (
         (
             await db.execute(
