@@ -9,6 +9,7 @@ import Login from '../Login';
 import { server } from '@/tests/mocks/server';
 import { routerFutureFlags } from '../../App';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
 const clients: QueryClient[] = [];
 
@@ -25,14 +26,16 @@ const renderLogin = () => {
   clients.push(client);
   return render(
     <QueryClientProvider client={client}>
-      <AuthProvider>
-        <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
-          </Routes>
-        </MemoryRouter>
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
+            </Routes>
+          </MemoryRouter>
+        </AuthProvider>
+      </LanguageProvider>
     </QueryClientProvider>,
   );
 };
@@ -40,6 +43,7 @@ const renderLogin = () => {
 describe('Login page', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('ue:language', 'ru');
   });
 
   afterEach(() => {
@@ -51,8 +55,15 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByRole('textbox', { name: /email/i }), 'invalid');
-    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+      selector: 'input[type="email"]',
+    });
+
+    await user.type(emailInput, 'invalid');
+    await user.type(
+      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      'secret123',
+    );
     await user.click(screen.getByRole('button', { name: /войти/i }));
 
     expect(await screen.findByText('Введите корректный email')).toBeInTheDocument();
@@ -72,8 +83,15 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByRole('textbox', { name: /email/i }), 'user@example.com');
-    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+      selector: 'input[type="email"]',
+    });
+
+    await user.type(emailInput, 'user@example.com');
+    await user.type(
+      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      'secret123',
+    );
     await user.click(screen.getByLabelText('Показать пароль'));
     await user.click(screen.getByLabelText('Показать пароль'));
     await user.click(screen.getByRole('button', { name: /войти/i }));
@@ -90,8 +108,15 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByRole('textbox', { name: /email/i }), 'user@example.com');
-    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+      selector: 'input[type="email"]',
+    });
+
+    await user.type(emailInput, 'user@example.com');
+    await user.type(
+      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      'secret123',
+    );
     await user.click(screen.getByRole('button', { name: /войти/i }));
 
     expect(await screen.findByText('Неверные данные для входа')).toBeInTheDocument();

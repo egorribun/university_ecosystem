@@ -13,6 +13,9 @@ import { checkA11y } from "@/tests/axeTest";
 import { createQueryClient } from "@/app/queryClient";
 import api from "@/api/client";
 import type { User } from "@/types/User";
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import { CssVarsProvider } from "@mui/material/styles";
+import theme from "@/theme";
 
 vi.mock("@/components/NotificationsBell", () => ({
   default: ({ iconColor }: { iconColor?: string }) => (
@@ -102,7 +105,11 @@ const createWrapper = (route = "/dashboard") => {
   const Wrapper = ({ children }: PropsWithChildren) => (
     <MemoryRouter future={routerFutureFlags} initialEntries={[route]}>
       <QueryClientProvider client={queryClient}>
-        <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
+        <CssVarsProvider theme={theme}>
+          <LanguageProvider>
+            <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
+          </LanguageProvider>
+        </CssVarsProvider>
       </QueryClientProvider>
     </MemoryRouter>
   );
