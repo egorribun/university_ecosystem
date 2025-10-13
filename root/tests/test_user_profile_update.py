@@ -5,7 +5,9 @@ from app.auth.security import get_password_hash
 from app.models import models
 
 
-async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, email: str, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},

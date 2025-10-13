@@ -18,6 +18,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +31,6 @@ from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
 from app.utils.ratelimit import sensitive_route_limit
-from pydantic import EmailStr, TypeAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +215,9 @@ async def update_me(
         adapter = TypeAdapter(EmailStr)
         try:
             validated_email = adapter.validate_python(raw_email)
-        except ValueError as exc:  # pragma: no cover - defensive, TypeAdapter raises ValueError
+        except (
+            ValueError
+        ) as exc:  # pragma: no cover - defensive, TypeAdapter raises ValueError
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Некорректный email",
