@@ -7,7 +7,7 @@ from html import unescape
 from textwrap import shorten
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 
-from sqlalchemy import and_, insert, select
+from sqlalchemy import and_, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,7 @@ from app.models.models import (
     Event,
     News,
     Notification,
+    NotificationDelivery,
     PushSubscription,
     Schedule,
     User,
@@ -24,7 +25,7 @@ from app.models.models import (
 from app.services.notification_templates import render_notification_template
 from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
-from app.services.webpush import send_web_push
+from app.services.webpush import WebPushResult, send_web_push
 
 
 def _current_local_time() -> dt.time:
@@ -50,6 +51,31 @@ def _plain_text(value: Any, *, limit: int | None = None) -> str | None:
     if limit is not None and len(text) > limit:
         return shorten(text, width=limit, placeholder="…")
     return text
+
+
+def _build_delivery_row(
+    notification_id: int,
+    *,
+    status: str,
+    channel: str = "webpush",
+    attempted_at: dt.datetime | None = None,
+    delivered: bool = False,
+    status_code: int | None = None,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    attempt_ts = attempted_at or dt.datetime.now(UTC)
+    row: dict[str, Any] = {
+        "notification_id": int(notification_id),
+        "channel": channel,
+        "status": status,
+        "attempted_at": attempt_ts,
+        "delivered_at": attempt_ts if delivered else None,
+    }
+    if status_code is not None:
+        row["status_code"] = int(status_code)
+    if detail:
+        row["detail"] = str(detail)
+    return row
 
 
 async def _fetch_active_user_ids(
@@ -211,21 +237,44 @@ async def create_notifications_for_users(
     uids = list({int(uid) for uid in user_ids})
     if not uids:
         return 0
-    rows = [
-        {
-            "user_id": uid,
-            "title": title,
-            "body": body,
-            "type": type,
-            "url": url,
-            "created_at": now,
-            "read": False,
-        }
-        for uid in uids
-    ]
-    await db.execute(insert(Notification).values(rows))
+    notifications: list[Notification] = []
+    for uid in uids:
+        notification = Notification(
+            user_id=uid,
+            title=title,
+            body=body,
+            type=type,
+            url=url,
+            created_at=now,
+            read=False,
+        )
+        notifications.append(notification)
+    db.add_all(notifications)
+    await db.flush()
+    notification_ids_by_user = {
+        int(notification.user_id): int(notification.id)
+        for notification in notifications
+        if notification.id is not None
+    }
     await db.commit()
-    if settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY:
+
+    if not notification_ids_by_user:
+        return 0
+
+    vapid_ready = bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
+    delivery_rows: list[dict[str, Any]] = []
+
+    if not vapid_ready:
+        attempt_ts = dt.datetime.now(UTC)
+        for notification_id in notification_ids_by_user.values():
+            delivery_rows.append(
+                _build_delivery_row(
+                    notification_id,
+                    status="skipped_no_credentials",
+                    attempted_at=attempt_ts,
+                )
+            )
+    else:
         await ensure_push_subscription_schema(db)
         subs = (
             (
@@ -238,45 +287,106 @@ async def create_notifications_for_users(
             .scalars()
             .all()
         )
-        base_payload: dict[str, Any] = {
-            "title": title,
-            "body": body or "",
-            "url": url or "/",
-            "type": type or None,
-        }
-        normalized_topic = normalize_topic(topic)
-        if normalized_topic:
-            base_payload["topic"] = normalized_topic
-        if badge:
-            base_payload["badge"] = badge
-        if tag:
-            base_payload["tag"] = tag
-        if payload_data:
-            base_payload["data"] = dict(payload_data)
-        if actions:
-            normalized_actions: list[dict[str, Any]] = []
-            for action in actions:
-                if not isinstance(action, Mapping):
+
+        if not subs:
+            attempt_ts = dt.datetime.now(UTC)
+            for notification_id in notification_ids_by_user.values():
+                delivery_rows.append(
+                    _build_delivery_row(
+                        notification_id,
+                        status="skipped_no_subscription",
+                        attempted_at=attempt_ts,
+                    )
+                )
+        else:
+            base_payload: dict[str, Any] = {
+                "title": title,
+                "body": body or "",
+                "url": url or "/",
+                "type": type or None,
+            }
+            normalized_topic = normalize_topic(topic)
+            if normalized_topic:
+                base_payload["topic"] = normalized_topic
+            if badge:
+                base_payload["badge"] = badge
+            if tag:
+                base_payload["tag"] = tag
+            if payload_data:
+                base_payload["data"] = dict(payload_data)
+            if actions:
+                normalized_actions: list[dict[str, Any]] = []
+                for action in actions:
+                    if not isinstance(action, Mapping):
+                        continue
+                    normalized = {
+                        key: value
+                        for key, value in action.items()
+                        if key in {"action", "title", "icon", "url"}
+                    }
+                    if not normalized.get("action") or not normalized.get("title"):
+                        continue
+                    normalized_actions.append(normalized)
+                if normalized_actions:
+                    base_payload["actions"] = normalized_actions
+
+            now_time = _current_local_time()
+            send_jobs: list[tuple[PushSubscription, int]] = []
+            tasks: list[Awaitable[WebPushResult]] = []
+
+            for sub in subs:
+                user_id = int(getattr(sub, "user_id", 0) or 0)
+                notification_id = notification_ids_by_user.get(user_id)
+                if not notification_id:
                     continue
-                normalized = {
-                    key: value
-                    for key, value in action.items()
-                    if key in {"action", "title", "icon", "url"}
-                }
-                if not normalized.get("action") or not normalized.get("title"):
+                if not subscription_supports_topic(sub, normalized_topic):
+                    delivery_rows.append(
+                        _build_delivery_row(
+                            notification_id,
+                            status="skipped_topic",
+                            detail=f"subscription:{sub.id}",
+                        )
+                    )
                     continue
-                normalized_actions.append(normalized)
-            if normalized_actions:
-                base_payload["actions"] = normalized_actions
-        now_time = _current_local_time()
-        for s in subs:
-            if not subscription_supports_topic(s, normalized_topic):
-                continue
-            prepared_payload = prepare_push_payload_for_user(
-                base_payload, getattr(s, "user", None), now_time=now_time
-            )
-            asyncio.create_task(asyncio.to_thread(send_web_push, s, prepared_payload))
-    return len(rows)
+                prepared_payload = prepare_push_payload_for_user(
+                    base_payload, getattr(sub, "user", None), now_time=now_time
+                )
+                send_jobs.append((sub, notification_id))
+                tasks.append(asyncio.to_thread(send_web_push, sub, prepared_payload))
+
+            if tasks:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for (sub, notification_id), result in zip(send_jobs, results):
+                    attempt_ts = dt.datetime.now(UTC)
+                    if isinstance(result, WebPushResult):
+                        detail_parts: list[str] = [f"subscription:{sub.id}"]
+                        if result.error:
+                            detail_parts.append(result.error)
+                        delivery_rows.append(
+                            _build_delivery_row(
+                                notification_id,
+                                status=result.status,
+                                attempted_at=attempt_ts,
+                                delivered=result.status == "sent",
+                                status_code=result.status_code,
+                                detail="; ".join(detail_parts),
+                            )
+                        )
+                    else:
+                        delivery_rows.append(
+                            _build_delivery_row(
+                                notification_id,
+                                status="error",
+                                attempted_at=attempt_ts,
+                                detail=f"subscription:{sub.id}; exception:{result}",
+                            )
+                        )
+
+    if delivery_rows:
+        await db.execute(insert(NotificationDelivery).values(delivery_rows))
+        await db.commit()
+
+    return len(notifications)
 
 
 async def generate_schedule_reminders(
@@ -476,6 +586,42 @@ async def notify_about_event(db: AsyncSession, event: Event) -> int:
         user_ids=user_ids,
         topic="events",
     )
+
+
+async def aggregate_notification_delivery_stats(
+    db: AsyncSession,
+    *,
+    since: dt.datetime | None = None,
+    channel: str | None = None,
+) -> list[dict[str, Any]]:
+    stmt = select(
+        NotificationDelivery.channel,
+        NotificationDelivery.status,
+        func.count(NotificationDelivery.id).label("count"),
+        func.count(NotificationDelivery.delivered_at).label("delivered"),
+        func.min(NotificationDelivery.attempted_at).label("first_attempt_at"),
+        func.max(NotificationDelivery.attempted_at).label("last_attempt_at"),
+    ).group_by(NotificationDelivery.channel, NotificationDelivery.status)
+
+    if since is not None:
+        stmt = stmt.where(NotificationDelivery.attempted_at >= since)
+    if channel is not None:
+        stmt = stmt.where(NotificationDelivery.channel == channel)
+
+    result = await db.execute(stmt)
+    stats: list[dict[str, Any]] = []
+    for row in result:
+        stats.append(
+            {
+                "channel": row.channel,
+                "status": row.status,
+                "count": int(row.count or 0),
+                "delivered": int(row.delivered or 0),
+                "first_attempt_at": row.first_attempt_at,
+                "last_attempt_at": row.last_attempt_at,
+            }
+        )
+    return stats
 
 
 async def _scheduler_loop(poll_seconds: int = 30, window_minutes: int = 6):
