@@ -1,14 +1,20 @@
 import { PropsWithChildren } from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQueryClient } from '@/app/queryClient';
 import { AuthProvider, currentUserQueryKey, useAuth } from '@/contexts/AuthContext';
 import { testUser } from '@/tests/mocks/handlers';
+import api from '@/api/client';
 
 describe('AuthProvider caching', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.spyOn(api, 'post').mockResolvedValue({ data: {} } as any);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   const setup = () => {
@@ -41,8 +47,8 @@ describe('AuthProvider caching', () => {
 
     await waitFor(() => expect(result.current.user).toBeTruthy());
 
-    act(() => {
-      result.current.logout();
+    await act(async () => {
+      await result.current.logout();
     });
 
     await waitFor(() => expect(result.current.user).toBeNull());

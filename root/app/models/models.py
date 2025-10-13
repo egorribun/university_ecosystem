@@ -18,17 +18,26 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.models.enums import UserRole
+
+ROLE_VALUES_SQL = ", ".join(f"'{role.value}'" for role in UserRole)
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            f"role IN ({ROLE_VALUES_SQL})",
+            name="ck_users_role_valid",
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
     full_name = Column(String)
-    role = Column(String, nullable=False, default="student", index=True)
+    role = Column(String, nullable=False, default=UserRole.STUDENT.value, index=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
     is_active = Column(Boolean, default=True, index=True)
 
@@ -137,6 +146,10 @@ class Event(Base):
     image_url = Column(String)
     about = Column(Text)
 
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
+    )
+
 
 class EventAttendance(Base):
     __tablename__ = "event_attendance"
@@ -185,6 +198,12 @@ class News(Base):
 
 class InviteCode(Base):
     __tablename__ = "invite_codes"
+    __table_args__ = (
+        CheckConstraint(
+            f"role IN ({ROLE_VALUES_SQL})",
+            name="ck_invite_codes_role_valid",
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     code = Column(String, unique=True, nullable=False, index=True)
@@ -255,9 +274,12 @@ class NotificationDelivery(Base):
     )
     channel = Column(String, nullable=False, default="inapp", index=True)
     status = Column(String, nullable=False, default="delivered", index=True)
-    delivered_at = Column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+    attempted_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
+    delivered_at = Column(DateTime(timezone=True), index=True)
+    status_code = Column(Integer)
+    detail = Column(Text)
 
     notification = relationship("Notification", back_populates="deliveries")
 

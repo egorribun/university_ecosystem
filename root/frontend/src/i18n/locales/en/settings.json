@@ -1,0 +1,11 @@
+{
+  "language": {
+    "title": "Interface language",
+    "aria": "Choose interface language",
+    "description": "This setting changes menus, navigation, and system messages.",
+    "options": {
+      "ru": "Russian",
+      "en": "English"
+    }
+  }
+}

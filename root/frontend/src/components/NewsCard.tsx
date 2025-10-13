@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { FC, memo, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   Box, Typography, IconButton, Menu, MenuItem,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -14,7 +14,8 @@ import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import { resolveMediaUrl } from "@/utils/media"
+import SmartImage from "@/components/SmartImage"
+import { cardHoverSx } from "@/constants/cardHover"
 import { sanitizeNewsText } from "@/utils/sanitize"
 
 dayjs.extend(utc)
@@ -29,8 +30,6 @@ type NewsCardProps = {
   onChange?: () => void
 }
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
-
 const getMoscowDate = (dateStr: string) => {
   let parsed = dayjs(dateStr)
   if (!/([Zz]|[+\-]\d\d:?\d\d)$/.test(dateStr)) {
@@ -39,7 +38,7 @@ const getMoscowDate = (dateStr: string) => {
   return parsed.tz("Europe/Moscow").format("DD.MM.YYYY HH:mm")
 }
 
-const NewsCard: FC<NewsCardProps> = ({
+const NewsCardComponent: FC<NewsCardProps> = ({
   id,
   title,
   content,
@@ -61,11 +60,21 @@ const NewsCard: FC<NewsCardProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [cardImageReady, setCardImageReady] = useState(!image_url)
 
   const isMobile = useMediaQuery("(max-width:600px)")
   const menuId = `news-card-menu-${id}`
 
   const sanitizedPreview = useMemo(() => sanitizeNewsText(content), [content])
+  const createdAtIso = useMemo(() => (created_at ? dayjs(created_at).toISOString() : ""), [created_at])
+  const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
+  const cardImageUrl = useMemo(() => image_url || "", [image_url])
+
+  useEffect(() => {
+    setCardImageReady(!cardImageUrl)
+  }, [cardImageUrl])
+
+  const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
   // preview URL lifecycle
   useEffect(() => {
@@ -105,28 +114,33 @@ const NewsCard: FC<NewsCardProps> = ({
     if (imageInputRef.current) imageInputRef.current.value = ""
   }, [previewUrl])
 
-  const getCardImageUrl = () => resolveMediaUrl(image_url, BACKEND_ORIGIN)
-  const getEditImageUrl = () => previewUrl || resolveMediaUrl(editData.image_url, BACKEND_ORIGIN)
+  const editImageUrl = useMemo(
+    () => previewUrl || editData.image_url || "",
+    [editData.image_url, previewUrl],
+  )
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) setNewImage(file)
-  }
+  }, [])
 
-  const handleEdit = async () => {
+  const handleEdit = useCallback(async () => {
     setLoading(true)
     try {
       let imgUrl = editData.image_url
       if (newImage) {
         setImageLoading(true)
-        const data = new FormData()
-        data.append("file", newImage)
-        // единый эндпоинт загрузки
-        const res = await api.post(`/news/upload_image`, data, {
-          headers: { "Content-Type": "multipart/form-data" }
-        })
-        imgUrl = res.data.url
-        setImageLoading(false)
+        try {
+          const data = new FormData()
+          data.append("file", newImage)
+          // единый эндпоинт загрузки
+          const res = await api.post(`/news/upload_image`, data, {
+            headers: { "Content-Type": "multipart/form-data" }
+          })
+          imgUrl = res.data.url
+        } finally {
+          setImageLoading(false)
+        }
       }
       await api.patch(`/news/${id}`, { ...editData, image_url: imgUrl })
       setEditData(prev => ({ ...prev, image_url: imgUrl }))
@@ -137,9 +151,9 @@ const NewsCard: FC<NewsCardProps> = ({
     } finally {
       setLoading(false)
     }
-  }
+  }, [closeEditDialog, editData, id, newImage, onChange])
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     setLoading(true)
     try {
       await api.delete(`/news/${id}`)
@@ -150,7 +164,7 @@ const NewsCard: FC<NewsCardProps> = ({
       setLoading(false)
       setConfirmDeleteOpen(false)
     }
-  }
+  }, [id, onChange])
 
   const handleCardClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (editOpen) {
@@ -187,21 +201,10 @@ const NewsCard: FC<NewsCardProps> = ({
         display: "flex",
         flexDirection: "column",
         minHeight: 340,
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
-        willChange: "transform",
-        "&:hover": {
-          transform: hoveringDisabled ? "none" : "scale(1.03)",
-          boxShadow: hoveringDisabled ? 5 : "0 12px 28px rgba(0,0,0,0.18)"
-        },
-        "&:active": {
-          transform: hoveringDisabled ? "none" : "scale(0.997)"
-        },
+        ...cardHoverSx({ disabled: hoveringDisabled }),
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
           outlineOffset: "2px"
-        },
-        "@media (prefers-reduced-motion: reduce)": {
-          transition: "box-shadow 0.25s ease"
         }
       }}
       role="button"
@@ -261,24 +264,51 @@ const NewsCard: FC<NewsCardProps> = ({
         </>
       )}
 
-      {getCardImageUrl() && (
-        <Box
-          component="img"
-          src={getCardImageUrl() || ""}
-          alt="Новость"
-          sx={{
+      <Box
+        sx={{
+          width: "100%",
+          height: { xs: 160, sm: 180, md: 220, lg: 240 },
+          borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
+          borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
+          borderBottom: "1px solid #eee",
+          background: "linear-gradient(135deg, rgba(13,71,161,0.18), rgba(63,81,181,0.08))",
+          position: "relative",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "stretch",
+          "& img": {
+            display: "block",
             width: "100%",
-            height: { xs: 160, sm: 180, md: 220, lg: 240 },
+            height: "100%",
             objectFit: "cover",
-            borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
-            borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
-            borderBottom: "1px solid #eee",
-            background: "#f3f3f3",
-            display: "block"
+            objectPosition: "center",
+          },
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(120deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
+            opacity: cardImageReady ? 0 : 1,
+            transition: "opacity 260ms ease",
+            pointerEvents: "none",
+          },
+        }}
+      >
+        <SmartImage
+          srcRaw={cardImageUrl}
+          alt={title ? `Изображение новости ${title}` : "Обложка новости"}
+          sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            objectFit: "cover",
+            objectPosition: "center",
           }}
-          onError={e => { (e.target as HTMLImageElement).style.display = "none" }}
+          onLoad={handleCardImageReady}
+          onError={handleCardImageReady}
         />
-      )}
+      </Box>
 
       <Box sx={{
         p: { xs: 2, sm: 3 },
@@ -309,11 +339,7 @@ const NewsCard: FC<NewsCardProps> = ({
         <Box flex={1} />
 
         <Typography color="var(--secondary-text)" fontSize={14} sx={{ mt: "auto" }}>
-          {created_at && (
-            <time dateTime={dayjs(created_at).toISOString()}>
-              {getMoscowDate(created_at)}
-            </time>
-          )}
+          {createdAtIso && <time dateTime={createdAtIso}>{createdAtLabel}</time>}
         </Typography>
       </Box>
 
@@ -375,17 +401,18 @@ const NewsCard: FC<NewsCardProps> = ({
                   onClick={e => e.stopPropagation()}
                 />
               </Button>
-              {getEditImageUrl() && (
+              {editImageUrl && (
                 <Box mt={1}>
-                  <img
-                    src={getEditImageUrl()!}
-                    alt="preview"
+                  <SmartImage
+                    srcRaw={editImageUrl}
+                    alt="Предпросмотр изображения новости"
                     style={{
                       width: 140,
                       maxHeight: 90,
                       objectFit: "cover",
                       borderRadius: 8,
-                      border: "1px solid #eee"
+                      border: "1px solid #eee",
+                      display: "block",
                     }}
                   />
                 </Box>
@@ -443,4 +470,12 @@ const NewsCard: FC<NewsCardProps> = ({
   )
 }
 
-export default NewsCard
+const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
+  prev.id === next.id &&
+  prev.title === next.title &&
+  prev.content === next.content &&
+  prev.created_at === next.created_at &&
+  prev.image_url === next.image_url &&
+  prev.onChange === next.onChange
+
+export default memo(NewsCardComponent, areNewsCardPropsEqual)

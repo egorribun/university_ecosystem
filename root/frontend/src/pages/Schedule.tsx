@@ -1,6 +1,7 @@
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import { useAuth } from "../contexts/AuthContext"
-import { useState, useEffect, useMemo, useRef, useDeferredValue, startTransition } from "react"
+import { useState, useEffect, useMemo, useRef, useDeferredValue, startTransition, type CSSProperties } from "react"
 import api from "../api/client"
 import {
   Box,
@@ -31,10 +32,10 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete"
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
 import AddIcon from "@mui/icons-material/Add"
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
 import AccessTimeIcon from "@mui/icons-material/AccessTime"
 import SchoolIcon from "@mui/icons-material/School"
 import RoomIcon from "@mui/icons-material/Room"
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -83,12 +84,6 @@ const writeToStorage = (key: string, value: unknown) => {
     /* noop */
   }
 }
-
-const API_BASE = (() => {
-  const raw = (api.defaults.baseURL as string | undefined) || (import.meta.env.VITE_BACKEND_ORIGIN || "/api")
-  if (!raw) return "/api"
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw
-})()
 
 type LessonParity = "odd" | "even" | "both"
 type LessonWeekday = (typeof days)[number] | string
@@ -228,14 +223,6 @@ export default function Schedule() {
     return () => clearInterval(id)
   }, [])
   const minutesNow = useMemo(() => nowTick.hour() * 60 + nowTick.minute(), [nowTick])
-
-  const exportHref = useMemo(() => {
-    const groupValue = selectedGroup ?? user?.group_id
-    if (!groupValue && groupValue !== 0) return null
-    const value = typeof groupValue === "number" ? groupValue.toString() : String(groupValue)
-    if (!value) return null
-    return `${API_BASE}/schedule/ics?group=${encodeURIComponent(value)}`
-  }, [selectedGroup, user])
 
   const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
     queryKey: scheduleGroupsQueryKey,
@@ -484,24 +471,6 @@ export default function Schedule() {
       >
         Чётная
       </Button>
-      <Tooltip
-        title={exportHref ? "" : "Выберите группу"}
-        disableHoverListener={!!exportHref}
-        placement="top"
-      >
-        <span>
-          <Button
-            component="a"
-            href={exportHref ?? undefined}
-            variant="outlined"
-            startIcon={<CalendarMonthIcon />}
-            disabled={!exportHref}
-            download={exportHref ? "" : undefined}
-          >
-            Экспорт в календарь
-          </Button>
-        </span>
-      </Tooltip>
     </Stack>
   )
 
@@ -863,7 +832,8 @@ export default function Schedule() {
 
   return (
     <Layout>
-      <style>{`
+      <PageFadeIn>
+        <style>{`
         @media print {
           body { background: #fff !important; }
           .no-print { display: none !important; }
@@ -875,7 +845,7 @@ export default function Schedule() {
       `}</style>
       <Box sx={{ width: "100vw", minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 } }}>
         <Box sx={{ ...mainAlignSx, ml: { xs: 2, sm: 4, md: 5, lg: 8 }, mr: { xs: 2, sm: 4, md: 5, lg: 8 }, maxWidth: 980, mb: 2, mt: 0 }}>
-          <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1.3} mb={2.2} mt={0.5}>
+          <Stack data-fade style={{ '--fade-delay': '80ms' } as CSSProperties } direction="row" alignItems="center" flexWrap="wrap" gap={1.3} mb={2.2} mt={0.5}>
             <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
             <Typography variant="h4" fontWeight={700} color="primary.main" sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}>
               {user?.role === "student" ? "Расписание моей группы" : "Расписание групп"}
@@ -884,11 +854,11 @@ export default function Schedule() {
             {activeGroupName && <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>Группа: {activeGroupName}</Box>}
           </Stack>
 
-          <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
+          <Stack data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } direction="row" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
             {headerActions}
           </Stack>
 
-          <Box className="no-print" sx={{ ...headerCardSx, mb: 2 }}>
+          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } className="no-print" sx={{ ...headerCardSx, mb: 2 }}>
             {currentLesson ? (
               <Box>
                 <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
@@ -931,7 +901,7 @@ export default function Schedule() {
           </Box>
 
           {(user?.role === "teacher" || user?.role === "admin") && (
-            <FormControl fullWidth sx={{ mb: 2, maxWidth: 340 }}>
+            <FormControl data-fade style={{ '--fade-delay': '240ms' } as CSSProperties } fullWidth sx={{ mb: 2, maxWidth: 340 }}>
               <InputLabel>Группа</InputLabel>
               <Select
                 value={selectedGroup ?? ""}
@@ -946,7 +916,7 @@ export default function Schedule() {
           )}
         </Box>
 
-        <Box sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}>
+        <Box data-fade style={{ '--fade-delay': '280ms' } as CSSProperties } sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}>
           {isMobile ? renderMobileCards() : renderTable()}
         </Box>
 
@@ -1103,6 +1073,7 @@ export default function Schedule() {
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         />
       </Box>
+      </PageFadeIn>
     </Layout>
   )
 

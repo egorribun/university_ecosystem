@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import type React from 'react'
 import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from 'react'
 import api from '../api/client'
 import {
@@ -14,14 +15,13 @@ import CloseIcon from '@mui/icons-material/Close'
 import { useAuth } from '../contexts/AuthContext'
 import Layout from '../components/Layout'
 import { resolveMediaUrl } from '@/utils/media'
+import SmartImage from '@/components/SmartImage'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
-
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ''
 
 const formatLocalDateTime = (s?: string) => {
   if (!s) return '—'
@@ -107,7 +107,24 @@ const EventDetail = () => {
   const [savingAbout, setSavingAbout] = useState(false)
 
   const [snack, setSnack] = useState('')
+  const [heroPos, setHeroPos] = useState<'50% 18%' | '50% 38%' | '50% 50%' | string>('50% 38%')
+  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = e => {
+    const img = e.currentTarget
+    const w = img.naturalWidth || 0
+    const h = img.naturalHeight || 0
+    if (!w || !h) return
+    const r = w / h
+    if (r < 0.9) setHeroPos('50% 18%')
+    else if (r > 2) setHeroPos('50% 50%')
+    else setHeroPos('50% 38%')
+  }
   const aboutSectionRef = useRef<HTMLHeadingElement | null>(null)
+
+  const imageUrl = event?.image_url || ''
+
+  useEffect(() => {
+    setHeroPos('50% 38%')
+  }, [imageUrl])
 
   const fetchEvent = useCallback(async (signal?: AbortSignal) => {
     const res = await api.get(`/events/${id}`, signal ? { signal } as any : undefined)
@@ -213,8 +230,6 @@ const EventDetail = () => {
     )
   }
 
-  const imageUrl = resolveMediaUrl(event.image_url, BACKEND_ORIGIN)
-
   const BackButton = (
     <Button
       onClick={handleBack}
@@ -288,23 +303,33 @@ const EventDetail = () => {
               </Typography>
               {event.speaker && <Typography variant="subtitle1">Спикер: <b>{event.speaker}</b></Typography>}
             </Box>
-            {imageUrl && (
-              <Box
-                component="img"
-                src={imageUrl}
+            <Box
+              sx={{
+                width: '100%',
+                aspectRatio: { xs: '16 / 9', md: '21 / 9' },
+                position: 'relative',
+                borderRadius: 3,
+                border: '1px solid #282c34',
+                boxShadow: 2,
+                overflow: 'hidden',
+                bgcolor: 'rgba(0,0,0,0.04)'
+              }}
+            >
+              <SmartImage
+                srcRaw={imageUrl}
                 alt="Изображение мероприятия"
-                loading="lazy"
-                sx={{
+                onLoad={handleHeroLoad}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
                   width: '100%',
-                  maxHeight: 350,
-                  borderRadius: 3,
+                  height: '100%',
+                  display: 'block',
                   objectFit: 'cover',
-                  border: '1px solid #282c34',
-                  boxShadow: 2
+                  objectPosition: heroPos
                 }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
-            )}
+            </Box>
             <Box>
               <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                 <Typography
@@ -416,7 +441,7 @@ const EventDetail = () => {
                           </Typography>
                         ) : (
                           <a
-                            href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
+                            href={resolveMediaUrl(f.file_url) || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             download
@@ -481,20 +506,32 @@ const EventDetail = () => {
           <Stack spacing={3} width="45%">
             {imageUrl && (
               <Box
-                component="img"
-                src={imageUrl}
-                alt="Изображение мероприятия"
-                loading="lazy"
                 sx={{
                   width: '100%',
-                  maxHeight: 520,
+                  aspectRatio: { xs: '16 / 9', md: '21 / 9' },
+                  position: 'relative',
                   borderRadius: 5,
-                  objectFit: 'cover',
                   border: '1px solid #282c34',
-                  boxShadow: 3
+                  boxShadow: 3,
+                  overflow: 'hidden',
+                  bgcolor: 'rgba(0,0,0,0.04)'
                 }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
+              >
+                <SmartImage
+                  srcRaw={imageUrl}
+                  alt="Изображение мероприятия"
+                  onLoad={handleHeroLoad}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    objectFit: 'cover',
+                    objectPosition: heroPos
+                  }}
+                />
+              </Box>
             )}
             <Divider />
             <Stack direction="row" spacing={1} alignItems="center" mb={1}>
@@ -631,7 +668,7 @@ const EventDetail = () => {
                           </Typography>
                         ) : (
                           <a
-                            href={resolveMediaUrl(f.file_url, BACKEND_ORIGIN) || '#'}
+                            href={resolveMediaUrl(f.file_url) || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             download

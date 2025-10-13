@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,6 +20,7 @@ from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
+from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import (
     normalize_topic,
     normalize_topics,
@@ -30,7 +31,41 @@ from app.services.webpush import WebPushResult, send_web_push
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/webpush", tags=["webpush"])
+router = APIRouter(prefix="/push", tags=["push"])
+legacy_router = APIRouter(prefix="/webpush", tags=["webpush"])
+
+
+class NotificationAction(BaseModel):
+    action: str = Field(..., description="Notification action identifier")
+    title: str = Field(..., description="Action button title")
+    url: str | None = Field(default=None, description="Optional URL to open")
+    icon: str | None = Field(default=None, description="Optional icon URL")
+
+    @field_validator("action", "title", mode="before")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+
+class NotifyBody(BaseModel):
+    title: str
+    body: str | None = None
+    url: str | None = None
+    tag: str | None = None
+    badge: str | None = None
+    type: str | None = None
+    ttl: int | None = None
+    urgency: str | None = "normal"
+    topic: str | None = None
+    actions: list[NotificationAction] | None = None
+    data: dict[str, Any] | None = None
+
+    @field_validator("topic", mode="before")
+    @classmethod
+    def _normalize_topic(cls, value):
+        return normalize_topic(value)
 
 
 class PushSubscriptionKeys(BaseModel):
@@ -77,6 +112,7 @@ class PushSubscriptionOut(BaseModel):
     created_at: datetime
     user_agent: str | None = None
     last_seen_at: datetime | None = None
+    updated_at: datetime | None = None
     topics: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
@@ -89,6 +125,26 @@ class PushSubscriptionOut(BaseModel):
         if isinstance(value, list):
             return normalize_topics(value)
         return value
+
+
+def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionOut:
+    topics = normalize_topics(subscription.topics or [])
+    created_at = subscription.created_at
+    if created_at is None:
+        created_at = subscription.last_seen_at or datetime.now(UTC)
+    data = {
+        "id": subscription.id,
+        "user_id": subscription.user_id,
+        "endpoint": subscription.endpoint,
+        "p256dh": subscription.p256dh,
+        "auth": subscription.auth,
+        "created_at": created_at,
+        "user_agent": subscription.user_agent,
+        "last_seen_at": subscription.last_seen_at,
+        "updated_at": subscription.last_seen_at,
+        "topics": topics,
+    }
+    return PushSubscriptionOut.model_validate(data)
 
 
 class PushSubscriptionTopicsUpdate(BaseModel):
@@ -121,11 +177,59 @@ class PushSubscriptionDelete(BaseModel):
         return str(value).strip()
 
 
+class DisableUserPushRequest(BaseModel):
+    user_id: int = Field(
+        ..., ge=1, description="ID пользователя, для которого нужно отключить push"
+    )
+
+
 class SendTestResponse(BaseModel):
+    total: int = 0
     sent: int
     removed: int
     failed: int
     detail: str | None = None
+
+
+class PushTestRequest(NotifyBody):
+    user_id: int | None = Field(
+        default=None, description="Target user id for testing", ge=1
+    )
+    title: str = Field(
+        default="Тестовое веб-push уведомление",
+        description="Notification title",
+    )
+    body: str | None = Field(
+        default="Проверка доставки уведомлений",
+        description="Notification body",
+    )
+    url: str | None = Field(
+        default=None, description="URL to open when clicking the notification"
+    )
+
+
+async def _deliver_to_subscription(
+    subscription: PushSubscription, payload: dict[str, Any]
+) -> WebPushResult:
+    return await run_in_threadpool(send_web_push, subscription, payload)
+
+
+def _aggregate_results(
+    results: list[WebPushResult], *, failure_detail: str
+) -> SendTestResponse:
+    sent = sum(1 for r in results if r.status == "sent")
+    removed = sum(1 for r in results if r.status == "gone")
+    failed = sum(1 for r in results if r.status == "error")
+    detail = None
+    if results and sent == 0 and failed:
+        detail = failure_detail
+    return SendTestResponse(
+        total=len(results),
+        sent=sent,
+        removed=removed,
+        failed=failed,
+        detail=detail,
+    )
 
 
 async def _validate_subscription_payload(
@@ -168,7 +272,37 @@ async def subscribe(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
+    await ensure_push_subscription_schema(db)
     endpoint, p256dh, auth = await _validate_subscription_payload(payload)
+
+    client_host = request.client.host if request.client else None
+    try:
+        await enforce_rate_limit(
+            identifier=f"user:{user.id}",
+            namespace="push:subscribe:user",
+            limit=20,
+            window_seconds=60,
+            redis_url=settings.rate_limit_storage_uri,
+        )
+        if client_host:
+            await enforce_rate_limit(
+                identifier=f"ip:{client_host}",
+                namespace="push:subscribe:ip",
+                limit=60,
+                window_seconds=60,
+                redis_url=settings.rate_limit_storage_uri,
+            )
+    except RateLimitExceeded as exc:
+        info: RateLimitInfo = exc.info
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "message": "Слишком много запросов подписки. Попробуйте позже.",
+                "retry_after": info.retry_after,
+            },
+        ) from None
+
     user_agent = payload.user_agent or request.headers.get("user-agent") or ""
     user_agent = user_agent.strip()
     if len(user_agent) > 512:
@@ -197,10 +331,12 @@ async def subscribe(
                 )
             existing.p256dh = p256dh
             existing.auth = auth
+            existing.user_id = user.id
             existing.user_agent = user_agent or None
             existing.last_seen_at = now
+            if existing.created_at is None:
+                existing.created_at = now
             existing.topics = _resolve_topics()
-            existing.user_id = user.id
             await db.commit()
             await db.refresh(existing)
             subscription = existing
@@ -214,6 +350,8 @@ async def subscribe(
                 last_seen_at=now,
                 topics=_resolve_topics(),
             )
+            if subscription.created_at is None:
+                subscription.created_at = now
             db.add(subscription)
             await db.commit()
             await db.refresh(subscription)
@@ -227,7 +365,7 @@ async def subscribe(
             },
         )
 
-    return PushSubscriptionOut.model_validate(subscription)
+    return _serialize_subscription(subscription)
 
 
 @router.patch("/subscribe/topics", response_model=PushSubscriptionOut)
@@ -236,6 +374,7 @@ async def update_subscription_topics(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
+    await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(
@@ -267,15 +406,17 @@ async def update_subscription_topics(
     subscription.last_seen_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(subscription)
-    return PushSubscriptionOut.model_validate(subscription)
+    return _serialize_subscription(subscription)
 
 
-@router.delete("/subscribe", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/unsubscribe")
 async def unsubscribe(
     payload: PushSubscriptionDelete,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-) -> Response:
+) -> dict[str, bool]:
+    await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(
@@ -285,6 +426,35 @@ async def unsubscribe(
                 "message": "Endpoint is required",
             },
         )
+
+    client_host = request.client.host if request.client else None
+    try:
+        await enforce_rate_limit(
+            identifier=f"user:{user.id}",
+            namespace="push:unsubscribe:user",
+            limit=20,
+            window_seconds=60,
+            redis_url=settings.rate_limit_storage_uri,
+        )
+        if client_host:
+            await enforce_rate_limit(
+                identifier=f"ip:{client_host}",
+                namespace="push:unsubscribe:ip",
+                limit=60,
+                window_seconds=60,
+                redis_url=settings.rate_limit_storage_uri,
+            )
+    except RateLimitExceeded as exc:
+        info: RateLimitInfo = exc.info
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "message": "Слишком много попыток отключить уведомления.",
+                "retry_after": info.retry_after,
+            },
+        ) from None
+
     existing = (
         await db.execute(
             select(PushSubscription).where(
@@ -294,32 +464,50 @@ async def unsubscribe(
         )
     ).scalar_one_or_none()
     if not existing:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return {"ok": True, "removed": False}
+
     await db.delete(existing)
     await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return {"ok": True, "removed": True}
 
 
-@router.post("/send-test", response_model=SendTestResponse)
+@router.post("/test", response_model=SendTestResponse)
 async def send_test(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
+    payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
+    await ensure_push_subscription_schema(db)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "forbidden", "message": "Admin access required"},
+        )
+
     if not settings.VAPID_PRIVATE_KEY or not settings.VAPID_PUBLIC_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Web push is not configured",
         )
 
-    rate_identifier = f"user:{user.id}"
+    client_host = request.client.host if request and request.client else None
     try:
         await enforce_rate_limit(
-            identifier=rate_identifier,
-            namespace="webpush:test",
-            limit=3,
+            identifier=f"user:{user.id}",
+            namespace="push:test:user",
+            limit=5,
             window_seconds=60,
             redis_url=settings.rate_limit_storage_uri,
         )
+        if client_host:
+            await enforce_rate_limit(
+                identifier=f"ip:{client_host}",
+                namespace="push:test:ip",
+                limit=15,
+                window_seconds=60,
+                redis_url=settings.rate_limit_storage_uri,
+            )
     except RateLimitExceeded as exc:
         info: RateLimitInfo = exc.info
         raise HTTPException(
@@ -331,12 +519,20 @@ async def send_test(
             },
         )
 
+    target_id = payload.user_id if payload and payload.user_id else user.id
+    target = await db.get(User, target_id)
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "user_not_found", "message": "Target user not found"},
+        )
+
     subscriptions = (
         (
             await db.execute(
                 select(PushSubscription)
                 .options(selectinload(PushSubscription.user))
-                .where(PushSubscription.user_id == user.id)
+                .where(PushSubscription.user_id == target.id)
             )
         )
         .scalars()
@@ -344,40 +540,186 @@ async def send_test(
     )
     if not subscriptions:
         return SendTestResponse(
-            sent=0, removed=0, failed=0, detail="No subscriptions found"
+            total=0, sent=0, removed=0, failed=0, detail="No subscriptions found"
         )
 
-    topic = normalize_topic("system")
-    payload = {
-        "title": "Тестовое веб-push уведомление",
-        "body": "Проверка доставки уведомлений",
-        "url": settings.app_base_url or "/",
+    normalized_topic = normalize_topic(payload.topic if payload else None) or "system"
+    base_url = payload.url if payload and payload.url else settings.app_base_url or "/"
+    body = payload.body if payload else None
+    title = payload.title if payload else "Тестовое веб-push уведомление"
+    message = {
+        "title": title,
+        "body": body or "Проверка доставки уведомлений",
+        "url": base_url,
     }
-    if topic:
-        payload["topic"] = topic
+    if normalized_topic:
+        message["topic"] = normalized_topic
 
-    sent = 0
-    removed = 0
-    failed = 0
+    optional_fields = ("tag", "badge", "ttl", "urgency", "actions", "data")
+    if payload:
+        for field in optional_fields:
+            value = getattr(payload, field, None)
+            if value is not None:
+                message[field] = value
+
     now_time = datetime.now().astimezone().time()
+    results: list[WebPushResult] = []
     for sub in subscriptions:
-        if not subscription_supports_topic(sub, topic):
+        if not subscription_supports_topic(sub, normalized_topic):
             continue
         prepared = prepare_push_payload_for_user(
-            payload, getattr(sub, "user", None), now_time=now_time
+            message, getattr(sub, "user", None), now_time=now_time
         )
-        result: WebPushResult = await run_in_threadpool(send_web_push, sub, prepared)
-        if result.status == "sent":
-            sent += 1
-        elif result.status == "gone":
-            removed += 1
-        else:
-            failed += 1
-    logger.info(
-        "webpush.send_test.summary",
-        extra={"user_id": user.id, "sent": sent, "removed": removed, "failed": failed},
+        result = await _deliver_to_subscription(sub, prepared)
+        results.append(result)
+    summary = _aggregate_results(
+        results, failure_detail="Не удалось отправить тестовое уведомление"
     )
-    detail = None
-    if failed and not sent:
-        detail = "Не удалось отправить тестовое уведомление"
-    return SendTestResponse(sent=sent, removed=removed, failed=failed, detail=detail)
+    logger.info(
+        "push.test.summary",
+        extra={
+            "user_id": user.id,
+            "target_user_id": target.id,
+            "sent": summary.sent,
+            "removed": summary.removed,
+            "failed": summary.failed,
+        },
+    )
+    return summary
+
+
+@router.post("/admin/disable-user")
+async def disable_user_push(
+    payload: DisableUserPushRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, int | bool]:
+    await ensure_push_subscription_schema(db)
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    target = await db.get(User, payload.user_id)
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found"
+        )
+
+    existing = (
+        (
+            await db.execute(
+                select(PushSubscription.id).where(PushSubscription.user_id == target.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not existing:
+        return {"ok": True, "removed": 0}
+
+    await db.execute(
+        delete(PushSubscription).where(PushSubscription.user_id == target.id)
+    )
+    await db.commit()
+    logger.info(
+        "push.admin.disable_all",
+        extra={
+            "user_id": user.id,
+            "target_user_id": target.id,
+            "removed": len(existing),
+        },
+    )
+    return {"ok": True, "removed": len(existing)}
+
+
+@router.post("/broadcast", response_model=SendTestResponse)
+async def broadcast(
+    data: NotifyBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> SendTestResponse:
+    await ensure_push_subscription_schema(db)
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    subscriptions = (
+        (
+            await db.execute(
+                select(PushSubscription).options(selectinload(PushSubscription.user))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    topic = normalize_topic(data.topic)
+    payload = data.model_dump(exclude_none=True)
+    if topic:
+        payload["topic"] = topic
+    else:
+        payload.pop("topic", None)
+
+    now_time = datetime.now().astimezone().time()
+    results: list[WebPushResult] = []
+    for subscription in subscriptions:
+        if not subscription_supports_topic(subscription, topic):
+            continue
+        prepared = prepare_push_payload_for_user(
+            payload, getattr(subscription, "user", None), now_time=now_time
+        )
+        results.append(await _deliver_to_subscription(subscription, prepared))
+
+    summary = _aggregate_results(
+        results, failure_detail="Не удалось отправить уведомления"
+    )
+    logger.info(
+        "push.broadcast.summary",
+        extra={
+            "user_id": user.id,
+            "total": summary.total,
+            "sent": summary.sent,
+            "removed": summary.removed,
+            "failed": summary.failed,
+        },
+    )
+    return summary
+
+
+legacy_router.add_api_route(
+    "/vapid-public-key",
+    get_vapid_public_key,
+    methods=["GET"],
+)
+legacy_router.add_api_route(
+    "/subscribe",
+    subscribe,
+    methods=["POST"],
+    response_model=PushSubscriptionOut,
+)
+legacy_router.add_api_route(
+    "/subscribe/topics",
+    update_subscription_topics,
+    methods=["PATCH"],
+    response_model=PushSubscriptionOut,
+)
+legacy_router.add_api_route(
+    "/unsubscribe",
+    unsubscribe,
+    methods=["POST"],
+)
+legacy_router.add_api_route(
+    "/send-test",
+    send_test,
+    methods=["POST"],
+    response_model=SendTestResponse,
+)
+legacy_router.add_api_route(
+    "/admin/disable-user",
+    disable_user_push,
+    methods=["POST"],
+)
+legacy_router.add_api_route(
+    "/broadcast",
+    broadcast,
+    methods=["POST"],
+    response_model=SendTestResponse,
+)

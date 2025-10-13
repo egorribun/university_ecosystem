@@ -4,7 +4,7 @@ ensureTrustedTypesPolicies()
 
 async function bootstrap() {
   const ReactMod = await import("react")
-  const { StrictMode, Suspense, useEffect } = ReactMod
+  const { StrictMode, useEffect } = ReactMod
   const ReactDOMMod = await import("react-dom/client")
   const { CssBaseline } = await import("@mui/material")
   const StylesMod = await import("@mui/material/styles")
@@ -16,10 +16,11 @@ async function bootstrap() {
   const ErrorBoundaryMod = await import("./app/ErrorBoundary")
   const { default: ErrorBoundary } = ErrorBoundaryMod
   const QueryClientLocal = await import("./app/queryClient")
-  const { lazyDevtools, queryClient } = QueryClientLocal
+  const { queryClient } = QueryClientLocal
   const ThemeMod = await import("./theme")
   const { default: theme } = ThemeMod
   await import("./assets/themes.css")
+  await import("./i18n/config")
   await import("dayjs/locale/ru")
   const SWMod = await import("./push/register-sw")
   const { registerServiceWorker } = SWMod
@@ -34,7 +35,7 @@ async function bootstrap() {
       if (!registration) return
       if (!hasPushConsent()) return
       try {
-        await ensurePushSubscription(undefined, registration)
+        await ensurePushSubscription({ registration, requestPermission: false })
       } catch (error) {
         console.error("Failed to ensure push subscription", error)
       }
@@ -60,7 +61,7 @@ async function bootstrap() {
   function BodyColorSchemeSync() {
     const { mode, systemMode } = useColorScheme()
     useEffect(() => {
-      const resolved = mode === "system" ? systemMode ?? "light" : mode ?? "light"
+      const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
       document.body.dataset.colorScheme = resolved
       document.body.classList.toggle("dark", resolved === "dark")
       return () => {
@@ -71,23 +72,26 @@ async function bootstrap() {
     return null
   }
 
-  const ReactQueryDevtools = lazyDevtools()
+  const ReactQueryDevtools = import.meta.env.DEV
+    ? (await import("@tanstack/react-query-devtools")).ReactQueryDevtools
+    : null
 
   ReactDOMMod.default.createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme} defaultMode="system" modeStorageKey="theme" disableTransitionOnChange>
+        <CssVarsProvider
+          theme={theme}
+          defaultMode="system"
+          modeStorageKey="theme"
+          disableTransitionOnChange
+        >
           <CssBaseline enableColorScheme />
           <BodyColorSchemeSync />
           <ErrorBoundary>
             <App />
           </ErrorBoundary>
         </CssVarsProvider>
-        {ReactQueryDevtools ? (
-          <Suspense fallback={null}>
-            <ReactQueryDevtools buttonPosition="bottom-left" />
-          </Suspense>
-        ) : null}
+        {ReactQueryDevtools ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
       </QueryClientProvider>
     </StrictMode>
   )

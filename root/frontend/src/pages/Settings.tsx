@@ -1,10 +1,22 @@
-import { useEffect, useRef, useState, useCallback, ChangeEvent, FocusEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  ChangeEvent,
+  FocusEvent,
+} from "react";
+import { isAxiosError } from "axios";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
+import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNotifications } from "@/hooks/useNotifications";
-import { usePushPreferences, NOTIFICATION_TOPIC_LABELS } from "@/hooks/usePushPreferences";
+import { usePushPreferences } from "@/hooks/usePushPreferences";
+import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
 import api from "../api/client";
+import type { User } from "@/types/User";
+import { useTranslation } from "react-i18next";
 import {
   Box,
   Paper,
@@ -29,14 +41,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Switch,
-  FormGroup,
-  FormControl,
-  FormHelperText,
-  Link
+  TextField,
+  CircularProgress
 } from "@mui/material";
-import { useColorScheme } from "@mui/material/styles";
-import TextField from "@mui/material/TextField";
+import { useColorScheme, styled, alpha, darken, lighten } from "@mui/material/styles";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -45,17 +53,13 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";
-import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
-import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
-import DoNotDisturbOnIcon from "@mui/icons-material/DoNotDisturbOn";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import defaultAvatar from "@/assets/default_avatar.png";
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
 import spotifyLogo from "@/assets/spotify_icon.png";
-import { resolveMediaUrl } from "@/utils/media";
+import { addVersionParam, resolveMediaUrl } from "@/utils/media";
+import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify";
 
 type ThemeMode = "system" | "light" | "dark";
-
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
 
 const DEFAULT_DND_START = "22:00";
 const DEFAULT_DND_END = "07:00";
@@ -71,41 +75,205 @@ const toServerTime = (value: string | null): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^\d{2}:\d{2}$/.test(trimmed)) {
-    return `${trimmed}:00`;
-  }
-  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
   return trimmed;
 };
+
+const ModernSwitch = styled("span")(({ theme }) => {
+  const on = theme.palette.primary.main;
+  const trackBg = theme.palette.mode === "dark"
+    ? alpha("#fff", 0.12)
+    : alpha("#000", 0.08);
+  const trackBorder = theme.palette.mode === "dark"
+    ? alpha("#fff", 0.24)
+    : alpha("#000", 0.12);
+  const ring = alpha(on, 0.35);
+
+  return {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    width: 52,
+    height: 28,
+    padding: 2,
+    borderRadius: 999,
+    cursor: "pointer",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
+    "& input": {
+      opacity: 0,
+      width: 0,
+      height: 0,
+      position: "absolute",
+    },
+    "& .ms-track": {
+      position: "absolute",
+      inset: 0,
+      borderRadius: 999,
+      background: trackBg,
+      border: `1px solid ${trackBorder}`,
+      transition: "background-color .2s ease, border-color .2s ease",
+      boxSizing: "border-box",
+    },
+    "& .ms-thumb": {
+      position: "relative",
+      zIndex: 1,
+      width: 22,
+      height: 22,
+      borderRadius: "50%",
+      background: theme.palette.common.white,
+      boxShadow:
+        theme.palette.mode === "dark"
+          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
+          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
+      transform: "translateX(0)",
+      transition: "transform .18s cubic-bezier(.2,.9,.22,1), box-shadow .18s ease",
+    },
+    "&.ms-checked .ms-track": {
+      background: alpha(on, theme.palette.mode === "dark" ? 0.55 : 0.2),
+      borderColor: alpha(on, 0.6),
+    },
+    "&.ms-checked .ms-thumb": {
+      transform: "translateX(24px)",
+      boxShadow:
+        theme.palette.mode === "dark"
+          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
+          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
+    },
+    "&.ms-hover .ms-track": {
+      background: theme.palette.mode === "dark"
+        ? alpha("#fff", 0.16)
+        : alpha("#000", 0.1),
+    },
+    "&.ms-focus .ms-ring": {
+      boxShadow: `0 0 0 3px ${ring}`,
+      opacity: 1,
+      transform: "scale(1)",
+    },
+    "& .ms-ring": {
+      position: "absolute",
+      inset: -2,
+      borderRadius: 999,
+      boxShadow: "0 0 0 0px transparent",
+      transition: "box-shadow .18s ease, transform .18s ease, opacity .18s ease",
+      pointerEvents: "none",
+      opacity: 0,
+      transform: "scale(.98)",
+    },
+    "&.ms-disabled": {
+      cursor: "not-allowed",
+      opacity: 0.6,
+    },
+  };
+});
+
+function SwitchControl({
+  checked,
+  disabled,
+  onChange,
+  inputId,
+  "aria-label": ariaLabel,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (e: ChangeEvent<HTMLInputElement>, checked: boolean) => void;
+  inputId?: string;
+  "aria-label"?: string;
+}) {
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  return (
+    <ModernSwitch
+      className={[
+        checked ? "ms-checked" : "",
+        disabled ? "ms-disabled" : "",
+        hover ? "ms-hover" : "",
+        focus ? "ms-focus" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <span className="ms-ring" />
+      <span className="ms-track" />
+      <span className="ms-thumb" />
+      <input
+        id={inputId}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(e, e.target.checked)}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+      />
+    </ModernSwitch>
+  );
+}
 
 export default function Settings() {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
   const queryClient = useQueryClient();
-  const { unreadCount } = useNotifications();
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
+  const { language, setLanguage, available: availableLanguages } = useLanguage();
+  const { t: tSettings } = useTranslation(["settings"]);
 
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
 
+  const timeFieldSx = useMemo(
+    () => ({
+      maxWidth: { xs: "100%", sm: 200 },
+      "& .MuiOutlinedInput-root": {
+        borderRadius: 2.5,
+        overflow: "hidden",
+        backgroundColor: "var(--card-bg)",
+        "& fieldset": {
+          borderColor: "color-mix(in srgb, var(--page-text) 24%, transparent)",
+          borderWidth: 1,
+        },
+        "&:hover fieldset": {
+          borderColor: "color-mix(in srgb, var(--page-text) 32%, transparent)",
+        },
+        "&.Mui-focused": {
+          boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 22%, transparent)",
+        },
+        "&.Mui-focused fieldset": {
+          borderColor: "var(--link-color)",
+        },
+        "&.Mui-disabled": {
+          backgroundColor: "color-mix(in srgb, var(--page-text) 6%, transparent)",
+        },
+        "&.Mui-disabled fieldset": {
+          borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
+        },
+      },
+      "& .MuiInputBase-input": {
+        textAlign: "center",
+        fontVariantNumeric: "tabular-nums",
+      },
+      "& .MuiInputLabel-root": {
+        px: 0.75,
+        backgroundColor: "var(--card-bg)",
+        color: "var(--page-text)",
+      },
+    }),
+    []
+  );
+
   const {
-    topicKeys,
-    topicState,
     pushSupported,
     notificationPermission,
     notificationsEnabled,
     pushBusy,
     pushInitializing,
     permissionText,
-    selectedTopicsDescription,
     enableNotifications,
     disableNotifications,
-    handleTopicToggle,
-    safariIOS,
-    safariGuideUrl
   } = usePushPreferences({ onNotify: setSnack });
 
   const [dndEnabled, setDndEnabled] = useState(false);
@@ -116,9 +284,7 @@ export default function Settings() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
 
-  const withV = (url: string | undefined, v: number) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${v}` : url);
-
-  const syncDndFromUser = useCallback((value: any) => {
+  const syncDndFromUser = useCallback((value: User | null) => {
     const enabled = Boolean(value?.dnd_enabled);
     const start = toInputTime(value?.dnd_start);
     const end = toInputTime(value?.dnd_end);
@@ -132,9 +298,9 @@ export default function Settings() {
       if (dndSaving) return;
       const normalizedStart = nextStart ? nextStart.trim() : null;
       const normalizedEnd = nextEnd ? nextEnd.trim() : null;
-      const prevEnabled = Boolean((user as any)?.dnd_enabled);
-      const prevStart = toInputTime((user as any)?.dnd_start);
-      const prevEnd = toInputTime((user as any)?.dnd_end);
+      const prevEnabled = Boolean(user?.dnd_enabled);
+      const prevStart = toInputTime(user?.dnd_start);
+      const prevEnd = toInputTime(user?.dnd_end);
       if (
         nextEnabled === prevEnabled &&
         (!nextEnabled ||
@@ -149,7 +315,7 @@ export default function Settings() {
       }
       setDndSaving(true);
       try {
-        const payload: Record<string, any> = { dnd_enabled: nextEnabled };
+        const payload: Record<string, unknown> = { dnd_enabled: nextEnabled };
         if (nextEnabled) {
           payload.dnd_start = toServerTime(normalizedStart);
           payload.dnd_end = toServerTime(normalizedEnd);
@@ -157,7 +323,7 @@ export default function Settings() {
           payload.dnd_start = null;
           payload.dnd_end = null;
         }
-        const res = await api.put("/users/me", payload);
+        const res = await api.put<User>("/users/me", payload);
         setUser(res.data);
         syncDndFromUser(res.data);
         const wasEnabled = prevEnabled;
@@ -166,16 +332,22 @@ export default function Settings() {
         else if (!nextEnabled && wasEnabled) message = 'Режим "Не беспокоить" выключен';
         else message = 'Настройки режима "Не беспокоить" обновлены';
         setSnack({ text: message, sev: "success" });
-      } catch (error: any) {
+      } catch (error: unknown) {
         let message = 'Не удалось обновить настройки режима "Не беспокоить"';
-        const detail = error?.response?.data?.detail;
-        if (typeof detail === "string") message = detail;
-        else if (Array.isArray(detail)) {
-          const collected = detail
-            .map((item: any) => (item?.msg ? String(item.msg) : ""))
-            .filter(Boolean)
-            .join("; ");
-          if (collected) message = collected;
+        if (isAxiosError(error)) {
+          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+          if (typeof detail === "string") message = detail;
+          else if (Array.isArray(detail)) {
+            const collected = detail
+              .map((item: unknown) =>
+                item && typeof item === "object" && "msg" in item
+                  ? String((item as { msg?: unknown }).msg)
+                  : ""
+              )
+              .filter(Boolean)
+              .join("; ");
+            if (collected) message = collected;
+          }
         }
         setSnack({ text: message, sev: "error" });
         syncDndFromUser(user);
@@ -261,28 +433,42 @@ export default function Settings() {
     [disableNotifications, enableNotifications, pushBusy, pushInitializing]
   );
 
-  const spotifyConnected = Boolean((user as any)?.spotify_connected || (user as any)?.spotify_is_connected);
-  const spotifyName = (user as any)?.spotify_display_name || "";
+  const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
+  const spotifyName = user?.spotify_display_name ?? "";
 
   const connectSpotify = async () => {
     try {
-      const r = await fetch("/spotify/auth-url", { credentials: "include" });
-      if (!r.ok) throw new Error();
-      const data = (await r.json()) as { url?: string };
-      if (data?.url) window.location.assign(data.url);
-      else throw new Error();
-    } catch {
+      const { data } = await api.get<{ url?: string }>("/spotify/auth-url");
+      const safeUrl = sanitizeSpotifyAuthorizeUrl(data?.url);
+      if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL");
+      window.location.assign(safeUrl);
+    } catch (error) {
       setSnack({ text: "Не удалось открыть авторизацию Spotify", sev: "error" });
     }
   };
 
   const disconnectSpotify = async () => {
     try {
-      const r = await fetch("/spotify/disconnect", { method: "POST", credentials: "include" });
-      if (!r.ok) throw new Error();
-      const meResp = await fetch("/api/users/me", { credentials: "include" });
-      const me = await meResp.json();
-      setUser(me);
+      await api.post("/spotify/disconnect");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
+        queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
+      ]);
+      try {
+        const profile = await fetchCurrentUser();
+        setUser(profile);
+      } catch {
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                spotify_connected: false,
+                spotify_is_connected: false,
+                spotify_display_name: null,
+              }
+            : prev,
+        );
+      }
       setSnack({ text: "Spotify отключён", sev: "success" });
     } catch {
       setSnack({ text: "Не удалось отключить Spotify", sev: "error" });
@@ -297,30 +483,54 @@ export default function Settings() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
 
-  const getAvatarSrc = useCallback(() => {
-    if ((user as any)?.avatar_url) {
-      const url = resolveMediaUrl((user as any).avatar_url, BACKEND_ORIGIN);
-      return withV(url, avatarVersion) || defaultAvatar;
-    }
-    return defaultAvatar;
-  }, [user, avatarVersion]);
+  const avatarUrl = user?.avatar_url ?? undefined;
+  const coverUrl = user?.cover_url ?? undefined;
 
-  const getCoverSrc = useCallback(() => {
-    if ((user as any)?.cover_url) {
-      const url = resolveMediaUrl((user as any).cover_url, BACKEND_ORIGIN);
-      return withV(url || "", coverVersion);
-    }
-    return "";
-  }, [user, coverVersion]);
+  const avatarSrc = useMemo(() => {
+    const resolved = resolveMediaUrl(avatarUrl);
+    return resolved ? addVersionParam(resolved, avatarVersion) : DEFAULT_AVATAR;
+  }, [avatarUrl, avatarVersion]);
+
+  const coverSrc = useMemo(() => {
+    const resolved = resolveMediaUrl(coverUrl);
+    return resolved ? addVersionParam(resolved, coverVersion) : "";
+  }, [coverUrl, coverVersion]);
+
+  const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    img.onerror = null;
+    img.src = DEFAULT_AVATAR;
+  }, []);
 
   const triggerAvatarPick = () => avatarInputRef.current?.click();
   const triggerCoverPick = () => coverInputRef.current?.click();
 
-  const refreshMe = async () => {
-    const meResp = await fetch("/api/users/me", { credentials: "include" });
-    const me = await meResp.json();
-    setUser(me);
-  };
+  const refreshMe = useCallback(async () => {
+    const fresh = await queryClient.fetchQuery<User>({
+      queryKey: currentUserQueryKey,
+      queryFn: fetchCurrentUser,
+      staleTime: 0,
+    });
+    setUser(fresh);
+    return fresh;
+  }, [queryClient, setUser]);
+
+  const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
+    if (isAxiosError(error)) {
+      const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        const combined = detail
+          .map((item) =>
+            item && typeof item === "object" && "msg" in item ? String((item as { msg?: unknown }).msg) : ""
+          )
+          .filter(Boolean)
+          .join("; ");
+        if (combined) return combined;
+      }
+    }
+    return fallback;
+  }, []);
 
   const uploadAvatar = async (file: File) => {
     if (!isImage(file)) return setSnack({ text: "Поддерживаются PNG/JPG/WebP/AVIF/GIF", sev: "warning" });
@@ -329,13 +539,12 @@ export default function Settings() {
       setAvatarBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetch("/api/users/me/avatar", { method: "POST", body: fd, credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refreshMe();
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар обновлён", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось загрузить аватар", sev: "error" });
+    } catch (error) {
+      setSnack({ text: resolveDetailMessage(error, "Не удалось загрузить аватар"), sev: "error" });
     } finally {
       setAvatarBusy(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -345,13 +554,12 @@ export default function Settings() {
   const removeAvatar = async () => {
     try {
       setAvatarBusy(true);
-      const r = await fetch("/api/users/me/avatar", { method: "DELETE", credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.delete("/users/me/avatar");
       await refreshMe();
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар удалён", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось удалить аватар", sev: "error" });
+    } catch (error) {
+      setSnack({ text: resolveDetailMessage(error, "Не удалось удалить аватар"), sev: "error" });
     } finally {
       setAvatarBusy(false);
     }
@@ -364,13 +572,12 @@ export default function Settings() {
       setCoverBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetch("/api/users/me/cover", { method: "POST", body: fd, credentials: "include" });
-      if (!r.ok) throw new Error();
+      await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refreshMe();
       setCoverVersion(Date.now());
       setSnack({ text: "Обложка обновлена", sev: "success" });
-    } catch {
-      setSnack({ text: "Не удалось загрузить обложку", sev: "error" });
+    } catch (error) {
+      setSnack({ text: resolveDetailMessage(error, "Не удалось загрузить обложку"), sev: "error" });
     } finally {
       setCoverBusy(false);
       if (coverInputRef.current) coverInputRef.current.value = "";
@@ -431,34 +638,47 @@ export default function Settings() {
                 <FormControlLabel
                   value="system"
                   control={<Radio />}
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <DesktopWindowsIcon /> <span>Система</span>
-                    </Stack>
-                  }
+                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><DesktopWindowsIcon /> <span>Система</span></Stack>}
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="light"
                   control={<Radio />}
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <LightModeIcon /> <span>Светлая</span>
-                    </Stack>
-                  }
+                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><LightModeIcon /> <span>Светлая</span></Stack>}
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="dark"
                   control={<Radio />}
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <DarkModeIcon /> <span>Тёмная</span>
-                    </Stack>
-                  }
+                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><DarkModeIcon /> <span>Тёмная</span></Stack>}
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
               </RadioGroup>
+            </Box>
+
+            <Box>
+              <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
+                {tSettings("language.title")}
+              </Typography>
+              <RadioGroup
+                row
+                value={language}
+                onChange={(_, value) => setLanguage(value as SupportedLanguage)}
+                aria-label={tSettings("language.aria")}
+              >
+                {availableLanguages.map(code => (
+                  <FormControlLabel
+                    key={code}
+                    value={code}
+                    control={<Radio />}
+                    label={tSettings(`language.options.${code}`)}
+                    sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
+                  />
+                ))}
+              </RadioGroup>
+              <Typography variant="body2" sx={{ mt: 0.5, color: "var(--page-text)" }}>
+                {tSettings("language.description")}
+              </Typography>
             </Box>
 
             <Divider />
@@ -476,26 +696,17 @@ export default function Settings() {
                   {notificationPermission === "denied" ? (
                     <Stack spacing={1.5}>
                       <Alert severity="error" variant="outlined">
-                        Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для
-                        «Экосистема ГУУ».
+                        Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для «Экосистема ГУУ».
                       </Alert>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                         После изменения настроек браузера нажмите «Проверить разрешение», чтобы обновить статус.
                       </Typography>
-                      {safariIOS && (
-                        <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления.{" "}
-                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
-                            Инструкция
-                          </Link>
-                          .
-                        </Alert>
-                      )}
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy}
+                          startIcon={pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
                         >
                           Проверить разрешение
                         </Button>
@@ -507,13 +718,14 @@ export default function Settings() {
                   ) : notificationPermission === "default" ? (
                     <Stack spacing={1.5}>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        Включите уведомления, чтобы первым узнавать о расписании, новостях и важных изменениях.
+                        Включите уведомления, чтобы первым узнавать о расписании, мероприятиях и важных новостях.
                       </Typography>
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy || pushInitializing}
+                          startIcon={pushBusy || pushInitializing ? <CircularProgress size={18} color="inherit" /> : undefined}
                         >
                           Разрешить уведомления
                         </Button>
@@ -521,140 +733,69 @@ export default function Settings() {
                           Текущее состояние: {permissionText}.
                         </Typography>
                       </Stack>
-                      {safariIOS && (
-                        <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления.{" "}
-                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
-                            Инструкция
-                          </Link>
-                          .
-                        </Alert>
-                      )}
                     </Stack>
                   ) : (
                     <>
-                      <FormControl component="fieldset" variant="standard">
-                        <FormGroup>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={notificationsEnabled}
-                                onChange={handleNotificationsToggle}
-                                disabled={pushBusy || pushInitializing}
-                              />
-                            }
-                            label={
-                              <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                                {notificationsEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
-                                <span>Включить уведомления</span>
-                              </Stack>
-                            }
+                      <FormControlLabel
+                        sx={{
+                          minHeight: 44,
+                          alignItems: "center",
+                          columnGap: 1.25,
+                          m: 0
+                        }}
+                        control={
+                          <SwitchControl
+                            checked={notificationsEnabled}
+                            onChange={handleNotificationsToggle}
+                            disabled={pushBusy || pushInitializing}
+                            aria-label="Включить уведомления"
                           />
-                        </FormGroup>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          Разрешение браузера: {permissionText}
-                        </FormHelperText>
-                      </FormControl>
+                        }
+                        label={<span style={{ color: "var(--page-text)", fontWeight: 700 }}>Включить уведомления</span>}
+                      />
 
-                      <FormControl
-                        component="fieldset"
-                        variant="standard"
-                        disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                        sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
-                      >
-                        <FormGroup>
-                          {topicKeys.map(key => (
-                            <FormControlLabel
-                              key={key}
-                              control={
-                                <Switch
-                                  checked={topicState[key]}
-                                  onChange={handleTopicToggle(key)}
-                                  disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                                />
-                              }
-                              label={
-                                <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
-                              }
-                            />
-                          ))}
-                        </FormGroup>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          Активные темы: {selectedTopicsDescription}
-                        </FormHelperText>
-                      </FormControl>
-
-                      <Divider sx={{ my: 1.2 }} />
-
-                      <Stack spacing={1.2}>
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                          <DoNotDisturbOnIcon fontSize="small" />
-                          <Typography variant="subtitle1" sx={{ color: "var(--page-text)" }}>
-                            Режим «Не беспокоить»
-                          </Typography>
-                        </Stack>
-
-                        <FormControl component="fieldset" variant="standard">
-                          <FormGroup>
-                            <FormControlLabel
-                              control={
-                                <Switch checked={dndEnabled} onChange={handleDndToggle} disabled={dndSaving} />
-                              }
-                              label={<span style={{ color: "var(--page-text)" }}>Включить тихий период</span>}
-                            />
-                          </FormGroup>
-                          <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                            Уведомления будут доставляться без звука в указанный интервал.
-                          </FormHelperText>
-                        </FormControl>
-
-                        <Stack
-                          direction={{ xs: "column", sm: "row" }}
-                          spacing={1.5}
-                          alignItems={{ sm: "center" }}
-                        >
-                          <TextField
-                            type="time"
-                            label="С"
-                            value={dndStart}
-                            onChange={handleDndStartChange}
-                            onBlur={handleDndStartBlur}
-                            disabled={!dndEnabled || dndSaving}
-                            size="small"
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ maxWidth: { xs: "100%", sm: 200 } }}
+                      <FormControlLabel
+                        sx={{
+                          minHeight: 44,
+                          alignItems: "center",
+                          columnGap: 1.25,
+                          m: 0
+                        }}
+                        control={
+                          <SwitchControl
+                            checked={dndEnabled}
+                            onChange={handleDndToggle}
+                            disabled={dndSaving}
+                            aria-label="Включить тихий период"
                           />
-                          <TextField
-                            type="time"
-                            label="До"
-                            value={dndEnd}
-                            onChange={handleDndEndChange}
-                            onBlur={handleDndEndBlur}
-                            disabled={!dndEnabled || dndSaving}
-                            size="small"
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ maxWidth: { xs: "100%", sm: 200 } }}
-                          />
-                        </Stack>
+                        }
+                        label={<span style={{ color: "var(--page-text)", fontWeight: 700 }}>Включить тихий период</span>}
+                      />
 
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)" }}>
-                          Интервал задаётся в часовом поясе устройства и может пересекать полночь.
-                        </FormHelperText>
-
-                        <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ color: "var(--page-text)" }}>
-                          <InfoOutlinedIcon fontSize="small" sx={{ mt: 0.3 }} />
-                          <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                            На iOS при установке веб-приложения как PWA уведомления часто приходят без звука — это
-                            ограничение системы.
-                          </Typography>
-                        </Stack>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+                        <TextField
+                          type="time"
+                          label="С"
+                          value={dndStart}
+                          onChange={handleDndStartChange}
+                          onBlur={handleDndStartBlur}
+                          disabled={!dndEnabled || dndSaving}
+                          size="small"
+                          InputLabelProps={{ shrink: true }}
+                          sx={timeFieldSx}
+                        />
+                        <TextField
+                          type="time"
+                          label="До"
+                          value={dndEnd}
+                          onChange={handleDndEndChange}
+                          onBlur={handleDndEndBlur}
+                          disabled={!dndEnabled || dndSaving}
+                          size="small"
+                          InputLabelProps={{ shrink: true }}
+                          sx={timeFieldSx}
+                        />
                       </Stack>
-
-                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        {notificationsEnabled
-                          ? `Непрочитанные: ${unreadCount}.`
-                          : "Уведомления сейчас отключены."}
-                      </Typography>
                     </>
                   )}
                 </Stack>
@@ -681,14 +822,10 @@ export default function Settings() {
               >
                 <ListItemAvatar>
                   <Avatar
-                    src={getAvatarSrc()}
-                    alt={(user as any)?.full_name || "avatar"}
+                    src={avatarSrc}
+                    alt={user?.full_name || "avatar"}
                     sx={{ width: 48, height: 48 }}
-                    imgProps={{
-                      onError: (e) => {
-                        (e.currentTarget as HTMLImageElement).src = defaultAvatar;
-                      }
-                    }}
+                    imgProps={{ onError: handleAvatarError, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
                   />
                 </ListItemAvatar>
                 <ListItemText primary="Фото профиля" secondary="PNG/JPG/WebP/AVIF/GIF, до 12 МБ" />
@@ -714,12 +851,13 @@ export default function Settings() {
               >
                 <ListItemAvatar sx={{ mr: 1.25 }}>
                   <Box
+                    data-testid="settings-cover-preview"
                     sx={{
                       width: 120,
                       height: 52,
                       borderRadius: 1.5,
                       border: "1px solid var(--glass-border)",
-                      background: getCoverSrc() ? `url(${getCoverSrc()}) center/cover no-repeat` : "var(--card-bg)"
+                      background: coverSrc ? `url(${coverSrc}) center/cover no-repeat` : "var(--card-bg)"
                     }}
                   />
                 </ListItemAvatar>
@@ -756,7 +894,10 @@ export default function Settings() {
                     variant="text"
                     color="error"
                     startIcon={<LogoutIcon />}
-                    onClick={async () => { setConfirmLogout(false); try { await fetch("/auth/logout", { method: "POST", credentials: "include" }); } finally { logout(); } }}
+                    onClick={async () => {
+                      setConfirmLogout(false);
+                      await logout();
+                    }}
                     sx={{ px: 0 }}
                   >
                     Выйти
@@ -771,7 +912,15 @@ export default function Settings() {
           <Stack spacing={3}>
             <Stack spacing={2}>
               <Stack direction="row" alignItems="center" spacing={1}>
-                <img src={spotifyLogo} alt="Spotify" width={22} height={22} style={{ display: "block", borderRadius: "50%" }} />
+                <img
+                  src={spotifyLogo}
+                  alt="Spotify"
+                  width={22}
+                  height={22}
+                  style={{ display: "block", borderRadius: "50%" }}
+                  loading="lazy"
+                  decoding="async"
+                />
                 <Typography variant="h6" sx={{ color: "var(--page-text)" }}>Spotify</Typography>
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
@@ -799,7 +948,15 @@ export default function Settings() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmLogout(false)}>Отмена</Button>
-          <Button color="error" onClick={async () => { setConfirmLogout(false); try { await fetch("/auth/logout", { method: "POST", credentials: "include" }); } finally { logout(); } }}>Выйти</Button>
+          <Button
+            color="error"
+            onClick={async () => {
+              setConfirmLogout(false);
+              await logout();
+            }}
+          >
+            Выйти
+          </Button>
         </DialogActions>
       </Dialog>
 

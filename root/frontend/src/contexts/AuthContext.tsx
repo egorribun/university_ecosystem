@@ -1,154 +1,349 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  createContext,
+  type Dispatch,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type SetStateAction,
+} from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
-import { softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
-import api, { API_UNAUTHORIZED_EVENT, setAuthToken } from "../api/client"
+import {
+  hasPushConsent,
+  softSyncPushSubscription,
+  unsubscribePush,
+} from "@/push/subscribe"
+import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
+import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import type { User } from "@/types/User"
 
-type SetUserArg = any | ((prev: any) => any)
+type UserState = User | null
+
+type SetUserArg = SetStateAction<UserState>
 
 type AuthContextType = {
   isAuth: boolean
-  login: (token: string) => Promise<void>
-  logout: () => void
-  user: any
+  login: (email: string, password: string) => Promise<void>
+  logout: () => Promise<void>
+  user: UserState
   loading: boolean
-  setUser: (user: SetUserArg) => void
+  setUser: Dispatch<SetUserArg>
+  refresh: () => Promise<void>
+}
+
+const noopSetUser: Dispatch<SetUserArg> = (_value) => {
+  if (import.meta.env.DEV) {
+    console.warn("AuthContext setUser called outside provider")
+  }
 }
 
 export const AuthContext = createContext<AuthContextType>({
   isAuth: false,
   login: async () => {},
-  logout: () => {},
+  logout: async () => {},
   user: null,
   loading: false,
-  setUser: () => {},
+  setUser: noopSetUser,
+  refresh: async () => {},
 })
 
 export const useAuth = () => useContext(AuthContext)
 
 export const currentUserQueryKey = ["users", "me"] as const
 
-const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
+const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
+const PROFILE_CACHE_SCHEMA_VERSION = 2
+const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
+const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
+const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
+const PROFILE_CACHE_SIGNING_SALT = "ecosystem-profile-cache-salt"
 
-const readCachedUser = (): any | undefined => {
+type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
+
+type CachedProfileEnvelope = {
+  version: number
+  expiresAt: number
+  data: CachedUserSnapshot
+  signature: string
+}
+
+type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
+
+const encodeBase64 = (value: string): string => {
+  if (typeof globalThis === "undefined") return value
+  const encoder = globalThis.btoa
+  if (typeof encoder !== "function") return value
   try {
-    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
-    if (!raw) return undefined
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === "object" && "data" in parsed) {
-      return (parsed as { data: unknown }).data
-    }
-    return parsed
+    const utf8 = encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_, hex) =>
+      String.fromCharCode(Number.parseInt(hex, 16))
+    )
+    return encoder(utf8)
   } catch {
-    return undefined
+    return value
   }
 }
 
-const persistUserToCache = (value: any | null) => {
+const signSnapshot = (payload: CacheSignaturePayload): string => {
+  const json = JSON.stringify(payload)
+  return encodeBase64(`${PROFILE_CACHE_SIGNING_SALT}:${json}`)
+}
+
+const migrateProfileCache = () => {
+  if (typeof localStorage === "undefined") return
   try {
-    if (value != null) {
+    const storedVersion = localStorage.getItem(PROFILE_CACHE_VERSION_KEY)
+    if (storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
+      for (const legacyKey of LEGACY_PROFILE_CACHE_KEYS) {
+        localStorage.removeItem(legacyKey)
+      }
+      if (storedVersion && storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
+        localStorage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
+      }
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
       localStorage.setItem(
-        PROFILE_CACHE_KEY,
-        JSON.stringify({ data: value, savedAt: new Date().toISOString() })
+        PROFILE_CACHE_VERSION_KEY,
+        String(PROFILE_CACHE_SCHEMA_VERSION)
       )
-    } else {
-      localStorage.removeItem(PROFILE_CACHE_KEY)
     }
   } catch {
     /* ignore */
   }
 }
 
-const readStoredToken = () => {
+const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
+  id: snapshot.id,
+  email: "",
+  full_name: snapshot.full_name,
+  role: null,
+  group_id: null,
+  avatar_url: snapshot.avatar_url,
+  cover_url: null,
+  about: null,
+  record_book_number: null,
+  status: null,
+  institute: null,
+  course: null,
+  education_level: null,
+  track: null,
+  program: null,
+  telegram: null,
+  achievements: null,
+  department: null,
+  position: null,
+  spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: null,
+  dnd_enabled: false,
+  dnd_start: null,
+  dnd_end: null,
+  is_active: false,
+})
+
+const readCachedUser = (): User | undefined => {
+  if (typeof localStorage === "undefined") return undefined
   try {
-    return localStorage.getItem("token")
+    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    if (!raw) return undefined
+    const parsed = JSON.parse(raw) as CachedProfileEnvelope | unknown
+    if (!parsed || typeof parsed !== "object") return undefined
+    const candidate = parsed as Partial<CachedProfileEnvelope>
+    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    if (
+      typeof candidate.expiresAt !== "number" ||
+      !candidate.data ||
+      typeof candidate.signature !== "string"
+    ) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    if (candidate.expiresAt <= Date.now()) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    const payload: CacheSignaturePayload = {
+      version: candidate.version,
+      expiresAt: candidate.expiresAt,
+      data: candidate.data as CachedUserSnapshot,
+    }
+    const expectedSignature = signSnapshot(payload)
+    if (candidate.signature !== expectedSignature) {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    const snapshot = candidate.data as CachedUserSnapshot
+    if (!snapshot || typeof snapshot.id !== "number") {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      return undefined
+    }
+    return createOptimisticUser(snapshot)
   } catch {
-    return null
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    return undefined
   }
 }
 
-export const fetchCurrentUser = async () => {
+const persistUserToCache = (value: User | null) => {
+  if (typeof localStorage === "undefined") return
   try {
-    const res = await api.get("/users/me")
-    return res.data
-  } catch (error) {
-    if (!isAxiosError(error) || error.response) {
-      throw error
+    if (value != null) {
+      const snapshot: CachedUserSnapshot = {
+        id: value.id,
+        full_name: value.full_name,
+        avatar_url: value.avatar_url,
+      }
+      const payload: CacheSignaturePayload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+        data: snapshot,
+      }
+      const envelope: CachedProfileEnvelope = {
+        ...payload,
+        signature: signSnapshot(payload),
+      }
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
+      localStorage.setItem(
+        PROFILE_CACHE_VERSION_KEY,
+        String(PROFILE_CACHE_SCHEMA_VERSION)
+      )
+    } else {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
     }
-    return null
+  } catch {
+    /* ignore */
   }
+}
+
+type FetchCurrentUserOptions = {
+  signal?: AbortSignal
+}
+
+export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {}) => {
+  const response = await api.get<User>("/users/me", { signal })
+  return response.data
+}
+
+const initializeCachedUser = (): UserState => {
+  if (typeof window === "undefined") return null
+  migrateProfileCache()
+  return readCachedUser() ?? null
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
-  const [token, setToken] = useState<string | null>(() => readStoredToken())
-  const hasToken = Boolean(token)
+  const [userState, setUserState] = useState<UserState>(initializeCachedUser)
+  const cachedUserRef = useRef<UserState>(userState)
+  const [initializing, setInitializing] = useState<boolean>(true)
+  const [authOperation, setAuthOperation] = useState(false)
+  const activeRequestRef = useRef<AbortController | null>(null)
 
-  const applyToken = useCallback((value: string | null) => {
-    setToken(value)
-    setAuthToken(value ?? undefined)
-  }, [])
+  const setUser = useCallback(
+    (value: SetUserArg) => {
+      setUserState((prev: UserState) => {
+        const next =
+          typeof value === "function"
+            ? (value as (prev: UserState) => UserState)(prev)
+            : value
+        const normalized: UserState = next ?? null
+        persistUserToCache(normalized)
+        queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
+        return normalized
+      })
+    },
+    [queryClient]
+  )
 
-  const clearProfile = useCallback(() => {
-    persistUserToCache(null)
-    queryClient.setQueryData(currentUserQueryKey, null)
+  useEffect(() => {
+    if (cachedUserRef.current !== null) {
+      queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUserRef.current)
+      cachedUserRef.current = null
+    }
   }, [queryClient])
 
+  const clearProfile = useCallback(() => {
+    const controller = activeRequestRef.current
+    controller?.abort()
+    activeRequestRef.current = null
+    setUser(null)
+    cachedUserRef.current = null
+  }, [setUser])
+
   const handleUnauthorized = useCallback(() => {
-    void queryClient.cancelQueries({ queryKey: currentUserQueryKey })
-    applyToken(null)
     clearProfile()
-  }, [applyToken, clearProfile, queryClient])
+    setAuthOperation(false)
+    setInitializing(false)
+  }, [clearProfile])
 
   useEffect(() => {
-    setAuthToken(token ?? undefined)
-  }, [token])
-
-  const userQuery = useQuery<any>({
-    queryKey: currentUserQueryKey,
-    queryFn: fetchCurrentUser,
-    enabled: hasToken,
-    initialData: readCachedUser,
-    placeholderData: (previous: any) => previous,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry(failureCount: number, error: unknown) {
-      if (isAxiosError(error) && error.response?.status === 401) return false
-      return failureCount < 3
-    },
-    retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
-  })
-
-  const { data: userData, isSuccess, isError, error, isPending } = userQuery
-
-  useEffect(() => {
-    if (isSuccess) {
-      persistUserToCache(userData ?? null)
+    if (typeof window === "undefined") {
+      setInitializing(false)
+      return
     }
-  }, [isSuccess, userData])
 
-  useEffect(() => {
-    if (isError && isAxiosError(error) && error.response?.status === 401) {
-      handleUnauthorized()
-    }
-  }, [error, handleUnauthorized, isError])
+    const controller = new AbortController()
+    activeRequestRef.current?.abort()
+    activeRequestRef.current = controller
+    setInitializing(true)
 
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === "token") {
-        const stored = readStoredToken()
-        if (stored) {
-          applyToken(stored)
-          void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
-        } else {
+    ;(async () => {
+      try {
+        const profile = await fetchCurrentUser({ signal: controller.signal })
+        setUser(profile)
+      } catch (error) {
+        if (controller.signal.aborted) return
+        if (isAxiosError(error) && error.response?.status === 401) {
           handleUnauthorized()
+          return
+        }
+        console.error("Failed to fetch current user", error)
+      } finally {
+        if (!controller.signal.aborted && activeRequestRef.current === controller) {
+          activeRequestRef.current = null
+        }
+        if (!controller.signal.aborted) {
+          setInitializing(false)
         }
       }
+    })()
+
+    return () => {
+      controller.abort()
     }
-    window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
-  }, [applyToken, handleUnauthorized, queryClient])
+  }, [handleUnauthorized, setUser])
+
+  const refresh = useCallback(async () => {
+    const controller = new AbortController()
+    activeRequestRef.current?.abort()
+    activeRequestRef.current = controller
+
+    try {
+      setInitializing(true)
+      const profile = await fetchCurrentUser({ signal: controller.signal })
+      setUser(profile)
+    } catch (error) {
+      if (controller.signal.aborted) return
+      if (isAxiosError(error) && error.response?.status === 401) {
+        handleUnauthorized()
+        return
+      }
+      throw error
+    } finally {
+      if (!controller.signal.aborted && activeRequestRef.current === controller) {
+        activeRequestRef.current = null
+      }
+      if (!controller.signal.aborted) {
+        setInitializing(false)
+      }
+    }
+  }, [handleUnauthorized, setUser])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -158,57 +353,120 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
   }, [handleUnauthorized])
 
-  const user = userData ?? null
-  const loading = hasToken && isPending
-  const isAuth = Boolean(hasToken && user)
-
-  const setUser = useCallback(
-    (value: SetUserArg) => {
-      queryClient.setQueryData(currentUserQueryKey, (prev: any) => {
-        const previous = prev ?? null
-        const next =
-          typeof value === "function" ? (value as (prev: any) => any)(previous) : value
-        persistUserToCache(next ?? null)
-        return next ?? null
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onSpotifyReauth = () => {
+      setUser((prev: UserState) => {
+        if (!prev) return prev
+        if (!prev.spotify_connected && !prev.spotify_is_connected) return prev
+        return {
+          ...prev,
+          spotify_connected: false,
+          spotify_is_connected: false,
+          spotify_display_name: null,
+        }
       })
-    },
-    [queryClient]
-  )
+      void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
+    }
+    window.addEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
+    return () =>
+      window.removeEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
+  }, [queryClient, setUser])
 
   const login = useCallback(
-    async (nextToken: string) => {
-      applyToken(nextToken)
-      await queryClient.cancelQueries({ queryKey: currentUserQueryKey })
-      await queryClient.fetchQuery({ queryKey: currentUserQueryKey, queryFn: fetchCurrentUser })
-      if (typeof window !== "undefined" && typeof Notification !== "undefined") {
-        if (Notification.permission === "granted") {
-          await softSyncPushSubscription()
+    async (email: string, password: string) => {
+      const payload = new URLSearchParams()
+      payload.append("username", email.trim())
+      payload.append("password", password)
+
+      const controller = new AbortController()
+      activeRequestRef.current?.abort()
+      activeRequestRef.current = controller
+
+      try {
+        setAuthOperation(true)
+        setInitializing(true)
+        await api.post("/auth/login", payload, {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          signal: controller.signal,
+        })
+
+        if (controller.signal.aborted) return
+
+        const profile = await fetchCurrentUser({ signal: controller.signal })
+        setUser(profile)
+
+        if (typeof window !== "undefined" && typeof Notification !== "undefined") {
+          if (Notification.permission === "granted" && hasPushConsent()) {
+            void (async () => {
+              try {
+                await softSyncPushSubscription()
+              } catch (error) {
+                console.warn("Failed to sync push subscription", error)
+              }
+            })()
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          handleUnauthorized()
+        }
+
+        if (isAxiosError(error)) {
+          const message =
+            typeof error.response?.data?.detail === "string"
+              ? error.response.data.detail
+              : "Не удалось войти"
+          throw new Error(message)
+        }
+
+        if (error instanceof Error) {
+          throw error
+        }
+
+        throw new Error("Не удалось войти")
+      } finally {
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null
+        }
+        setAuthOperation(false)
+        if (!controller.signal.aborted) {
+          setInitializing(false)
         }
       }
     },
-    [applyToken, queryClient]
+    [handleUnauthorized, setUser]
   )
 
-  const logout = useCallback(() => {
-    if (typeof window === "undefined") {
-      handleUnauthorized()
-      return
-    }
+  const logout = useCallback(async () => {
+    activeRequestRef.current?.abort()
+    setAuthOperation(true)
 
-    void (async () => {
+    try {
+      await api.post("/auth/logout")
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn("Logout request failed", error)
+      }
+    } finally {
       try {
-        await unsubscribePush({ preserveConsent: true })
+        await unsubscribePush({ preserveConsent: true, preserveTopics: true })
       } catch (error) {
         console.error("Failed to unsubscribe push subscription on logout", error)
       } finally {
         handleUnauthorized()
+        setAuthOperation(false)
       }
-    })()
+    }
   }, [handleUnauthorized])
 
+  const user = userState
+  const isAuth = Boolean(user)
+  const loading = initializing || authOperation
+
   const value = useMemo(
-    () => ({ isAuth, login, logout, user, loading, setUser }),
-    [isAuth, login, logout, user, loading, setUser]
+    () => ({ isAuth, login, logout, user, loading, setUser, refresh }),
+    [isAuth, login, logout, user, loading, setUser, refresh]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

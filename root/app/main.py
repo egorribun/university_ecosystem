@@ -7,17 +7,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
+from app.api.events import router as events_router
+from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
-from app.api.routes import router as main_router
+from app.api.schedule import router as schedule_api_router
 from app.api.spotify import router as spotify_router
+from app.api.users import router as users_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
-from app.core.rate_limit import RateLimitMiddleware
+from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import shutdown_cache
-from app.routers.notifications import router as webpush_router
+from app.routers.notifications import legacy_router as legacy_push_router
+from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
 
@@ -33,7 +37,13 @@ async def lifespan(app: FastAPI):
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    stop_scheduler = await start_notifications_scheduler()
+    stop_scheduler = None
+    if settings.is_development and settings.notifications_scheduler_inline_enabled:
+        stop_scheduler = await start_notifications_scheduler(
+            poll_seconds=settings.notifications_scheduler_poll_seconds,
+            window_minutes=settings.notifications_scheduler_window_minutes,
+            max_backoff_seconds=settings.notifications_scheduler_max_backoff_seconds,
+        )
     try:
         yield
     finally:
@@ -59,24 +69,48 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
 
+def _ensure_vary_header(response, header_name: str) -> None:
+    existing = response.headers.get("Vary")
+    if not existing:
+        response.headers["Vary"] = header_name
+        return
+    values = [value.strip() for value in existing.split(",") if value.strip()]
+    if header_name not in values:
+        values.append(header_name)
+        response.headers["Vary"] = ", ".join(values)
+
+
 @app.middleware("http")
-async def _static_cache_control(request: Request, call_next):
+async def _http_response_hardening(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/static/") and response.status_code == 200:
         # Encourage browsers to keep avatars locally without marking them immutable.
         response.headers.setdefault("Cache-Control", "public, max-age=86400")
+    acao = response.headers.get("access-control-allow-origin")
+    if acao and acao != "*":
+        _ensure_vary_header(response, "Origin")
+        if request.method.upper() == "OPTIONS":
+            _ensure_vary_header(response, "Access-Control-Request-Method")
+            if request.headers.get("access-control-request-headers"):
+                _ensure_vary_header(response, "Access-Control-Request-Headers")
     return response
 
 
 rate_limit_url = settings.rate_limit_storage_uri.strip()
+rate_limit_defaults = settings.rate_limit_default_list
+default_limit, default_window = parse_rate_limit(
+    rate_limit_defaults[0] if rate_limit_defaults else None,
+    fallback=(60, 60),
+)
+
 if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
     ("redis://", "rediss://")
 ):
     app.add_middleware(
         RateLimitMiddleware,
         redis_url=rate_limit_url,
-        limit=60,
-        window_seconds=60,
+        limit=default_limit,
+        window_seconds=default_window,
         headers_enabled=settings.rate_limit_headers_enabled,
     )
 
@@ -111,6 +145,10 @@ async def ready():
 app.include_router(auth_router)
 app.include_router(spotify_router)
 app.include_router(notifications_router)
-app.include_router(webpush_router)
+app.include_router(push_router)
+app.include_router(legacy_push_router)
 app.include_router(schedule_router)
-app.include_router(main_router)
+app.include_router(users_router)
+app.include_router(events_router)
+app.include_router(news_router)
+app.include_router(schedule_api_router)

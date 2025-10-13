@@ -7,6 +7,7 @@ import Footer from "./components/Footer"
 import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
+import { LanguageProvider, useLanguage } from "./contexts/LanguageContext"
 import MotionPresence from "./components/MotionPresence"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import MobileBottomNav from "./components/MobileBottomNav"
@@ -16,11 +17,12 @@ import InstallPrompt from "./components/InstallPrompt"
 import LivePushToasts from "./components/LivePushToasts"
 import { useQueryClient } from "@tanstack/react-query"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
+import { useTranslation } from "react-i18next"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
 const News = lazy(() => import("./pages/News"))
-const NewsDetail = lazy(() => import("./components/NewsDetail"))
+const NewsDetail = lazy(() => import("./pages/NewsDetail"))
 const Schedule = lazy(() => import("./pages/Schedule"))
 const Activity = lazy(() => import("./pages/Activity"))
 const Events = lazy(() => import("./pages/Events"))
@@ -33,7 +35,6 @@ const AdminUsers = lazy(() => import("./pages/AdminUsers"))
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
 const ResetPassword = lazy(() => import("./pages/ResetPassword"))
 const Settings = lazy(() => import("./pages/Settings"))
-const NotificationsPage = lazy(() => import("./pages/Notifications"))
 
 type RouteGuardProps = { children: ReactElement }
 
@@ -101,10 +102,6 @@ function AppContent() {
           <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
           <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
           <Route path="/activity" element={<PrivateRoute>{wrap(<Activity />)}</PrivateRoute>} />
-          <Route
-            path="/notifications"
-            element={<PrivateRoute>{wrap(<NotificationsPage />)}</PrivateRoute>}
-          />
           <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
           <Route
             path="/events/:id"
@@ -148,14 +145,17 @@ export const routerFutureFlags = {
   v7_skipActionErrorRevalidation: true,
 } satisfies RouterFutureFlags
 
-export default function App() {
+function AppShell() {
+  const { language } = useLanguage()
+  const { t } = useTranslation("common")
+
   return (
     <>
       <a href="#main" className="skip-link">
-        Перейти к содержанию
+        {t("skipToContent")}
       </a>
       <AuthProvider>
-        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ru">
+        <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
           <ErrorBoundary>
             <Router future={routerFutureFlags}>
               <AppContent />
@@ -164,5 +164,13 @@ export default function App() {
         </LocalizationProvider>
       </AuthProvider>
     </>
+  )
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppShell />
+    </LanguageProvider>
   )
 }

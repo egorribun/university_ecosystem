@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
-import { useAuth } from "@/contexts/AuthContext"
+import { useAuth, currentUserQueryKey } from "@/contexts/AuthContext"
 import {
   Box,
   Button,
@@ -14,6 +14,7 @@ import {
   Typography,
 } from "@mui/material"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
+import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 
 export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
@@ -28,8 +29,12 @@ export default function SpotifyConnect() {
   const connect = async () => {
     setActionLoading(true)
     try {
-      const r = await api.get("/spotify/auth-url")
-      window.location.href = r.data.url
+      const r = await api.get<{ url?: string }>("/spotify/auth-url")
+      const safeUrl = sanitizeSpotifyAuthorizeUrl(r.data?.url)
+      if (!safeUrl) {
+        throw new Error("Received unsafe Spotify authorization URL")
+      }
+      window.location.href = safeUrl
     } finally {
       setActionLoading(false)
     }
@@ -39,8 +44,20 @@ export default function SpotifyConnect() {
     setActionLoading(true)
     try {
       await api.post("/spotify/disconnect")
-      setUser({ ...user, spotify_connected: false, spotify_display_name: null })
-      queryClient.setQueryData(nowPlayingQueryKey, null)
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              spotify_connected: false,
+              spotify_is_connected: false,
+              spotify_display_name: null,
+            }
+          : prev
+      )
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
+        queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
+      ])
     } finally {
       setActionLoading(false)
     }
@@ -66,7 +83,7 @@ export default function SpotifyConnect() {
     <Card sx={{ mt: 2 }}>
       <CardHeader title="Spotify" />
       <CardContent>
-        {!user.spotify_connected ? (
+        {!spotifyEnabled ? (
           <Button onClick={connect} variant="contained" disabled={actionLoading}>
             {loadingIndicator}
           </Button>

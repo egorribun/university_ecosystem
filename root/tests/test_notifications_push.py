@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
@@ -15,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models.models import PushSubscription
+from app.routers.notifications import _serialize_subscription
 from app.services import webpush as webpush_module
 
 
@@ -51,9 +53,11 @@ async def _create_user_and_token(
     async_client: AsyncClient,
     user_factory,
     password: str = "StrongP@ssw0rd!",
+    *,
+    role: str = "student",
 ):
     hashed = get_password_hash(password)
-    user = await user_factory(hashed_password=hashed, is_active=True)
+    user = await user_factory(hashed_password=hashed, is_active=True, role=role)
     response = await async_client.post(
         "/auth/login",
         data={"username": user.email, "password": password},
@@ -82,7 +86,7 @@ async def test_subscribe_persists_subscription(
     }
 
     response = await async_client.post(
-        "/webpush/subscribe",
+        "/push/subscribe",
         json=payload,
         headers=headers,
     )
@@ -94,6 +98,7 @@ async def test_subscribe_persists_subscription(
     assert body["topics"] == ["system", "news"]
     assert body["user_agent"] == payload["user_agent"]
     assert body["last_seen_at"] is not None
+    assert body["updated_at"] == body["last_seen_at"]
 
     stored = (
         await db_session.execute(
@@ -108,6 +113,25 @@ async def test_subscribe_persists_subscription(
     assert stored.topics == ["system", "news"]
 
 
+def test_serialize_subscription_handles_missing_created_at():
+    legacy = SimpleNamespace(
+        id=1,
+        user_id=2,
+        endpoint="https://example.test/legacy",
+        p256dh="p256",
+        auth="auth",
+        created_at=None,
+        user_agent="UA/1.0",
+        last_seen_at=None,
+        topics=["system"],
+    )
+
+    result = _serialize_subscription(legacy)
+
+    assert result.created_at is not None
+    assert result.user_agent == "UA/1.0"
+
+
 @pytest.mark.anyio
 async def test_unsubscribe_removes_subscription(
     async_client: AsyncClient,
@@ -115,7 +139,9 @@ async def test_unsubscribe_removes_subscription(
     db_session,
     _configured_webpush_settings,
 ):
-    _user, headers = await _create_user_and_token(async_client, user_factory)
+    _user, headers = await _create_user_and_token(
+        async_client, user_factory, role="admin"
+    )
     endpoint = "https://push.example.test/remove-me"
     payload = {
         "endpoint": endpoint,
@@ -123,19 +149,19 @@ async def test_unsubscribe_removes_subscription(
         "topics": ["system"],
     }
     create_response = await async_client.post(
-        "/webpush/subscribe",
+        "/push/subscribe",
         json=payload,
         headers=headers,
     )
     assert create_response.status_code == 200
 
-    response = await async_client.request(
-        "DELETE",
-        "/webpush/subscribe",
+    response = await async_client.post(
+        "/push/unsubscribe",
         json={"endpoint": endpoint},
         headers=headers,
     )
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "removed": True}
 
     remaining = (
         (
@@ -149,13 +175,13 @@ async def test_unsubscribe_removes_subscription(
     assert remaining == []
 
     # Deleting again should still return 204 and keep database clean.
-    second = await async_client.request(
-        "DELETE",
-        "/webpush/subscribe",
+    second = await async_client.post(
+        "/push/unsubscribe",
         json={"endpoint": endpoint},
         headers=headers,
     )
-    assert second.status_code == 204
+    assert second.status_code == 200
+    assert second.json() == {"ok": True, "removed": False}
 
 
 class _WebPushStub:
@@ -207,7 +233,9 @@ async def test_send_test_filters_and_cleans_subscriptions(
     _configured_webpush_settings,
     _sync_session_factory,
 ):
-    _user, headers = await _create_user_and_token(async_client, user_factory)
+    _user, headers = await _create_user_and_token(
+        async_client, user_factory, role="admin"
+    )
 
     stub = _WebPushStub()
     monkeypatch.setattr(webpush_module, "webpush", stub)
@@ -227,7 +255,7 @@ async def test_send_test_filters_and_cleans_subscriptions(
             "topics": topics,
         }
         resp = await async_client.post(
-            "/webpush/subscribe",
+            "/push/subscribe",
             json=payload,
             headers=headers,
         )
@@ -238,10 +266,11 @@ async def test_send_test_filters_and_cleans_subscriptions(
     await _subscribe(gone_404_endpoint, ["system"])
     await _subscribe(news_only_endpoint, ["news"])
 
-    response = await async_client.post("/webpush/send-test", headers=headers)
+    response = await async_client.post("/push/test", headers=headers)
     assert response.status_code == 200
     body = response.json()
     assert body == {
+        "total": 3,
         "sent": 1,
         "removed": 2,
         "failed": 0,

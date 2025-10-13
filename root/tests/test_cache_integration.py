@@ -80,13 +80,16 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     assert cached_list.status_code == 304
     assert cached_list.headers.get("ETag") == list_etag
 
-    detail_response = await async_client.get(f"/news/{news.id}")
+    auth_headers = {"Authorization": "Bearer cache-news"}
+
+    detail_response = await async_client.get(f"/news/{news.id}", headers=auth_headers)
     assert detail_response.status_code == 200
     detail_etag = detail_response.headers.get("ETag")
     assert detail_etag
 
     cached_detail = await async_client.get(
-        f"/news/{news.id}", headers={"If-None-Match": detail_etag}
+        f"/news/{news.id}",
+        headers={"If-None-Match": detail_etag, **auth_headers},
     )
     assert cached_detail.status_code == 304
     assert cached_detail.headers.get("ETag") == detail_etag
@@ -106,7 +109,8 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     assert list_after_update.headers.get("ETag") != list_etag
 
     detail_after_update = await async_client.get(
-        f"/news/{news.id}", headers={"If-None-Match": detail_etag}
+        f"/news/{news.id}",
+        headers={"If-None-Match": detail_etag, **auth_headers},
     )
     assert detail_after_update.status_code == 200
     assert detail_after_update.headers.get("ETag") != detail_etag

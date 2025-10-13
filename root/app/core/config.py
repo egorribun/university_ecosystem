@@ -134,6 +134,22 @@ class Settings(BaseSettings):
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
+    notifications_scheduler_poll_seconds: int = 30
+    notifications_scheduler_window_minutes: int = 6
+    notifications_scheduler_max_backoff_seconds: int = 300
+    notifications_scheduler_inline_enabled: bool = True
+    notifications_worker_metrics_host: str = "0.0.0.0"
+    notifications_worker_metrics_port: int = 9101
+    event_file_allowed_mime_types: str | list[str] = (
+        "application/pdf,"
+        "text/plain,"
+        "application/msword,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
+        "application/vnd.ms-excel,"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    event_file_allowed_extensions: str | list[str] = ".pdf,.txt,.doc,.docx,.xls,.xlsx"
+    event_file_max_size_bytes: int = 10 * 1024 * 1024
 
     @field_validator("coep_value")
     @classmethod
@@ -257,6 +273,26 @@ class Settings(BaseSettings):
         if not raw_path.is_absolute():
             raw_path = (_PROJECT_ROOT / raw_path).resolve()
         return raw_path
+
+    @property
+    def event_file_allowed_mime_types_set(self) -> set[str]:
+        values = {
+            value.lower()
+            for value in _coerce_str_list(self.event_file_allowed_mime_types)
+            if value
+        }
+        return values
+
+    @property
+    def event_file_allowed_extensions_set(self) -> set[str]:
+        values: set[str] = set()
+        for value in _coerce_str_list(self.event_file_allowed_extensions):
+            normalized = value.strip().lower()
+            if normalized.startswith("."):
+                normalized = normalized[1:]
+            if normalized:
+                values.add(normalized)
+        return values
 
     @cached_property
     def app_base_url_clean(self) -> str:

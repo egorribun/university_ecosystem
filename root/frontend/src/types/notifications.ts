@@ -1,7 +1,3 @@
-export type VapidPublicKeyResponse = {
-  publicKey: string
-}
-
 export type PushSubscriptionResponse = {
   id: number
   user_id: number
@@ -11,6 +7,7 @@ export type PushSubscriptionResponse = {
   created_at: string
   user_agent?: string | null
   last_seen_at?: string | null
+  updated_at?: string | null
   topics: string[]
 }
 

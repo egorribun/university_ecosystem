@@ -24,7 +24,7 @@ describe("MobileBottomNav", () => {
 
     const nav = screen.getByRole("navigation", { name: "Основная навигация" });
     expect(nav).toBeInTheDocument();
-    expect(nav.querySelectorAll("a")).toHaveLength(6);
+    expect(nav.querySelectorAll("a")).toHaveLength(5);
     expect(nav).toMatchSnapshot();
     expect(container).toMatchSnapshot();
   });

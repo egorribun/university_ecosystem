@@ -1,6 +1,7 @@
 import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import { useEffect, useState, useCallback, type SyntheticEvent } from "react"
+import { useEffect, useState, useCallback, useMemo, type SyntheticEvent, type CSSProperties } from "react"
 import axios from "../api/client"
 import {
   Box, Tabs, Tab, TextField, Typography, Button,
@@ -12,10 +13,8 @@ import SearchIcon from "@mui/icons-material/Search"
 import FilterListIcon from "@mui/icons-material/FilterList"
 import ClearIcon from "@mui/icons-material/Clear"
 import { useAuth } from "../contexts/AuthContext"
-import { resolveMediaUrl } from "@/utils/media"
+import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
-
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; label: string; is_active?: boolean }
@@ -163,9 +162,9 @@ const Events = () => {
     } catch {}
   }
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     if (!loading) fetchEvents()
-  }
+  }, [fetchEvents, loading])
 
   const starts = new Date(eventData.starts_at).getTime()
   const ends = new Date(eventData.ends_at).getTime()
@@ -184,31 +183,87 @@ const Events = () => {
     }
   }, [createPreview])
 
-  const renderMobileCards = () => (
-    <Stack spacing={2} mt={1}>
-      {loading &&
-        Array.from({ length: 3 }).map((_, i) => (
-          <Box key={i} sx={{ p: 0 }}>
-            <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2 }} />
-            <Skeleton height={28} sx={{ mt: 1 }} />
-            <Skeleton height={20} width="85%" />
-          </Box>
-        ))}
-      {!loading && Array.isArray(events) &&
-        events.map((event) => (
-          <EventCard key={event.id} {...event} onChange={handleRefresh} />
-        ))}
-      {!loading && Array.isArray(events) && events.length === 0 && (
-        <Typography fontSize={20} color="text.secondary" align="center" mt={8}>
-          Нет мероприятий
-        </Typography>
-      )}
-    </Stack>
+  const normalizedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events])
+
+  const layoutConfig = useMemo(() => {
+    if (isMobile) {
+      return {
+        gridTemplateColumns: "minmax(0, 1fr)",
+        gap: { xs: 2, sm: 2 },
+        cardMaxWidth: "100%"
+      }
+    }
+
+    return {
+      gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+      gap: { xs: 2, sm: 2.5, md: 3 },
+      cardMaxWidth: "100%"
+    }
+  }, [isMobile])
+
+  const { gridTemplateColumns, gap, cardMaxWidth } = layoutConfig
+
+  const eventsContent = useMemo(
+    () => {
+      const skeletonCount = isMobile ? 3 : 6
+      return (
+        <Box
+          data-fade
+          style={{ '--fade-delay': '260ms' } as CSSProperties }
+          sx={{
+            display: "grid",
+            gridTemplateColumns,
+            gap,
+            minHeight: "180px",
+            transition: "grid-template-columns 0.28s ease, gap 0.28s ease"
+          }}
+        >
+          {loading &&
+            Array.from({ length: skeletonCount }).map((_, i) => (
+              <Box key={`event-skel-${i}`}>
+                <Skeleton
+                  variant="rectangular"
+                  height={isMobile ? 160 : 200}
+                  sx={{ borderRadius: 2 }}
+                />
+                <Skeleton height={isMobile ? 28 : 32} sx={{ mt: 1 }} />
+                <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
+                {!isMobile && <Skeleton height={20} width="60%" />}
+              </Box>
+            ))}
+
+          {!loading &&
+            normalizedEvents.map((event) => (
+              <Box
+                key={event.id}
+                sx={{
+                  display: "flex",
+                  width: "100%",
+                  height: "100%",
+                  transition: "max-width 0.28s ease"
+                }}
+              >
+                <EventCard {...event} onChange={handleRefresh} maxWidth={cardMaxWidth} />
+              </Box>
+            ))}
+
+          {!loading && normalizedEvents.length === 0 && (
+            <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
+              <Typography fontSize={24} className="events-empty-text">
+                Нет мероприятий
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      )
+    },
+    [cardMaxWidth, gap, gridTemplateColumns, handleRefresh, isMobile, loading, normalizedEvents],
   )
 
   return (
     <Layout>
-      <Box
+      <PageFadeIn>
+        <Box
         sx={{
           width: "100vw",
           minHeight: "100vh",
@@ -220,6 +275,8 @@ const Events = () => {
         }}
       >
         <Box
+          data-fade
+          style={{ '--fade-delay': '80ms' } as CSSProperties }
           display="flex"
           alignItems="center"
           gap={2}
@@ -238,7 +295,9 @@ const Events = () => {
         </Box>
 
         {(user?.role === "admin" || user?.role === "teacher") && (
-          <Box sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}>
+          <Box
+            data-fade
+            style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}>
             <Button
               variant="contained"
               sx={{ fontWeight: 600, fontSize: 16, px: 2.5, borderRadius: 2 }}
@@ -251,6 +310,8 @@ const Events = () => {
         )}
 
         <Tabs
+          data-fade
+          style={{ '--fade-delay': '200ms' } as CSSProperties }
           value={tab}
           onChange={handleTabChange}
           variant={isMobile ? "scrollable" : "standard"}
@@ -287,11 +348,14 @@ const Events = () => {
         </Tabs>
 
         <Stack
+          data-fade
+          style={{ '--fade-delay': '240ms' } as CSSProperties }
           direction="row"
           spacing={1.5}
           alignItems="center"
           mb={isMobile ? 2 : 5}
-          mt={isMobile ? 1 : 2}
+          mt={isMobile ? 2 : 3}
+          sx={{ flexWrap: "wrap" }}
         >
           <TextField
             label="Поиск"
@@ -419,43 +483,7 @@ const Events = () => {
           </Stack>
         </Popover>
 
-        {isMobile ? (
-          renderMobileCards()
-        ) : (
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: { xs: 2, sm: 3 },
-              minHeight: "180px",
-            }}
-          >
-            {loading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <Box key={i}>
-                  <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2 }} />
-                  <Skeleton height={32} sx={{ mt: 1 }} />
-                  <Skeleton height={20} width="80%" />
-                  <Skeleton height={20} width="60%" />
-                </Box>
-              ))}
-
-            {!loading && Array.isArray(events) &&
-              events.map((event) => (
-                <Box key={event.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                  <EventCard {...event} onChange={handleRefresh} />
-                </Box>
-              ))}
-
-            {!loading && Array.isArray(events) && events.length === 0 && (
-              <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
-                <Typography fontSize={24} className="events-empty-text">
-                  Нет мероприятий
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        )}
+        {eventsContent}
 
         <Dialog open={createOpen} onClose={closeCreate}>
           <DialogTitle>Создать мероприятие</DialogTitle>
@@ -513,19 +541,19 @@ const Events = () => {
 
               {createPreview && (
                 <Box mt={1}>
-                  <img
-                    src={createPreview}
-                    alt="preview"
-                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
+                  <SmartImage
+                    srcRaw={createPreview}
+                    alt="Предпросмотр изображения"
+                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />
                 </Box>
               )}
               {!createPreview && eventData.image_url && (
                 <Box mt={1}>
-                  <img
-                    src={resolveMediaUrl(eventData.image_url, BACKEND_ORIGIN)}
-                    alt="event"
-                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee" }}
+                  <SmartImage
+                    srcRaw={eventData.image_url}
+                    alt="Изображение события"
+                    style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />
                 </Box>
               )}
@@ -572,6 +600,7 @@ const Events = () => {
           </DialogContent>
         </Dialog>
       </Box>
+      </PageFadeIn>
     </Layout>
   )
 }

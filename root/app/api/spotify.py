@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,18 +32,80 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
 
 
+def _coerce_expires(value: Optional[int | str]) -> int:
+    try:
+        seconds = int(value) if value is not None else 3600
+    except (TypeError, ValueError):
+        seconds = 3600
+    # Spotify may technically return small values during testing; make sure
+    # we always refresh slightly before the real expiry to avoid rapid loops.
+    return max(seconds, 30)
+
+
+def _disconnect_user(
+    user: User, *, clear_refresh: bool = False, clear_profile: bool = False
+) -> None:
+    user.spotify_access_token = None
+    if clear_refresh:
+        user.spotify_refresh_token = None
+        user.spotify_scope = None
+    user.spotify_token_expires_at = None
+    user.spotify_is_connected = False
+    user.spotify_is_playing = False
+    if clear_profile:
+        user.spotify_display_name = None
+        user.spotify_user_id = None
+
+
+def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
+    artists: list[str] = []
+    if user.spotify_last_artist_name:
+        artists = [
+            name.strip()
+            for name in user.spotify_last_artist_name.split(",")
+            if name.strip()
+        ]
+
+    has_payload = any(
+        (
+            user.spotify_last_track_id,
+            user.spotify_last_track_name,
+            artists,
+        )
+    )
+
+    if not has_payload:
+        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+
+    return SpotifyNowPlayingOut(
+        is_playing=False,
+        progress_ms=None,
+        duration_ms=None,
+        track_id=user.spotify_last_track_id,
+        track_name=user.spotify_last_track_name,
+        artists=artists,
+        album_name=user.spotify_last_album_name,
+        album_image_url=user.spotify_last_album_image_url,
+        track_url=user.spotify_last_track_url,
+        preview_url=None,
+        fetched_at=_now_utc(),
+    )
+
+
 async def _save_tokens(
     db: AsyncSession,
     user: User,
     access: str,
     refresh: Optional[str],
     scope: Optional[str],
-    expires_in: int,
+    expires_in: int | str | None,
 ):
     user.spotify_access_token = access
     if refresh:
         user.spotify_refresh_token = refresh
-    user.spotify_token_expires_at = _now_utc() + timedelta(seconds=expires_in - 10)
+    seconds = _coerce_expires(expires_in)
+    # Refresh a little earlier to compensate for latency and clock skew.
+    user.spotify_token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
     user.spotify_scope = scope or ""
     user.spotify_is_connected = True
     await db.commit()
@@ -51,11 +113,29 @@ async def _save_tokens(
 
 
 async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
-    if not user.spotify_access_token or not user.spotify_refresh_token:
-        return None
+    """Return a usable Spotify access token, refreshing it when possible.
+
+    Previously we returned ``None`` when ``spotify_access_token`` was empty,
+    even if a refresh token was still stored. After the backend was restarted,
+    some users ended up in that exact state and the frontend kept showing the
+    stale fallback data until they manually reconnected the integration. To
+    avoid forcing a re-link, we now treat a missing access token the same way
+    as an expired one and trigger the refresh flow when a refresh token exists.
+    """
+
+    now = _now_utc()
+    token = user.spotify_access_token
     exp = _ensure_utc(user.spotify_token_expires_at)
-    if exp and exp > _now_utc():
-        return user.spotify_access_token
+    if token and exp and exp > now:
+        return token
+    if not user.spotify_refresh_token:
+        if not token and not user.spotify_is_connected:
+            # The user never connected Spotify or already disconnected it;
+            # returning ``None`` allows the caller to fall back gracefully.
+            return None
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
             "https://accounts.spotify.com/api/token",
@@ -69,15 +149,22 @@ async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
             },
         )
     if r.status_code != 200:
-        return None
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     data = r.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
     await _save_tokens(
         db,
         user,
-        data["access_token"],
+        access_token,
         data.get("refresh_token"),
         data.get("scope"),
-        int(data.get("expires_in", 3600)),
+        data.get("expires_in"),
     )
     return user.spotify_access_token
 
@@ -149,9 +236,14 @@ async def spotify_callback(
 async def now_playing(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    def _as_response(data: SpotifyNowPlayingOut):
+        if data.track_id or data.track_name or data.artists:
+            return data
+        return Response(status_code=204)
+
     token = await _ensure_access_token(db, user)
     if not token:
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+        return _as_response(_fallback_now_playing(user))
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             "https://api.spotify.com/v1/me/player/currently-playing",
@@ -161,9 +253,28 @@ async def now_playing(
         user.spotify_is_playing = False
         user.spotify_last_checked_at = _now_utc()
         await db.commit()
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+        return Response(status_code=204)
+    if r.status_code == 401:
+        _disconnect_user(user, clear_refresh=True)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
+    if r.status_code == 429:
+        retry_after_header = r.headers.get("Retry-After")
+        try:
+            retry_after = (
+                max(1, int(float(retry_after_header))) if retry_after_header else 5
+            )
+        except (TypeError, ValueError):
+            retry_after = 5
+        user.spotify_last_checked_at = _now_utc()
+        await db.commit()
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limited by Spotify",
+            headers={"Retry-After": str(retry_after)},
+        )
     if r.status_code != 200:
-        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+        return _as_response(_fallback_now_playing(user))
     j = r.json()
     item = j.get("item") or {}
     artists = [a.get("name") for a in item.get("artists", []) if a.get("name")]
@@ -200,13 +311,6 @@ async def now_playing(
 async def disconnect(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    user.spotify_access_token = None
-    user.spotify_refresh_token = None
-    user.spotify_token_expires_at = None
-    user.spotify_scope = None
-    user.spotify_display_name = None
-    user.spotify_user_id = None
-    user.spotify_is_connected = False
-    user.spotify_is_playing = False
+    _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
     return {"ok": True}

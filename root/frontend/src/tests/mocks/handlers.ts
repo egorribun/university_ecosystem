@@ -1,4 +1,5 @@
 import { HttpResponse, http } from 'msw';
+import type { User } from '@/types/User';
 
 type NewUserPayload = {
   email?: string;
@@ -10,11 +11,33 @@ type ResetPasswordPayload = {
   [key: string]: unknown;
 };
 
-export const testUser = {
-  id: 'user-1',
-  full_name: 'Тестовый Пользователь',
+export const testUser: User = {
+  id: 1,
   email: 'user@example.com',
+  full_name: 'Тестовый Пользователь',
   role: 'student',
+  group_id: null,
+  avatar_url: null,
+  cover_url: null,
+  about: null,
+  record_book_number: null,
+  status: null,
+  institute: null,
+  course: null,
+  education_level: null,
+  track: null,
+  program: null,
+  telegram: null,
+  achievements: null,
+  department: null,
+  position: null,
+  spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: false,
+  dnd_enabled: false,
+  dnd_start: null,
+  dnd_end: null,
+  is_active: true,
 };
 
 export const handlers = [
@@ -24,7 +47,7 @@ export const handlers = [
     if (body.email === 'taken@example.com') {
       return HttpResponse.json({ detail: 'Email already used' }, { status: 400 });
     }
-    return HttpResponse.json({ id: 'user-2', ...body }, { status: 201 });
+    return HttpResponse.json({ id: 2, ...body }, { status: 201 });
   }),
   http.post('*/auth/login', async ({ request }) => {
     const raw = await request.text();

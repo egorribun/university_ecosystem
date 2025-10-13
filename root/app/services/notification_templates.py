@@ -2,12 +2,74 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from html import unescape
+from textwrap import shorten
 from typing import Any, Mapping
 
 _DEFAULT_ICON = "/maskable-icon-192.png"
 _DEFAULT_BADGE = _DEFAULT_ICON
 _SYSTEM_ICON = "/guu_logo.png"
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_SPACE_RE = re.compile(r"\s+")
+
+
+def _clean_text(value: Any, *, limit: int | None = None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    text = unescape(_TAG_RE.sub(" ", text))
+    text = _SPACE_RE.sub(" ", text).strip()
+    if not text:
+        return None
+    if limit is not None and len(text) > limit:
+        return shorten(text, width=limit, placeholder="…")
+    return text
+
+
+def _format_room(value: Any) -> str | None:
+    room = _clean_text(value)
+    if not room:
+        return None
+    normalized = room.lower()
+    if normalized.startswith("ауд"):
+        return room
+    return f"ауд. {room}"
+
+
+def _parse_datetime_like(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        for candidate in (text, text.replace("Z", "+00:00")):
+            try:
+                return datetime.fromisoformat(candidate)
+            except ValueError:
+                continue
+    return None
+
+
+def _datetime_details(value: Any) -> tuple[str | None, str | None, str | None]:
+    parsed = _parse_datetime_like(value)
+    if not parsed:
+        return None, None, None
+    aware = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    local = aware.astimezone()
+    return local.strftime("%d.%m"), local.strftime("%H:%M"), aware.isoformat()
 
 
 @dataclass(slots=True)
@@ -130,9 +192,104 @@ def _build_schedule_change(context: ScenarioContext) -> dict[str, Any]:
     }
 
 
+def _build_schedule_reminder(context: ScenarioContext) -> dict[str, Any]:
+    subject = context.get_text("subject", "subject_name", "title", "name")
+    group = context.get_text("group", "group_name", "group_title")
+    lesson_type = context.get_text("lesson_type", "type", "format")
+    teacher = context.get_text("teacher", "lecturer", "professor")
+    room = _format_room(context.get("room", "auditory", "location"))
+    manual_date = context.get_text("date", "day", "date_text")
+    manual_time = context.get_text("time", "start_time_text", "start_text")
+    start_source = context.get(
+        "starts_at",
+        "start_time",
+        "startTime",
+        "start",
+        "time",
+    )
+    auto_date, auto_time, start_iso = _datetime_details(start_source)
+    date_text = manual_date or auto_date
+    time_text = manual_time or auto_time
+    url = context.get_url("url", "link", default="/schedule")
+    identifier = context.get_identifier(
+        "lesson_id",
+        "schedule_id",
+        "lessonId",
+        "scheduleId",
+        "id",
+    )
+
+    when_parts: list[str] = []
+    if date_text:
+        when_parts.append(date_text)
+    if time_text:
+        when_parts.append(time_text)
+    when_line = " · ".join(when_parts)
+
+    summary_parts: list[str] = []
+    if lesson_type:
+        summary_parts.append(lesson_type)
+    if room:
+        summary_parts.append(room)
+    if teacher:
+        summary_parts.append(teacher)
+    if group:
+        summary_parts.append(group)
+
+    lines: list[str] = []
+    if when_line:
+        lines.append(f"Начало: {when_line}")
+    if summary_parts:
+        lines.append(" · ".join(summary_parts))
+    if not lines:
+        lines.append("Проверьте расписание для подробностей.")
+
+    title = f"Скоро пара: {subject}" if subject else "Скоро пара"
+    tag = f"schedule-reminder:{identifier}" if identifier else "schedule-reminder"
+
+    data_payload = {
+        "url": url,
+        "category": "schedule",
+    }
+    if identifier:
+        data_payload["lessonId"] = identifier
+    if subject:
+        data_payload["subject"] = subject
+    if group:
+        data_payload["group"] = group
+    if lesson_type:
+        data_payload["lessonType"] = lesson_type
+    if teacher:
+        data_payload["teacher"] = teacher
+    if room:
+        data_payload["room"] = room
+    if when_line:
+        data_payload["startText"] = when_line
+    if start_iso:
+        data_payload["startsAt"] = start_iso
+    elif time_text:
+        data_payload["startsAt"] = time_text
+
+    return {
+        "title": title,
+        "body": "\n".join(lines),
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_BADGE,
+        "tag": tag,
+        "renotify": True,
+        "requireInteraction": False,
+        "url": url,
+        "topic": "schedule",
+        "data": data_payload,
+    }
+
+
 def _build_news(context: ScenarioContext) -> dict[str, Any]:
-    headline = context.get_text("headline", "title", "name")
-    summary = context.get_text("summary", "body", "excerpt", "description")
+    headline = context.get_text("headline", "title", "subject", "name")
+    summary = _clean_text(
+        context.get("summary", "body", "excerpt", "description"),
+        limit=220,
+    )
     author = context.get_text("author", "source")
     url = context.get_url("url", "link", default="/news")
     identifier = context.get_identifier("id", "slug", "news_id", "newsId")
@@ -160,6 +317,8 @@ def _build_news(context: ScenarioContext) -> dict[str, Any]:
         data_payload["newsId"] = identifier
     if headline:
         data_payload["headline"] = headline
+    if summary:
+        data_payload["summary"] = summary
 
     return {
         "title": title,
@@ -171,6 +330,95 @@ def _build_news(context: ScenarioContext) -> dict[str, Any]:
         "requireInteraction": False,
         "url": url,
         "topic": "news",
+        "data": data_payload,
+    }
+
+
+def _build_event(context: ScenarioContext) -> dict[str, Any]:
+    title = context.get_text("title", "name", "headline")
+    summary = _clean_text(
+        context.get("summary", "description", "about", "details"),
+        limit=220,
+    )
+    location = _clean_text(context.get("location", "place", "room", "venue"))
+    speaker = _clean_text(context.get("speaker", "host", "lecturer"))
+    event_type = _clean_text(context.get("event_type", "type", "category"))
+    start_source = context.get(
+        "starts_at",
+        "start_time",
+        "startTime",
+        "start",
+        "time",
+    )
+    auto_date, auto_time, start_iso = _datetime_details(start_source)
+    manual_date = context.get_text("date", "day")
+    manual_time = context.get_text("time", "start_time_text")
+    date_text = manual_date or auto_date
+    time_text = manual_time or auto_time
+    url = context.get_url("url", "link", "event_url", default="/events")
+    identifier = context.get_identifier("id", "event_id", "eventId", "slug")
+
+    when_parts: list[str] = []
+    if date_text:
+        when_parts.append(date_text)
+    if time_text:
+        when_parts.append(time_text)
+    when_line = " · ".join(when_parts)
+
+    details: list[str] = []
+    if when_line:
+        details.append(when_line)
+    if location:
+        details.append(location)
+    if speaker:
+        details.append(speaker)
+    if event_type:
+        details.append(event_type)
+
+    lines: list[str] = []
+    if summary:
+        lines.append(summary)
+    if details:
+        lines.append(" · ".join(details))
+    if not lines:
+        lines.append("Подробнее в карточке события.")
+
+    notif_title = f"Новое мероприятие: {title}" if title else "Новое мероприятие"
+    tag = f"event:{identifier}" if identifier else "event"
+
+    data_payload = {
+        "url": url,
+        "category": "events",
+    }
+    if identifier:
+        data_payload["eventId"] = identifier
+    if title:
+        data_payload["title"] = title
+    if summary:
+        data_payload["summary"] = summary
+    if location:
+        data_payload["location"] = location
+    if speaker:
+        data_payload["speaker"] = speaker
+    if event_type:
+        data_payload["eventType"] = event_type
+    if when_line:
+        data_payload["startText"] = when_line
+    if start_iso:
+        data_payload["startsAt"] = start_iso
+    elif time_text:
+        data_payload["startsAt"] = time_text
+
+    return {
+        "title": notif_title,
+        "body": "\n".join(lines),
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_BADGE,
+        "tag": tag,
+        "renotify": False,
+        "requireInteraction": False,
+        "url": url,
+        "topic": "events",
         "data": data_payload,
     }
 
@@ -215,7 +463,9 @@ def _build_system(context: ScenarioContext) -> dict[str, Any]:
 
 _BUILDERS: dict[str, Any] = {
     "schedule.change": _build_schedule_change,
+    "schedule.reminder": _build_schedule_reminder,
     "news.new": _build_news,
+    "events.new": _build_event,
     "system.message": _build_system,
 }
 
@@ -224,8 +474,15 @@ _ALIASES: dict[str, str] = {
     "lesson.update": "schedule.change",
     "schedule.lesson_change": "schedule.change",
     "schedule.update": "schedule.change",
+    "lesson": "schedule.reminder",
+    "lesson.reminder": "schedule.reminder",
+    "schedule.lesson_reminder": "schedule.reminder",
     "news.item": "news.new",
     "news.update": "news.new",
+    "event.new": "events.new",
+    "event.created": "events.new",
+    "events.create": "events.new",
+    "events.update": "events.new",
     "system.alert": "system.message",
     "system.announcement": "system.message",
     "system.notice": "system.message",

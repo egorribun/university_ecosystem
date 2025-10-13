@@ -13,6 +13,83 @@ from redis.exceptions import RedisError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+_TIME_UNITS = {
+    "s": 1,
+    "sec": 1,
+    "secs": 1,
+    "second": 1,
+    "seconds": 1,
+    "m": 60,
+    "min": 60,
+    "mins": 60,
+    "minute": 60,
+    "minutes": 60,
+    "h": 3600,
+    "hr": 3600,
+    "hrs": 3600,
+    "hour": 3600,
+    "hours": 3600,
+    "d": 86400,
+    "day": 86400,
+    "days": 86400,
+}
+
+
+def parse_rate_limit(
+    value: str | None,
+    *,
+    fallback: tuple[int, int],
+) -> tuple[int, int]:
+    """Parse a rate limit definition.
+
+    Args:
+        value: A string in the form ``"<count>/<period>"`` or
+            ``"<count> per <period>"``.
+        fallback: A ``(limit, window_seconds)`` tuple returned when the value is
+            missing or invalid.
+
+    Returns:
+        A tuple with the allowed request count and the window duration in
+        seconds.
+    """
+
+    if not value:
+        return fallback
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return fallback
+
+    normalized = normalized.replace("per", "/")
+    if "/" in normalized:
+        parts = normalized.split("/", 1)
+    else:
+        parts = normalized.split()
+
+    if len(parts) != 2:
+        return fallback
+
+    count_raw, unit_raw = (part.strip() for part in parts)
+
+    try:
+        count = int(count_raw)
+    except ValueError:
+        return fallback
+
+    unit_key = unit_raw.rstrip("s")
+    seconds = _TIME_UNITS.get(unit_raw) or _TIME_UNITS.get(unit_key)
+    if seconds is None:
+        try:
+            seconds = int(unit_raw)
+        except ValueError:
+            return fallback
+
+    if count <= 0 or seconds <= 0:
+        return fallback
+
+    return count, seconds
+
+
 _RATE_LIMIT_SCRIPT = """
 local key = KEYS[1]
 local now = tonumber(ARGV[1])

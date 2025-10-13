@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
 from app.models import models
+from app.models.enums import UserRole
 from app.schemas import schemas
 
 
@@ -22,15 +23,22 @@ def _ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+_EVENT_TIME_ORDER_ERROR = "Время окончания должно быть позже времени начала мероприятия"
+_EVENT_TIME_PAIR_ERROR = "Укажите время начала и окончания мероприятия одновременно"
+
+
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
+    raw_role = getattr(user_in, "role", None)
+    requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
+
     code = None
-    if hasattr(user_in, "invite_code") and getattr(user_in, "role", "student") in (
-        "teacher",
-        "admin",
+    if hasattr(user_in, "invite_code") and requested_role in (
+        UserRole.TEACHER,
+        UserRole.ADMIN,
     ):
         code_q = select(models.InviteCode).where(
             models.InviteCode.code == user_in.invite_code,
-            models.InviteCode.role == user_in.role,
+            models.InviteCode.role == requested_role.value,
             models.InviteCode.is_active.is_(True),
             models.InviteCode.is_used.is_(False),
         )
@@ -51,7 +59,7 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         email=user_in.email.strip(),
         hashed_password=hashed_password,
         full_name=user_in.full_name,
-        role=getattr(user_in, "role", "student"),
+        role=requested_role.value,
         group_id=getattr(user_in, "group_id", None),
         avatar_url=getattr(user_in, "avatar_url", None),
         cover_url=getattr(user_in, "cover_url", None),
@@ -166,14 +174,29 @@ async def get_all_events(
     counts = await _attendance_counts(db, ids)
     files_map = await _files_by_event(db, ids)
 
-    registered_ids = set()
+    registered_ids: set[int] = set()
+    qr_map: Dict[int, Optional[str]] = {}
     if user_id:
-        reg_q = await db.execute(
-            select(models.EventAttendance.event_id).where(
-                models.EventAttendance.user_id == user_id
+        attendance_rows = (
+            (
+                await db.execute(
+                    select(models.EventAttendance).where(
+                        models.EventAttendance.user_id == user_id
+                    )
+                )
             )
+            .scalars()
+            .all()
         )
-        registered_ids = set(reg_q.scalars().all())
+        missing_qr = [row for row in attendance_rows if not row.qr_code]
+        if missing_qr:
+            for row in missing_qr:
+                row.qr_code = str(uuid.uuid4())
+            await db.commit()
+            for row in missing_qr:
+                await db.refresh(row)
+        registered_ids = {row.event_id for row in attendance_rows}
+        qr_map = {row.event_id: row.qr_code for row in attendance_rows}
 
     result = []
     for event in events:
@@ -196,6 +219,7 @@ async def get_all_events(
                 ],
                 "is_active": getattr(event, "is_active", True),
                 "is_registered": event.id in registered_ids,
+                "my_qr_code": qr_map.get(event.id),
                 "speaker": getattr(event, "speaker", None),
                 "image_url": getattr(event, "image_url", None),
             }
@@ -206,6 +230,8 @@ async def get_all_events(
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
     starts_at = _ensure_utc(event.starts_at)
     ends_at = _ensure_utc(event.ends_at)
+    if ends_at <= starts_at:
+        raise ValueError(_EVENT_TIME_ORDER_ERROR)
     record = models.Event(
         title=event.title,
         description=event.description,
@@ -219,7 +245,48 @@ async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: in
         image_url=getattr(event, "image_url", None),
     )
     db.add(record)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "ck_event_time_order" in str(exc.orig):
+            raise ValueError(_EVENT_TIME_ORDER_ERROR) from None
+        raise
+    await db.refresh(record)
+    return record
+
+
+async def update_event(
+    db: AsyncSession, record: models.Event, data: schemas.EventUpdate
+) -> models.Event:
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        return record
+    if "starts_at" in updates:
+        updates["starts_at"] = _ensure_utc(updates["starts_at"])
+    if "ends_at" in updates:
+        updates["ends_at"] = _ensure_utc(updates["ends_at"])
+    starts_set = "starts_at" in updates
+    ends_set = "ends_at" in updates
+    if starts_set ^ ends_set:
+        raise ValueError(_EVENT_TIME_PAIR_ERROR)
+    if starts_set or ends_set:
+        starts_at = updates.get("starts_at", record.starts_at)
+        ends_at = updates.get("ends_at", record.ends_at)
+        if starts_at is None or ends_at is None:
+            raise ValueError(_EVENT_TIME_PAIR_ERROR)
+        if ends_at <= starts_at:
+            raise ValueError(_EVENT_TIME_ORDER_ERROR)
+    for field, value in updates.items():
+        setattr(record, field, value)
+    db.add(record)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "ck_event_time_order" in str(exc.orig):
+            raise ValueError(_EVENT_TIME_ORDER_ERROR) from None
+        raise
     await db.refresh(record)
     return record
 
@@ -235,6 +302,10 @@ async def register_attendance(
     )
     exist = (await db.execute(stmt)).scalar_one_or_none()
     if exist:
+        if not exist.qr_code:
+            exist.qr_code = str(uuid.uuid4())
+            await db.commit()
+            await db.refresh(exist)
         return exist
 
     qr_code = str(uuid.uuid4())
@@ -242,7 +313,18 @@ async def register_attendance(
         user_id=user_id, event_id=data.event_id, qr_code=qr_code
     )
     db.add(record)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        exist = (await db.execute(stmt)).scalar_one_or_none()
+        if not exist:
+            raise
+        if not exist.qr_code:
+            exist.qr_code = str(uuid.uuid4())
+            await db.commit()
+            await db.refresh(exist)
+        return exist
     await db.refresh(record)
     return record
 
@@ -265,10 +347,10 @@ async def unregister_attendance(
 
 
 async def get_my_events(db: AsyncSession, user_id: int):
-    ids = (
+    attendance_rows = (
         (
             await db.execute(
-                select(models.EventAttendance.event_id).where(
+                select(models.EventAttendance).where(
                     models.EventAttendance.user_id == user_id
                 )
             )
@@ -276,8 +358,17 @@ async def get_my_events(db: AsyncSession, user_id: int):
         .scalars()
         .all()
     )
-    if not ids:
+    if not attendance_rows:
         return []
+    missing_qr = [row for row in attendance_rows if not row.qr_code]
+    if missing_qr:
+        for row in missing_qr:
+            row.qr_code = str(uuid.uuid4())
+        await db.commit()
+        for row in missing_qr:
+            await db.refresh(row)
+    ids = [row.event_id for row in attendance_rows]
+    qr_map = {row.event_id: row.qr_code for row in attendance_rows}
     q = select(models.Event).where(models.Event.id.in_(ids))
     events = (await db.execute(q)).scalars().all()
     counts = await _attendance_counts(db, ids)
@@ -304,6 +395,7 @@ async def get_my_events(db: AsyncSession, user_id: int):
                 ],
                 "is_active": getattr(event, "is_active", True),
                 "is_registered": True,
+                "my_qr_code": qr_map.get(event.id),
                 "speaker": getattr(event, "speaker", None),
                 "image_url": getattr(event, "image_url", None),
             }

@@ -1,28 +1,53 @@
-import { useParams, useNavigate } from 'react-router-dom'
-import { useEffect, useState, useRef, useMemo } from 'react'
-import api from '../api/client'
+import type React from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate, useParams } from "react-router-dom"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  Box, Typography, Paper, CircularProgress, Stack, IconButton, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Button, useMediaQuery, Snackbar
-} from '@mui/material'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import DeleteIcon from '@mui/icons-material/Delete'
-import EditIcon from '@mui/icons-material/Edit'
-import SaveIcon from '@mui/icons-material/Save'
-import CloseIcon from '@mui/icons-material/Close'
-import PhotoCamera from '@mui/icons-material/PhotoCamera'
-import { useAuth } from '../contexts/AuthContext'
-import Layout from "../components/Layout"
-import { resolveMediaUrl } from '@/utils/media'
-import { sanitizeNewsHtml } from "@/utils/sanitize"
-
+  Box,
+  Typography,
+  CircularProgress,
+  Paper,
+  Stack,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Divider,
+  Snackbar,
+  useMediaQuery,
+} from "@mui/material"
+import ArrowBackIcon from "@mui/icons-material/ArrowBack"
+import EditIcon from "@mui/icons-material/Edit"
+import DeleteIcon from "@mui/icons-material/Delete"
+import SaveIcon from "@mui/icons-material/Save"
+import CloseIcon from "@mui/icons-material/Close"
+import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
+import api from "@/api/client"
+import Layout from "@/components/Layout"
+import SmartImage from "@/components/SmartImage"
+import { useAuth } from "@/contexts/AuthContext"
+
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ""
+type NewsItem = {
+  id: number
+  title: string
+  content: string
+  image_url?: string | null
+  created_at?: string
+}
+
+async function fetchNews(id: string) {
+  const { data } = await api.get<NewsItem>(`/news/${id}`)
+  return data
+}
 
 const getMoscowDate = (dateStr: string) => {
   let parsed = dayjs(dateStr)
@@ -30,63 +55,64 @@ const getMoscowDate = (dateStr: string) => {
   return parsed.tz("Europe/Moscow").format("DD.MM.YYYY HH:mm")
 }
 
-const NewsDetail = () => {
-  const { id } = useParams()
+export default function NewsDetail() {
+  const { id = "" } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isMobile = useMediaQuery('(max-width:600px)')
-
-  const [news, setNews] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const isMobile = useMediaQuery("(max-width:600px)")
 
   const [editOpen, setEditOpen] = useState(false)
-  const [editData, setEditData] = useState({ title: '', content: '', image_url: '' })
+  const [editData, setEditData] = useState({ title: "", content: "", image_url: "" })
   const [saving, setSaving] = useState(false)
-
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [heroPos, setHeroPos] = useState<'50% 18%' | '50% 38%' | '50% 50%' | string>('50% 38%')
 
-  const [snack, setSnack] = useState('')
+  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
+    const img = e.currentTarget
+    const w = img.naturalWidth || 0
+    const h = img.naturalHeight || 0
+    if (!w || !h) return
+    const r = w / h
+    if (r < 0.9) setHeroPos('50% 18%')
+    else if (r > 2) setHeroPos('50% 50%')
+    else setHeroPos('50% 38%')
+  }
+
+  const query = useQuery({
+    queryKey: ["news", id],
+    queryFn: () => fetchNews(id),
+    enabled: !!id,
+    staleTime: 60000,
+    retry: 1,
+  })
 
   useEffect(() => {
-    loadNews()
     return () => {
-      resetPreview()
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-
-  const loadNews = () => {
-    setLoading(true)
-    api.get(`/news/${id}`)
-      .then(res => setNews(res.data))
-      .catch(err => {
-        console.error(err)
-        setNews(null)
-        setSnack('Не удалось загрузить новость')
-      })
-      .finally(() => setLoading(false))
-  }
+  }, [previewUrl])
 
   const resetPreview = () => {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl)
       setPreviewUrl(null)
     }
-    if (imageInputRef.current) imageInputRef.current.value = ''
+    if (imageInputRef.current) imageInputRef.current.value = ""
     setNewImage(null)
   }
 
   const openEdit = () => {
-    if (!news) return
+    if (!query.data) return
     setEditData({
-      title: news.title || '',
-      content: news.content || '',
-      image_url: news.image_url || ""
+      title: query.data.title || "",
+      content: query.data.content || "",
+      image_url: query.data.image_url || "",
     })
     resetPreview()
     setEditOpen(true)
@@ -97,94 +123,107 @@ const NewsDetail = () => {
     setEditOpen(false)
   }
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setNewImage(file)
+    setPreviewUrl(URL.createObjectURL(file))
+  }
+
   const handleSave = async () => {
-    if (!news) return
+    if (!query.data) return
     setSaving(true)
     try {
-      let imgUrl = editData.image_url || ''
+      let imageUrl = editData.image_url
       if (newImage) {
         const data = new FormData()
-        data.append('file', newImage)
-        const res = await api.post('/news/upload_image', data, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+        data.append("file", newImage)
+        const res = await api.post<{ url: string }>("/news/upload_image", data, {
+          headers: { "Content-Type": "multipart/form-data" },
         })
-        imgUrl = res.data.url
+        imageUrl = res.data.url
       }
-      await api.patch(`/news/${news.id}`, { ...editData, image_url: imgUrl })
+      const payload = { ...editData, image_url: imageUrl }
+      const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload)
+      queryClient.setQueryData(["news", id], data)
+      await queryClient.invalidateQueries({ queryKey: ["news"] })
+      setSnack("Новость обновлена")
       closeEdit()
-      setSnack('Новость обновлена')
-      loadNews()
-    } catch (err) {
-      console.error(err)
-      setSnack('Ошибка сохранения')
+    } catch (error) {
+      console.error(error)
+      setSnack("Ошибка сохранения")
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!news) return
+    if (!query.data) return
     setDeleting(true)
     try {
-      await api.delete(`/news/${news.id}`)
-      setSnack('Новость удалена')
-      // аккуратный выход: если истории нет — уходим на список
+      await api.delete(`/news/${query.data.id}`)
+      setSnack("Новость удалена")
+      queryClient.removeQueries({ queryKey: ["news", id] })
+      await queryClient.invalidateQueries({ queryKey: ["news"] })
       if (window.history.length > 1) navigate(-1)
-      else navigate('/news')
-    } catch (err) {
-      console.error(err)
-      setSnack('Ошибка удаления')
+      else navigate("/news")
+    } catch (error) {
+      console.error(error)
+      setSnack("Ошибка удаления")
     } finally {
       setDeleting(false)
       setConfirmDeleteOpen(false)
     }
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-      setNewImage(file)
-      setPreviewUrl(URL.createObjectURL(file))
-    }
-  }
-
-  const getImageUrl = () => {
-    if (previewUrl) return previewUrl
-    const path = editOpen ? editData.image_url : news?.image_url
-    if (!path) return ''
-    return resolveMediaUrl(path, BACKEND_ORIGIN)
-  }
-
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1)
-    else navigate('/news')
+    else navigate("/news")
   }
 
-  if (loading) {
+  const rawImageUrl = useMemo(
+    () => (editOpen ? editData.image_url : query.data?.image_url) || "",
+    [editData.image_url, editOpen, query.data?.image_url],
+  )
+
+  const imageUrl = useMemo(() => {
+    if (previewUrl) return previewUrl
+    return rawImageUrl
+  }, [previewUrl, rawImageUrl])
+
+  useEffect(() => {
+    setHeroPos('50% 38%')
+  }, [imageUrl])
+
+  const content = query.data?.content ?? ""
+  const createdAt = query.data?.created_at
+  const createdAtIso = useMemo(
+    () => (createdAt ? dayjs(createdAt).toISOString() : ""),
+    [createdAt],
+  )
+  const createdAtLabel = useMemo(
+    () => (createdAt ? getMoscowDate(createdAt) : ""),
+    [createdAt],
+  )
+
+  if (query.isLoading)
     return (
       <Layout>
-        <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
+        <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}>
           <CircularProgress />
         </Box>
       </Layout>
     )
-  }
 
-  const sanitizedContent = useMemo(
-    () => sanitizeNewsHtml(news?.content ?? ""),
-    [news?.content]
-  )
-
-  if (!news) {
+  if (query.isError || !query.data)
     return (
       <Layout>
-        <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
-          <Typography>Новость не найдена</Typography>
+        <Box sx={{ p: 2 }}>
+          <Typography color="error">Не удалось загрузить новость.</Typography>
         </Box>
       </Layout>
     )
-  }
 
   return (
     <Layout>
@@ -201,7 +240,7 @@ const NewsDetail = () => {
           pl: { xs: 2, sm: 4, md: 5, lg: 8 },
           pr: { xs: 4, sm: 6, md: 7, lg: 10 },
           py: { xs: 2, sm: 2, md: 2, lg: 2 },
-          boxSizing: "border-box"
+          boxSizing: "border-box",
         }}
       >
         <Button
@@ -226,9 +265,9 @@ const NewsDetail = () => {
               background: "linear-gradient(100deg, #1976d2 20%, #449aff 100%)",
               color: "#eaf6ff",
               transform: "scale(1.06)",
-              boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002"
+              boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002",
             },
-            "&:active": { transform: "scale(0.98)" }
+            "&:active": { transform: "scale(0.98)" },
           }}
         >
           Назад
@@ -241,7 +280,7 @@ const NewsDetail = () => {
               fontWeight={900}
               sx={{ mr: 2, fontSize: "clamp(1.28rem,4vw,2.1rem)" }}
             >
-              {news.title}
+              {query.data.title}
             </Typography>
 
             {user?.role === "admin" && (
@@ -267,64 +306,52 @@ const NewsDetail = () => {
             )}
           </Box>
 
-          <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
-            Опубликовано: {news.created_at && (
-              <time dateTime={dayjs(news.created_at).toISOString()}>
-                {getMoscowDate(news.created_at)}
-              </time>
-            )}
-          </Typography>
-
-          {getImageUrl() && (
-            <Box
-              component="img"
-              src={getImageUrl()}
-              alt={news.title || "Новость"}
-              loading="lazy"
-              decoding="async"
-              sx={{
-                width: "100%",
-                maxWidth: { xs: "100%", md: 800, lg: 1000 },
-                maxHeight: { xs: 220, sm: 340, md: 420, lg: 500 },
-                objectFit: "cover",
-                borderRadius: 4,
-                border: "1px solid #eee",
-                mb: 2,
-                background: "#f7f8fa"
-              }}
-              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
+          {createdAt && (
+            <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
+              Опубликовано:{" "}
+              <time dateTime={createdAtIso}>{createdAtLabel}</time>
+            </Typography>
           )}
+
+          <Box
+            sx={{
+              width: "100%",
+              maxWidth: { xs: "100%", md: 800, lg: 1000 },
+              aspectRatio: { xs: "16 / 9", md: "21 / 9" },
+              position: "relative",
+              borderRadius: 4,
+              border: "1px solid #eee",
+              overflow: "hidden",
+              bgcolor: "rgba(0,0,0,0.04)",
+            }}
+          >
+            <SmartImage
+              srcRaw={imageUrl}
+              alt={query.data.title || "Новость"}
+              onLoad={handleHeroLoad}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                display: "block",
+                objectFit: "cover",
+                objectPosition: heroPos,
+              }}
+            />
+          </Box>
 
           <Divider sx={{ my: 2 }} />
 
           <Typography
-            component="div"
             variant="body1"
             fontSize="clamp(1.07rem,2.3vw,1.24rem)"
-            sx={{
-              wordBreak: "break-word",
-              "& p": { marginBlock: 1.2 },
-              "& ul, & ol": { paddingInlineStart: 3, marginBlock: 1.2 },
-              "& li": { marginBlock: 0.4 },
-              "& img": {
-                maxWidth: "100%",
-                height: "auto",
-                borderRadius: 4,
-              },
-              "& a": {
-                color: "primary.main",
-                textDecoration: "underline",
-                textDecorationThickness: "0.08em",
-                textUnderlineOffset: "0.18em",
-                wordBreak: "break-word",
-              },
-            }}
-            dangerouslySetInnerHTML={{ __html: sanitizedContent as unknown as string }}
-          />
+            sx={{ whiteSpace: "pre-line" }}
+          >
+            {content}
+          </Typography>
         </Stack>
 
-        {/* Редактирование */}
         <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
           <DialogTitle>Редактировать новость</DialogTitle>
           <DialogContent>
@@ -332,14 +359,14 @@ const NewsDetail = () => {
               <TextField
                 label="Заголовок"
                 value={editData.title}
-                onChange={e => setEditData({ ...editData, title: e.target.value })}
+                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
                 fullWidth
                 disabled={saving}
               />
               <TextField
                 label="Текст"
                 value={editData.content}
-                onChange={e => setEditData({ ...editData, content: e.target.value })}
+                onChange={(e) => setEditData({ ...editData, content: e.target.value })}
                 multiline
                 rows={4}
                 fullWidth
@@ -363,18 +390,12 @@ const NewsDetail = () => {
                   />
                 </Button>
 
-                {getImageUrl() && (
-                  <Box>
-                    <img
-                      src={getImageUrl()}
+                {imageUrl && (
+                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
+                    <SmartImage
+                      srcRaw={imageUrl}
                       alt="preview"
-                      style={{
-                        width: 120,
-                        maxHeight: 70,
-                        objectFit: "cover",
-                        borderRadius: 8,
-                        border: "1px solid #eee"
-                      }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   </Box>
                 )}
@@ -391,7 +412,6 @@ const NewsDetail = () => {
           </DialogActions>
         </Dialog>
 
-        {/* Подтверждение удаления */}
         <Dialog
           open={confirmDeleteOpen}
           onClose={() => setConfirmDeleteOpen(false)}
@@ -410,12 +430,7 @@ const NewsDetail = () => {
             >
               Отмена
             </Button>
-            <Button
-              variant="contained"
-              color="error"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
+            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
               <DeleteIcon sx={{ mr: 1 }} /> Удалить
             </Button>
           </DialogActions>
@@ -424,12 +439,10 @@ const NewsDetail = () => {
         <Snackbar
           open={!!snack}
           autoHideDuration={2400}
-          onClose={() => setSnack('')}
+          onClose={() => setSnack("")}
           message={snack}
         />
       </Paper>
     </Layout>
   )
 }
-
-export default NewsDetail

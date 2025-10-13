@@ -10,6 +10,7 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
       FRONTEND_ORIGIN: http://localhost:5173
       FRONTEND_ORIGINS: http://localhost:5173
+      NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,6 +32,25 @@ services:
         condition: service_healthy
     ports:
       - "5173:5173"
+
+  notifications-worker:
+    build:
+      context: .
+      dockerfile: root/backend.Dockerfile
+      target: runtime
+    command: python -m app.workers.notifications
+    env_file:
+      - root/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
+      NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
+      NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "9101:9101"
 
   postgres:
     image: postgres:16-alpine

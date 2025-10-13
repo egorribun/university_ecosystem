@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
 
 import fakeredis.aioredis
@@ -35,7 +35,8 @@ os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("STATIC_DIR", "app/test-static")
 os.environ.setdefault("ENVIRONMENT", "testing")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
-os.environ.setdefault("RATE_LIMIT_SENSITIVE", "")
+os.environ.setdefault("RATE_LIMIT_DEFAULT", "5/minute,10/hour")
+os.environ.setdefault("RATE_LIMIT_SENSITIVE", "4/minute")
 os.environ.setdefault("RATE_LIMIT_STORAGE_URI", "redis://test")
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 
@@ -73,6 +74,7 @@ from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
+from app.utils import ratelimit as ratelimit_module
 
 
 @pytest.fixture(scope="session")
@@ -122,6 +124,15 @@ async def configure_rate_limit(
         yield
     finally:
         await _rate_limit_redis_client.flushall()
+
+
+@pytest.fixture(autouse=True)
+def reset_sensitive_rate_limiter() -> Iterator[None]:
+    ratelimit_module.limiter.reset()
+    try:
+        yield
+    finally:
+        ratelimit_module.limiter.reset()
 
 
 @pytest.fixture

@@ -5,6 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import profileBg from "../assets/background.jpg";
 import guuLogo from "../assets/guu_logo.png";
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
+import PageFadeIn from "../components/PageFadeIn";
 import {
   Avatar,
   Typography,
@@ -40,10 +43,9 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { QRCodeSVG } from "qrcode.react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useNowPlaying } from "@/hooks/useNowPlaying";
+import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
-
-const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
+import { addVersionParam, resolveMediaUrl } from "@/utils/media";
 
 const auraPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
@@ -62,87 +64,99 @@ const onlinePulse = keyframes`
 `;
 
 const MotionPaper = motion.create(Paper);
-const isTest = process.env.NODE_ENV === "test";
+const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test";
 
-const safeEncode = (seg: string) => {
-  try {
-    return encodeURIComponent(decodeURIComponent(seg));
-  } catch {
-    return encodeURIComponent(seg);
-  }
-};
-
-const buildMediaUrl = (raw?: string): string | undefined => {
-  if (!raw) return undefined;
-  const origin =
-    BACKEND_ORIGIN ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-  const cleaned = String(raw).trim().replace(/^\/+/, match => (match ? "/" : ""));
-  try {
-    const base = origin ? new URL(origin) : undefined;
-    const u = new URL(cleaned, base?.toString());
-    const parts = u.pathname.split("/").map(safeEncode).join("/");
-    u.pathname = parts.replace(/\/{2,}/g, "/");
-    return u.toString();
-  } catch {
-    const path = `/${cleaned}`;
-    const encoded = path
-      .split("/")
-      .map(safeEncode)
-      .join("/")
-      .replace(/\/{2,}/g, "/");
-    return `${origin.replace(/\/$/, "")}${encoded}`;
-  }
-};
-
-const addVersionParam = (url: string | undefined, v: number): string | undefined => {
-  if (!url) return undefined;
-  try {
-    const u = new URL(url);
-    u.searchParams.set("v", String(v));
-    return u.toString();
-  } catch {
-    const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}v=${v}`;
-  }
-};
-
-const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const [progress, setProgress] = useState<number>(data.progress_ms ?? 0);
-  const startRef = useRef<number>(Date.now() - (data.progress_ms ?? 0));
-  const rafRef = useRef<number | null>(null);
+export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const theme = useTheme();
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)");
   const reduced = useReducedMotion();
   const isDark = theme.palette.mode === "dark";
   const borderCol = isDark ? alpha(theme.palette.common.white, 0.14) : alpha(theme.palette.common.black, 0.12);
   const textSecondary = theme.palette.text.secondary;
+  const duration = data.duration_ms ?? 0;
+
+  const clampProgress = useCallback(
+    (value: number | null | undefined) => {
+      if (value == null) return 0;
+      if (!Number.isFinite(value)) return 0;
+      if (!duration || duration <= 0) return Math.max(0, value);
+      return Math.min(Math.max(0, value), duration);
+    },
+    [duration]
+  );
+
+  const initialProgress = clampProgress(data.progress_ms);
+  const [progress, setProgress] = useState<number>(() => initialProgress);
+  const startRef = useRef<number>(Date.now() - initialProgress);
+  const rafRef = useRef<number | null>(null);
+  const prevTrackIdRef = useRef<string | null>(data.track_id ?? null);
+  const prevProgressRef = useRef<number>(initialProgress);
+  const prevIsPlayingRef = useRef<boolean>(data.is_playing);
 
   useEffect(() => {
-    startRef.current = Date.now() - (data.progress_ms ?? 0);
-    setProgress(data.progress_ms ?? 0);
-  }, [data.track_id, data.progress_ms, data.duration_ms, data.is_playing]);
+    const next = clampProgress(data.progress_ms);
+    const trackChanged = (data.track_id ?? null) !== prevTrackIdRef.current;
+    const progressChanged = next !== prevProgressRef.current;
+    const resumed = data.is_playing && !prevIsPlayingRef.current;
+
+    if (trackChanged) {
+      prevTrackIdRef.current = data.track_id ?? null;
+    }
+
+    if (progressChanged) {
+      prevProgressRef.current = next;
+    }
+
+    if (trackChanged || progressChanged || resumed) {
+      startRef.current = Date.now() - next;
+      setProgress(next);
+    }
+
+    prevIsPlayingRef.current = data.is_playing;
+  }, [clampProgress, data.is_playing, data.progress_ms, data.track_id]);
 
   useEffect(() => {
-    if (isTest || !data.is_playing || !data.duration_ms) return;
+    if (data.is_playing) return;
+    const next = clampProgress(data.progress_ms);
+    startRef.current = Date.now() - next;
+    setProgress((prev) => (prev === next ? prev : next));
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, [clampProgress, data.is_playing, data.progress_ms]);
+
+  const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0;
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
+    }
     const loop = () => {
-      const p = Math.min(data.duration_ms!, Date.now() - startRef.current);
-      setProgress(p);
+      const elapsed = Date.now() - startRef.current;
+      setProgress(clampProgress(elapsed));
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [data.is_playing, data.duration_ms, data.track_id]);
+  }, [clampProgress, shouldAnimate]);
 
-  const pct = data.duration_ms ? Math.max(0, Math.min(100, (progress / data.duration_ms) * 100)) : 0;
-  const fmt = (ms?: number) => {
+  const pct = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0;
+  const fmt = (ms: number | null | undefined) => {
     if (ms == null) return "0:00";
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const m = Math.floor(s / 60);
-    const ss = String(s % 60).padStart(2, "0");
-    return `${m}:${ss}`;
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const rest = String(seconds % 60).padStart(2, "0");
+    return `${minutes}:${rest}`;
   };
 
   const href = data.track_url || "https://open.spotify.com";
@@ -154,19 +168,15 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
       target="_blank"
       rel="noopener noreferrer"
       aria-label={data.track_name ? `Открыть в Spotify: ${data.track_name}` : "Открыть Spotify"}
-      sx={{
-        display: "block",
-        textDecoration: "none",
-        width: "100%"
-      }}
+      sx={{ display: "block", textDecoration: "none", width: "100%" }}
     >
       <MotionPaper
         elevation={0}
         className="nowplaying--spotify"
-        initial={isTest ? false : { y: reduced ? 0 : 12, opacity: reduced ? 1 : 0.94, scale: 1 }}
+        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
-        whileTap={reduced ? {} : { scale: 0.997 }}
+        whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
+        whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
         transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }}
         sx={{
           width: "100%",
@@ -196,31 +206,52 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
             boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`
           }}
         >
-          <Avatar
-            src={data.album_image_url || ""}
-            variant="rounded"
-            alt={data.album_name || data.track_name || "Обложка альбома"}
-            sx={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 2,
-              transform: prefersReduce ? "none" : "scale(1.012)",
-              transition: prefersReduce ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-              "&:hover": prefersReduce ? undefined : { transform: "scale(1.02)" }
+        <Avatar
+          src={data.album_image_url ?? ""}
+          variant="rounded"
+          alt={data.album_name || data.track_name || "Обложка альбома"}
+          imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
+          sx={{
+            width: "100%",
+            height: "100%",
+            borderRadius: 2,
+              transform: prefersReduce || reduced ? "none" : "scale(1.012)",
+              transition:
+                prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
+              "&:hover": prefersReduce || reduced ? undefined : { transform: "scale(1.02)" }
             }}
           />
         </Box>
-        <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
-          <Typography className="np-title" variant="body1" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}>
+        <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }} aria-live="polite">
+          <Typography
+            className="np-title"
+            variant="body1"
+            sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}
+          >
             {data.track_name || "—"}
           </Typography>
           <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
-            {(data.artists || []).join(", ")}
+            {data.artists.join(", ")}
           </Typography>
+          {!data.is_playing && (
+            <Chip
+              size="small"
+              label="Пауза"
+              color="default"
+              sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
+              aria-hidden
+            />
+          )}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-            <LinearProgress className="progress" variant="determinate" value={pct} sx={{ flex: 1, height: 6, borderRadius: 999 }} />
+            <LinearProgress
+              className="progress"
+              variant="determinate"
+              value={pct}
+              aria-label="Прогресс трека"
+              sx={{ flex: 1, height: 6, borderRadius: 999 }}
+            />
             <Typography className="np-time" variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>
-              {fmt(progress)} / {fmt(data.duration_ms)}
+              {fmt(progress)} / {fmt(duration)}
             </Typography>
           </Box>
         </Box>
@@ -228,6 +259,7 @@ const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying
     </Box>
   );
 });
+
 
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   const theme = useTheme();
@@ -286,34 +318,14 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
   const nowPlayingQuery = useNowPlaying(spotifyConnected);
+  const { refetch: refetchNowPlaying } = nowPlayingQuery;
   const nowPlaying = nowPlayingQuery.data ?? null;
-  const [npFallback, setNpFallback] = useState<NowPlaying | null>(null);
-
-  useEffect(() => {
-    let stop = false;
-    let timer: number | null = null;
-    const load = async () => {
-      try {
-        const r = await api.get<NowPlaying | null>("/spotify/now-playing", { validateStatus: () => true });
-        if (stop) return;
-        if (r.status === 200 && r.data && (r.data as any).track_id) setNpFallback(r.data as NowPlaying);
-        else setNpFallback(null);
-      } catch {
-        if (!stop) setNpFallback(null);
-      } finally {
-        if (!stop) timer = window.setTimeout(load, 8000);
-      }
-    };
-    if (spotifyConnected) load();
-    else setNpFallback(null);
-    return () => {
-      stop = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [spotifyConnected]);
-
-  const effectiveNowPlaying = nowPlaying || npFallback;
-
+  const prevSpotifyConnectedRef = useRef(spotifyConnected);
+  const showNowPlaying = Boolean(
+    spotifyConnected &&
+      nowPlaying &&
+      (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
+  );
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -375,6 +387,8 @@ export default function Profile() {
     if (s !== null) {
       if (s !== "error") {
         void queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
+        void queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey });
+        void refetchNowPlaying({ throwOnError: false });
         setSnack({ text: "Spotify подключён", sev: "success" });
       } else {
         setSnack({ text: "Ошибка подключения Spotify", sev: "error" });
@@ -383,7 +397,14 @@ export default function Profile() {
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "");
       window.history.replaceState({}, "", next);
     }
-  }, [queryClient]);
+  }, [queryClient, refetchNowPlaying]);
+
+  useEffect(() => {
+    if (spotifyConnected && !prevSpotifyConnectedRef.current) {
+      void refetchNowPlaying({ throwOnError: false });
+    }
+    prevSpotifyConnectedRef.current = spotifyConnected;
+  }, [spotifyConnected, refetchNowPlaying]);
 
   useEffect(() => {
     if (!user) return;
@@ -401,9 +422,8 @@ export default function Profile() {
       affiliation: user.institute || user.department || "",
       url: typeof window !== "undefined" ? window.location.href : "",
       image: (() => {
-        const media = buildMediaUrl(user.avatar_url || "");
-        const withV = addVersionParam(media, avatarVersion);
-        return withV || "";
+        const media = resolveMediaUrl(user.avatar_url ?? undefined);
+        return media ? addVersionParam(media, avatarVersion) : "";
       })()
     });
     document.head.appendChild(el);
@@ -422,15 +442,21 @@ export default function Profile() {
       </Box>
     );
 
-  const getAvatarSrc = () => {
-    const media = buildMediaUrl(user?.avatar_url || "");
-    return addVersionParam(media, avatarVersion);
-  };
+  const avatarImageUrl = useMemo(() => {
+    const media = resolveMediaUrl(user?.avatar_url ?? undefined);
+    return media ? addVersionParam(media, avatarVersion) : DEFAULT_AVATAR;
+  }, [user?.avatar_url, avatarVersion]);
 
-  const getCoverSrc = () => {
-    const media = buildMediaUrl(user?.cover_url || "");
-    return media || "https://mui.com/static/images/cards/cover1.jpg";
-  };
+  const coverImageUrl = useMemo(() => {
+    const media = resolveMediaUrl(user?.cover_url ?? undefined);
+    return media ? addVersionParam(media, coverVersion) : profileBg;
+  }, [user?.cover_url, coverVersion]);
+
+  const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    img.onerror = null;
+    img.src = DEFAULT_AVATAR;
+  }, []);
 
   const ensureConfettiSize = useCallback(() => {
     const canvas = confettiRef.current;
@@ -632,19 +658,20 @@ export default function Profile() {
         }}
       />
 
-      <motion.div
-        initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
-      >
-        <Box
-          component="main"
-          id="main"
-          className="profile-page"
-          data-testid="profile-root"
-          aria-label="Профиль"
-          sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
+      <PageFadeIn>
+        <motion.div
+          initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
+          <Box
+            component="main"
+            id="main"
+            className="profile-page"
+            data-testid="profile-root"
+            aria-label="Профиль"
+            sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
+          >
           <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
             <MotionPaper
               ref={containerRef}
@@ -692,7 +719,7 @@ export default function Profile() {
                       sx={{
                         position: "absolute",
                         inset: 0,
-                        backgroundImage: `url(${addVersionParam(getCoverSrc(), coverVersion)})`,
+                        backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
                         backgroundPosition: "center",
                         backgroundSize: "cover",
                         transform: `translateY(${coverParallax}px) scale(${coverScale})`,
@@ -719,8 +746,14 @@ export default function Profile() {
                     >
                       <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
                         <Avatar
-                          src={getAvatarSrc()}
-                          alt={user?.full_name}
+                          src={avatarImageUrl}
+                          alt={user?.full_name ?? undefined}
+                          imgProps={{
+                            onError: handleAvatarImgError,
+                            loading: "lazy",
+                            decoding: "async",
+                            referrerPolicy: "no-referrer",
+                          }}
                           sx={{
                             width: "100%",
                             height: "100%",
@@ -898,13 +931,13 @@ export default function Profile() {
                     </Stack>
                   </Paper>
 
-                  {spotifyConnected && effectiveNowPlaying && (
+                  {showNowPlaying && nowPlaying && (
                     <Fade in timeout={isTest || reduced ? 0 : 720}>
                       <Stack spacing={1.4}>
                         <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
                           Сейчас играет
                         </Typography>
-                        <NowPlayingCard data={effectiveNowPlaying} />
+                        <NowPlayingCard data={nowPlaying} />
                       </Stack>
                     </Fade>
                   )}
@@ -1065,9 +1098,10 @@ export default function Profile() {
             </MotionPaper>
           </Container>
 
-          <canvas ref={confettiRef} style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }} />
-        </Box>
-      </motion.div>
+            <canvas ref={confettiRef} style={{ position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 2147483000 }} />
+          </Box>
+        </motion.div>
+      </PageFadeIn>
 
       <Dialog
         open={qrOpen}

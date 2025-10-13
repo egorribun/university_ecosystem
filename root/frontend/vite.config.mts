@@ -62,6 +62,8 @@ export default defineConfig(({ mode }) => {
   const mk = (rewrite = false) => ({
     target,
     changeOrigin: true,
+    secure: false,
+    ws: true,
     ...(rewrite ? { rewrite: (p: string) => p.replace(/^\/api/, "") } : {}),
   })
 
@@ -84,6 +86,21 @@ export default defineConfig(({ mode }) => {
       srcDir: "src",
       filename: "sw.ts",
       includeAssets: ["offline.html"],
+      workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "backend-static",
+              expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
+            },
+          },
+        ],
+      },
       ...(manifest ? { manifest } : {}),
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
@@ -147,10 +164,16 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = toPosix(id)
             for (const chunk of routeChunks) {
-              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern))) return chunk.name
+              if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern)))
+                return chunk.name
             }
             if (!normalizedId.includes("node_modules")) return
-            const uiMatchers = [/[/\\]react(?:-dom)?[/\\]/, /[/\\]scheduler[/\\]/, /@emotion/, /@mui/] as const
+            const uiMatchers = [
+              /[/\\]react(?:-dom)?[/\\]/,
+              /[/\\]scheduler[/\\]/,
+              /@emotion/,
+              /@mui/,
+            ] as const
             if (uiMatchers.some((pattern) => pattern.test(normalizedId))) return "ui"
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"

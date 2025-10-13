@@ -35,3 +35,9 @@ Cross-Origin Resource Sharing (CORS) is also tightened: wildcard origins are rej
   1. Authenticate as an administrator.
   2. Call `POST /push/admin/disable-user` with the target `user_id`. The endpoint removes every `PushSubscription` row for that account and returns the number of deleted entries.
   3. Confirm the user no longer has active subscriptions before finalising account removal.
+
+## Frontend Profile Cache Hardening
+
+- The React auth context now persists a **versioned, minimal snapshot** of the authenticated user. Only the fields required for optimistic UI (currently the numeric `id`, `full_name`, and `avatar_url`) are written to `localStorage`.
+- Snapshots are wrapped in a short-lived envelope (five-minute TTL) and include a deterministic signature so tampering can be detected even if the data is replayed across tabs.
+- Whenever a schema version bump is detected—or when a logout/device revocation event fires—the cache is purged before the next render. Future additions default to server fetches unless they are explicitly whitelisted, reducing the blast radius of cached sensitive data.

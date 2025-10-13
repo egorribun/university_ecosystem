@@ -4,35 +4,66 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { axe } from 'jest-axe';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Login from '../Login';
 import { server } from '@/tests/mocks/server';
 import { routerFutureFlags } from '../../App';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
-const renderLogin = () =>
-  render(
-    <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
-      </Routes>
-    </MemoryRouter>,
+const clients: QueryClient[] = [];
+
+const createClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 30000, retry: 1, refetchOnWindowFocus: false },
+      mutations: { retry: 0 },
+    },
+  });
+
+const renderLogin = () => {
+  const client = createClient();
+  clients.push(client);
+  return render(
+    <QueryClientProvider client={client}>
+      <LanguageProvider>
+        <AuthProvider>
+          <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
+            </Routes>
+          </MemoryRouter>
+        </AuthProvider>
+      </LanguageProvider>
+    </QueryClientProvider>,
   );
+};
 
 describe('Login page', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('ue:language', 'ru');
   });
 
   afterEach(() => {
     localStorage.clear();
+    clients.splice(0).forEach((client) => client.clear());
   });
 
   it('blocks submission for invalid email', async () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByRole('textbox', { name: /email/i }), 'invalid');
-    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+      selector: 'input[type="email"]',
+    });
+
+    await user.type(emailInput, 'invalid');
+    await user.type(
+      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      'secret123',
+    );
     await user.click(screen.getByRole('button', { name: /войти/i }));
 
     expect(await screen.findByText('Введите корректный email')).toBeInTheDocument();
@@ -52,8 +83,15 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByRole('textbox', { name: /email/i }), 'user@example.com');
-    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+      selector: 'input[type="email"]',
+    });
+
+    await user.type(emailInput, 'user@example.com');
+    await user.type(
+      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      'secret123',
+    );
     await user.click(screen.getByLabelText('Показать пароль'));
     await user.click(screen.getByLabelText('Показать пароль'));
     await user.click(screen.getByRole('button', { name: /войти/i }));
@@ -70,8 +108,15 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByRole('textbox', { name: /email/i }), 'user@example.com');
-    await user.type(screen.getByLabelText(/^пароль/i), 'secret123');
+    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+      selector: 'input[type="email"]',
+    });
+
+    await user.type(emailInput, 'user@example.com');
+    await user.type(
+      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      'secret123',
+    );
     await user.click(screen.getByRole('button', { name: /войти/i }));
 
     expect(await screen.findByText('Неверные данные для входа')).toBeInTheDocument();

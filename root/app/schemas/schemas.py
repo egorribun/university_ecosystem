@@ -1,7 +1,9 @@
 from datetime import datetime, time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+from app.models.enums import UserRole
 
 
 class OrmModel(BaseModel):
@@ -24,7 +26,7 @@ class ResetPasswordIn(BaseModel):
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
-    role: Optional[str] = "student"
+    role: UserRole = UserRole.STUDENT
     group_id: Optional[int] = None
     avatar_url: Optional[str] = None
     cover_url: Optional[str] = None
@@ -61,7 +63,7 @@ class UserOut(OrmModel, UserBase):
 class UserAdminUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
-    role: Optional[str] = None
+    role: Optional[UserRole] = None
     group_id: Optional[int] = None
 
 
@@ -84,14 +86,19 @@ class UserProfileUpdate(BaseModel):
     dnd_start: Optional[time] = None
     dnd_end: Optional[time] = None
 
-    @model_validator(mode="after")
-    def _validate_dnd(cls, values: "UserProfileUpdate") -> "UserProfileUpdate":
-        enabled = values.dnd_enabled
-        start = values.dnd_start
-        end = values.dnd_end
+    @model_validator(mode="before")
+    def _validate_dnd(cls, data: Any) -> Any:
+        raw = data.data if hasattr(data, "data") and hasattr(data, "context") else data
+
+        payload = raw if isinstance(raw, dict) else {}
+
+        enabled = payload.get("dnd_enabled")
+        start = payload.get("dnd_start")
+        end = payload.get("dnd_end")
         if enabled and (start is None or end is None):
             raise ValueError('Укажите время начала и окончания режима "Не беспокоить"')
-        return values
+
+        return raw
 
 
 class GroupCreate(BaseModel):
@@ -168,6 +175,14 @@ class EventCreate(BaseModel):
     image_url: Optional[str] = None
     about: Optional[str] = None
 
+    @model_validator(mode="after")
+    def _validate_time_order(self):  # type: ignore[override]
+        if self.ends_at <= self.starts_at:
+            raise ValueError(
+                "Время окончания должно быть позже времени начала мероприятия"
+            )
+        return self
+
 
 class EventUpdate(BaseModel):
     title: Optional[str] = None
@@ -180,6 +195,26 @@ class EventUpdate(BaseModel):
     speaker: Optional[str] = None
     image_url: Optional[str] = None
     about: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_time_updates(self):  # type: ignore[override]
+        provided = self.model_fields_set
+        starts_set = "starts_at" in provided
+        ends_set = "ends_at" in provided
+        if starts_set ^ ends_set:
+            raise ValueError(
+                "Укажите время начала и окончания мероприятия одновременно"
+            )
+        if starts_set or ends_set:
+            if self.starts_at is None or self.ends_at is None:
+                raise ValueError(
+                    "Укажите время начала и окончания мероприятия одновременно"
+                )
+            if self.ends_at <= self.starts_at:
+                raise ValueError(
+                    "Время окончания должно быть позже времени начала мероприятия"
+                )
+        return self
 
 
 class EventOut(OrmModel):
@@ -199,6 +234,7 @@ class EventOut(OrmModel):
     files: List[EventFileOut] = Field(default_factory=list)
     participant_count: int = 0
     is_registered: Optional[bool] = None
+    my_qr_code: Optional[str] = None
 
 
 class EventAttendanceCreate(BaseModel):
