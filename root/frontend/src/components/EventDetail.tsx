@@ -16,6 +16,14 @@ import { useAuth } from '../contexts/AuthContext'
 import Layout from '../components/Layout'
 import { resolveMediaUrl } from '@/utils/media'
 import SmartImage from '@/components/SmartImage'
+import type { Event } from '@/types/Event'
+import {
+  applyOptimisticFileAction,
+  isUploadErrorState,
+  type FileOptimisticAction,
+  type OptimisticEventFile,
+  type UploadState
+} from './EventDetail.helpers'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
@@ -32,21 +40,17 @@ const formatLocalDateTime = (s?: string) => {
 }
 const formatDateSafe = (v?: string) => formatLocalDateTime(v)
 
-type UploadState = {
-  status: 'idle' | 'success' | 'error'
-  error?: string
-}
+const isCanceledRequestError = (err: unknown): boolean => {
+  if (typeof err !== 'object' || err === null) {
+    return false
+  }
 
-type OptimisticEventFile = {
-  id: number | string
-  description?: string
-  file_url?: string
-  pending?: boolean
-}
+  const record = err as Record<string, unknown>
+  const name = record.name
+  const code = record.code
 
-type FileOptimisticAction =
-  | { type: 'add'; file: OptimisticEventFile }
-  | { type: 'remove'; id: number | string }
+  return (typeof name === 'string' && name === 'CanceledError') || (typeof code === 'string' && code === 'ERR_CANCELED')
+}
 
 const EventDetail = () => {
   const { id } = useParams()
@@ -54,34 +58,41 @@ const EventDetail = () => {
   const { user } = useAuth()
   const isMobile = useMediaQuery('(max-width: 900px)')
 
-  const [event, setEvent] = useState<any>(null)
+  const [event, setEvent] = useState<Event | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [optimisticFiles, mutateFiles] = useOptimistic<OptimisticEventFile[], FileOptimisticAction>(event?.files ?? [], (current, action) => {
-    switch (action.type) {
-      case 'add':
-        return [...current, action.file]
-      case 'remove':
-        return current.filter(f => f.id !== action.id)
-      default:
-        return current
-    }
-  })
+  const [optimisticFiles, mutateFiles] = useOptimistic<OptimisticEventFile[], FileOptimisticAction>(
+    event?.files ?? [],
+    applyOptimisticFileAction
+  )
 
   const [uploadState, uploadAction, uploadPending] = useActionState<UploadState, FormData>(async (_prev, input) => {
     if (input.get('__upload_reset__') === '1') {
-      return { status: 'idle' as const }
+      return { status: 'idle' }
     }
 
     const file = input.get('file')
     if (!(file instanceof File) || file.size === 0) {
-      return { status: 'error' as const, error: 'Выберите файл' }
+      return { status: 'error', error: 'Выберите файл' }
+    }
+
+    if (!event) {
+      return { status: 'error', error: 'Мероприятие не найдено' }
     }
 
     const optimisticId = `pending-${Date.now()}`
-    mutateFiles({ type: 'add', file: { id: optimisticId, description: file.name, file_url: '', pending: true } })
+    mutateFiles({
+      type: 'add',
+      file: {
+        id: optimisticId,
+        event_id: event.id,
+        description: file.name,
+        file_url: '',
+        pending: true
+      }
+    })
 
     try {
       const data = new FormData()
@@ -94,13 +105,13 @@ const EventDetail = () => {
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await refreshEvent().catch(() => {})
-      return { status: 'success' as const }
+      return { status: 'success' }
     } catch (err) {
       mutateFiles({ type: 'remove', id: optimisticId })
       setSnack('Ошибка добавления файла')
-      return { status: 'error' as const, error: 'Не удалось добавить файл' }
+      return { status: 'error', error: 'Не удалось добавить файл' }
     }
-  }, { status: 'idle' as const })
+  }, { status: 'idle' })
 
   const [editingAbout, setEditingAbout] = useState(false)
   const [aboutDraft, setAboutDraft] = useState('')
@@ -127,7 +138,7 @@ const EventDetail = () => {
   }, [imageUrl])
 
   const fetchEvent = useCallback(async (signal?: AbortSignal) => {
-    const res = await api.get(`/events/${id}`, signal ? { signal } as any : undefined)
+    const res = await api.get<Event>(`/events/${id}`, signal ? { signal } : undefined)
     return res.data
   }, [id])
 
@@ -139,8 +150,8 @@ const EventDetail = () => {
         setEvent(data)
       }
       return data
-    } catch (err: any) {
-      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED' && !signal?.aborted) {
+    } catch (err) {
+      if (!isCanceledRequestError(err) && !signal?.aborted) {
         setSnack('Ошибка загрузки')
       }
       throw err
@@ -160,7 +171,7 @@ const EventDetail = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const nextFile = e.target.files?.[0] || null
     setSelectedFile(nextFile)
-    if (uploadState.status === 'error' && !uploadPending) {
+    if (isUploadErrorState(uploadState) && !uploadPending) {
       const marker = new FormData()
       marker.append('__upload_reset__', '1')
       uploadAction(marker)
@@ -180,11 +191,20 @@ const EventDetail = () => {
   }
 
   const handleEditAbout = () => {
-    setAboutDraft(event.about || '')
+    if (!event) {
+      return
+    }
+
+    setAboutDraft(event.about ?? '')
     setEditingAbout(true)
   }
 
   const handleSaveAbout = async () => {
+    if (!event) {
+      setSnack('Ошибка сохранения описания')
+      return
+    }
+
     setSavingAbout(true)
     try {
       await api.patch(`/events/${event.id}`, { about: aboutDraft.trim() })
@@ -418,7 +438,7 @@ const EventDetail = () => {
                       </Typography>
                     )}
                   </Stack>
-                  {uploadState.status === 'error' && (
+                  {isUploadErrorState(uploadState) && (
                     <Typography color="error" fontSize={12} sx={{ mt: 0.5 }}>
                       {uploadState.error}
                     </Typography>
@@ -431,8 +451,10 @@ const EventDetail = () => {
               <Box>
                 <Typography variant="subtitle1" fontWeight={600}>Файлы:</Typography>
                 <Stack spacing={1}>
-                  {optimisticFiles.map((f: any) => {
-                    const isPendingFile = !!f.pending || typeof f.id !== 'number'
+                  {optimisticFiles.map(f => {
+                    const isPendingFile = f.pending === true || typeof f.id !== 'number'
+                    const fallbackName = f.file_url.split('/').pop() || f.file_url
+                    const fileLabel = f.description || fallbackName
                     return (
                       <Box key={f.id} display="flex" alignItems="center">
                         {isPendingFile ? (
@@ -445,11 +467,11 @@ const EventDetail = () => {
                             target="_blank"
                             rel="noopener noreferrer"
                             download
-                            title={f.description || (f.file_url?.split('/').pop())}
-                            aria-label={`Скачать файл ${f.description || f.file_url?.split('/').pop()}`}
+                            title={fileLabel}
+                            aria-label={`Скачать файл ${fileLabel}`}
                             style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
                           >
-                            {f.description || (f.file_url?.split('/').pop())}
+                            {fileLabel}
                           </a>
                         )}
                         {(user?.role === 'admin' || user?.role === 'teacher') && (
@@ -644,7 +666,7 @@ const EventDetail = () => {
                       </Typography>
                     )}
                   </Stack>
-                  {uploadState.status === 'error' && (
+                  {isUploadErrorState(uploadState) && (
                     <Typography color="error" fontSize={13} sx={{ mt: 0.75 }}>
                       {uploadState.error}
                     </Typography>
@@ -658,8 +680,10 @@ const EventDetail = () => {
                 <Divider sx={{ my: 1 }} />
                 <Typography variant="subtitle1" fontWeight={600}>Файлы:</Typography>
                 <Stack spacing={1}>
-                  {optimisticFiles.map((f: any) => {
-                    const isPendingFile = !!f.pending || typeof f.id !== 'number'
+                  {optimisticFiles.map(f => {
+                    const isPendingFile = f.pending === true || typeof f.id !== 'number'
+                    const fallbackName = f.file_url.split('/').pop() || f.file_url
+                    const fileLabel = f.description || fallbackName
                     return (
                       <Box key={f.id} display="flex" alignItems="center">
                         {isPendingFile ? (
@@ -672,11 +696,11 @@ const EventDetail = () => {
                             target="_blank"
                             rel="noopener noreferrer"
                             download
-                            title={f.description || (f.file_url?.split('/').pop())}
-                            aria-label={`Скачать файл ${f.description || f.file_url?.split('/').pop()}`}
+                            title={fileLabel}
+                            aria-label={`Скачать файл ${fileLabel}`}
                             style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
                           >
-                            {f.description || (f.file_url?.split('/').pop())}
+                            {fileLabel}
                           </a>
                         )}
                         {(user?.role === 'admin' || user?.role === 'teacher') && (
