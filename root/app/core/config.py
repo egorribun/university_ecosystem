@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     enable_coep: bool = False
     coep_value: str = "require-corp"
     cache_enabled: bool = False
-    cache_redis_url: str | None = None
+    cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"
@@ -337,57 +337,10 @@ class Settings(BaseSettings):
         return bool(value)
 
     @cached_property
-    def cache_redis_url_effective(self) -> str:
-        if self.cache_redis_url:
-            return str(self.cache_redis_url).strip()
-        storage_uri = (self.rate_limit_storage_uri or "").strip()
-        if storage_uri.lower().startswith(("redis://", "rediss://")):
-            return storage_uri
-        return ""
-
-    @cached_property
     def security_csp_report_only_effective(self) -> bool:
         if self.security_csp_report_only is not None:
             return bool(self.security_csp_report_only)
         return not self.strict_security_headers_enabled
-
-    @model_validator(mode="after")
-    def _validate_redis_configuration(self) -> "Settings":
-        storage_uri = (self.rate_limit_storage_uri or "").strip()
-        storage_scheme = storage_uri.lower()
-        environment = str(self.environment or "").lower()
-        is_dev = environment in {
-            "dev",
-            "development",
-            "local",
-            "test",
-            "testing",
-        }
-        if self.rate_limit_enabled:
-            if not storage_uri:
-                raise ValueError(
-                    "RATE_LIMIT_STORAGE_URI must be set when rate limiting is enabled."
-                )
-            if storage_scheme.startswith("memory://") and not is_dev:
-                raise ValueError(
-                    "RATE_LIMIT_STORAGE_URI=memory:// is not allowed when rate limiting "
-                    "is enabled outside development. Configure a Redis URI."
-                )
-
-        cache_uri = self.cache_redis_url_effective.strip()
-        if self.cache_enabled:
-            if not cache_uri:
-                raise ValueError(
-                    "CACHE_REDIS_URL (or RATE_LIMIT_STORAGE_URI) must provide a Redis URI "
-                    "when caching is enabled."
-                )
-            if not cache_uri.lower().startswith(("redis://", "rediss://")):
-                raise ValueError(
-                    "Caching requires a Redis connection string. Set CACHE_REDIS_URL or "
-                    "RATE_LIMIT_STORAGE_URI to a redis:// or rediss:// URI."
-                )
-
-        return self
 
     @cached_property
     def security_connect_src_values(self) -> list[str]:
