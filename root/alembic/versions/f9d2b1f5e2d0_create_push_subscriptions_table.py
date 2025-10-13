@@ -1,8 +1,7 @@
-"""create push subscriptions table"""
-
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 from alembic import op
 
@@ -12,57 +11,18 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def _insp() -> sa.Inspector:
-    return sa.inspect(op.get_bind())
-
-
-def _table_exists(table: str) -> bool:
-    return table in _insp().get_table_names()
-
-
-def _column_exists(table: str, column: str) -> bool:
-    if not _table_exists(table):
-        return False
-    return any(col["name"] == column for col in _insp().get_columns(table))
-
-
-def _has_index(table: str, name: str) -> bool:
-    if not _table_exists(table):
-        return False
-    inspector = _insp()
-    has_index = getattr(inspector, "has_index", None)
-    if callable(has_index):
-        try:
-            return bool(has_index(table, name))
-        except (NotImplementedError, TypeError):
-            pass
-    return any(ix.get("name") == name for ix in inspector.get_indexes(table))
-
-
-def _create_index_safe(
-    name: str, table: str, columns: list[str], *, unique: bool = False
-) -> None:
-    if not _table_exists(table) or _has_index(table, name):
-        return
-    try:
-        op.create_index(name, table, columns, unique=unique, if_not_exists=True)
-    except TypeError:
-        if not _has_index(table, name):
-            op.create_index(name, table, columns, unique=unique)
-
-
-def _drop_index_safe(name: str, table: str) -> None:
-    if not _table_exists(table):
-        return
-    try:
-        op.drop_index(name, table_name=table, if_exists=True)
-    except TypeError:
-        if _has_index(table, name):
-            op.drop_index(name, table_name=table)
+def _index_exists(inspector, table: str, name: str) -> bool:
+    for ix in inspector.get_indexes(table):
+        if ix.get("name") == name:
+            return True
+    return False
 
 
 def upgrade() -> None:
-    if not _table_exists("push_subscriptions"):
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    tables = {t for t in inspector.get_table_names()}
+    if "push_subscriptions" not in tables:
         op.create_table(
             "push_subscriptions",
             sa.Column("id", sa.Integer, primary_key=True),
@@ -87,15 +47,35 @@ def upgrade() -> None:
                 "topics", sa.JSON, nullable=False, server_default=sa.text("'[]'")
             ),
         )
+        op.create_index(
+            op.f("ix_push_subscriptions_user_id"), "push_subscriptions", ["user_id"]
+        )
+        op.create_index(
+            op.f("ix_push_subscriptions_endpoint"),
+            "push_subscriptions",
+            ["endpoint"],
+            unique=True,
+        )
+        op.create_index(
+            op.f("ix_push_subscriptions_created_at"),
+            "push_subscriptions",
+            ["created_at"],
+        )
+        op.create_index(
+            op.f("ix_push_subscriptions_last_seen_at"),
+            "push_subscriptions",
+            ["last_seen_at"],
+        )
     else:
-        if not _column_exists("push_subscriptions", "topics"):
+        cols = {c["name"] for c in inspector.get_columns("push_subscriptions")}
+        if "topics" not in cols:
             op.add_column(
                 "push_subscriptions",
                 sa.Column(
                     "topics", sa.JSON, nullable=False, server_default=sa.text("'[]'")
                 ),
             )
-        if not _column_exists("push_subscriptions", "created_at"):
+        if "created_at" not in cols:
             op.add_column(
                 "push_subscriptions",
                 sa.Column(
@@ -105,51 +85,68 @@ def upgrade() -> None:
                     nullable=False,
                 ),
             )
-        if not _column_exists("push_subscriptions", "last_seen_at"):
+        if "last_seen_at" not in cols:
             op.add_column(
                 "push_subscriptions",
                 sa.Column("last_seen_at", sa.DateTime(timezone=True)),
             )
-        if not _column_exists("push_subscriptions", "user_agent"):
+        if "user_agent" not in cols:
+            op.add_column("push_subscriptions", sa.Column("user_agent", sa.String(512)))
+        if "endpoint" not in cols:
             op.add_column(
-                "push_subscriptions",
-                sa.Column("user_agent", sa.String(512)),
+                "push_subscriptions", sa.Column("endpoint", sa.Text, nullable=False)
             )
-        if not _column_exists("push_subscriptions", "endpoint"):
-            op.add_column(
-                "push_subscriptions",
-                sa.Column("endpoint", sa.Text, nullable=False),
+        if not _index_exists(
+            inspector, "push_subscriptions", op.f("ix_push_subscriptions_user_id")
+        ):
+            op.create_index(
+                op.f("ix_push_subscriptions_user_id"), "push_subscriptions", ["user_id"]
             )
-
-    _create_index_safe(
-        op.f("ix_push_subscriptions_user_id"),
-        "push_subscriptions",
-        ["user_id"],
-    )
-    _create_index_safe(
-        op.f("ix_push_subscriptions_endpoint"),
-        "push_subscriptions",
-        ["endpoint"],
-        unique=True,
-    )
-    _create_index_safe(
-        op.f("ix_push_subscriptions_created_at"),
-        "push_subscriptions",
-        ["created_at"],
-    )
-    _create_index_safe(
-        op.f("ix_push_subscriptions_last_seen_at"),
-        "push_subscriptions",
-        ["last_seen_at"],
-    )
+        endpoint_ix_name = op.f("ix_push_subscriptions_endpoint")
+        if not _index_exists(inspector, "push_subscriptions", endpoint_ix_name):
+            op.create_index(
+                endpoint_ix_name, "push_subscriptions", ["endpoint"], unique=True
+            )
+        if not _index_exists(
+            inspector, "push_subscriptions", op.f("ix_push_subscriptions_created_at")
+        ):
+            op.create_index(
+                op.f("ix_push_subscriptions_created_at"),
+                "push_subscriptions",
+                ["created_at"],
+            )
+        if not _index_exists(
+            inspector, "push_subscriptions", op.f("ix_push_subscriptions_last_seen_at")
+        ):
+            op.create_index(
+                op.f("ix_push_subscriptions_last_seen_at"),
+                "push_subscriptions",
+                ["last_seen_at"],
+            )
 
 
 def downgrade() -> None:
-    if not _table_exists("push_subscriptions"):
-        return
-
-    _drop_index_safe(op.f("ix_push_subscriptions_last_seen_at"), "push_subscriptions")
-    _drop_index_safe(op.f("ix_push_subscriptions_created_at"), "push_subscriptions")
-    _drop_index_safe(op.f("ix_push_subscriptions_user_id"), "push_subscriptions")
-    _drop_index_safe(op.f("ix_push_subscriptions_endpoint"), "push_subscriptions")
-    op.drop_table("push_subscriptions")
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    tables = {t for t in inspector.get_table_names()}
+    if "push_subscriptions" in tables:
+        indexes = {ix.get("name") for ix in inspector.get_indexes("push_subscriptions")}
+        if op.f("ix_push_subscriptions_last_seen_at") in indexes:
+            op.drop_index(
+                op.f("ix_push_subscriptions_last_seen_at"),
+                table_name="push_subscriptions",
+            )
+        if op.f("ix_push_subscriptions_created_at") in indexes:
+            op.drop_index(
+                op.f("ix_push_subscriptions_created_at"),
+                table_name="push_subscriptions",
+            )
+        if op.f("ix_push_subscriptions_user_id") in indexes:
+            op.drop_index(
+                op.f("ix_push_subscriptions_user_id"), table_name="push_subscriptions"
+            )
+        if op.f("ix_push_subscriptions_endpoint") in indexes:
+            op.drop_index(
+                op.f("ix_push_subscriptions_endpoint"), table_name="push_subscriptions"
+            )
+        op.drop_table("push_subscriptions")
