@@ -18,6 +18,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -207,7 +208,36 @@ async def update_me(
     user: models.User = Depends(get_current_user),
 ):
     db_user = await db.get(models.User, user.id)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    update_fields = data.model_dump(exclude_unset=True)
+
+    if "email" in update_fields and update_fields["email"] is not None:
+        raw_email = str(update_fields["email"]).strip().lower()
+        adapter = TypeAdapter(EmailStr)
+        try:
+            validated_email = adapter.validate_python(raw_email)
+        except (
+            ValueError
+        ) as exc:  # pragma: no cover - defensive, TypeAdapter raises ValueError
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Некорректный email",
+            ) from exc
+
+        existing = await db.execute(
+            select(models.User.id).where(
+                models.User.email == validated_email,
+                models.User.id != user.id,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Указанный email уже используется",
+            )
+
+        update_fields["email"] = validated_email
+
+    for field, value in update_fields.items():
         setattr(db_user, field, value)
     await db.commit()
     await db.refresh(db_user)
