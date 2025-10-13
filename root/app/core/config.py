@@ -134,6 +134,12 @@ class Settings(BaseSettings):
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
+    notifications_scheduler_poll_seconds: int = 30
+    notifications_scheduler_window_minutes: int = 6
+    notifications_scheduler_max_backoff_seconds: int = 300
+    notifications_scheduler_inline_enabled: bool = True
+    notifications_worker_metrics_host: str = "0.0.0.0"
+    notifications_worker_metrics_port: int = 9101
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"
         "text/plain,"

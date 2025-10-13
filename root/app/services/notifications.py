@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.core.database import async_session
+from app.core.database import async_session as _async_session
 from app.models.models import (
     Event,
     News,
@@ -624,83 +624,53 @@ async def aggregate_notification_delivery_stats(
     return stats
 
 
+async def start_notifications_scheduler(
+    *,
+    poll_seconds: int = 30,
+    window_minutes: int = 6,
+    max_backoff_seconds: int = 300,
+) -> Callable[[], Awaitable[None]]:
+    """Start background notifications scheduler via the worker implementation."""
+
+    from app.workers.notifications import start_notifications_scheduler as _start
+
+    return await _start(
+        poll_seconds=poll_seconds,
+        window_minutes=window_minutes,
+        max_backoff_seconds=max_backoff_seconds,
+    )
+
+
+# Backwards compatibility for tests that patch async_session on this module.
+async_session = _async_session
+
+
 async def _scheduler_loop(
     poll_seconds: int = 30,
     window_minutes: int = 6,
     *,
     max_backoff_seconds: int = 300,
-):
-    """Run reminders scheduler loop with exponential backoff on failures."""
+) -> None:
+    """Compatibility wrapper delegating to the worker scheduler loop."""
 
-    consecutive_failures = 0
+    from app.workers import notifications as worker_module
 
-    try:
-        while True:
-            sleep_for = poll_seconds
-            try:
-                async with async_session() as db:
-                    await generate_schedule_reminders(db, window_minutes=window_minutes)
-            except Exception:
-                consecutive_failures += 1
-                sleep_for = min(
-                    poll_seconds * (2 ** min(consecutive_failures, 5)),
-                    max_backoff_seconds,
-                )
-                message = "Failed to generate schedule reminders (attempt %s)"
-                logger.exception(message, consecutive_failures)
-                logging.getLogger().error(message, consecutive_failures)
-            else:
-                consecutive_failures = 0
-
-            await asyncio.sleep(sleep_for)
-    except asyncio.CancelledError:
-        return
-
-
-_scheduler_task: asyncio.Task[None] | None = None
-
-
-async def start_notifications_scheduler(
-    *, poll_seconds: int = 30, window_minutes: int = 6
-) -> Callable[[], Awaitable[None]]:
-    """Start background notifications scheduler and return a stopper."""
-
-    global _scheduler_task
-
-    async def _stop_task(task: asyncio.Task[None]) -> None:
-        if task.done():
-            try:
-                task.result()
-            except Exception:
-                pass
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    if _scheduler_task and not _scheduler_task.done():
-        existing = _scheduler_task
-
-        async def _stop_existing() -> None:
-            global _scheduler_task
-            await _stop_task(existing)
-            if _scheduler_task is existing:
-                _scheduler_task = None
-
-        return _stop_existing
-
-    loop = asyncio.get_running_loop()
-    task = loop.create_task(
-        _scheduler_loop(poll_seconds=poll_seconds, window_minutes=window_minutes)
+    scheduler = worker_module.NotificationsScheduler(
+        poll_seconds=poll_seconds,
+        window_minutes=window_minutes,
+        max_backoff_seconds=max_backoff_seconds,
+        metrics=None,
     )
-    _scheduler_task = task
 
-    async def _stop() -> None:
-        global _scheduler_task
-        await _stop_task(task)
-        if _scheduler_task is task:
-            _scheduler_task = None
-
-    return _stop
+    original_sleep = worker_module.asyncio.sleep
+    original_session = worker_module.async_session
+    try:
+        worker_module.asyncio.sleep = asyncio.sleep
+        worker_module.async_session = async_session  # type: ignore[attr-defined]
+        try:
+            await scheduler.run_forever()
+        except asyncio.CancelledError:
+            return
+    finally:
+        worker_module.asyncio.sleep = original_sleep
+        worker_module.async_session = original_session

@@ -37,7 +37,13 @@ async def lifespan(app: FastAPI):
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    stop_scheduler = await start_notifications_scheduler()
+    stop_scheduler = None
+    if settings.is_development and settings.notifications_scheduler_inline_enabled:
+        stop_scheduler = await start_notifications_scheduler(
+            poll_seconds=settings.notifications_scheduler_poll_seconds,
+            window_minutes=settings.notifications_scheduler_window_minutes,
+            max_backoff_seconds=settings.notifications_scheduler_max_backoff_seconds,
+        )
     try:
         yield
     finally:
