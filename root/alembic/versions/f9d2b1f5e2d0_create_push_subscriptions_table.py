@@ -39,7 +39,9 @@ def _has_index(table: str, name: str) -> bool:
     return any(ix.get("name") == name for ix in inspector.get_indexes(table))
 
 
-def _create_index_safe(name: str, table: str, columns: list[str], *, unique: bool = False) -> None:
+def _create_index_safe(
+    name: str, table: str, columns: list[str], *, unique: bool = False
+) -> None:
     if not _table_exists(table) or _has_index(table, name):
         return
     try:
