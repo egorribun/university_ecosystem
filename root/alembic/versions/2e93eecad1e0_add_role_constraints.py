@@ -5,14 +5,14 @@ Revises: ffe470bc9ca2
 Create Date: 2025-10-13 16:25:34.507376
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
-revision: str = '2e93eecad1e0'
-down_revision: Union[str, None] = 'ffe470bc9ca2'
+revision: str = "2e93eecad1e0"
+down_revision: Union[str, None] = "ffe470bc9ca2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
