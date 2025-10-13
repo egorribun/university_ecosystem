@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Skeleton from "@mui/material/Skeleton";
 import { useAuth } from "../contexts/AuthContext";
 import guuLogo from "../assets/guu_logo.png";
@@ -7,127 +7,15 @@ import SmartImage from "@/components/SmartImage";
 import NotificationsBell from "@/components/NotificationsBell";
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
 import { useTranslation } from "react-i18next";
+import useMediaQuery from "@/hooks/useMediaQuery";
+import useFocusTrap from "@/hooks/useFocusTrap";
+import useScrollRestoration from "@/hooks/useScrollRestoration";
+import { useAppShell } from "@/contexts/AppShellContext";
 
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL;
 
 const navTextColor = "var(--nav-text)";
 const navBgColor = "var(--nav-bg)";
-
-const focusableSelectors =
-  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])';
-function useIsMobile() {
-  const getMatch = useCallback(() => {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return false;
-    return window.matchMedia("(max-width: 1350px)").matches;
-  }, []);
-  const [match, setMatch] = useState(getMatch);
-  useEffect(() => {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return;
-    const mql = window.matchMedia("(max-width: 1350px)");
-    const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      setMatch("matches" in e ? e.matches : (e as MediaQueryList).matches);
-    };
-    if (mql.addEventListener) mql.addEventListener("change", onChange as EventListener);
-    else mql.addListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
-    setMatch(mql.matches);
-    return () => {
-      if (mql.removeEventListener) mql.removeEventListener("change", onChange as EventListener);
-      else mql.removeListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
-    };
-  }, [getMatch]);
-  return match;
-}
-
-function usePrefersReducedMotion() {
-  const getMatch = useCallback(() => {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return false;
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }, []);
-  const [match, setMatch] = useState(getMatch);
-  useEffect(() => {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return;
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = (event: MediaQueryListEvent | MediaQueryList) => {
-      setMatch("matches" in event ? event.matches : (event as MediaQueryList).matches);
-    };
-    if (mql.addEventListener) mql.addEventListener("change", onChange as EventListener);
-    else mql.addListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
-    setMatch(mql.matches);
-    return () => {
-      if (mql.removeEventListener) mql.removeEventListener("change", onChange as EventListener);
-      else mql.removeListener(onChange as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
-    };
-  }, [getMatch]);
-  return match;
-}
-
-function getScrollRoot(): HTMLElement {
-  const cands: (Element | null | Document | HTMLElement)[] = [
-    document.querySelector("[data-scroll-root]"),
-    document.querySelector("main[role='main']"),
-    document.querySelector("main"),
-    document.getElementById("scroll-root"),
-    document.querySelector("#root"),
-    (document as any).scrollingElement,
-    document.documentElement,
-    document.body
-  ];
-  for (const el of cands) {
-    if (!el) continue;
-    const e = el as HTMLElement;
-    const oy = getComputedStyle(e).overflowY;
-    const scrollable = (oy === "auto" || oy === "scroll") && e.scrollHeight > e.clientHeight;
-    if (scrollable) return e;
-  }
-  return (document.scrollingElement || document.documentElement) as HTMLElement;
-}
-
-function prefersReducedMotionGlobal() {
-  if (typeof window === "undefined" || !("matchMedia" in window)) return false;
-  try {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  } catch {
-    return false;
-  }
-}
-
-function smoothToTop(target: HTMLElement) {
-  if (prefersReducedMotionGlobal()) {
-    try {
-      target.scrollTo({ top: 0, behavior: "auto" });
-    } catch {
-      target.scrollTop = 0;
-    }
-    return;
-  }
-  try {
-    (target as any).scrollTo({ top: 0, behavior: "smooth" });
-  } catch {
-    const start = target.scrollTop;
-    const duration = 420;
-    let t0 = 0;
-    const step = (ts: number) => {
-      if (!t0) t0 = ts;
-      const p = Math.min(1, (ts - t0) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      target.scrollTop = Math.round(start * (1 - eased));
-      if (p < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }
-}
-
-function markIfFromBottom() {
-  const el = getScrollRoot();
-  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
-  if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1");
-}
-
-function samePath(a: string, b: string) {
-  const na = a.replace(/\/+$/, "") || "/";
-  const nb = b.replace(/\/+$/, "") || "/";
-  return na === nb;
-}
 
 function parseCacheVersion(input: unknown): number | undefined {
   if (typeof input === "number" && Number.isFinite(input)) return input;
@@ -145,18 +33,23 @@ const Navbar = () => {
   const location = useLocation();
   const { user, isAuth, loading } = useAuth();
   const { t } = useTranslation(["navigation"]);
+  const { setOverlayState } = useAppShell();
 
   const [mobileMenu, setMobileMenu] = useState(false);
 
-  const isMobile = useIsMobile();
-  const prefersReducedMotion = usePrefersReducedMotion();
+  const isMobile = useMediaQuery("(max-width: 1350px)");
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(location.pathname);
   const prevIsMobile = useRef(isMobile);
   const navRef = useRef<HTMLDivElement | null>(null);
   const burgerBtnRef = useRef<HTMLButtonElement | null>(null);
-  const drawerNavRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const drawerWasOpenRef = useRef(false);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const drawerTrapRef = useFocusTrap<HTMLDivElement>({
+    active: mobileMenu && isMobile,
+    initialFocus: () => closeButtonRef.current ?? undefined,
+    fallbackFocus: () => closeButtonRef.current ?? undefined,
+    onDeactivate: () => setMobileMenu(false),
+  });
 
   useEffect(() => {
     if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false);
@@ -164,90 +57,24 @@ const Navbar = () => {
   }, [isMobile]);
 
   useEffect(() => {
-    document.body.style.overflow = mobileMenu ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [mobileMenu]);
-
-  useEffect(() => {
     setMobileMenu(false);
   }, [location.pathname]);
 
   useEffect(() => {
-    const opened = mobileMenu && isMobile;
-    document.body.classList.toggle("blurred", opened && !prefersReducedMotion);
+    if (mobileMenu && isMobile) {
+      setOverlayState("mobile-drawer", { scrollLocked: true, blurred: !prefersReducedMotion });
+    } else {
+      setOverlayState("mobile-drawer", null);
+    }
     return () => {
-      document.body.classList.remove("blurred");
+      setOverlayState("mobile-drawer", null);
     };
-  }, [mobileMenu, isMobile, prefersReducedMotion]);
+  }, [isMobile, mobileMenu, prefersReducedMotion, setOverlayState]);
 
   useEffect(() => {
     if (prefersReducedMotion) return;
     navRef.current?.classList.add("navbar-animate-in");
   }, [prefersReducedMotion]);
-
-  useLayoutEffect(() => {
-    if (sessionStorage.getItem("__scrollTopNext") === "1") {
-      sessionStorage.removeItem("__scrollTopNext");
-      const el = getScrollRoot();
-      requestAnimationFrame(() => requestAnimationFrame(() => smoothToTop(el)));
-    }
-  }, [location.pathname]);
-
-  const getDrawerFocusables = useCallback(() => {
-    const root = drawerNavRef.current;
-    if (!root) return [] as HTMLElement[];
-    const nodes = Array.from(root.querySelectorAll<HTMLElement>(focusableSelectors));
-    return nodes.filter((node) => !node.hasAttribute("disabled") && node.getAttribute("aria-hidden") !== "true");
-  }, []);
-
-  useEffect(() => {
-    if (!(mobileMenu && isMobile)) return;
-    drawerWasOpenRef.current = true;
-    previousFocusRef.current = (document.activeElement as HTMLElement) ?? null;
-    const focusables = getDrawerFocusables();
-    const fallback = closeButtonRef.current ?? focusables[0];
-    if (fallback) {
-      window.setTimeout(() => fallback.focus(), 0);
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setMobileMenu(false);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const elements = getDrawerFocusables();
-      if (!elements.length) {
-        event.preventDefault();
-        return;
-      }
-      const current = document.activeElement as HTMLElement | null;
-      let index = elements.indexOf(current ?? elements[0]);
-      if (index === -1) index = 0;
-      index += event.shiftKey ? -1 : 1;
-      if (index < 0) index = elements.length - 1;
-      if (index >= elements.length) index = 0;
-      elements[index].focus();
-      event.preventDefault();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [getDrawerFocusables, isMobile, mobileMenu]);
-
-  useEffect(() => {
-    if (mobileMenu || !drawerWasOpenRef.current || !isMobile) return;
-    const previous = previousFocusRef.current;
-    const target = previous ?? burgerBtnRef.current;
-    if (target) {
-      window.setTimeout(() => target.focus(), 0);
-    }
-    previousFocusRef.current = null;
-    drawerWasOpenRef.current = false;
-  }, [isMobile, mobileMenu]);
 
   const avatarCacheV = useMemo(() => {
     const raw =
@@ -288,20 +115,16 @@ const Navbar = () => {
     return location.pathname === to || location.pathname.startsWith(to + "/");
   };
 
-  const isSameTarget = (to: string) => {
-    if (to === "/dashboard") return location.pathname === "/" || samePath(location.pathname, "/dashboard");
-    return samePath(location.pathname, to);
-  };
+  const isSameTarget = useCallback((to: string) => isSamePath(to), [isSamePath]);
 
-  const go = (to: string) => {
+  const go = useCallback((to: string) => {
     if (isSameTarget(to)) {
-      const el = getScrollRoot();
-      smoothToTop(el);
+      scrollToTop(prefersReducedMotion ? "auto" : "smooth");
     } else {
-      markIfFromBottom();
+      markScrollFromBottom();
       navigate(to);
     }
-  };
+  }, [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]);
 
   const logoWrapSize = isMobile ? 44 : 52;
   const logoImgSize = isMobile ? 34 : 42;
@@ -334,12 +157,11 @@ const Navbar = () => {
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
             className="brand"
-            onPointerDown={markIfFromBottom}
+            onPointerDown={markScrollFromBottom}
             onClick={(e) => {
               if (isSameTarget("/dashboard")) {
                 e.preventDefault();
-                const el = getScrollRoot();
-                smoothToTop(el);
+                scrollToTop(prefersReducedMotion ? "auto" : "smooth");
               }
             }}
             style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? "8px" : "10px", minWidth: 0, padding: "6px 6px", borderRadius: 12, textDecoration: "none" }}
@@ -417,12 +239,11 @@ const Navbar = () => {
                   <Link
                     to={item.to}
                     className={`menu-link${isActive(item.to) ? " active" : ""}`}
-                    onPointerDown={markIfFromBottom}
+                    onPointerDown={markScrollFromBottom}
                     onClick={(e) => {
                       if (isSameTarget(item.to)) {
                         e.preventDefault();
-                        const el = getScrollRoot();
-                        smoothToTop(el);
+                        scrollToTop(prefersReducedMotion ? "auto" : "smooth");
                       }
                     }}
                   >
@@ -524,7 +345,7 @@ const Navbar = () => {
           aria-label={t("navigation:aria.mobileMenu")}
         >
           <nav
-            ref={drawerNavRef}
+            ref={drawerTrapRef}
             style={{ width: 270, maxWidth: "88vw", background: navBgColor, height: "100vh", boxShadow: "2px 0 22px #0003", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", transition: prefersReducedMotion ? "none" : "transform 0.35s cubic-bezier(.52,1.29,.47,.97)", transform: mobileMenu ? "translateX(0)" : "translateX(-120%)", justifyContent: "flex-start", position: "relative" }}
             onClick={e => e.stopPropagation()}
           >
@@ -561,13 +382,12 @@ const Navbar = () => {
                   <Link
                     to={item.to}
                     className={`menu-link${isActive(item.to) ? " active" : ""}`}
-                    onPointerDown={markIfFromBottom}
+                    onPointerDown={markScrollFromBottom}
                     onClick={(e) => {
                       setMobileMenu(false);
                       if (isSameTarget(item.to)) {
                         e.preventDefault();
-                        const el = getScrollRoot();
-                        smoothToTop(el);
+                        scrollToTop(prefersReducedMotion ? "auto" : "smooth");
                       }
                     }}
                   >
@@ -580,7 +400,7 @@ const Navbar = () => {
                   <button
                     type="button"
                     className="menu-link settings"
-                    onPointerDown={markIfFromBottom}
+                    onPointerDown={markScrollFromBottom}
                     onClick={e => { e.stopPropagation(); setMobileMenu(false); go("/settings"); }}
                     aria-label={t("navigation:menu.settings")}
                     title={t("navigation:menu.settings")}

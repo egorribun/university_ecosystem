@@ -18,6 +18,7 @@ import LivePushToasts from "./components/LivePushToasts"
 import { useQueryClient } from "@tanstack/react-query"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { useTranslation } from "react-i18next"
+import { AppShellProvider } from "./contexts/AppShellContext"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
@@ -154,15 +155,17 @@ function AppShell() {
       <a href="#main" className="skip-link">
         {t("skipToContent")}
       </a>
-      <AuthProvider>
-        <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
-          <ErrorBoundary>
-            <Router future={routerFutureFlags}>
-              <AppContent />
-            </Router>
-          </ErrorBoundary>
-        </LocalizationProvider>
-      </AuthProvider>
+      <AppShellProvider>
+        <AuthProvider>
+          <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
+            <ErrorBoundary>
+              <Router future={routerFutureFlags}>
+                <AppContent />
+              </Router>
+            </ErrorBoundary>
+          </LocalizationProvider>
+        </AuthProvider>
+      </AppShellProvider>
     </>
   )
 }
