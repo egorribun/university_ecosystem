@@ -20,6 +20,8 @@ import {
 } from "@mui/material"
 import { Link, useNavigate } from "react-router-dom"
 import { cardHoverSx } from "@/constants/cardHover"
+import { useTranslation } from "react-i18next"
+import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 
 type NewsItem = { id: number; title: string; content: string; created_at?: string; pinned?: boolean }
 type EventItem = { id: number; title: string; description?: string; starts_at?: string; location?: string }
@@ -51,15 +53,25 @@ const parseMinutes = (s?: string) => {
   return hh * 60 + mm
 }
 
-function DateBullet({ date }: { date?: string }) {
+function DateBullet({ date, locale }: { date?: string; locale: string }) {
+  const { t } = useTranslation("common")
   const d = date ? new Date(date) : null
   const dd = d ? pad(d.getDate()) : "—"
   const mm = d ? pad(d.getMonth() + 1) : "--"
-  const full = d ? d.toLocaleString("ru-RU", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Дата неизвестна"
+  const fallback = t("dateUnknown")
+  const full = d
+    ? d.toLocaleString(locale, {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : fallback
   return (
     <Tooltip title={full} enterDelay={150}>
       <Box
-        aria-label={`Дата публикации: ${full}`}
+        aria-label={t("ariaDatePublished", { date: full })}
           sx={{
             width: 44,
           height: 44,
@@ -85,7 +97,7 @@ function DateBullet({ date }: { date?: string }) {
   )
 }
 
-function useClock() {
+function useClock(locale: string) {
   const [time, setTime] = useState(new Date())
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000)
@@ -94,15 +106,15 @@ function useClock() {
   const hh = pad(time.getHours())
   const mm = pad(time.getMinutes())
   const showColon = time.getSeconds() % 2 === 0
-  const dateStr = time.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })
+  const dateStr = time.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })
   return { hh, mm, showColon, dateStr, time }
 }
 
-function getGreeting(hour: number) {
-  if (hour >= 4 && hour < 12) return "Доброе утро"
-  if (hour >= 12 && hour < 17) return "Добрый день"
-  if (hour >= 17 && hour <= 23) return "Добрый вечер"
-  return "Доброй ночи"
+function getGreetingKey(hour: number): "morning" | "afternoon" | "evening" | "night" {
+  if (hour >= 4 && hour < 12) return "morning"
+  if (hour >= 12 && hour < 17) return "afternoon"
+  if (hour >= 17 && hour <= 23) return "evening"
+  return "night"
 }
 
 const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x }
@@ -140,8 +152,12 @@ export default function Dashboard() {
   const { user } = useAuth()
   const isNarrow = useMediaQuery("(max-width:1100px)")
   const navigate = useNavigate()
-  const { hh, mm, showColon, dateStr, time } = useClock()
-  const greeting = useMemo(() => getGreeting(time.getHours()), [time])
+  const { language } = useLanguage()
+  const locale = getLocaleForLanguage(language)
+  const { t } = useTranslation(["dashboard", "common", "navigation"])
+  const { hh, mm, showColon, dateStr, time } = useClock(locale)
+  const greetingKey = useMemo(() => getGreetingKey(time.getHours()), [time])
+  const greeting = t(`dashboard:greeting.${greetingKey}`)
 
   const [loadingNews, setLoadingNews] = useState(true)
   const [loadingEvents, setLoadingEvents] = useState(true)
@@ -328,7 +344,7 @@ export default function Dashboard() {
         onFocus={(e) => { ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)" }}
         onBlur={(e) => { ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-200%)" }}
       >
-        Перейти к содержимому
+        {t("common:skipToMain")}
       </a>
       <PageFadeIn>
         <Box
@@ -365,7 +381,7 @@ export default function Dashboard() {
               <Chip
                 size="small"
                 className="chip-clock"
-                aria-label="Текущее время"
+                aria-label={t("common:ariaCurrentTime")}
                 label={
                   <Box sx={{ display: "inline-flex", alignItems: "baseline", fontVariantNumeric: "tabular-nums" }}>
                     <Box>{hh}</Box>
@@ -378,8 +394,13 @@ export default function Dashboard() {
             </Stack>
           </Box>
           <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
-            <Button variant="outlined" onClick={() => navigate("/profile")} sx={{ ...btnSx, px: 2.2, py: 0.9 }} aria-label="Открыть профиль">
-              Профиль
+            <Button
+              variant="outlined"
+              onClick={() => navigate("/profile")}
+              sx={{ ...btnSx, px: 2.2, py: 0.9 }}
+              aria-label={t("navigation:aria.openProfile")}
+            >
+              {t("navigation:menu.profile")}
             </Button>
           </Box>
         </Box>
@@ -395,7 +416,7 @@ export default function Dashboard() {
           <Box data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" } }} aria-busy={loadingSched}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
-                Сегодня в расписании
+                {t("dashboard:todaySchedule")}
               </Typography>
               <Stack direction="row" gap={1}>
                 <Button
@@ -404,22 +425,28 @@ export default function Dashboard() {
                   size="small"
                   variant="outlined"
                   sx={{ ...btnSx, px: 3, py: 0.9 }}
-                  aria-label="Перейти к полному расписанию"
+                  aria-label={t("dashboard:aria.openFullSchedule")}
                   onPointerDown={warmSchedulePage}
                   onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
                 >
-                  Полное расписание
+                  {t("dashboard:fullSchedule")}
                 </Button>
               </Stack>
             </Stack>
             {currentLesson && (
               <Box sx={{ mb: 1.5 }}>
                 <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
-                  <Chip size="small" color="primary" label="Сейчас" />
+                  <Chip size="small" color="primary" label={t("dashboard:now")}
+                  />
                   <Typography sx={{ fontWeight: 700 }}>{currentLesson.subject}</Typography>
                   <Chip size="small" className="chip-time" label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`} />
                 </Stack>
-                <LinearProgress variant="determinate" value={currentProgress} sx={{ height: 8, borderRadius: 6 }} aria-label="Прогресс текущего занятия" />
+                <LinearProgress
+                  variant="determinate"
+                  value={currentProgress}
+                  sx={{ height: 8, borderRadius: 6 }}
+                  aria-label={t("common:ariaCurrentLessonProgress")}
+                />
               </Box>
             )}
             {!currentLesson && nextLesson && (
@@ -427,7 +454,7 @@ export default function Dashboard() {
                 <Stack direction="row" alignItems="center" gap={1}>
                   <Chip
                     size="small"
-                    label="Далее"
+                    label={t("dashboard:next")}
                     sx={(theme) => ({
                       fontWeight: 700,
                       bgcolor: theme.palette.mode === "dark" ? "rgba(99,102,241,.18)" : "rgba(25,118,210,.08)",
@@ -451,7 +478,7 @@ export default function Dashboard() {
               </Stack>
             )}
             {!loadingSched && todayLessons.length === 0 && (
-              <Typography color="text.secondary">На сегодня занятий нет</Typography>
+              <Typography color="text.secondary">{t("dashboard:noClasses")}</Typography>
             )}
             {!loadingSched && todayLessons.length > 0 && (
               <List dense sx={{ py: 0 }}>
@@ -465,7 +492,11 @@ export default function Dashboard() {
                           <Chip size="small" className="chip-type" label={l.lesson_type} variant="outlined" />
                         </Stack>
                       }
-                      secondary={<Typography sx={{ opacity: 0.85 }}>{`${l.teacher} · ауд. ${l.room}`}</Typography>}
+                      secondary={
+                        <Typography sx={{ opacity: 0.85 }}>
+                          {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                        </Typography>
+                      }
                       primaryTypographyProps={{ component: "div" }}
                       secondaryTypographyProps={{ component: "span" }}
                     />
@@ -477,14 +508,14 @@ export default function Dashboard() {
 
           <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" } }} aria-busy={loadingNews}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>Новости</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>{t("dashboard:news.heading")}</Typography>
               <Button
                 component={Link}
                 to="/news"
                 size="small"
                 variant="outlined"
                 sx={btnSx}
-                aria-label="Смотреть все новости"
+                aria-label={t("dashboard:aria.viewAllNews")}
                 onPointerDown={() => { warmNewsPage(); prefetchData("news") }}
                 onKeyDown={(event) => {
                   prepareOnKey(event, () => {
@@ -493,7 +524,7 @@ export default function Dashboard() {
                   })
                 }}
               >
-                Смотреть все
+                {t("dashboard:viewAll")}
               </Button>
             </Stack>
             <Divider sx={{ my: 1.5 }} />
@@ -515,9 +546,9 @@ export default function Dashboard() {
                 </Stack>
               </Stack>
             )}
-            {!loadingNews && news.length === 0 && <Typography color="text.secondary">Новостей пока нет</Typography>}
+            {!loadingNews && news.length === 0 && <Typography color="text.secondary">{t("dashboard:news.empty")}</Typography>}
             {!loadingNews && news.length > 0 && (
-              <Stack component="ul" spacing={1.1} sx={{ m: 0, p: 0, listStyle: "none" }} aria-label="Список новостей">
+              <Stack component="ul" spacing={1.1} sx={{ m: 0, p: 0, listStyle: "none" }} aria-label={t("dashboard:aria.newsList")}>
                 {news.map(n => (
                   <Stack
                     key={n.id}
@@ -531,9 +562,9 @@ export default function Dashboard() {
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/news/${n.id}`) }}
                     title={n.title}
-                    aria-label={`Новость: ${n.title}`}
+                    aria-label={t("dashboard:aria.newsItem", { title: n.title })}
                   >
-                    <DateBullet date={n.created_at} />
+                    <DateBullet date={n.created_at} locale={locale} />
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontSize: "clamp(.98rem, .9rem + .4vw, 1.06rem)" }}>{n.title}</Typography>
                       <Typography color="text.secondary" sx={{ fontSize: ".95rem" }}>
@@ -548,14 +579,14 @@ export default function Dashboard() {
 
           <Box data-fade style={{ '--fade-delay': '260ms' } as CSSProperties } sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" } }} aria-busy={loadingEvents}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>События</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>{t("dashboard:events.heading")}</Typography>
               <Button
                 component={Link}
                 to="/events"
                 size="small"
                 variant="outlined"
                 sx={btnSx}
-                aria-label="Смотреть все события"
+                aria-label={t("dashboard:aria.viewAllEvents")}
                 onPointerDown={() => { warmEventsPage(); prefetchData("events") }}
                 onKeyDown={(event) => {
                   prepareOnKey(event, () => {
@@ -564,7 +595,7 @@ export default function Dashboard() {
                   })
                 }}
               >
-                Смотреть все
+                {t("dashboard:viewAll")}
               </Button>
             </Stack>
             <Stack direction="row" gap={1} sx={{ mb: 1 }}>
@@ -575,7 +606,7 @@ export default function Dashboard() {
                 sx={btnSx}
                 aria-pressed={eventsScope === "today"}
               >
-                Сегодня
+                {t("dashboard:scope.today")}
               </Button>
               <Button
                 size="small"
@@ -584,7 +615,7 @@ export default function Dashboard() {
                 sx={btnSx}
                 aria-pressed={eventsScope === "week"}
               >
-                Неделя
+                {t("dashboard:scope.week")}
               </Button>
             </Stack>
             <Divider sx={{ my: 1.5 }} />
@@ -595,9 +626,13 @@ export default function Dashboard() {
                 <Skeleton height={24} width="70%" />
               </Stack>
             )}
-            {!loadingEvents && scopedEvents.length === 0 && <Typography color="text.secondary">Событий не найдено</Typography>}
+            {!loadingEvents && scopedEvents.length === 0 && <Typography color="text.secondary">{t("dashboard:events.empty")}</Typography>}
             {!loadingEvents && scopedEvents.length > 0 && (
-              <List dense sx={{ py: 0 }} aria-label={eventsScope === "today" ? "События на сегодня" : "События на неделю"}>
+              <List
+                dense
+                sx={{ py: 0 }}
+                aria-label={eventsScope === "today" ? t("dashboard:aria.eventsToday") : t("dashboard:aria.eventsWeek")}
+              >
                 {scopedEvents.map(e => {
                   const d = parseLocalDate(String(e.starts_at))
                   return (
@@ -608,7 +643,7 @@ export default function Dashboard() {
                       onClick={() => navigate(`/events/${e.id}`)}
                       onKeyDown={(ev) => { if (ev.key === "Enter") navigate(`/events/${e.id}`) }}
                       tabIndex={0}
-                      aria-label={`Событие: ${e.title}`}
+                      aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                     >
                       <ListItemText
                         primary={<Typography sx={{ fontWeight: 700 }}>{e.title}</Typography>}
@@ -617,7 +652,7 @@ export default function Dashboard() {
                             <Chip
                               size="small"
                               className="chip-time"
-                              label={d ? d.toLocaleString("ru-RU", { day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }) : ""}
+                              label={d ? d.toLocaleString(locale, { day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }) : ""}
                             />
                             {!!e.location && <Chip size="small" label={e.location} />}
                           </Stack>

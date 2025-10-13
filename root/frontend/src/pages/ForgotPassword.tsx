@@ -2,6 +2,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import axios from "../api/client";
 import { Box, Paper, Typography, TextField, Button, Stack, Chip, useMediaQuery } from "@mui/material";
 import { Link } from "react-router-dom";
+import { useTranslation, Trans } from "react-i18next";
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COMMON_EMAIL_DOMAINS = ["gmail.com","googlemail.com","yahoo.com","outlook.com","hotmail.com","live.com","icloud.com","mail.ru","bk.ru","list.ru","inbox.ru","yandex.ru","yandex.com","rambler.ru","proton.me"];
@@ -46,6 +47,7 @@ type ForgotState = {
 };
 
 export default function ForgotPassword() {
+  const { t } = useTranslation(["auth"]);
   const [email, setEmail] = useState("");
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -77,7 +79,7 @@ export default function ForgotPassword() {
 
     const value = String(input.get("email") ?? "").trim();
     if (!emailRe.test(value)) {
-      return { status: "error" as const, error: "Введите корректный email" };
+      return { status: "error" as const, error: t("auth:messages.invalidEmail") };
     }
 
     setEmail(value);
@@ -116,19 +118,29 @@ export default function ForgotPassword() {
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
       <Paper elevation={7} sx={{ width: "100%", maxWidth: 440, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, bgcolor: "var(--card-bg)" }}>
-        <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>Восстановление пароля</Typography>
+        <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>
+          {t("auth:forgot.title")}
+        </Typography>
         {forgotStatus === "success" ? (
           <Stack spacing={2} alignItems="center">
-            <Typography align="center">Если аккаунт с адресом <b>{email}</b> существует, мы отправили письмо со ссылкой для сброса пароля.</Typography>
-            <Typography color="text.secondary" align="center" sx={{ mt: -1 }}>Ссылка действует ограниченное время. Проверьте «Спам», если письма нет.</Typography>
-            <Button component={Link} to="/login" variant="outlined" sx={{ mt: 1 }}>Вернуться ко входу</Button>
-            <Button type="button" onClick={resetRequest} disabled={cooldown>0}>Ввести другой адрес {cooldown>0 ? `(${cooldown}s)` : ""}</Button>
+            <Typography align="center">
+              <Trans ns="auth" i18nKey="forgot.success" values={{ email }} components={{ strong: <b /> }} />
+            </Typography>
+            <Typography color="text.secondary" align="center" sx={{ mt: -1 }}>
+              {t("auth:forgot.successHint")}
+            </Typography>
+            <Button component={Link} to="/login" variant="outlined" sx={{ mt: 1 }}>
+              {t("auth:actions.backToLogin")}
+            </Button>
+            <Button type="button" onClick={resetRequest} disabled={cooldown > 0}>
+              {t("auth:forgot.enterAnother")}{cooldown > 0 ? ` (${cooldown}s)` : ""}
+            </Button>
           </Stack>
         ) : (
           <form action={forgotAction} autoComplete="off">
             <Stack spacing={2}>
               <TextField
-                label="E-mail"
+                label={t("auth:fields.email")}
                 name="email"
                 type="email"
                 value={email}
@@ -138,19 +150,29 @@ export default function ForgotPassword() {
                 fullWidth
                 autoComplete="email"
                 error={!emailValid}
-                helperText={!emailValid ? "Неверный формат email" : " "}
+                helperText={!emailValid ? t("auth:messages.invalidFormat") : " "}
                 inputRef={emailInputRef}
                 disabled={forgotPending || cooldown > 0}
                 inputProps={{ inputMode: "email", autoCapitalize: "none", autoCorrect: "off", spellCheck: "false" }}
               />
               {emailSuggestion && (
-                <Chip size="small" variant="outlined" color="primary" label={`Исправить на ${emailSuggestion}`} onClick={applySuggestion} />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  label={t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
+                  onClick={applySuggestion}
+                />
               )}
               {forgotErrorMessage && (
                 <Typography color="error" fontSize={15} align="center">{forgotErrorMessage}</Typography>
               )}
-              <Button type="submit" variant="contained" size="large" fullWidth disabled={!canSubmit}>{forgotPending ? "Отправляю…" : "Отправить ссылку"}</Button>
-              <Button component={Link} to="/login" variant="text">Назад ко входу</Button>
+              <Button type="submit" variant="contained" size="large" fullWidth disabled={!canSubmit}>
+                {forgotPending ? t("auth:forgot.sending") : t("auth:forgot.sendLink")}
+              </Button>
+              <Button component={Link} to="/login" variant="text">
+                {t("auth:actions.backToLogin")}
+              </Button>
             </Stack>
           </form>
         )}

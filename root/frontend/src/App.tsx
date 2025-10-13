@@ -7,6 +7,7 @@ import Footer from "./components/Footer"
 import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
+import { LanguageProvider, useLanguage } from "./contexts/LanguageContext"
 import MotionPresence from "./components/MotionPresence"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import MobileBottomNav from "./components/MobileBottomNav"
@@ -16,6 +17,7 @@ import InstallPrompt from "./components/InstallPrompt"
 import LivePushToasts from "./components/LivePushToasts"
 import { useQueryClient } from "@tanstack/react-query"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
+import { useTranslation } from "react-i18next"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
@@ -143,14 +145,17 @@ export const routerFutureFlags = {
   v7_skipActionErrorRevalidation: true,
 } satisfies RouterFutureFlags
 
-export default function App() {
+function AppShell() {
+  const { language } = useLanguage()
+  const { t } = useTranslation("common")
+
   return (
     <>
       <a href="#main" className="skip-link">
-        Перейти к содержанию
+        {t("skipToContent")}
       </a>
       <AuthProvider>
-        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ru">
+        <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
           <ErrorBoundary>
             <Router future={routerFutureFlags}>
               <AppContent />
@@ -159,5 +164,13 @@ export default function App() {
         </LocalizationProvider>
       </AuthProvider>
     </>
+  )
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppShell />
+    </LanguageProvider>
   )
 }

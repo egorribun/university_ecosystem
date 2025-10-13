@@ -1,0 +1,8 @@
+{
+  "skipToContent": "Skip to content",
+  "skipToMain": "Skip to main content",
+  "dateUnknown": "Date unknown",
+  "ariaDatePublished": "Publication date: {{date}}",
+  "ariaCurrentTime": "Current time",
+  "ariaCurrentLessonProgress": "Current lesson progress"
+}

@@ -4,6 +4,7 @@ import { Box, Paper, Typography, TextField, Button, Stack, InputAdornment, IconB
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { useParams, useSearchParams, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 const RESET_URL = "/password/reset";
 
@@ -30,6 +31,7 @@ async function isPwnedPassword(pwd: string) {
 }
 
 export default function ResetPassword() {
+  const { t } = useTranslation(["auth"]);
   const params = useParams<{ token?: string }>();
   const [sp] = useSearchParams();
   const token = params.token || sp.get("token") || "";
@@ -82,21 +84,21 @@ export default function ResetPassword() {
     const confirmValue = String(input.get("confirm") ?? "");
 
     if (!token) {
-      return { status: "error" as const, error: "Некорректная ссылка сброса пароля." };
+      return { status: "error" as const, error: t("auth:reset.invalidLink") };
     }
 
     if (pwd !== confirmValue) {
-      return { status: "error" as const, error: "Пароли не совпадают.", field: "confirm" as const };
+      return { status: "error" as const, error: t("auth:register.passwordMismatch"), field: "confirm" as const };
     }
 
     try {
       await axios.post(RESET_URL, { token, password: pwd });
       return { status: "success" as const };
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || "Не удалось сбросить пароль. Ссылка могла устареть.";
+      const msg = err?.response?.data?.detail || t("auth:reset.errorGeneric");
       return { status: "error" as const, error: msg };
     }
-  }, token ? { status: "idle" as const } : { status: "error" as const, error: "Некорректная ссылка сброса пароля." });
+  }, token ? { status: "idle" as const } : { status: "error" as const, error: t("auth:reset.invalidLink") });
 
   const resetStatus = resetState.status;
   const resetErrorMessage = resetStatus === "error" ? resetState.error ?? "" : "";
@@ -113,10 +115,16 @@ export default function ResetPassword() {
     return (
       <Box sx={{ minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
         <Paper elevation={7} sx={{ width: "100%", maxWidth: 460, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, bgcolor: "var(--card-bg)" }}>
-          <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>Пароль обновлён</Typography>
+          <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>
+            {t("auth:reset.successTitle")}
+          </Typography>
           <Stack alignItems="center" spacing={1}>
-            <Typography color="text.secondary" align="center">Теперь вы можете войти с новым паролем.</Typography>
-            <Button component={Link} to="/login" variant="contained" sx={{ mt: 1 }}>Перейти ко входу</Button>
+            <Typography color="text.secondary" align="center">
+              {t("auth:reset.successMessage")}
+            </Typography>
+            <Button component={Link} to="/login" variant="contained" sx={{ mt: 1 }}>
+              {t("auth:actions.goToLogin")}
+            </Button>
           </Stack>
         </Paper>
       </Box>
@@ -126,12 +134,16 @@ export default function ResetPassword() {
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
       <Paper elevation={7} sx={{ width: "100%", maxWidth: 460, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, bgcolor: "var(--card-bg)" }}>
-        <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>Новый пароль</Typography>
-        <Typography color="text.secondary" align="center" sx={{ mb: 2 }}>Придумайте новый пароль для вашей учётной записи.</Typography>
+        <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>
+          {t("auth:reset.title")}
+        </Typography>
+        <Typography color="text.secondary" align="center" sx={{ mb: 2 }}>
+          {t("auth:reset.subtitle")}
+        </Typography>
         <form action={resetAction} autoComplete="off">
           <Stack spacing={2}>
             <TextField
-              label="Пароль"
+              label={t("auth:fields.password")}
               name="password"
               type={showPass ? "text" : "password"}
               value={password}
@@ -143,13 +155,13 @@ export default function ResetPassword() {
               autoComplete="new-password"
               inputRef={passwordRef}
               disabled={resetPending}
-              helperText="Минимум 8 символов"
+              helperText={t("auth:register.passwordHint")}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <Tooltip title="Удерживайте, чтобы показать пароль">
+                    <Tooltip title={t("auth:actions.holdReveal")}>
                       <IconButton
-                        aria-label="Показать пароль"
+                        aria-label={t("auth:actions.showPassword")}
                         onMouseDown={() => setShowPass(true)}
                         onMouseUp={() => setShowPass(false)}
                         onMouseLeave={() => setShowPass(false)}
@@ -165,13 +177,26 @@ export default function ResetPassword() {
               }}
             />
             {strength !== null && (
-              <LinearProgress variant="determinate" value={[10, 30, 55, 75, 100][strength]} sx={{ mt: -0.5, height: 8, borderRadius: 1 }} aria-label="Надёжность пароля" />
+              <LinearProgress
+                variant="determinate"
+                value={[10, 30, 55, 75, 100][strength]}
+                sx={{ mt: -0.5, height: 8, borderRadius: 1 }}
+                aria-label={t("auth:register.passwordStrength")}
+              />
             )}
             {!!feedback && <Typography fontSize={13} color="text.secondary">{feedback}</Typography>}
-            {capsPass && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}
-            {pwned && <Typography color="warning.main" fontSize={13}>Этот пароль встречался в утечках — лучше выберите другой.</Typography>}
+            {capsPass && (
+              <Typography color="warning.main" fontSize={13}>
+                {t("auth:messages.capsLock")}
+              </Typography>
+            )}
+            {pwned && (
+              <Typography color="warning.main" fontSize={13}>
+                {t("auth:reset.pwnedWarning")}
+              </Typography>
+            )}
             <TextField
-              label="Повторите пароль"
+              label={t("auth:fields.confirmPassword")}
               name="confirm"
               type={showConfirm ? "text" : "password"}
               value={confirm}
@@ -185,9 +210,9 @@ export default function ResetPassword() {
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <Tooltip title="Удерживайте, чтобы показать пароль">
+                    <Tooltip title={t("auth:actions.holdReveal")}>
                       <IconButton
-                        aria-label="Показать пароль"
+                        aria-label={t("auth:actions.showPassword")}
                         onMouseDown={() => setShowConfirm(true)}
                         onMouseUp={() => setShowConfirm(false)}
                         onMouseLeave={() => setShowConfirm(false)}
@@ -202,12 +227,20 @@ export default function ResetPassword() {
                 )
               }}
             />
-            {capsConfirm && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}
+            {capsConfirm && (
+              <Typography color="warning.main" fontSize={13}>
+                {t("auth:messages.capsLock")}
+              </Typography>
+            )}
             <Box sx={{ minHeight: 22, textAlign: "center" }} aria-live="assertive">
               {resetErrorMessage && <Typography color="error" fontSize={15}>{resetErrorMessage}</Typography>}
             </Box>
-            <Button type="submit" variant="contained" size="large" fullWidth disabled={!canSubmit || resetPending}>{resetPending ? "Сохраняю…" : "Сохранить пароль"}</Button>
-            <Button component={Link} to="/forgot-password" variant="text">Не пришло письмо?</Button>
+            <Button type="submit" variant="contained" size="large" fullWidth disabled={!canSubmit || resetPending}>
+              {resetPending ? t("auth:reset.saving") : t("auth:reset.saveButton")}
+            </Button>
+            <Button component={Link} to="/forgot-password" variant="text">
+              {t("auth:reset.linkHelp")}
+            </Button>
           </Stack>
         </form>
       </Paper>

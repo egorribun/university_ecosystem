@@ -1,0 +1,37 @@
+{
+  "greeting": {
+    "morning": "Доброе утро",
+    "afternoon": "Добрый день",
+    "evening": "Добрый вечер",
+    "night": "Доброй ночи"
+  },
+  "todaySchedule": "Сегодня в расписании",
+  "aria": {
+    "openFullSchedule": "Перейти к полному расписанию",
+    "viewAllNews": "Смотреть все новости",
+    "newsList": "Список новостей",
+    "newsItem": "Новость: {{title}}",
+    "viewAllEvents": "Смотреть все события",
+    "eventsToday": "События на сегодня",
+    "eventsWeek": "События на неделю",
+    "eventItem": "Событие: {{title}}"
+  },
+  "fullSchedule": "Полное расписание",
+  "now": "Сейчас",
+  "next": "Далее",
+  "noClasses": "На сегодня занятий нет",
+  "lessonMeta": "{{teacher}} · ауд. {{room}}",
+  "news": {
+    "heading": "Новости",
+    "empty": "Новостей пока нет"
+  },
+  "events": {
+    "heading": "События",
+    "empty": "Событий не найдено"
+  },
+  "viewAll": "Смотреть все",
+  "scope": {
+    "today": "Сегодня",
+    "week": "Неделя"
+  }
+}

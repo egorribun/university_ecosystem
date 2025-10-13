@@ -5,6 +5,7 @@ import ArticleIcon from "@mui/icons-material/Article";
 import EventNoteIcon from "@mui/icons-material/EventNote";
 import TodayIcon from "@mui/icons-material/Today";
 import PersonIcon from "@mui/icons-material/Person";
+import { useTranslation } from "react-i18next";
 
 function getScrollRoot(): HTMLElement {
   const cands: (Element | null | Document | HTMLElement)[] = [
@@ -60,6 +61,7 @@ function samePath(a: string, b: string) {
 
 export default function MobileBottomNav() {
   const { pathname } = useLocation();
+  const { t } = useTranslation(["navigation"]);
 
   useLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
@@ -71,13 +73,13 @@ export default function MobileBottomNav() {
 
   const items = useMemo(
     () => [
-      { to: "/dashboard", label: "Главная", icon: <DashboardIcon /> },
-      { to: "/news", label: "Новости", icon: <ArticleIcon /> },
-      { to: "/events", label: "События", icon: <EventNoteIcon /> },
-      { to: "/schedule", label: "Расписание", icon: <TodayIcon /> },
-      { to: "/profile", label: "Профиль", icon: <PersonIcon /> }
+      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: <DashboardIcon /> },
+      { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon /> },
+      { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon /> },
+      { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon /> },
+      { to: "/profile", label: t("navigation:menu.profile"), icon: <PersonIcon /> }
     ],
-    []
+    [t]
   );
 
   const hideOn = ["/login", "/register", "/forgot-password", "/reset-password"];
@@ -86,7 +88,7 @@ export default function MobileBottomNav() {
 
   return (
     <>
-      <nav className="bottom-nav glass" role="navigation" aria-label="Основная навигация">
+      <nav className="bottom-nav glass" role="navigation" aria-label={t("navigation:aria.mainNavigation")}>
         {items.map((it) => (
           <NavLink
             key={it.to}
