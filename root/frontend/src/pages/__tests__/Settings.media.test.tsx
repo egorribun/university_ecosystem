@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
-import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
+import { CssVarsProvider } from "@mui/material/styles";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import api from "@/api/client";
@@ -8,6 +8,8 @@ import { createQueryClient } from "@/app/queryClient";
 import { AuthContext } from "@/contexts/AuthContext";
 import Settings from "@/pages/Settings";
 import type { User } from "@/types/User";
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import theme from "@/theme";
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ unreadCount: 0 }),
@@ -70,20 +72,22 @@ const renderSettings = () => {
   const utils = render(
     <MemoryRouter initialEntries={["/settings"]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider>
-          <AuthContext.Provider
-            value={{
-              user: baseUser,
-              setUser: mockSetUser,
-              logout: mockLogout,
-              login: vi.fn(),
-              refresh: vi.fn(),
-              isAuth: true,
-              loading: false,
-            }}
-          >
-            <Settings />
-          </AuthContext.Provider>
+        <CssVarsProvider theme={theme}>
+          <LanguageProvider>
+            <AuthContext.Provider
+              value={{
+                user: baseUser,
+                setUser: mockSetUser,
+                logout: mockLogout,
+                login: vi.fn(),
+                refresh: vi.fn(),
+                isAuth: true,
+                loading: false,
+              }}
+            >
+              <Settings />
+            </AuthContext.Provider>
+          </LanguageProvider>
         </CssVarsProvider>
       </QueryClientProvider>
     </MemoryRouter>,

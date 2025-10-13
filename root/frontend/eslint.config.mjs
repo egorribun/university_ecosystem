@@ -5,6 +5,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import prettier from "eslint-config-prettier";
 import security from "eslint-plugin-security";
+import i18nextPlugin from "eslint-plugin-i18next";
 
 const securityRecommended = security.configs.recommended;
 const securityRules = Object.fromEntries(
@@ -52,7 +53,8 @@ export default tseslint.config(
       }
     },
     plugins: {
-      "react-hooks": reactHooks
+      "react-hooks": reactHooks,
+      i18next: i18nextPlugin
     },
     settings: {
       react: { version: "detect" }
@@ -63,6 +65,61 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "warn",
       "react/prop-types": "off",
       "react/react-in-jsx-scope": "off"
+    }
+  },
+  {
+    files: [
+      "src/App.tsx",
+      "src/components/Footer.tsx",
+      "src/components/MobileBottomNav.tsx",
+      "src/components/Navbar.tsx",
+      "src/pages/Dashboard.tsx",
+      "src/pages/Login.tsx",
+      "src/pages/Register.tsx",
+      "src/pages/ForgotPassword.tsx",
+      "src/pages/ResetPassword.tsx"
+    ],
+    rules: {
+      "i18next/no-literal-string": [
+        "warn",
+        {
+          mode: "jsx-text-only",
+          "jsx-components": {
+            include: [],
+            exclude: ["Trans"]
+          },
+          "jsx-attributes": {
+            include: [],
+            exclude: [
+              "className",
+              "styleName",
+              "style",
+              "type",
+              "key",
+              "id",
+              "width",
+              "height",
+              "data-testid",
+              "data-track",
+              "data-cy",
+              "aria-label",
+              "aria-describedby",
+              "aria-labelledby",
+              "role",
+              "to",
+              "href",
+              "target",
+              "rel"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    files: ["src/**/*.{test,spec}.{ts,tsx}", "src/tests/**/*.{ts,tsx}"],
+    rules: {
+      "i18next/no-literal-string": "off"
     }
   },
   prettier

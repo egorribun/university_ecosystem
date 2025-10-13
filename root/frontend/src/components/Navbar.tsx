@@ -6,6 +6,7 @@ import guuLogo from "../assets/guu_logo.png";
 import SmartImage from "@/components/SmartImage";
 import NotificationsBell from "@/components/NotificationsBell";
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
+import { useTranslation } from "react-i18next";
 
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL;
 
@@ -143,6 +144,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuth, loading } = useAuth();
+  const { t } = useTranslation(["navigation"]);
 
   const [mobileMenu, setMobileMenu] = useState(false);
 
@@ -263,16 +265,23 @@ const Navbar = () => {
 
   const menuLinks = useMemo(() => {
     const base = [
-      { to: "/dashboard", label: "Главная" },
-      { to: "/news", label: "Новости" },
-      { to: "/schedule", label: "Расписание" },
-      { to: "/events", label: "Мероприятия" },
-      { to: "/activity", label: "Активность" },
-      { to: "/map", label: "Карта" }
+      { to: "/dashboard", label: t("navigation:menu.dashboard") },
+      { to: "/news", label: t("navigation:menu.news") },
+      { to: "/schedule", label: t("navigation:menu.schedule") },
+      { to: "/events", label: t("navigation:menu.events") },
+      { to: "/activity", label: t("navigation:menu.activity") },
+      { to: "/map", label: t("navigation:menu.map") },
     ];
-    if (user?.role === "admin") base.push({ to: "/admin/users", label: "Пользователи" });
+    if (user?.role === "admin") {
+      base.push({ to: "/admin/users", label: t("navigation:menu.users") });
+    }
     return base;
-  }, [user?.role]);
+  }, [t, user?.role]);
+
+  const profileAlt = user?.full_name
+    ? t("navigation:aria.profileAvatarNamed", { name: user.full_name })
+    : t("navigation:aria.profileAvatar");
+  const profileTitle = t("navigation:aria.openProfile");
 
   const isActive = (to: string) => {
     if (to === "/dashboard" && location.pathname === "/") return true;
@@ -323,7 +332,7 @@ const Navbar = () => {
         >
           <Link
             to="/dashboard"
-            aria-label="На главную"
+            aria-label={t("navigation:aria.homeLink")}
             className="brand"
             onPointerDown={markIfFromBottom}
             onClick={(e) => {
@@ -338,7 +347,7 @@ const Navbar = () => {
             <div style={{ width: `${logoWrapSize}px`, height: `${logoWrapSize}px`, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#fff", boxShadow: "0 0 8px rgba(0,0,0,0.13)" }}>
               <img
                 src={guuLogo}
-                alt="ГУУ"
+                alt={t("navigation:brandAlt")}
                 width={logoImgSize}
                 height={logoImgSize}
                 style={{ objectFit: "contain" }}
@@ -347,7 +356,7 @@ const Navbar = () => {
               />
             </div>
             <span style={{ color: "#fff", fontWeight: 800, fontSize: titleFont, whiteSpace: "nowrap", letterSpacing: ".2px" }}>
-              Экосистема ГУУ
+              {t("navigation:brandName")}
             </span>
           </Link>
 
@@ -359,8 +368,8 @@ const Navbar = () => {
                   srcRaw={hasAvatar ? avatarSource : avatarFallback}
                   cacheV={hasAvatar ? avatarCacheV : undefined}
                   fallback={avatarFallback}
-                  alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
-                  title="Открыть профиль"
+                  alt={profileAlt}
+                  title={profileTitle}
                   style={{
                     width: avatarSize,
                     height: avatarSize,
@@ -387,7 +396,7 @@ const Navbar = () => {
                 className="burger-btn"
                 style={{ background: "none", border: "none", padding: 0, width: burgerBtnSize, height: burgerBtnSize, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", borderRadius: 10 }}
                 onClick={() => setMobileMenu(v => !v)}
-                aria-label={mobileMenu ? "Закрыть меню" : "Открыть меню"}
+                aria-label={mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")}
                 aria-expanded={mobileMenu}
                 aria-controls="mobile-drawer"
                 ref={burgerBtnRef}
@@ -437,8 +446,8 @@ const Navbar = () => {
                 srcRaw={hasAvatar ? avatarSource : avatarFallback}
                 cacheV={hasAvatar ? avatarCacheV : undefined}
                 fallback={avatarFallback}
-                alt={user.full_name ? `Аватар пользователя ${user.full_name}` : "Аватар профиля"}
-                title="Открыть профиль"
+                alt={profileAlt}
+                title={profileTitle}
                 style={{
                   width: "36px",
                   height: "36px",
@@ -454,8 +463,8 @@ const Navbar = () => {
               <button
                 type="button"
                 onClick={() => go("/profile")}
-                aria-label="Открыть профиль"
-                title="Открыть профиль"
+                aria-label={profileTitle}
+                title={profileTitle}
                 style={{
                   background: "none",
                   border: "none",
@@ -477,8 +486,8 @@ const Navbar = () => {
                 type="button"
                 className="menu-btn-settings"
                 onClick={() => go("/settings")}
-                aria-label="Настройки"
-                title="Настройки"
+                aria-label={t("navigation:menu.settings")}
+                title={t("navigation:menu.settings")}
               >
                 <svg
                   width="20"
@@ -512,7 +521,7 @@ const Navbar = () => {
           onClick={() => setMobileMenu(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Мобильное меню"
+          aria-label={t("navigation:aria.mobileMenu")}
         >
           <nav
             ref={drawerNavRef}
@@ -523,7 +532,7 @@ const Navbar = () => {
               <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", boxShadow: "0 0 6px rgba(0,0,0,0.10)" }}>
                 <img
                   src={guuLogo}
-                  alt="ГУУ"
+                  alt={t("navigation:brandAlt")}
                   width={24}
                   height={24}
                   style={{ objectFit: "contain" }}
@@ -532,13 +541,13 @@ const Navbar = () => {
                 />
               </div>
               <span style={{ color: navTextColor, fontWeight: 800, fontSize: "clamp(15px, 4.5vw, 18px)", whiteSpace: "nowrap" }}>
-                Экосистема ГУУ
+                {t("navigation:brandName")}
               </span>
             </div>
             <button
               type="button"
               style={{ position: "absolute", top: 9, right: 10, background: "none", border: "none", fontSize: 27, color: navTextColor, cursor: "pointer" }}
-              aria-label="Закрыть"
+              aria-label={t("navigation:aria.close")}
               onClick={() => setMobileMenu(false)}
               ref={closeButtonRef}
             >
@@ -573,10 +582,10 @@ const Navbar = () => {
                     className="menu-link settings"
                     onPointerDown={markIfFromBottom}
                     onClick={e => { e.stopPropagation(); setMobileMenu(false); go("/settings"); }}
-                    aria-label="Настройки"
-                    title="Настройки"
+                    aria-label={t("navigation:menu.settings")}
+                    title={t("navigation:menu.settings")}
                   >
-                    Настройки
+                    {t("navigation:menu.settings")}
                   </button>
                 </li>
               )}

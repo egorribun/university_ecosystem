@@ -20,6 +20,7 @@ async function bootstrap() {
   const ThemeMod = await import("./theme")
   const { default: theme } = ThemeMod
   await import("./assets/themes.css")
+  await import("./i18n/config")
   await import("dayjs/locale/ru")
   const SWMod = await import("./push/register-sw")
   const { registerServiceWorker } = SWMod

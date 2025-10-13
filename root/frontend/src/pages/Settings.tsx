@@ -9,12 +9,14 @@ import {
 } from "react";
 import { isAxiosError } from "axios";
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
+import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePushPreferences } from "@/hooks/usePushPreferences";
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
 import api from "../api/client";
 import type { User } from "@/types/User";
+import { useTranslation } from "react-i18next";
 import {
   Box,
   Paper,
@@ -217,6 +219,8 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
+  const { language, setLanguage, available: availableLanguages } = useLanguage();
+  const { t: tSettings } = useTranslation(["settings"]);
 
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
@@ -650,6 +654,31 @@ export default function Settings() {
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
               </RadioGroup>
+            </Box>
+
+            <Box>
+              <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
+                {tSettings("language.title")}
+              </Typography>
+              <RadioGroup
+                row
+                value={language}
+                onChange={(_, value) => setLanguage(value as SupportedLanguage)}
+                aria-label={tSettings("language.aria")}
+              >
+                {availableLanguages.map(code => (
+                  <FormControlLabel
+                    key={code}
+                    value={code}
+                    control={<Radio />}
+                    label={tSettings(`language.options.${code}`)}
+                    sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
+                  />
+                ))}
+              </RadioGroup>
+              <Typography variant="body2" sx={{ mt: 0.5, color: "var(--page-text)" }}>
+                {tSettings("language.description")}
+              </Typography>
             </Box>
 
             <Divider />

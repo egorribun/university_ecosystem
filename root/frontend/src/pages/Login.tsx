@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Box, Paper, Typography, TextField, Button, Stack, InputAdornment, IconButton, useMediaQuery, CircularProgress, Checkbox, FormControlLabel, Chip, Tooltip } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import { useTranslation } from "react-i18next";
 
 function levenshtein(a: string, b: string) {
   const m = a.length, n = b.length;
@@ -40,6 +41,7 @@ function suggestEmailDomain(email: string) {
 }
 
 const Login = () => {
+  const { t } = useTranslation(["auth"]);
   const savedEmail = useRef<string>(localStorage.getItem("auth:lastEmail") || "");
   const [remember, setRemember] = useState<boolean>(() => localStorage.getItem("auth:remember") === "1");
   const [caps, setCaps] = useState(false);
@@ -91,13 +93,13 @@ const Login = () => {
     const passwordValue = String(formData.get("password") ?? "");
 
     if (!emailRe.test(username)) {
-      setSubmitError("Введите корректный email");
+      setSubmitError(t("auth:messages.invalidEmail"));
       emailRef.current?.focus();
       return;
     }
 
     if (!passwordValue) {
-      setSubmitError("Введите пароль");
+      setSubmitError(t("auth:messages.passwordRequired"));
       passwordRef.current?.focus();
       return;
     }
@@ -114,7 +116,7 @@ const Login = () => {
       localStorage.setItem("auth:remember", remember ? "1" : "0");
       navigate("/dashboard");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Неверный email или пароль";
+      const message = err instanceof Error && err.message ? err.message : t("auth:login.error");
       setSubmitError(message);
     } finally {
       setSubmitting(false);
@@ -125,10 +127,12 @@ const Login = () => {
     <Box sx={{ minHeight: "100dvh", bgcolor: "var(--page-bg)", color: "var(--page-text)", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
       <Paper elevation={7} sx={{ width: "100%", maxWidth: 400, p: { xs: 2, sm: 4 }, borderRadius: { xs: 3, sm: 5 }, boxShadow: 8, bgcolor: "var(--card-bg)", transition: "background 0.22s, box-shadow 0.22s" }}>
         <form noValidate autoComplete="on" onSubmit={handleSubmit}>
-          <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>Вход</Typography>
+          <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>
+            {t("auth:login.title")}
+          </Typography>
           <Stack spacing={2}>
             <TextField
-              label="Email"
+              label={t("auth:fields.email")}
               name="username"
               type="email"
               fullWidth
@@ -141,17 +145,23 @@ const Login = () => {
               autoFocus
               disabled={submitting}
               error={!emailValid}
-              helperText={!emailValid ? "Неверный формат email" : " "}
+              helperText={!emailValid ? t("auth:messages.invalidFormat") : " "}
               inputProps={{ inputMode: "email", autoCapitalize: "none", autoCorrect: "off", spellCheck: "false" }}
               required
             />
             {emailSuggestion && (
               <Box sx={{ mt: -1.5 }}>
-                <Chip size="small" variant="outlined" color="primary" label={`Исправить на ${emailSuggestion}`} onClick={applySuggestion} />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  label={t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
+                  onClick={applySuggestion}
+                />
               </Box>
             )}
             <TextField
-              label="Пароль"
+              label={t("auth:fields.password")}
               name="password"
               type={showPassword ? "text" : "password"}
               fullWidth
@@ -164,9 +174,9 @@ const Login = () => {
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <Tooltip title="Удерживайте, чтобы показать пароль">
+                    <Tooltip title={t("auth:actions.holdReveal")}>
                       <IconButton
-                        aria-label="Показать пароль"
+                        aria-label={t("auth:actions.showPassword")}
                         onMouseDown={() => setShowPassword(true)}
                         onMouseUp={() => setShowPassword(false)}
                         onMouseLeave={() => setShowPassword(false)}
@@ -183,18 +193,33 @@ const Login = () => {
               }}
               required
             />
-            <Box sx={{ minHeight: 20, textAlign: "left" }}>{caps && <Typography color="warning.main" fontSize={13}>Включён Caps Lock</Typography>}</Box>
+            <Box sx={{ minHeight: 20, textAlign: "left" }}>
+              {caps && (
+                <Typography color="warning.main" fontSize={13}>
+                  {t("auth:messages.capsLock")}
+                </Typography>
+              )}
+            </Box>
             <Box sx={{ minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }} aria-live="assertive">{submitError && <Typography color="error" fontSize={15}>{submitError}</Typography>}</Box>
-            <FormControlLabel control={<Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={submitting} />} label="Запомнить email" sx={{ mt: -0.5 }} />
+            <FormControlLabel
+              control={<Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={submitting} />}
+              label={t("auth:actions.rememberEmail")}
+              sx={{ mt: -0.5 }}
+            />
             <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 1, fontWeight: 600, borderRadius: 2, fontSize: 17, py: 1.2, bgcolor: "var(--nav-link)", color: "#fff", touchAction: "manipulation", "&:hover": { bgcolor: "var(--nav-link-hover)" } }}>
-              {submitting ? <CircularProgress size={26} color="inherit" /> : "Войти"}
+              {submitting ? <CircularProgress size={26} color="inherit" /> : t("auth:actions.signIn")}
             </Button>
           </Stack>
           <Box mt={1.5} textAlign="center" fontSize={15}>
-            <Link to="/forgot-password" style={{ color: "var(--nav-link)", textDecoration: "underline" }}>Забыли пароль?</Link>
+            <Link to="/forgot-password" style={{ color: "var(--nav-link)", textDecoration: "underline" }}>
+              {t("auth:login.forgot")}
+            </Link>
           </Box>
           <Box mt={2} textAlign="center" fontSize={15}>
-            Нет аккаунта? <Link to="/register" style={{ color: "var(--nav-link)", textDecoration: "underline" }}>Зарегистрироваться</Link>
+            {t("auth:login.noAccount")}{" "}
+            <Link to="/register" style={{ color: "var(--nav-link)", textDecoration: "underline" }}>
+              {t("auth:login.ctaRegister")}
+            </Link>
           </Box>
         </form>
       </Paper>
