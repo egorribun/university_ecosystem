@@ -176,7 +176,9 @@ class EventCreate(BaseModel):
     @model_validator(mode="after")
     def _validate_time_order(self):  # type: ignore[override]
         if self.ends_at <= self.starts_at:
-            raise ValueError("Время окончания должно быть позже времени начала мероприятия")
+            raise ValueError(
+                "Время окончания должно быть позже времени начала мероприятия"
+            )
         return self
 
 
