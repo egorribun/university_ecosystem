@@ -153,10 +153,13 @@ async def update_event(
         raise HTTPException(status_code=404, detail="Событие не найдено")
     if user.role not in ("admin", "teacher") and q.created_by != user.id:
         raise HTTPException(status_code=403, detail="forbidden")
+    old_image_url = q.image_url
     try:
         q = await crud.update_event(db, q, data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if old_image_url and q.image_url != old_image_url:
+        await delete_static_file(old_image_url)
     files = (
         (
             await db.execute(
@@ -190,6 +193,7 @@ async def delete_event(
         raise HTTPException(status_code=404, detail="Событие не найдено")
     if user.role not in ("admin", "teacher") and q.created_by != user.id:
         raise HTTPException(status_code=403, detail="forbidden")
+    event_image_url = q.image_url
     file_urls = [
         row[0]
         for row in (
@@ -206,6 +210,8 @@ async def delete_event(
     )
     await db.delete(q)
     await db.commit()
+    if event_image_url:
+        await delete_static_file(event_image_url)
     for url in file_urls:
         await delete_static_file(url)
     return {"ok": True}

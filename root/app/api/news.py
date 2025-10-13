@@ -22,6 +22,7 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
 from app.services.notifications import notify_about_news
+from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +128,13 @@ async def update_news(
         raise HTTPException(status_code=404, detail="Новость не найдена")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
+    old_image_url = news.image_url
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(news, field, value)
     await db.commit()
     await db.refresh(news)
+    if old_image_url and news.image_url != old_image_url:
+        await delete_static_file(old_image_url)
     cache = get_cache()
     await cache.invalidate(_NEWS_LIST_CACHE_KEY, _news_item_cache_key(id))
     return news
@@ -147,8 +151,11 @@ async def delete_news(
         raise HTTPException(status_code=404, detail="Новость не найдена")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
+    image_url = news.image_url
     await db.delete(news)
     await db.commit()
+    if image_url:
+        await delete_static_file(image_url)
     cache = get_cache()
     await cache.invalidate(_NEWS_LIST_CACHE_KEY, _news_item_cache_key(id))
     return {"ok": True}
