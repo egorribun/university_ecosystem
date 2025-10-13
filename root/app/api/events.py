@@ -10,7 +10,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -20,7 +20,7 @@ from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
 from app.services.notifications import notify_about_event
-from app.utils.files import save_attachment
+from app.utils.files import delete_static_file, save_attachment
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +190,24 @@ async def delete_event(
         raise HTTPException(status_code=404, detail="Событие не найдено")
     if user.role not in ("admin", "teacher") and q.created_by != user.id:
         raise HTTPException(status_code=403, detail="forbidden")
+    file_urls = [
+        row[0]
+        for row in (
+            await db.execute(
+                select(models.EventFile.file_url).where(
+                    models.EventFile.event_id == event_id
+                )
+            )
+        ).all()
+        if row[0]
+    ]
+    await db.execute(
+        delete(models.EventFile).where(models.EventFile.event_id == event_id)
+    )
     await db.delete(q)
     await db.commit()
+    for url in file_urls:
+        await delete_static_file(url)
     return {"ok": True}
 
 
@@ -254,8 +270,10 @@ async def delete_event_file(
     event = await db.get(models.Event, ef.event_id)
     if user.role not in ("admin", "teacher") and event.created_by != user.id:
         raise HTTPException(status_code=403, detail="forbidden")
+    file_url = ef.file_url
     await db.delete(ef)
     await db.commit()
+    await delete_static_file(file_url)
     return {"ok": True}
 
 

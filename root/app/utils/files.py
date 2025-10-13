@@ -1,13 +1,17 @@
 import asyncio
+import logging
 import mimetypes
 import re
 import secrets
 from pathlib import Path
 from typing import Final
+from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
@@ -139,3 +143,50 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
     path = target_dir / name
     await asyncio.to_thread(path.write_bytes, data)
     return f"/static/{sanitized_subdir}/{name}"
+
+
+def _resolve_static_file_path(file_url: str) -> Path | None:
+    if not file_url:
+        return None
+
+    parsed = urlparse(file_url)
+    raw_path = unquote(parsed.path or "")
+    if not raw_path:
+        return None
+
+    trimmed = raw_path.lstrip("/")
+    if not trimmed:
+        return None
+
+    parts = Path(trimmed).parts
+    if not parts or parts[0] != "static":
+        return None
+
+    relative = Path(*parts[1:])
+    if not relative.parts:
+        return None
+
+    base = settings.static_dir_path
+    base_resolved = base.resolve()
+    target = (base_resolved / relative).resolve()
+    try:
+        target.relative_to(base_resolved)
+    except ValueError:
+        return None
+    return target
+
+
+def _unlink_ignore_missing(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError:
+        logger.warning("Failed to remove file at %s", path, exc_info=True)
+
+
+async def delete_static_file(file_url: str) -> None:
+    path = _resolve_static_file_path(file_url)
+    if path is None:
+        return
+    await asyncio.to_thread(_unlink_ignore_missing, path)
