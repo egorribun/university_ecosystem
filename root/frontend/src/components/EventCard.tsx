@@ -12,6 +12,7 @@ import {
 import { useNavigate } from "react-router-dom"
 import { isAxiosError } from "axios"
 import api from "../api/client"
+import type { Event } from "@/types/Event"
 import {
   Typography, Button, Box, Stack, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -38,19 +39,19 @@ dayjs.extend(timezone)
 type EventCardProps = {
   id: number
   title: string
-  description: string
-  event_type?: string
-  location: string
+  description: string | null
+  event_type?: string | null
+  location: string | null
   starts_at: string
   ends_at: string
   created_by: number
   participant_count: number
-  files: any[]
+  files: Event["files"]
   is_active: boolean
-  is_registered?: boolean
-  my_qr_code?: string
-  speaker?: string
-  image_url?: string
+  is_registered?: boolean | null
+  my_qr_code?: string | null
+  speaker?: string | null
+  image_url?: string | null
   onChange?: () => void
   maxWidth?: number | string
 }
@@ -129,7 +130,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     "registered" | "unregistered" | null
   > => {
     try {
-      const res = await api.get(`/events/${id}`)
+      const res = await api.get<Event>(`/events/${id}`)
       const event = res.data
       const nextRegistered = Boolean(event?.is_registered)
       if (typeof event?.participant_count === "number") {
@@ -257,7 +258,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     if (e) e.stopPropagation()
     setLoading(true)
     try {
-      const res = await api.post("/events/attendance", { event_id: id })
+      const res = await api.post<{ qr_code: string }>("/events/attendance", { event_id: id })
       const code: string = res.data.qr_code
       setRegistered(true)
       setQr(code)
@@ -345,7 +346,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         setImageLoading(true)
         const data = new FormData()
         data.append("file", newImage)
-        const uploadRes = await api.post(`/events/upload_image`, data, {
+        const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data, {
           headers: { "Content-Type": "multipart/form-data" }
         })
         imgUrl = uploadRes.data.url

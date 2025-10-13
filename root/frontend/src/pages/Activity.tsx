@@ -69,6 +69,30 @@ type ParticipationStats = {
   recent: Array<{ title: string; date: string; role?: string }>
 }
 
+type AttendanceSummaryResponse = {
+  percent?: unknown
+  present?: unknown
+  total?: unknown
+  trend?: unknown
+  window_label?: string
+  recent?: unknown
+}
+
+type GradeSummaryResponse = {
+  average?: unknown
+  scale?: unknown
+  trend?: unknown
+  recent?: unknown
+}
+
+type ParticipationSummaryResponse = {
+  events?: unknown
+  hours?: unknown
+  groups?: unknown
+  trend?: unknown
+  recent?: unknown
+}
+
 const MotionBox = motion(Box)
 const MotionCard = motion(Card)
 const MotionListItem = motion(ListItem)
@@ -195,9 +219,9 @@ export default function Activity() {
     setLoading(true)
     try {
       const [a, g, p] = await Promise.allSettled([
-        axios.get("/stats/attendance", { params: { period } }),
-        axios.get("/stats/grades", { params: { period } }),
-        axios.get("/stats/participation", { params: { period } }),
+        axios.get<AttendanceSummaryResponse>("/stats/attendance", { params: { period } }),
+        axios.get<GradeSummaryResponse>("/stats/grades", { params: { period } }),
+        axios.get<ParticipationSummaryResponse>("/stats/participation", { params: { period } }),
       ])
       if (a.status === "fulfilled" && a.value?.data) {
         const d = a.value.data

@@ -134,7 +134,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           const data = new FormData()
           data.append("file", newImage)
           // единый эндпоинт загрузки
-          const res = await api.post(`/news/upload_image`, data, {
+          const res = await api.post<{ url: string }>(`/news/upload_image`, data, {
             headers: { "Content-Type": "multipart/form-data" }
           })
           imgUrl = res.data.url
