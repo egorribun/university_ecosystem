@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Iterable, Mapping
 
+import uvicorn
 from fastapi import FastAPI
 from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
@@ -31,7 +32,6 @@ from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-import uvicorn
 
 try:
     from prometheus_client import (
@@ -49,6 +49,7 @@ except Exception:  # pragma: no cover - optional dependency guard
 
     def generate_latest(_: object) -> bytes:  # type: ignore[misc]
         raise RuntimeError("prometheus-client is required for worker metrics")
+
 
 try:
     from sentry_sdk import init as sentry_init
@@ -388,16 +389,17 @@ class WorkerMetrics:
 
     @property
     def status(self) -> str:
-        if (
-            self._last_failure is not None
-            and (self._last_success is None or self._last_failure > self._last_success)
+        if self._last_failure is not None and (
+            self._last_success is None or self._last_failure > self._last_success
         ):
             return "degraded"
         return "ok"
 
 
 def create_worker_metrics(name: str) -> WorkerMetrics:
-    if CollectorRegistry is None or Counter is None or Gauge is None:  # pragma: no cover - safety
+    if (
+        CollectorRegistry is None or Counter is None or Gauge is None
+    ):  # pragma: no cover - safety
         raise RuntimeError("prometheus-client is required to create worker metrics")
 
     metric_name = _sanitize_metric_name(name)
@@ -507,4 +509,6 @@ def configure_worker_observability(*, worker_name: str | None = None) -> None:
 
     _configure_logging()
     if worker_name:
-        logging.getLogger(__name__).info("Worker %s observability configured", worker_name)
+        logging.getLogger(__name__).info(
+            "Worker %s observability configured", worker_name
+        )
