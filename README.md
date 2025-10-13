@@ -54,11 +54,23 @@
 | `SMTP_SECURITY` | `ssl` / `starttls` / `none` | Тип защиты SMTP-сессии. |
 | `SMTP_STARTTLS` | `true` | Принудительное включение STARTTLS (для старых конфигураций). |
 | `MAIL_FROM` | `no-reply@example.com` | Отправитель уведомлений по email. |
+| `RATE_LIMIT_STORAGE_URI` | `redis://redis:6379/0` | Redis-подключение для лимитера запросов. В production `memory://` запрещён, требуется живой Redis. |
+| `RATE_LIMIT_ENABLED` | `true` | Управляет включением middleware лимитов; для тестов можно временно отключить. |
+| `CACHE_ENABLED` | `false` | Активирует Redis-кэш ответов API. |
+| `CACHE_REDIS_URL` | `redis://redis:6379/0` | Необязательный override Redis для кэша; по умолчанию используется `RATE_LIMIT_STORAGE_URI`. |
+| `CACHE_DEFAULT_TTL_SECONDS` | `300` | Время жизни записей в кэше по умолчанию. |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | — | Ключи для Web Push VAPID. |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | Контакт для push-подписок. |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | — | Интеграция с Sentry (опционально). |
 | `ENABLE_OTEL` / `OTEL_EXPORTER_OTLP_ENDPOINT` | `true` / `https://otel.example.com` | Экспорт метрик и трасс в OpenTelemetry. |
 | `SECURITY_CSP_REPORT_URI` | `https://csp.example.com/report` | Добавляет `report-uri` к CSP для сбора отчётов. |
+
+### Redis и миграция лимитов
+
+- 🧠 Rate limiting и кэш теперь требуют Redis. В development можно оставить `RATE_LIMIT_STORAGE_URI=memory://` только если `environment` — `development`/`test` и лимитер выключен.
+- 🚀 Для production обязательно поднимите Redis (например, `docker-compose up redis` или управляемый сервис) и укажите `RATE_LIMIT_STORAGE_URI=redis://host:6379/0`. Backend завершит старт с ошибкой, если Redis недоступен.
+- ♻️ Кэш (`CACHE_ENABLED=true`) по умолчанию использует тот же Redis. Оставьте `CACHE_REDIS_URL` пустым, чтобы переиспользовать `RATE_LIMIT_STORAGE_URI`.
+- 🔄 Миграция с `memory://`: задеплойте Redis, обновите переменные окружения (`RATE_LIMIT_STORAGE_URI`, при необходимости `CACHE_REDIS_URL`) и перезапустите backend. Без Redis запуск теперь прерывается, что облегчает диагностику.
 
 > Списки значений указываются через запятую. Для переменных, связанных с безопасностью, значения по умолчанию подходят для production; в development можно переопределить их в `.env.local`.
 >

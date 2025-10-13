@@ -149,6 +149,12 @@ def set_rate_limit_client_factory(factory: Optional[_RedisFactory]) -> None:
         _redis_factory = factory
 
 
+def create_rate_limit_client(url: str) -> Redis:
+    """Return a Redis client for rate limiting (test fixtures may override it)."""
+
+    return _redis_factory(url)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,

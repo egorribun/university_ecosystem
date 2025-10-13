@@ -143,6 +143,7 @@ def app():
 @pytest.fixture
 async def async_client(
     monkeypatch: pytest.MonkeyPatch,
+    _rate_limit_redis_client: fakeredis.aioredis.FakeRedis,
 ) -> AsyncIterator[httpx.AsyncClient]:
     async def _start_notifications_scheduler(
         *args, **kwargs
@@ -185,7 +186,7 @@ async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
     settings.cache_enabled = True
     cache_module.set_cache_backend(None)
     cache = _TestingRedisCache(
-        url=settings.cache_redis_url,
+        url=settings.cache_redis_url_effective or "redis://127.0.0.1:6379/0",
         default_ttl=settings.cache_default_ttl_seconds,
     )
     cache_module.set_cache_backend(cache)

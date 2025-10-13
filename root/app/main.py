@@ -17,13 +17,19 @@ from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import configure_observability, shutdown_observability
-from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
+from app.core.rate_limit import (
+    RateLimitMiddleware,
+    create_rate_limit_client,
+    parse_rate_limit,
+)
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import shutdown_cache
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -34,6 +40,7 @@ except Exception:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await wait_db(max_attempts=10, delay=0.5)
+    await _ensure_required_redis()
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -61,6 +68,73 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+
+
+async def _ensure_required_redis() -> None:
+    if not (settings.rate_limit_enabled or settings.cache_enabled):
+        return
+
+    redis_urls: set[str] = set()
+    rate_limit_urls: set[str] = set()
+
+    if settings.rate_limit_enabled:
+        rl_url = settings.rate_limit_storage_uri.strip()
+        if rl_url:
+            redis_urls.add(rl_url)
+            rate_limit_urls.add(rl_url)
+
+    if settings.cache_enabled:
+        cache_url = settings.cache_redis_url_effective.strip()
+        if cache_url:
+            redis_urls.add(cache_url)
+
+    urls_to_check = {url for url in redis_urls if url}
+    if not urls_to_check:
+        return
+
+    is_dev_env = settings.is_development
+    non_redis_urls = {
+        url
+        for url in urls_to_check
+        if not url.lower().startswith(("redis://", "rediss://"))
+    }
+
+    if non_redis_urls and not is_dev_env:
+        formatted = ", ".join(sorted(non_redis_urls))
+        raise RuntimeError(
+            "Redis is required for throttling or caching, but non-Redis URIs were "
+            f"provided: {formatted}."
+        )
+
+    urls_to_check -= non_redis_urls
+    if not urls_to_check:
+        return
+
+    for url in urls_to_check:
+        if url in rate_limit_urls:
+            client = create_rate_limit_client(url)
+            should_close = not client.__class__.__module__.startswith("fakeredis")
+        else:
+            client = Redis.from_url(
+                url,
+                encoding="utf-8",
+                decode_responses=True,
+                health_check_interval=30,
+            )
+            should_close = True
+        try:
+            await client.ping()
+        except (RedisError, OSError) as exc:  # pragma: no cover - network dependent
+            raise RuntimeError(
+                "Redis is required for throttling or caching, but the instance at "
+                f"{url} is unreachable."
+            ) from exc
+        finally:
+            if should_close and hasattr(client, "aclose"):
+                try:
+                    await client.aclose()
+                except (RedisError, OSError):
+                    pass
 
 
 def _ensure_vary_header(response, header_name: str) -> None:
@@ -97,17 +171,19 @@ default_limit, default_window = parse_rate_limit(
     fallback=(60, 60),
 )
 
-if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
-    ("redis://", "rediss://")
-):
-    app.add_middleware(
-        RateLimitMiddleware,
-        redis_url=rate_limit_url,
-        limit=default_limit,
-        window_seconds=default_window,
-        headers_enabled=settings.rate_limit_headers_enabled,
-    )
-
+if settings.rate_limit_enabled:
+    if rate_limit_url.lower().startswith(("redis://", "rediss://")):
+        app.add_middleware(
+            RateLimitMiddleware,
+            redis_url=rate_limit_url,
+            limit=default_limit,
+            window_seconds=default_window,
+            headers_enabled=settings.rate_limit_headers_enabled,
+        )
+    elif not settings.is_development:
+        raise RuntimeError(
+            "Rate limiting is enabled but RATE_LIMIT_STORAGE_URI is not a Redis URI."
+        )
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list
     if trusted_hosts:
