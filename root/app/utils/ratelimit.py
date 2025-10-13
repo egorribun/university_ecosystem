@@ -39,7 +39,9 @@ class MemoryLimiter:
             return
         now = time.time()
         cutoff = now - window_sec
-        arr = [timestamp for timestamp in self.bucket.get(key, []) if timestamp > cutoff]
+        arr = [
+            timestamp for timestamp in self.bucket.get(key, []) if timestamp > cutoff
+        ]
         if len(arr) >= limit:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -92,8 +94,12 @@ def _parse_rate_limit(value: str | None) -> tuple[int, int]:
     return count, seconds
 
 
-def _resolve_limits(override_limit: int | None, override_window: int | None) -> tuple[int, int]:
-    default_limit, default_window = _parse_rate_limit(settings.rate_limit_sensitive_value)
+def _resolve_limits(
+    override_limit: int | None, override_window: int | None
+) -> tuple[int, int]:
+    default_limit, default_window = _parse_rate_limit(
+        settings.rate_limit_sensitive_value
+    )
     limit = default_limit if override_limit is None else override_limit
     window = default_window if override_window is None else override_window
     return limit, window
