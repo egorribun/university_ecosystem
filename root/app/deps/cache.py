@@ -168,7 +168,7 @@ def _json_default(value: Any) -> Any:
 def create_cache_backend() -> BaseCache:
     if not settings.cache_enabled:
         return NullCache()
-    url = (settings.cache_redis_url or "").strip()
+    url = settings.cache_redis_url_effective.strip()
     if not url:
         return NullCache()
     ttl = int(getattr(settings, "cache_default_ttl_seconds", 0) or 0)
