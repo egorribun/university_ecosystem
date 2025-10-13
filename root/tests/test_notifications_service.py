@@ -1,4 +1,6 @@
+import asyncio
 import datetime as dt
+import logging
 
 import pytest
 from sqlalchemy import select
@@ -166,3 +168,33 @@ async def test_create_notifications_records_skip_without_credentials(
     assert delivery.status == "skipped_no_credentials"
     assert delivery.delivered_at is None
     _reset_vapid_cache()
+
+
+@pytest.mark.anyio
+async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, caplog):
+    class _DummySession:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _failing_generate(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    async def _cancel_sleep(_seconds: float):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(notifications_module, "async_session", lambda: _DummySession())
+    monkeypatch.setattr(
+        notifications_module,
+        "generate_schedule_reminders",
+        _failing_generate,
+    )
+    monkeypatch.setattr(notifications_module.asyncio, "sleep", _cancel_sleep)
+
+    caplog.set_level(logging.ERROR, logger=notifications_module.logger.name)
+
+    await notifications_module._scheduler_loop(poll_seconds=1, window_minutes=1)
+
+    assert any("Failed to generate schedule reminders" in record.getMessage() for record in caplog.records)
