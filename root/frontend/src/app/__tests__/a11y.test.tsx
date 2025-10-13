@@ -16,6 +16,7 @@ import type { User } from "@/types/User";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { CssVarsProvider } from "@mui/material/styles";
 import theme from "@/theme";
+import { AppShellProvider } from "@/contexts/AppShellContext";
 
 vi.mock("@/components/NotificationsBell", () => ({
   default: ({ iconColor }: { iconColor?: string }) => (
@@ -107,7 +108,9 @@ const createWrapper = (route = "/dashboard") => {
       <QueryClientProvider client={queryClient}>
         <CssVarsProvider theme={theme}>
           <LanguageProvider>
-            <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
+            <AppShellProvider>
+              <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
+            </AppShellProvider>
           </LanguageProvider>
         </CssVarsProvider>
       </QueryClientProvider>
