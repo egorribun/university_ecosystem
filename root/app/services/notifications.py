@@ -624,15 +624,36 @@ async def aggregate_notification_delivery_stats(
     return stats
 
 
-async def _scheduler_loop(poll_seconds: int = 30, window_minutes: int = 6):
+async def _scheduler_loop(
+    poll_seconds: int = 30,
+    window_minutes: int = 6,
+    *,
+    max_backoff_seconds: int = 300,
+):
+    """Run reminders scheduler loop with exponential backoff on failures."""
+
+    consecutive_failures = 0
+
     try:
         while True:
+            sleep_for = poll_seconds
             try:
                 async with async_session() as db:
                     await generate_schedule_reminders(db, window_minutes=window_minutes)
             except Exception:
-                pass
-            await asyncio.sleep(poll_seconds)
+                consecutive_failures += 1
+                sleep_for = min(
+                    poll_seconds * (2 ** min(consecutive_failures, 5)),
+                    max_backoff_seconds,
+                )
+                logger.exception(
+                    "Failed to generate schedule reminders (attempt %s)",
+                    consecutive_failures,
+                )
+            else:
+                consecutive_failures = 0
+
+            await asyncio.sleep(sleep_for)
     except asyncio.CancelledError:
         return
 
