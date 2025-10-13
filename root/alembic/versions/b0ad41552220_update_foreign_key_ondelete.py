@@ -1,140 +1,210 @@
+"""update foreign key ondelete"""
+
+from typing import Optional, Sequence, Union
+
+import sqlalchemy as sa
+
 from alembic import op
+
+revision: str = "b0ad41552220"
+down_revision: Union[str, None] = "7ea701e08870"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def _insp() -> sa.Inspector:
+    return sa.inspect(op.get_bind())
 
 
 def _is_sqlite() -> bool:
-    bind = op.get_bind()
-    return bind.dialect.name == "sqlite"
+    return op.get_bind().dialect.name == "sqlite"
 
 
-revision = "change_foreign_keys_ondelete"
-down_revision = "7ea701e08870"
-branch_labels = None
-depends_on = None
+def _table_exists(table: str) -> bool:
+    return table in _insp().get_table_names()
 
 
-def upgrade():
+def _column_exists(table: str, column: str) -> bool:
+    if not _table_exists(table):
+        return False
+    return any(col["name"] == column for col in _insp().get_columns(table))
+
+
+def _drop_fk_by_columns(table: str, constrained_columns: list[str]) -> None:
+    if not _table_exists(table):
+        return
+    inspector = _insp()
+    target = set(constrained_columns)
+    for fk in inspector.get_foreign_keys(table):
+        cols = set(fk.get("constrained_columns") or [])
+        name = fk.get("name")
+        if cols == target and name:
+            op.drop_constraint(name, table, type_="foreignkey")
+
+
+def _create_fk(
+    table: str,
+    referred_table: str,
+    constrained_columns: list[str],
+    referred_columns: list[str],
+    *,
+    name: str,
+    ondelete: Optional[str],
+) -> None:
+    if not (_table_exists(table) and _table_exists(referred_table)):
+        return
+    for column in constrained_columns:
+        if not _column_exists(table, column):
+            return
+    op.create_foreign_key(
+        name,
+        table,
+        referred_table,
+        constrained_columns,
+        referred_columns,
+        ondelete=ondelete,
+    )
+
+
+def upgrade() -> None:
     if _is_sqlite():
         return
-    # Удаляем старые ограничения
-    op.drop_constraint("users_group_id_fkey", "users", type_="foreignkey")
-    op.drop_constraint(
-        "event_attendance_user_id_fkey", "event_attendance", type_="foreignkey"
-    )
-    op.drop_constraint(
-        "event_attendance_event_id_fkey", "event_attendance", type_="foreignkey"
-    )
-    op.drop_constraint("events_created_by_fkey", "events", type_="foreignkey")
-    op.drop_constraint("event_files_event_id_fkey", "event_files", type_="foreignkey")
-    op.drop_constraint("news_author_id_fkey", "news", type_="foreignkey")
-    op.drop_constraint(
-        "invite_codes_used_by_user_id_fkey", "invite_codes", type_="foreignkey"
-    )
 
-    # Создаём новые с нужными ondelete
-    op.create_foreign_key(
-        "users_group_id_fkey",
+    _drop_fk_by_columns("users", ["group_id"])
+    _drop_fk_by_columns("event_attendance", ["user_id"])
+    _drop_fk_by_columns("event_attendance", ["event_id"])
+    _drop_fk_by_columns("events", ["created_by"])
+    _drop_fk_by_columns("event_files", ["event_id"])
+    if _column_exists("news", "author_id"):
+        _drop_fk_by_columns("news", ["author_id"])
+    _drop_fk_by_columns("invite_codes", ["used_by_user_id"])
+
+    _create_fk(
         "users",
         "groups",
         ["group_id"],
         ["id"],
+        name=op.f("users_group_id_fkey"),
         ondelete="SET NULL",
     )
-    op.create_foreign_key(
-        "event_attendance_user_id_fkey",
+    _create_fk(
         "event_attendance",
         "users",
         ["user_id"],
         ["id"],
+        name=op.f("event_attendance_user_id_fkey"),
         ondelete="CASCADE",
     )
-    op.create_foreign_key(
-        "event_attendance_event_id_fkey",
+    _create_fk(
         "event_attendance",
         "events",
         ["event_id"],
         ["id"],
+        name=op.f("event_attendance_event_id_fkey"),
         ondelete="CASCADE",
     )
-    op.create_foreign_key(
-        "events_created_by_fkey",
+    _create_fk(
         "events",
         "users",
         ["created_by"],
         ["id"],
+        name=op.f("events_created_by_fkey"),
         ondelete="SET NULL",
     )
-    op.create_foreign_key(
-        "event_files_event_id_fkey",
+    _create_fk(
         "event_files",
         "events",
         ["event_id"],
         ["id"],
+        name=op.f("event_files_event_id_fkey"),
         ondelete="CASCADE",
     )
-    op.create_foreign_key(
-        "news_author_id_fkey",
-        "news",
-        "users",
-        ["author_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_foreign_key(
-        "invite_codes_used_by_user_id_fkey",
+    if _column_exists("news", "author_id"):
+        _create_fk(
+            "news",
+            "users",
+            ["author_id"],
+            ["id"],
+            name=op.f("news_author_id_fkey"),
+            ondelete="SET NULL",
+        )
+    _create_fk(
         "invite_codes",
         "users",
         ["used_by_user_id"],
         ["id"],
+        name=op.f("invite_codes_used_by_user_id_fkey"),
         ondelete="SET NULL",
     )
 
 
-def downgrade():
+def downgrade() -> None:
     if _is_sqlite():
         return
-    op.drop_constraint("users_group_id_fkey", "users", type_="foreignkey")
-    op.drop_constraint(
-        "event_attendance_user_id_fkey", "event_attendance", type_="foreignkey"
-    )
-    op.drop_constraint(
-        "event_attendance_event_id_fkey", "event_attendance", type_="foreignkey"
-    )
-    op.drop_constraint("events_created_by_fkey", "events", type_="foreignkey")
-    op.drop_constraint("event_files_event_id_fkey", "event_files", type_="foreignkey")
-    op.drop_constraint("news_author_id_fkey", "news", type_="foreignkey")
-    op.drop_constraint(
-        "invite_codes_used_by_user_id_fkey", "invite_codes", type_="foreignkey"
-    )
 
-    # Восстановление без ondelete
-    op.create_foreign_key(
-        "users_group_id_fkey", "users", "groups", ["group_id"], ["id"]
+    _drop_fk_by_columns("users", ["group_id"])
+    _drop_fk_by_columns("event_attendance", ["user_id"])
+    _drop_fk_by_columns("event_attendance", ["event_id"])
+    _drop_fk_by_columns("events", ["created_by"])
+    _drop_fk_by_columns("event_files", ["event_id"])
+    if _column_exists("news", "author_id"):
+        _drop_fk_by_columns("news", ["author_id"])
+    _drop_fk_by_columns("invite_codes", ["used_by_user_id"])
+
+    _create_fk(
+        "users",
+        "groups",
+        ["group_id"],
+        ["id"],
+        name=op.f("users_group_id_fkey"),
+        ondelete=None,
     )
-    op.create_foreign_key(
-        "event_attendance_user_id_fkey",
+    _create_fk(
         "event_attendance",
         "users",
         ["user_id"],
         ["id"],
+        name=op.f("event_attendance_user_id_fkey"),
+        ondelete=None,
     )
-    op.create_foreign_key(
-        "event_attendance_event_id_fkey",
+    _create_fk(
         "event_attendance",
         "events",
         ["event_id"],
         ["id"],
+        name=op.f("event_attendance_event_id_fkey"),
+        ondelete=None,
     )
-    op.create_foreign_key(
-        "events_created_by_fkey", "events", "users", ["created_by"], ["id"]
+    _create_fk(
+        "events",
+        "users",
+        ["created_by"],
+        ["id"],
+        name=op.f("events_created_by_fkey"),
+        ondelete="SET NULL",
     )
-    op.create_foreign_key(
-        "event_files_event_id_fkey", "event_files", "events", ["event_id"], ["id"]
+    _create_fk(
+        "event_files",
+        "events",
+        ["event_id"],
+        ["id"],
+        name=op.f("event_files_event_id_fkey"),
+        ondelete=None,
     )
-    op.create_foreign_key("news_author_id_fkey", "news", "users", ["author_id"], ["id"])
-    op.create_foreign_key(
-        "invite_codes_used_by_user_id_fkey",
+    if _column_exists("news", "author_id"):
+        _create_fk(
+            "news",
+            "users",
+            ["author_id"],
+            ["id"],
+            name=op.f("news_author_id_fkey"),
+            ondelete=None,
+        )
+    _create_fk(
         "invite_codes",
         "users",
         ["used_by_user_id"],
         ["id"],
+        name=op.f("invite_codes_used_by_user_id_fkey"),
+        ondelete=None,
     )
