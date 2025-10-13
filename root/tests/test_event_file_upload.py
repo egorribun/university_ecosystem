@@ -10,6 +10,7 @@ from starlette.datastructures import Headers
 from app.api import events
 from app.core.config import settings
 from app.models import models
+from app.schemas import schemas
 from app.utils import files
 
 
@@ -121,6 +122,31 @@ async def test_upload_event_file_rejects_forbidden_type(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_update_event_replaces_image_removes_old_file(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    old_filename = "old.png"
+    old_path = tmp_path / "event_images" / old_filename
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old")
+
+    event.image_url = f"/static/event_images/{old_filename}"
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+
+    payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
+    result = await events.update_event(event.id, payload, db=db_session, user=admin)
+
+    assert result.image_url == "/static/event_images/new.png"
+    assert not old_path.exists()
+
+
+@pytest.mark.anyio("asyncio")
 async def test_delete_event_file_removes_payload(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -164,6 +190,13 @@ async def test_delete_event_removes_all_files(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
+    image_path = tmp_path / "event_images" / "banner.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(b"banner")
+    event.image_url = "/static/event_images/banner.png"
+    await db_session.commit()
+    await db_session.refresh(event)
+
     stored_paths = []
     for idx in range(2):
         upload = UploadFile(
@@ -186,6 +219,7 @@ async def test_delete_event_removes_all_files(
     assert result == {"ok": True}
     for path in stored_paths:
         assert not path.exists()
+    assert not image_path.exists()
     remaining_files = (
         await db_session.execute(
             select(models.EventFile).where(models.EventFile.event_id == event.id)
