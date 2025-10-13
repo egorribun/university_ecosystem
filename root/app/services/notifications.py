@@ -639,9 +639,7 @@ async def _scheduler_loop(
             sleep_for = poll_seconds
             try:
                 async with async_session() as db:
-                    await generate_schedule_reminders(
-                        db, window_minutes=window_minutes
-                    )
+                    await generate_schedule_reminders(db, window_minutes=window_minutes)
             except Exception:
                 consecutive_failures += 1
                 sleep_for = min(

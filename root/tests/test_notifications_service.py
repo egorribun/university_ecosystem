@@ -197,4 +197,7 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
 
     await notifications_module._scheduler_loop(poll_seconds=1, window_minutes=1)
 
-    assert any("Failed to generate schedule reminders" in record.getMessage() for record in caplog.records)
+    assert any(
+        "Failed to generate schedule reminders" in record.getMessage()
+        for record in caplog.records
+    )
