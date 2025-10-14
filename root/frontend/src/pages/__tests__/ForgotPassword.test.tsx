@@ -9,6 +9,8 @@ import i18n from '../../i18n/config';
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options);
 
+const startsWithText = (text: string) => (content: string) => content.startsWith(text);
+
 const renderForgot = () =>
   render(
     <MemoryRouter future={routerFutureFlags}>
@@ -16,7 +18,11 @@ const renderForgot = () =>
     </MemoryRouter>,
   );
 
-const startsWithText = (text: string) => (content: string) => content.startsWith(text);
+const toPlainText = (markup: string) => {
+  const template = document.createElement('template');
+  template.innerHTML = markup;
+  return template.content.textContent ?? '';
+};
 
 describe('ForgotPassword page', () => {
   it('shows validation message for malformed email', async () => {
@@ -38,7 +44,7 @@ describe('ForgotPassword page', () => {
     await user.type(screen.getByLabelText(startsWithText(tAuth('fields.email'))), 'user@example.com');
     await user.click(screen.getByRole('button', { name: tAuth('forgot.sendLink') }));
 
-    const successText = tAuth('forgot.success', { email: 'user@example.com' }).replace(/<[^>]+>/g, '');
+    const successText = toPlainText(tAuth('forgot.success', { email: 'user@example.com' }));
     const successMessages = await screen.findAllByText((_, element) =>
       element?.textContent?.includes(successText) ?? false,
     );
