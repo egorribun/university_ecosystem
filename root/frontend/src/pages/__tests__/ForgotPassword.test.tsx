@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { axe } from 'jest-axe';
 import ForgotPassword from '../ForgotPassword';
 import { routerFutureFlags } from '../../App';
+import i18n from '../../i18n/config';
+
+const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options);
 
 const renderForgot = () =>
   render(
@@ -13,28 +16,37 @@ const renderForgot = () =>
     </MemoryRouter>,
   );
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const labelRegex = (value: string) => new RegExp(`^${escapeRegExp(value)}`, 'i');
+
 describe('ForgotPassword page', () => {
   it('shows validation message for malformed email', async () => {
     const user = userEvent.setup();
     renderForgot();
 
-    const emailInput = screen.getByLabelText(/e-mail/i);
+    const emailInput = screen.getByLabelText(labelRegex(tAuth('fields.email')));
     await user.type(emailInput, 'invalid');
     await user.tab();
 
-    expect(screen.getByText('Неверный формат email')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /отправить ссылку/i })).toBeDisabled();
+    expect(screen.getByText(tAuth('messages.invalidFormat'))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: tAuth('forgot.sendLink') })).toBeDisabled();
   });
 
   it('confirms submission and starts cooldown', async () => {
     const user = userEvent.setup();
     renderForgot();
 
-    await user.type(screen.getByLabelText(/e-mail/i), 'user@example.com');
-    await user.click(screen.getByRole('button', { name: /отправить ссылку/i }));
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.email'))), 'user@example.com');
+    await user.click(screen.getByRole('button', { name: tAuth('forgot.sendLink') }));
 
-    expect(await screen.findByText(/если аккаунт с адресом/i)).toBeInTheDocument();
-    const retryButton = screen.getByRole('button', { name: /ввести другой адрес/i });
+    const successText = tAuth('forgot.success', { email: 'user@example.com' }).replace(/<[^>]+>/g, '');
+    const successMessages = await screen.findAllByText((_, element) =>
+      element?.textContent?.includes(successText) ?? false,
+    );
+    expect(successMessages.length).toBeGreaterThan(0);
+    const retryButton = screen.getByRole('button', {
+      name: new RegExp(`^${escapeRegExp(tAuth('forgot.enterAnother'))}`),
+    });
     expect(retryButton).toBeDisabled();
     expect(retryButton.textContent).toMatch(/\d+s/);
   });

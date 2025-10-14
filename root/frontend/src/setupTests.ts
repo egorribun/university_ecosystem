@@ -5,11 +5,15 @@ import { webcrypto } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
 import { toHaveNoViolations } from 'jest-axe';
 import { server } from './tests/mocks/server';
-import './i18n/config';
+import i18n from './i18n/config';
 
 expect.extend(toHaveNoViolations);
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
+  document.documentElement.lang = 'en';
+  server.listen({ onUnhandledRequest: 'error' });
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder;

@@ -20,11 +20,7 @@ import {
   Switch,
   Typography,
 } from "@mui/material"
-import {
-  usePushPreferences,
-  NOTIFICATION_TOPIC_LABELS,
-  type NotificationToast,
-} from "@/hooks/usePushPreferences"
+import { usePushPreferences, type NotificationToast } from "@/hooks/usePushPreferences"
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
 import { Trans, useTranslation } from "react-i18next"
 
@@ -77,7 +73,7 @@ const clearDismissed = () => {
 }
 
 export default function InstallPrompt() {
-  const { t } = useTranslation(["system", "navigation"])
+  const { t } = useTranslation(["system", "navigation", "notifications"])
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [visible, setVisible] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -403,7 +399,7 @@ export default function InstallPrompt() {
                                 />
                               }
                               label={
-                                <span style={{ color: "var(--page-text)" }}>{NOTIFICATION_TOPIC_LABELS[key]}</span>
+                                <span style={{ color: "var(--page-text)" }}>{t(`notifications:topics.${key}`)}</span>
                               }
                             />
                           ))}

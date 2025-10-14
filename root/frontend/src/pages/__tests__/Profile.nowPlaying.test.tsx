@@ -3,6 +3,7 @@ import { render, act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NowPlayingCard } from "@/pages/Profile";
 import type { NowPlaying } from "@/types/spotify";
+import i18n from "@/i18n/config";
 
 vi.mock("framer-motion", async () => {
   const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion");
@@ -40,7 +41,7 @@ describe("NowPlayingCard", () => {
   it("matches snapshot when paused", () => {
     const paused: NowPlaying = { ...baseTrack, is_playing: false };
     const { container, getByText } = renderWithTheme(paused);
-    expect(getByText("Пауза")).toBeInTheDocument();
+    expect(getByText(i18n.t("profile:nowPlaying.paused"))).toBeInTheDocument();
     expect(container.firstChild).toMatchSnapshot();
   });
 

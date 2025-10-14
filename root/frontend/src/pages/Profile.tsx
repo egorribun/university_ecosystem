@@ -47,6 +47,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying";
 import type { NowPlaying } from "@/types/spotify";
 import { addVersionParam, resolveMediaUrl } from "@/utils/media";
+import { useTranslation } from "react-i18next";
 
 const auraPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
@@ -75,6 +76,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const borderCol = isDark ? alpha(theme.palette.common.white, 0.14) : alpha(theme.palette.common.black, 0.12);
   const textSecondary = theme.palette.text.secondary;
   const duration = data.duration_ms ?? 0;
+  const { t } = useTranslation(["profile"]);
 
   const clampProgress = useCallback(
     (value: number | null | undefined) => {
@@ -168,7 +170,11 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={data.track_name ? `Открыть в Spotify: ${data.track_name}` : "Открыть Spotify"}
+      aria-label={
+        data.track_name
+          ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
+          : t("profile:nowPlaying.openSpotify")
+      }
       sx={{ display: "block", textDecoration: "none", width: "100%" }}
     >
       <MotionPaper
@@ -210,7 +216,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         <Avatar
           src={data.album_image_url ?? ""}
           variant="rounded"
-          alt={data.album_name || data.track_name || "Обложка альбома"}
+          alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
           imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
           sx={{
             width: "100%",
@@ -237,7 +243,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           {!data.is_playing && (
             <Chip
               size="small"
-              label="Пауза"
+              label={t("profile:nowPlaying.paused")}
               color="default"
               sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
               aria-hidden
@@ -248,7 +254,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               className="progress"
               variant="determinate"
               value={pct}
-              aria-label="Прогресс трека"
+              aria-label={t("profile:nowPlaying.progress")}
               sx={{ flex: 1, height: 6, borderRadius: 999 }}
             />
             <Typography className="np-time" variant="caption" sx={{ color: textSecondary, whiteSpace: "nowrap" }}>

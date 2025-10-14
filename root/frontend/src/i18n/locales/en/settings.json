@@ -1,4 +1,7 @@
 {
+  "tabs": {
+    "account": "Account"
+  },
   "language": {
     "title": "Interface language",
     "aria": "Choose interface language",
@@ -6,6 +9,16 @@
     "options": {
       "ru": "Russian",
       "en": "English"
+    }
+  },
+  "media": {
+    "avatar": {
+      "uploadFailed": "Couldn't upload avatar",
+      "deleteFailed": "Couldn't delete avatar"
+    },
+    "cover": {
+      "uploadFailed": "Couldn't upload cover",
+      "title": "Profile cover"
     }
   }
 }

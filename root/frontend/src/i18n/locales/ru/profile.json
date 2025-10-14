@@ -1,0 +1,9 @@
+{
+  "nowPlaying": {
+    "openSpotifyWithTrack": "Открыть в Spotify: {{track}}",
+    "openSpotify": "Открыть Spotify",
+    "albumFallback": "Обложка альбома",
+    "paused": "Пауза",
+    "progress": "Прогресс трека"
+  }
+}

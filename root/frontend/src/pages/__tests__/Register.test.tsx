@@ -7,13 +7,18 @@ import { axe } from 'jest-axe';
 import Register from '../Register';
 import { server } from '@/tests/mocks/server';
 import { routerFutureFlags } from '../../App';
+import i18n from '../../i18n/config';
+
+const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options);
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const labelRegex = (value: string) => new RegExp(`^${escapeRegExp(value)}`, 'i');
 
 const renderRegister = () =>
   render(
     <MemoryRouter future={routerFutureFlags} initialEntries={['/register']}>
       <Routes>
         <Route path="/register" element={<Register />} />
-        <Route path="/login" element={<div>Страница входа</div>} />
+        <Route path="/login" element={<div>Sign in page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -27,11 +32,11 @@ describe('Register page', () => {
     const user = userEvent.setup();
     renderRegister();
 
-    await user.type(screen.getByLabelText('Имя'), 'Test User');
-    await user.type(screen.getByLabelText(/e-mail/i), 'user@example.com');
-    await user.type(screen.getByLabelText(/^пароль$/i), 'password123');
-    await user.type(screen.getByLabelText(/повторите пароль/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /зарегистрироваться/i }));
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.name'))), 'Test User');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.email'))), 'user@example.com');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.password'))), 'password123');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.confirmPassword'))), 'password123');
+    await user.click(screen.getByRole('button', { name: tAuth('actions.signUp') }));
 
     expect(await screen.findByText('Email already used')).toBeInTheDocument();
   });
@@ -49,15 +54,15 @@ describe('Register page', () => {
     const user = userEvent.setup();
     renderRegister();
 
-    await user.type(screen.getByLabelText('Имя'), 'Test User');
-    await user.type(screen.getByLabelText(/e-mail/i), 'user@example.com');
-    await user.type(screen.getByLabelText(/^пароль$/i), 'password123');
-    await user.type(screen.getByLabelText(/повторите пароль/i), 'password123');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.name'))), 'Test User');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.email'))), 'user@example.com');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.password'))), 'password123');
+    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.confirmPassword'))), 'password123');
 
-    const submitButton = screen.getByRole('button', { name: /зарегистрироваться/i });
+    const submitButton = screen.getByRole('button', { name: tAuth('actions.signUp') });
     await user.click(submitButton);
 
-    await waitFor(() => expect(screen.getByText('Страница входа')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Sign in page')).toBeInTheDocument());
     expect(payloads).toEqual([
       {
         email: 'user@example.com',

@@ -2,7 +2,7 @@
 
 exports[`NowPlayingCard > matches snapshot when paused 1`] = `
 <a
-  aria-label="Открыть в Spotify: Test Track"
+  aria-label="Open in Spotify: Test Track"
   class="MuiBox-root css-1wokdvp"
   href="https://open.spotify.com/track/play-1"
   rel="noopener noreferrer"
@@ -50,14 +50,14 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
         <span
           class="MuiChip-label MuiChip-labelSmall css-eccknh-MuiChip-label"
         >
-          Пауза
+          Paused
         </span>
       </div>
       <div
         class="MuiBox-root css-1gj2vl9"
       >
         <span
-          aria-label="Прогресс трека"
+          aria-label="Track progress"
           aria-valuemax="100"
           aria-valuemin="0"
           aria-valuenow="17"
@@ -84,7 +84,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
 
 exports[`NowPlayingCard > matches snapshot when playing 1`] = `
 <a
-  aria-label="Открыть в Spotify: Test Track"
+  aria-label="Open in Spotify: Test Track"
   class="MuiBox-root css-1wokdvp"
   href="https://open.spotify.com/track/play-1"
   rel="noopener noreferrer"
@@ -129,7 +129,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
         class="MuiBox-root css-1gj2vl9"
       >
         <span
-          aria-label="Прогресс трека"
+          aria-label="Track progress"
           aria-valuemax="100"
           aria-valuemin="0"
           aria-valuenow="17"

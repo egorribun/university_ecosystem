@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 export default function BackToTop() {
+  const { t } = useTranslation(["common"]);
   const [show, setShow] = useState(false);
   useEffect(() => {
     const onScroll = () => setShow(window.scrollY > 420);
@@ -15,7 +17,7 @@ export default function BackToTop() {
     <button
       type="button"
       className={"back-to-top" + (show ? " visible" : "")}
-      aria-label="Наверх"
+      aria-label={t("common:buttons.backToTop")}
       onClick={onClick}
     >
       ↑
