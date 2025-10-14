@@ -1,6 +1,21 @@
 {
+  "page": {
+    "title": "Settings"
+  },
   "tabs": {
-    "account": "Account"
+    "general": "General",
+    "account": "Account",
+    "integrations": "Integrations"
+  },
+  "appearance": {
+    "theme": {
+      "title": "Theme",
+      "options": {
+        "system": "System",
+        "light": "Light",
+        "dark": "Dark"
+      }
+    }
   },
   "language": {
     "title": "Interface language",
@@ -11,14 +26,94 @@
       "en": "English"
     }
   },
+  "notifications": {
+    "title": "Notifications",
+    "unsupported": "Web push notifications aren't available in your browser.",
+    "blocked": {
+      "description": "Notifications are blocked in the browser. Open the site settings and allow notifications for \"GUU Ecosystem\".",
+      "hint": "After updating the browser settings, click \"Check permission\" to refresh the status."
+    },
+    "cta": {
+      "prompt": "Enable notifications to be the first to know about schedules, events, and important news.",
+      "allow": "Allow notifications",
+      "checkPermission": "Check permission"
+    },
+    "status": "Current status: {{status}}.",
+    "toggles": {
+      "notifications": {
+        "label": "Enable notifications",
+        "aria": "Enable notifications"
+      },
+      "dnd": {
+        "label": "Enable quiet hours",
+        "aria": "Enable quiet hours"
+      }
+    }
+  },
+  "dnd": {
+    "start": "From",
+    "end": "To",
+    "validation": {
+      "missingRange": "Specify start and end time for Do Not Disturb mode"
+    },
+    "snackbar": {
+      "enabled": "Do Not Disturb turned on",
+      "disabled": "Do Not Disturb turned off",
+      "updated": "Do Not Disturb settings updated",
+      "updateFailed": "Couldn't update Do Not Disturb settings"
+    }
+  },
   "media": {
+    "validation": {
+      "supportedFormats": "Supported formats: PNG/JPG/WebP/AVIF/GIF",
+      "fileTooLarge": "File is too large (>12 MB)"
+    },
     "avatar": {
+      "title": "Profile photo",
+      "subtitle": "PNG/JPG/WebP/AVIF/GIF, up to 12 MB",
+      "change": "Change",
+      "delete": "Delete",
+      "updated": "Avatar updated",
+      "deleted": "Avatar removed",
       "uploadFailed": "Couldn't upload avatar",
       "deleteFailed": "Couldn't delete avatar"
     },
     "cover": {
-      "uploadFailed": "Couldn't upload cover",
-      "title": "Profile cover"
+      "title": "Profile cover",
+      "recommendation": "Recommendation: 1600×400+",
+      "change": "Change",
+      "updated": "Cover updated",
+      "uploadFailed": "Couldn't upload cover"
+    }
+  },
+  "account": {
+    "profile": {
+      "title": "Profile",
+      "subtitle": "Name, contacts, socials"
+    },
+    "logout": {
+      "button": "Sign out",
+      "dialogTitle": "Sign out of your account?",
+      "dialogDescription": "You can sign back in at any time. Your data stays safe.",
+      "confirm": "Sign out"
+    }
+  },
+  "integrations": {
+    "spotify": {
+      "status": {
+        "connected": "Connected",
+        "disconnected": "Not connected",
+        "connectedFallback": "Account connected"
+      },
+      "connect": "Connect Spotify",
+      "disconnect": "Disconnect Spotify",
+      "snackbar": {
+        "connected": "Spotify connected",
+        "connectFailed": "Spotify connection failed",
+        "openFailed": "Couldn't open Spotify authorization",
+        "disconnected": "Spotify disconnected",
+        "disconnectFailed": "Couldn't disconnect Spotify"
+      }
     }
   }
 }

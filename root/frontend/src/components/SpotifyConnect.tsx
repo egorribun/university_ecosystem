@@ -15,11 +15,13 @@ import {
 } from "@mui/material"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
+import { useTranslation } from "react-i18next"
 
 export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
   const [actionLoading, setActionLoading] = useState(false)
+  const { t } = useTranslation(["settings", "common"])
 
   const spotifyEnabled = Boolean(user?.spotify_connected || user?.spotify_is_connected)
   const nowPlayingQuery = useNowPlaying(spotifyEnabled)
@@ -75,8 +77,8 @@ export default function SpotifyConnect() {
   if (!user) return null
 
   const loadingIndicator = useMemo(
-    () => (actionLoading ? <CircularProgress size={22} color="inherit" /> : "Подключить Spotify"),
-    [actionLoading]
+    () => (actionLoading ? <CircularProgress size={22} color="inherit" /> : t("settings:integrations.spotify.connect")),
+    [actionLoading, t]
   )
 
   return (
@@ -90,12 +92,15 @@ export default function SpotifyConnect() {
         ) : (
           <Stack spacing={1.2}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Chip size="small" label={user.spotify_display_name || "Аккаунт подключен"} />
+              <Chip
+                size="small"
+                label={user.spotify_display_name || t("settings:integrations.spotify.status.connectedFallback")}
+              />
               <Button onClick={refresh} size="small" variant="outlined" disabled={actionLoading || refreshing}>
-                {actionLoading || refreshing ? "..." : "Обновить"}
+                {actionLoading || refreshing ? "..." : t("common:buttons.refresh")}
               </Button>
               <Button onClick={disconnect} size="small" variant="outlined" color="error" disabled={actionLoading}>
-                Отключить
+                {t("settings:integrations.spotify.disconnect")}
               </Button>
             </Stack>
             {now && (

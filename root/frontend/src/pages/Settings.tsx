@@ -220,7 +220,7 @@ export default function Settings() {
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
   const { language, setLanguage, available: availableLanguages } = useLanguage();
-  const { t: tSettings } = useTranslation(["settings"]);
+  const { t } = useTranslation(["settings", "common", "notifications", "profile"]);
 
   const { mode: storedMode, setMode } = useColorScheme();
   const theme = (storedMode ?? "system") as ThemeMode;
@@ -309,7 +309,7 @@ export default function Settings() {
         return;
       }
       if (nextEnabled && (!normalizedStart || !normalizedEnd)) {
-        setSnack({ text: "Укажите время начала и окончания режима \"Не беспокоить\"", sev: "warning" });
+        setSnack({ text: t("settings:dnd.validation.missingRange"), sev: "warning" });
         syncDndFromUser(user);
         return;
       }
@@ -328,12 +328,12 @@ export default function Settings() {
         syncDndFromUser(res.data);
         const wasEnabled = prevEnabled;
         let message: string;
-        if (nextEnabled && !wasEnabled) message = 'Режим "Не беспокоить" включён';
-        else if (!nextEnabled && wasEnabled) message = 'Режим "Не беспокоить" выключен';
-        else message = 'Настройки режима "Не беспокоить" обновлены';
+        if (nextEnabled && !wasEnabled) message = t("settings:dnd.snackbar.enabled");
+        else if (!nextEnabled && wasEnabled) message = t("settings:dnd.snackbar.disabled");
+        else message = t("settings:dnd.snackbar.updated");
         setSnack({ text: message, sev: "success" });
       } catch (error: unknown) {
-        let message = 'Не удалось обновить настройки режима "Не беспокоить"';
+        let message = t("settings:dnd.snackbar.updateFailed");
         if (isAxiosError(error)) {
           const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
           if (typeof detail === "string") message = detail;
@@ -355,7 +355,7 @@ export default function Settings() {
         setDndSaving(false);
       }
     },
-    [dndSaving, setUser, setSnack, syncDndFromUser, user]
+    [dndSaving, setUser, setSnack, syncDndFromUser, t, user]
   );
 
   const handleDndToggle = useCallback(
@@ -409,13 +409,13 @@ export default function Settings() {
     const sp = new URLSearchParams(window.location.search);
     const s = sp.get("spotify");
     if (s) {
-      if (s === "connected") setSnack({ text: "Spotify подключён", sev: "success" });
-      if (s === "error") setSnack({ text: "Ошибка подключения Spotify", sev: "error" });
+      if (s === "connected") setSnack({ text: t("settings:integrations.spotify.snackbar.connected"), sev: "success" });
+      if (s === "error") setSnack({ text: t("settings:integrations.spotify.snackbar.connectFailed"), sev: "error" });
       sp.delete("spotify");
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "");
       window.history.replaceState({}, "", next);
     }
-  }, []);
+  }, [setSnack, t]);
 
   const handleThemeChange = useCallback(
     (_: ChangeEvent<HTMLInputElement>, value: string) => {
@@ -443,7 +443,7 @@ export default function Settings() {
       if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL");
       window.location.assign(safeUrl);
     } catch (error) {
-      setSnack({ text: "Не удалось открыть авторизацию Spotify", sev: "error" });
+      setSnack({ text: t("settings:integrations.spotify.snackbar.openFailed"), sev: "error" });
     }
   };
 
@@ -469,9 +469,9 @@ export default function Settings() {
             : prev,
         );
       }
-      setSnack({ text: "Spotify отключён", sev: "success" });
+      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnected"), sev: "success" });
     } catch {
-      setSnack({ text: "Не удалось отключить Spotify", sev: "error" });
+      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnectFailed"), sev: "error" });
     }
   };
 
@@ -533,8 +533,8 @@ export default function Settings() {
   }, []);
 
   const uploadAvatar = async (file: File) => {
-    if (!isImage(file)) return setSnack({ text: "Поддерживаются PNG/JPG/WebP/AVIF/GIF", sev: "warning" });
-    if (!withinSize(file)) return setSnack({ text: "Файл слишком большой (>12 МБ)", sev: "warning" });
+    if (!isImage(file)) return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" });
+    if (!withinSize(file)) return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" });
     try {
       setAvatarBusy(true);
       const fd = new FormData();
@@ -542,9 +542,9 @@ export default function Settings() {
       await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refreshMe();
       setAvatarVersion(Date.now());
-      setSnack({ text: "Аватар обновлён", sev: "success" });
+      setSnack({ text: t("settings:media.avatar.updated"), sev: "success" });
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, tSettings("media.avatar.uploadFailed")), sev: "error" });
+      setSnack({ text: resolveDetailMessage(error, t("settings:media.avatar.uploadFailed")), sev: "error" });
     } finally {
       setAvatarBusy(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -557,17 +557,17 @@ export default function Settings() {
       await api.delete("/users/me/avatar");
       await refreshMe();
       setAvatarVersion(Date.now());
-      setSnack({ text: "Аватар удалён", sev: "success" });
+      setSnack({ text: t("settings:media.avatar.deleted"), sev: "success" });
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, tSettings("media.avatar.deleteFailed")), sev: "error" });
+      setSnack({ text: resolveDetailMessage(error, t("settings:media.avatar.deleteFailed")), sev: "error" });
     } finally {
       setAvatarBusy(false);
     }
   };
 
   const uploadCover = async (file: File) => {
-    if (!isImage(file)) return setSnack({ text: "Поддерживаются PNG/JPG/WebP/AVIF/GIF", sev: "warning" });
-    if (!withinSize(file)) return setSnack({ text: "Файл слишком большой (>12 МБ)", sev: "warning" });
+    if (!isImage(file)) return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" });
+    if (!withinSize(file)) return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" });
     try {
       setCoverBusy(true);
       const fd = new FormData();
@@ -575,9 +575,9 @@ export default function Settings() {
       await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refreshMe();
       setCoverVersion(Date.now());
-      setSnack({ text: "Обложка обновлена", sev: "success" });
+      setSnack({ text: t("settings:media.cover.updated"), sev: "success" });
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, tSettings("media.cover.uploadFailed")), sev: "error" });
+      setSnack({ text: resolveDetailMessage(error, t("settings:media.cover.uploadFailed")), sev: "error" });
     } finally {
       setCoverBusy(false);
       if (coverInputRef.current) coverInputRef.current.value = "";
@@ -602,7 +602,7 @@ export default function Settings() {
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: { xs: 1.5, md: 2 } }}>
           <SettingsIcon />
           <Typography variant="h4" fontWeight={800} sx={{ color: "var(--page-text)" }}>
-            Настройки
+            {t("settings:page.title")}
           </Typography>
         </Stack>
 
@@ -622,9 +622,9 @@ export default function Settings() {
               "& .Mui-selected": { color: "var(--link-color)" }
             }}
           >
-            <Tab label="Общее" />
-            <Tab label={tSettings("tabs.account")} />
-            <Tab label="Интеграции" />
+            <Tab label={t("settings:tabs.general")} />
+            <Tab label={t("settings:tabs.account")} />
+            <Tab label={t("settings:tabs.integrations")} />
           </Tabs>
         </Paper>
 
@@ -632,25 +632,37 @@ export default function Settings() {
           <Stack spacing={3}>
             <Box>
               <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
-                Тема
+                {t("settings:appearance.theme.title")}
               </Typography>
               <RadioGroup row value={theme} onChange={handleThemeChange}>
                 <FormControlLabel
                   value="system"
                   control={<Radio />}
-                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><DesktopWindowsIcon /> <span>Система</span></Stack>}
+                  label={
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                      <DesktopWindowsIcon /> <span>{t("settings:appearance.theme.options.system")}</span>
+                    </Stack>
+                  }
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="light"
                   control={<Radio />}
-                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><LightModeIcon /> <span>Светлая</span></Stack>}
+                  label={
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                      <LightModeIcon /> <span>{t("settings:appearance.theme.options.light")}</span>
+                    </Stack>
+                  }
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="dark"
                   control={<Radio />}
-                  label={<Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}><DarkModeIcon /> <span>Тёмная</span></Stack>}
+                  label={
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                      <DarkModeIcon /> <span>{t("settings:appearance.theme.options.dark")}</span>
+                    </Stack>
+                  }
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
               </RadioGroup>
@@ -658,26 +670,26 @@ export default function Settings() {
 
             <Box>
               <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
-                {tSettings("language.title")}
+                {t("settings:language.title")}
               </Typography>
               <RadioGroup
                 row
                 value={language}
                 onChange={(_, value) => setLanguage(value as SupportedLanguage)}
-                aria-label={tSettings("language.aria")}
+                aria-label={t("settings:language.aria")}
               >
                 {availableLanguages.map(code => (
                   <FormControlLabel
                     key={code}
                     value={code}
                     control={<Radio />}
-                    label={tSettings(`language.options.${code}`)}
+                    label={t(`settings:language.options.${code}`)}
                     sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                   />
                 ))}
               </RadioGroup>
               <Typography variant="body2" sx={{ mt: 0.5, color: "var(--page-text)" }}>
-                {tSettings("language.description")}
+                {t("settings:language.description")}
               </Typography>
             </Box>
 
@@ -685,21 +697,21 @@ export default function Settings() {
 
             <Box>
               <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
-                Уведомления
+                {t("settings:notifications.title")}
               </Typography>
               {!pushSupported ? (
                 <Alert severity="warning" variant="outlined">
-                  Веб push-уведомления недоступны в вашем браузере.
+                  {t("settings:notifications.unsupported")}
                 </Alert>
               ) : (
                 <Stack spacing={1.8}>
                   {notificationPermission === "denied" ? (
                     <Stack spacing={1.5}>
                       <Alert severity="error" variant="outlined">
-                        Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для «Экосистема ГУУ».
+                        {t("settings:notifications.blocked.description")}
                       </Alert>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        После изменения настроек браузера нажмите «Проверить разрешение», чтобы обновить статус.
+                        {t("settings:notifications.blocked.hint")}
                       </Typography>
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                         <Button
@@ -708,17 +720,17 @@ export default function Settings() {
                           disabled={pushBusy}
                           startIcon={pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
                         >
-                          Проверить разрешение
+                          {t("settings:notifications.cta.checkPermission")}
                         </Button>
                         <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                          Текущее состояние: {permissionText}.
+                          {t("settings:notifications.status", { status: permissionText })}
                         </Typography>
                       </Stack>
                     </Stack>
                   ) : notificationPermission === "default" ? (
                     <Stack spacing={1.5}>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        Включите уведомления, чтобы первым узнавать о расписании, мероприятиях и важных новостях.
+                        {t("settings:notifications.cta.prompt")}
                       </Typography>
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                         <Button
@@ -727,10 +739,10 @@ export default function Settings() {
                           disabled={pushBusy || pushInitializing}
                           startIcon={pushBusy || pushInitializing ? <CircularProgress size={18} color="inherit" /> : undefined}
                         >
-                          Разрешить уведомления
+                          {t("settings:notifications.cta.allow")}
                         </Button>
                         <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                          Текущее состояние: {permissionText}.
+                          {t("settings:notifications.status", { status: permissionText })}
                         </Typography>
                       </Stack>
                     </Stack>
@@ -748,10 +760,14 @@ export default function Settings() {
                             checked={notificationsEnabled}
                             onChange={handleNotificationsToggle}
                             disabled={pushBusy || pushInitializing}
-                            aria-label="Включить уведомления"
+                            aria-label={t("settings:notifications.toggles.notifications.aria")}
                           />
                         }
-                        label={<span style={{ color: "var(--page-text)", fontWeight: 700 }}>Включить уведомления</span>}
+                        label={
+                          <span style={{ color: "var(--page-text)", fontWeight: 700 }}>
+                            {t("settings:notifications.toggles.notifications.label")}
+                          </span>
+                        }
                       />
 
                       <FormControlLabel
@@ -766,16 +782,20 @@ export default function Settings() {
                             checked={dndEnabled}
                             onChange={handleDndToggle}
                             disabled={dndSaving}
-                            aria-label="Включить тихий период"
+                            aria-label={t("settings:notifications.toggles.dnd.aria")}
                           />
                         }
-                        label={<span style={{ color: "var(--page-text)", fontWeight: 700 }}>Включить тихий период</span>}
+                        label={
+                          <span style={{ color: "var(--page-text)", fontWeight: 700 }}>
+                            {t("settings:notifications.toggles.dnd.label")}
+                          </span>
+                        }
                       />
 
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
                         <TextField
                           type="time"
-                          label="С"
+                          label={t("settings:dnd.start")}
                           value={dndStart}
                           onChange={handleDndStartChange}
                           onBlur={handleDndStartBlur}
@@ -786,7 +806,7 @@ export default function Settings() {
                         />
                         <TextField
                           type="time"
-                          label="До"
+                          label={t("settings:dnd.end")}
                           value={dndEnd}
                           onChange={handleDndEndChange}
                           onBlur={handleDndEndBlur}
@@ -812,10 +832,10 @@ export default function Settings() {
                 secondaryAction={
                   <Stack direction="row" spacing={1}>
                     <Button size="small" variant="text" startIcon={<PhotoCameraIcon />} onClick={triggerAvatarPick} disabled={avatarBusy}>
-                      Сменить
+                      {t("settings:media.avatar.change")}
                     </Button>
                     <Button size="small" variant="text" color="error" startIcon={<DeleteOutlineIcon />} onClick={removeAvatar} disabled={avatarBusy}>
-                      Удалить
+                      {t("settings:media.avatar.delete")}
                     </Button>
                   </Stack>
                 }
@@ -828,7 +848,10 @@ export default function Settings() {
                     imgProps={{ onError: handleAvatarError, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
                   />
                 </ListItemAvatar>
-                <ListItemText primary="Фото профиля" secondary="PNG/JPG/WebP/AVIF/GIF, до 12 МБ" />
+                <ListItemText
+                  primary={t("settings:media.avatar.title")}
+                  secondary={t("settings:media.avatar.subtitle")}
+                />
                 <input
                   ref={avatarInputRef}
                   type="file"
@@ -845,7 +868,7 @@ export default function Settings() {
                 divider
                 secondaryAction={
                   <Button size="small" variant="text" startIcon={<ImageIcon />} onClick={triggerCoverPick} disabled={coverBusy}>
-                    Сменить
+                    {t("settings:media.cover.change")}
                   </Button>
                 }
               >
@@ -861,7 +884,10 @@ export default function Settings() {
                     }}
                   />
                 </ListItemAvatar>
-                <ListItemText primary={tSettings("media.cover.title")} secondary="Рекомендация: 1600×400+" />
+                <ListItemText
+                  primary={t("settings:media.cover.title")}
+                  secondary={t("settings:media.cover.recommendation")}
+                />
                 <input
                   ref={coverInputRef}
                   type="file"
@@ -878,11 +904,14 @@ export default function Settings() {
                 divider
                 secondaryAction={
                   <Button size="small" variant="text" onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}>
-                    Редактировать
+                    {t("common:buttons.edit")}
                   </Button>
                 }
               >
-                <ListItemText primary="Профиль" secondary="Имя, контакты, соцсети" />
+                <ListItemText
+                  primary={t("settings:account.profile.title")}
+                  secondary={t("settings:account.profile.subtitle")}
+                />
               </ListItem>
             </List>
 
@@ -900,7 +929,7 @@ export default function Settings() {
                     }}
                     sx={{ px: 0 }}
                   >
-                    Выйти
+                    {t("settings:account.logout.button")}
                   </Button>
                 </ListItem>
               </List>
@@ -924,16 +953,26 @@ export default function Settings() {
                 <Typography variant="h6" sx={{ color: "var(--page-text)" }}>Spotify</Typography>
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
-                <Chip size="small" className="glass--chip" label={spotifyConnected ? "Подключено" : "Не подключено"} color={spotifyConnected ? "success" : "default"} variant="outlined" />
+                <Chip
+                  size="small"
+                  className="glass--chip"
+                  label={
+                    spotifyConnected
+                      ? t("settings:integrations.spotify.status.connected")
+                      : t("settings:integrations.spotify.status.disconnected")
+                  }
+                  color={spotifyConnected ? "success" : "default"}
+                  variant="outlined"
+                />
                 {spotifyConnected && !!spotifyName && <Chip size="small" variant="outlined" label={spotifyName} />}
               </Stack>
               {!spotifyConnected ? (
                 <Button variant="contained" onClick={connectSpotify} sx={{ alignSelf: "lex-start" }}>
-                  Подключить Spotify
+                  {t("settings:integrations.spotify.connect")}
                 </Button>
               ) : (
                 <Button variant="outlined" color="error" onClick={disconnectSpotify} sx={{ alignSelf: "flex-start" }}>
-                  Отключить Spotify
+                  {t("settings:integrations.spotify.disconnect")}
                 </Button>
               )}
             </Stack>
@@ -942,12 +981,12 @@ export default function Settings() {
       </Paper>
 
       <Dialog open={confirmLogout} onClose={() => setConfirmLogout(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Выйти из аккаунта?</DialogTitle>
+        <DialogTitle>{t("settings:account.logout.dialogTitle")}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">Вы сможете войти снова. Данные не удаляются.</Typography>
+          <Typography variant="body2">{t("settings:account.logout.dialogDescription")}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmLogout(false)}>Отмена</Button>
+          <Button onClick={() => setConfirmLogout(false)}>{t("common:buttons.cancel")}</Button>
           <Button
             color="error"
             onClick={async () => {
@@ -955,7 +994,7 @@ export default function Settings() {
               await logout();
             }}
           >
-            Выйти
+            {t("settings:account.logout.confirm")}
           </Button>
         </DialogActions>
       </Dialog>
