@@ -10,7 +10,7 @@ import { routerFutureFlags } from '../../App';
 import i18n from '../../i18n/config';
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options);
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (value: string) => value.replace(/[\^$*+?.()|[\]{}-]/g, '\\$&');
 const labelRegex = (value: string) => new RegExp(`^${escapeRegExp(value)}`, 'i');
 
 const renderRegister = () =>

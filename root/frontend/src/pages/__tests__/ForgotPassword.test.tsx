@@ -16,7 +16,7 @@ const renderForgot = () =>
     </MemoryRouter>,
   );
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (value: string) => value.replace(/[\^$*+?.()|[\]{}-]/g, '\\$&');
 const labelRegex = (value: string) => new RegExp(`^${escapeRegExp(value)}`, 'i');
 
 describe('ForgotPassword page', () => {
