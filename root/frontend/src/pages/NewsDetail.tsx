@@ -32,6 +32,7 @@ import api from "@/api/client"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
+import { useTranslation } from "react-i18next"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -59,6 +60,7 @@ export default function NewsDetail() {
   const { id = "" } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { t } = useTranslation(["news", "common"])
   const queryClient = useQueryClient()
   const isMobile = useMediaQuery("(max-width:600px)")
 
@@ -148,11 +150,11 @@ export default function NewsDetail() {
       const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload)
       queryClient.setQueryData(["news", id], data)
       await queryClient.invalidateQueries({ queryKey: ["news"] })
-      setSnack("Новость обновлена")
+      setSnack(t("news:notifications.updated"))
       closeEdit()
     } catch (error) {
       console.error(error)
-      setSnack("Ошибка сохранения")
+      setSnack(t("news:notifications.savedError"))
     } finally {
       setSaving(false)
     }
@@ -163,14 +165,14 @@ export default function NewsDetail() {
     setDeleting(true)
     try {
       await api.delete(`/news/${query.data.id}`)
-      setSnack("Новость удалена")
+      setSnack(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news"] })
       if (window.history.length > 1) navigate(-1)
       else navigate("/news")
     } catch (error) {
       console.error(error)
-      setSnack("Ошибка удаления")
+      setSnack(t("news:notifications.deleteError"))
     } finally {
       setDeleting(false)
       setConfirmDeleteOpen(false)
@@ -220,7 +222,7 @@ export default function NewsDetail() {
     return (
       <Layout>
         <Box sx={{ p: 2 }}>
-          <Typography color="error">Не удалось загрузить новость.</Typography>
+          <Typography color="error">{t("news:states.loadError")}</Typography>
         </Box>
       </Layout>
     )
@@ -270,7 +272,7 @@ export default function NewsDetail() {
             "&:active": { transform: "scale(0.98)" },
           }}
         >
-          Назад
+          {t("common:buttons.back")}
         </Button>
 
         <Stack spacing={2} width="100%" alignSelf="flex-start">
@@ -289,7 +291,7 @@ export default function NewsDetail() {
                   color="primary"
                   onClick={openEdit}
                   sx={{ mr: 1 }}
-                  aria-label="Редактировать новость"
+                  aria-label={t("news:aria.editNews")}
                   disabled={saving || deleting}
                 >
                   <EditIcon />
@@ -297,7 +299,7 @@ export default function NewsDetail() {
                 <IconButton
                   color="error"
                   onClick={() => setConfirmDeleteOpen(true)}
-                  aria-label="Удалить новость"
+                  aria-label={t("news:aria.deleteNews")}
                   disabled={deleting || saving}
                 >
                   <DeleteIcon />
@@ -306,12 +308,12 @@ export default function NewsDetail() {
             )}
           </Box>
 
-          {createdAt && (
-            <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
-              Опубликовано:{" "}
-              <time dateTime={createdAtIso}>{createdAtLabel}</time>
-            </Typography>
-          )}
+            {createdAt && (
+              <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
+                {t("news:meta.published")} {" "}
+                <time dateTime={createdAtIso}>{createdAtLabel}</time>
+              </Typography>
+            )}
 
           <Box
             sx={{
@@ -325,9 +327,13 @@ export default function NewsDetail() {
               bgcolor: "rgba(0,0,0,0.04)",
             }}
           >
-            <SmartImage
-              srcRaw={imageUrl}
-              alt={query.data.title || "Новость"}
+              <SmartImage
+                srcRaw={imageUrl}
+                alt={
+                  query.data.title
+                    ? t("news:alt.hero", { title: query.data.title })
+                    : t("news:alt.heroFallback")
+                }
               onLoad={handleHeroLoad}
               style={{
                 position: "absolute",
@@ -352,89 +358,89 @@ export default function NewsDetail() {
           </Typography>
         </Stack>
 
-        <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
-          <DialogTitle>Редактировать новость</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={1}>
-              <TextField
-                label="Заголовок"
-                value={editData.title}
-                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                fullWidth
-                disabled={saving}
-              />
-              <TextField
-                label="Текст"
-                value={editData.content}
-                onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-                multiline
-                rows={4}
-                fullWidth
+          <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
+            <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  label={t("news:form.title")}
+                  value={editData.title}
+                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                  fullWidth
+                  disabled={saving}
+                />
+                <TextField
+                  label={t("news:form.text")}
+                  value={editData.content}
+                  onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+                  multiline
+                  rows={4}
+                  fullWidth
                 disabled={saving}
               />
               <Box display="flex" gap={2} alignItems="center" mt={1}>
-                <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<PhotoCamera />}
-                  sx={{ minWidth: 140 }}
-                  disabled={saving}
-                >
-                  {newImage ? "Изменить фото" : "Загрузить фото"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    ref={imageInputRef}
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={<PhotoCamera />}
+                    sx={{ minWidth: 140 }}
+                    disabled={saving}
+                  >
+                    {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      ref={imageInputRef}
                     onChange={handleImageChange}
                   />
                 </Button>
 
                 {imageUrl && (
-                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
-                    <SmartImage
-                      srcRaw={imageUrl}
-                      alt="preview"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  </Box>
-                )}
-              </Box>
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button variant="contained" onClick={handleSave} disabled={saving}>
-              <SaveIcon sx={{ mr: 1 }} /> Сохранить
-            </Button>
-            <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
-              <CloseIcon sx={{ mr: 1 }} /> Отмена
-            </Button>
-          </DialogActions>
-        </Dialog>
+                    <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
+                      <SmartImage
+                        srcRaw={imageUrl}
+                        alt={t("news:alt.preview")}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button variant="contained" onClick={handleSave} disabled={saving}>
+                <SaveIcon sx={{ mr: 1 }} /> {t("common:buttons.save")}
+              </Button>
+              <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
+                <CloseIcon sx={{ mr: 1 }} /> {t("common:buttons.cancel")}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
-        <Dialog
-          open={confirmDeleteOpen}
-          onClose={() => setConfirmDeleteOpen(false)}
-          fullScreen={isMobile}
-        >
-          <DialogTitle>Удалить новость?</DialogTitle>
-          <DialogContent>
-            <Typography>Действие необратимо. Подтвердите удаление.</Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={() => setConfirmDeleteOpen(false)}
-              disabled={deleting}
-            >
-              Отмена
-            </Button>
-            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
-              <DeleteIcon sx={{ mr: 1 }} /> Удалить
-            </Button>
-          </DialogActions>
-        </Dialog>
+          <Dialog
+            open={confirmDeleteOpen}
+            onClose={() => setConfirmDeleteOpen(false)}
+            fullScreen={isMobile}
+          >
+            <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
+            <DialogContent>
+              <Typography>{t("news:dialogs.delete.description")}</Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => setConfirmDeleteOpen(false)}
+                disabled={deleting}
+              >
+                {t("common:buttons.cancel")}
+              </Button>
+              <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
+                <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
         <Snackbar
           open={!!snack}

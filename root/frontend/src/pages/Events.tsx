@@ -16,14 +16,15 @@ import ClearIcon from "@mui/icons-material/Clear"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 
 type EventTabKey = "active" | "archive" | "my"
-type EventTab = { key: EventTabKey; label: string; is_active?: boolean }
+type EventTab = { key: EventTabKey; is_active?: boolean }
 
 const tabs = [
-  { key: "active", label: "Актуальные", is_active: true },
-  { key: "archive", label: "Архив", is_active: false },
-  { key: "my", label: "Мои события" },
+  { key: "active", is_active: true },
+  { key: "archive", is_active: false },
+  { key: "my" },
 ] as const satisfies readonly EventTab[]
 
 const initialEvent = {
@@ -49,6 +50,7 @@ function useDebounced<T>(value: T, delay = 350) {
 const Events = () => {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { t } = useTranslation(["events", "common"])
 
   const [events, setEvents] = useState<Event[]>([])
   const [tab, setTab] = useState<EventTabKey>("active")
@@ -251,7 +253,7 @@ const Events = () => {
           {!loading && normalizedEvents.length === 0 && (
             <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
               <Typography fontSize={24} className="events-empty-text">
-                Нет мероприятий
+                {t("events:states.empty")}
               </Typography>
             </Box>
           )}
@@ -291,7 +293,7 @@ const Events = () => {
             color="primary.main"
             sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
           >
-            Мероприятия
+            {t("events:pageTitle")}
           </Typography>
         </Box>
 
@@ -305,7 +307,7 @@ const Events = () => {
               onClick={() => setCreateOpen(true)}
               disabled={imageUploading || loading}
             >
-              Создать мероприятие
+              {t("events:actions.openCreate")}
             </Button>
           </Box>
         )}
@@ -338,11 +340,11 @@ const Events = () => {
           }}
           TabIndicatorProps={{ style: { height: 3 } }}
         >
-          {tabs.map((t) => (
+          {tabs.map((tabItem) => (
             <Tab
-              key={t.key}
-              value={t.key}
-              label={t.label}
+              key={tabItem.key}
+              value={tabItem.key}
+              label={t(`events:tabs.${tabItem.key}`)}
               sx={{ minHeight: 45, fontWeight: 600, fontSize: isMobile ? 16 : 20, textTransform: "none" }}
             />
           ))}
@@ -359,7 +361,7 @@ const Events = () => {
           sx={{ flexWrap: "wrap" }}
         >
           <TextField
-            label="Поиск"
+            label={t("events:filters.search")}
             variant="outlined"
             size="small"
             value={search}
@@ -393,7 +395,7 @@ const Events = () => {
                 <InputAdornment position="end" sx={{ gap: 0.5 }}>
                   {search ? (
                     <IconButton
-                      aria-label="Очистить поиск"
+                      aria-label={t("events:aria.clearSearch")}
                       edge="end"
                       onClick={() => setSearch("")}
                       size="small"
@@ -403,7 +405,7 @@ const Events = () => {
                     </IconButton>
                   ) : null}
                   <IconButton
-                    aria-label="Фильтры"
+                    aria-label={t("events:aria.openFilters")}
                     edge="end"
                     onClick={(e) => setFilterAnchor(e.currentTarget)}
                     size="small"
@@ -438,7 +440,7 @@ const Events = () => {
         >
           <Stack spacing={1.5}>
             <TextField
-              label="Тип"
+              label={t("events:filters.type")}
               variant="outlined"
               size="small"
               value={type}
@@ -453,7 +455,7 @@ const Events = () => {
               }}
             />
             <TextField
-              label="Место"
+              label={t("events:filters.location")}
               variant="outlined"
               size="small"
               value={location}
@@ -475,10 +477,10 @@ const Events = () => {
                   setLocation("")
                 }}
               >
-                Сбросить
+                {t("common:buttons.reset")}
               </Button>
               <Button variant="contained" onClick={() => setFilterAnchor(null)}>
-                Готово
+                {t("common:buttons.done")}
               </Button>
             </Stack>
           </Stack>
@@ -487,17 +489,17 @@ const Events = () => {
         {eventsContent}
 
         <Dialog open={createOpen} onClose={closeCreate}>
-          <DialogTitle>Создать мероприятие</DialogTitle>
+          <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
           <DialogContent>
             <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
               <TextField
-                label="Название"
+                label={t("events:form.title")}
                 value={eventData.title}
                 onChange={(e) => setEventData({ ...eventData, title: e.target.value })}
                 fullWidth
               />
               <TextField
-                label="Описание"
+                label={t("events:form.description")}
                 value={eventData.description}
                 onChange={(e) => setEventData({ ...eventData, description: e.target.value })}
                 multiline
@@ -505,19 +507,19 @@ const Events = () => {
                 fullWidth
               />
               <TextField
-                label="Тип"
+                label={t("events:form.type")}
                 value={eventData.event_type}
                 onChange={(e) => setEventData({ ...eventData, event_type: e.target.value })}
                 fullWidth
               />
               <TextField
-                label="Место"
+                label={t("events:form.location")}
                 value={eventData.location}
                 onChange={(e) => setEventData({ ...eventData, location: e.target.value })}
                 fullWidth
               />
               <TextField
-                label="Спикер"
+                label={t("events:form.speaker")}
                 value={eventData.speaker}
                 onChange={(e) => setEventData({ ...eventData, speaker: e.target.value })}
                 fullWidth
@@ -525,10 +527,10 @@ const Events = () => {
 
               <Button component="label" variant="outlined" disabled={imageUploading}>
                 {imageUploading
-                  ? "Загрузка..."
+                  ? t("common:statuses.uploading")
                   : eventData.image_url
-                  ? "Изображение выбрано"
-                  : "Загрузить изображение"}
+                  ? t("events:form.imageSelected")
+                  : t("events:form.uploadImage")}
                 <input
                   type="file"
                   hidden
@@ -544,7 +546,7 @@ const Events = () => {
                 <Box mt={1}>
                   <SmartImage
                     srcRaw={createPreview}
-                    alt="Предпросмотр изображения"
+                    alt={t("events:alt.preview")}
                     style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />
                 </Box>
@@ -553,14 +555,14 @@ const Events = () => {
                 <Box mt={1}>
                   <SmartImage
                     srcRaw={eventData.image_url}
-                    alt="Изображение события"
+                    alt={t("events:alt.image")}
                     style={{ maxHeight: 140, borderRadius: 8, border: "1px solid #eee", display: "block" }}
                   />
                 </Box>
               )}
 
               <TextField
-                label="Начало"
+                label={t("events:form.start")}
                 type="datetime-local"
                 value={eventData.starts_at}
                 onChange={(e) => setEventData({ ...eventData, starts_at: e.target.value })}
@@ -568,13 +570,13 @@ const Events = () => {
                 fullWidth
               />
               <TextField
-                label="Окончание"
+                label={t("events:form.end")}
                 type="datetime-local"
                 value={eventData.ends_at}
                 onChange={(e) => setEventData({ ...eventData, ends_at: e.target.value })}
                 InputLabelProps={{ shrink: true }}
                 error={dateError}
-                helperText={dateError ? "Окончание не может быть раньше начала" : " "}
+                helperText={dateError ? t("events:form.errors.endsBeforeStarts") : " "}
                 fullWidth
               />
 
@@ -591,10 +593,10 @@ const Events = () => {
                     dateError
                   }
                 >
-                  Создать
+                  {t("common:buttons.create")}
                 </Button>
                 <Button variant="outlined" color="secondary" onClick={closeCreate}>
-                  Отмена
+                  {t("common:buttons.cancel")}
                 </Button>
               </Box>
             </Stack>

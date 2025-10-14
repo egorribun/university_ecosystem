@@ -13,6 +13,10 @@ import settingsEn from "./locales/en/settings.json" assert { type: "json" }
 import settingsRu from "./locales/ru/settings.json" assert { type: "json" }
 import systemEn from "./locales/en/system.json" assert { type: "json" }
 import systemRu from "./locales/ru/system.json" assert { type: "json" }
+import newsEn from "./locales/en/news.json" assert { type: "json" }
+import newsRu from "./locales/ru/news.json" assert { type: "json" }
+import eventsEn from "./locales/en/events.json" assert { type: "json" }
+import eventsRu from "./locales/ru/events.json" assert { type: "json" }
 
 export const defaultNS = "common"
 
@@ -24,6 +28,8 @@ export const resources = {
     auth: authEn,
     settings: settingsEn,
     system: systemEn,
+    news: newsEn,
+    events: eventsEn,
   },
   ru: {
     common: commonRu,
@@ -32,10 +38,12 @@ export const resources = {
     auth: authRu,
     settings: settingsRu,
     system: systemRu,
+    news: newsRu,
+    events: eventsRu,
   },
 } as const
 
-const fallbackLng = "ru"
+const fallbackLng = "en"
 
 void i18n
   .use(initReactI18next)
@@ -44,7 +52,7 @@ void i18n
     defaultNS,
     fallbackLng,
     supportedLngs: ["en", "ru"],
-    lng: fallbackLng,
+    lng: "ru",
     interpolation: {
       escapeValue: false,
     },

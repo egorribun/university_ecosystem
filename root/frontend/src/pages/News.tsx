@@ -19,6 +19,7 @@ import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "../contexts/AuthContext"
+import { useTranslation } from "react-i18next"
 
 type NewsItem = {
   id: number
@@ -45,6 +46,7 @@ const initialNews = { title: "", content: "" }
 
 const News = () => {
   const { user } = useAuth()
+  const { t } = useTranslation(["news", "common"])
   const [newsList, setNewsList] = useState<NewsItem[]>([])
   const deferredList = useDeferredValue(newsList)
   const [visibleCount, setVisibleCount] = useState(0)
@@ -222,21 +224,21 @@ const News = () => {
             data-fade
             style={{ '--fade-delay': '80ms' } as CSSProperties }
             direction="row"
-          alignItems="center"
-          gap={2}
-          mb={isMobile ? 1.5 : 3}
-          mt={isMobile ? 1.5 : 3}
-        >
-          <ArticleIcon color="primary" sx={{ fontSize: 34 }} />
-          <Typography
-            variant="h4"
-            fontWeight={700}
-            color="primary.main"
-            sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
+            alignItems="center"
+            gap={2}
+            mb={isMobile ? 1.5 : 3}
+            mt={isMobile ? 1.5 : 3}
           >
-            Новости Университета
-          </Typography>
-        </Stack>
+            <ArticleIcon color="primary" sx={{ fontSize: 34 }} />
+            <Typography
+              variant="h4"
+              fontWeight={700}
+              color="primary.main"
+              sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
+            >
+              {t("news:pageTitle")}
+            </Typography>
+          </Stack>
 
         {user?.role === "admin" && (
           <Box
@@ -251,12 +253,12 @@ const News = () => {
                 px: { xs: 2.3, sm: 3 },
                 py: 1.2,
                 borderRadius: 3,
-                letterSpacing: "0.02ем",
+                letterSpacing: "0.02em",
               }}
               onClick={() => setAddOpen(true)}
               disabled={adding}
             >
-              + Добавить новость
+              {t("news:actions.add")}
             </Button>
           </Box>
         )}
@@ -286,7 +288,7 @@ const News = () => {
           {Array.isArray(newsList) && newsList.length === 0 && !loading && (
             <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
               <Typography fontSize={24} className="events-empty-text">
-                Нет новостей
+                {t("news:states.empty")}
               </Typography>
             </Box>
           )}
@@ -305,12 +307,12 @@ const News = () => {
           }}
         >
           <DialogTitle sx={{ fontWeight: 700, fontSize: "1.3rem" }}>
-            Добавить новость
+            {t("news:dialogs.create.title")}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
               <TextField
-                label="Заголовок"
+                label={t("news:form.title")}
                 value={newsData.title}
                 onChange={(e) =>
                   setNewsData({ ...newsData, title: e.target.value })
@@ -321,7 +323,7 @@ const News = () => {
                 disabled={adding}
               />
               <TextField
-                label="Текст новости"
+                label={t("news:form.content")}
                 value={newsData.content}
                 onChange={(e) =>
                   setNewsData({ ...newsData, content: e.target.value })
@@ -347,7 +349,7 @@ const News = () => {
                   }}
                   disabled={adding}
                 >
-                  {imageFile ? "Изменить фото" : "Загрузить фото"}
+                  {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
                   <input
                     type="file"
                     accept="image/*"
@@ -360,7 +362,7 @@ const News = () => {
                 {imagePreview && (
                   <SmartImage
                     srcRaw={imagePreview}
-                    alt="Предпросмотр новой обложки"
+                    alt={t("news:alt.newCover")}
                     style={{
                       width: 100,
                       height: 60,
@@ -389,7 +391,7 @@ const News = () => {
                     fontSize: "1.02rem",
                   }}
                 >
-                  {adding ? "Публикую..." : "Опубликовать"}
+                  {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
                 </Button>
                 <Button
                   variant="outlined"
@@ -398,7 +400,7 @@ const News = () => {
                   disabled={adding}
                   sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
                 >
-                  Отмена
+                  {t("common:buttons.cancel")}
                 </Button>
               </Stack>
             </Stack>
