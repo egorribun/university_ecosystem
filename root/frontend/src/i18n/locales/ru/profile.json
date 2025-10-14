@@ -5,5 +5,64 @@
     "albumFallback": "Обложка альбома",
     "paused": "Пауза",
     "progress": "Прогресс трека"
+  },
+  "aria": {
+    "page": "Профиль",
+    "copyEmail": "Скопировать email",
+    "copyTelegram": "Скопировать ник в Telegram"
+  },
+  "buttons": {
+    "showQr": "Показать QR"
+  },
+  "snackbar": {
+    "spotifyConnected": "Spotify подключён",
+    "spotifyError": "Ошибка подключения Spotify",
+    "copied": "Скопировано",
+    "profileUpdated": "Профиль обновлён",
+    "error": "Ошибка"
+  },
+  "sections": {
+    "nowPlaying": "Сейчас играет",
+    "details": "Сведения",
+    "profileDetails": "Детали профиля",
+    "achievements": "Достижения"
+  },
+  "form": {
+    "name": "Имя",
+    "email": "Email",
+    "telegram": "Telegram",
+    "telegramHint": "Можно ввести @username или ссылку",
+    "department": "Кафедра/отдел",
+    "position": "Должность",
+    "about": "О себе",
+    "recordBookNumber": "Номер зачётной книжки",
+    "status": "Статус",
+    "institute": "Институт",
+    "course": "Курс",
+    "educationLevel": "Уровень образования",
+    "track": "Направление",
+    "program": "Образовательная программа",
+    "achievements": "Достижения",
+    "save": "СОХРАНИТЬ",
+    "saving": "СОХРАНЯЕМ...",
+    "cancel": "ОТМЕНА"
+  },
+  "chips": {
+    "teacher": "Преподаватель",
+    "student": "Студент",
+    "admin": "Администратор",
+    "course": "Курс {{value}}"
+  },
+  "dialog": {
+    "qr": {
+      "title": "QR-код",
+      "hint": "Наведите камеру — контакт добавится автоматически"
+    },
+    "achievement": {
+      "organizer": "Организатор: {{issuer}}",
+      "date": "Дата: {{date}}",
+      "openLink": "Открыть ссылку",
+      "close": "Закрыть"
+    }
   }
 }
