@@ -33,5 +33,25 @@
   "scope": {
     "today": "Today",
     "week": "Week"
+  },
+  "weekDays": {
+    "display": [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ],
+    "raw": [
+      "Воскресенье",
+      "Понедельник",
+      "Вторник",
+      "Среда",
+      "Четверг",
+      "Пятница",
+      "Суббота"
+    ]
   }
 }

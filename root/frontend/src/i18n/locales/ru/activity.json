@@ -1,0 +1,77 @@
+{
+  "title": "Активность",
+  "period": {
+    "options": {
+      "30d": "{{count}} день",
+      "30d_few": "{{count}} дня",
+      "30d_many": "{{count}} дней",
+      "30d_other": "{{count}} дня",
+      "90d": "{{count}} день",
+      "90d_few": "{{count}} дня",
+      "90d_many": "{{count}} дней",
+      "90d_other": "{{count}} дня",
+      "180d": "{{count}} день",
+      "180d_few": "{{count}} дня",
+      "180d_many": "{{count}} дней",
+      "180d_other": "{{count}} дня"
+    },
+    "labels": {
+      "30d": "за {{count}} день",
+      "30d_few": "за {{count}} дня",
+      "30d_many": "за {{count}} дней",
+      "30d_other": "за {{count}} дня",
+      "90d": "за {{count}} день",
+      "90d_few": "за {{count}} дня",
+      "90d_many": "за {{count}} дней",
+      "90d_other": "за {{count}} дня",
+      "180d": "за {{count}} день",
+      "180d_few": "за {{count}} дня",
+      "180d_many": "за {{count}} дней",
+      "180d_other": "за {{count}} дня"
+    }
+  },
+  "common": {
+    "separator": " \u2022 ",
+    "noData": "Нет данных"
+  },
+  "sections": {
+    "attendance": {
+      "title": "Посещаемость",
+      "summary": "{{present}}/{{total}} {{period}}",
+      "recent": "Недавние посещения",
+      "lessonFallback": "Занятие",
+      "status": {
+        "present": "присутствовал",
+        "late": "опоздание",
+        "absent": "отсутствовал"
+      },
+      "dialogTitle": "Посещаемость",
+      "dialogTotal": "Всего: {{present}}/{{total}} {{period}}"
+    },
+    "grades": {
+      "title": "Успеваемость",
+      "averageLabel": "Средний балл за период",
+      "recent": "Недавние оценки",
+      "dialogTitle": "Успеваемость"
+    },
+    "participation": {
+      "title": "Участие",
+      "eventsCount": "{{value}} событие",
+      "eventsCount_few": "{{value}} события",
+      "eventsCount_many": "{{value}} событий",
+      "eventsCount_other": "{{value}} события",
+      "summaryHours": "{{count}} ч.",
+      "summaryHours_few": "{{count}} ч.",
+      "summaryHours_many": "{{count}} ч.",
+      "summaryGroups": "{{count}} кружок",
+      "summaryGroups_few": "{{count}} кружка",
+      "summaryGroups_many": "{{count}} кружков",
+      "summaryGroups_other": "{{count}} кружка",
+      "recent": "Недавнее участие",
+      "dialogTitle": "Участие"
+    }
+  },
+  "dialog": {
+    "close": "Закрыть"
+  }
+}
