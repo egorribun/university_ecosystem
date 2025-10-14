@@ -10,6 +10,9 @@ import {
   vi,
 } from "vitest"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
+import i18n from "../../i18n/config"
+
+const tNotifications = (key: string, options?: Record<string, unknown>) => i18n.t(`notifications:${key}`, options)
 
 const AUTH_USER_ID = 123
 
@@ -217,7 +220,7 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Уведомления включены", sev: "success" }),
+      expect.objectContaining({ text: tNotifications('messages.enabled'), sev: 'success' }),
     )
     expect(result.current.topicState).toMatchObject({
       news: true,
@@ -248,7 +251,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(deleteSubscriptionMock).toHaveBeenCalledWith(subscription.endpoint)
     expect(setPushConsentMock).toHaveBeenCalledWith(false)
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Уведомления выключены", sev: "success" }),
+      expect.objectContaining({ text: tNotifications('messages.disabled'), sev: 'success' }),
     )
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(false))
   })
@@ -316,8 +319,8 @@ describe("usePushPreferences notifications flow", () => {
     expect(ensurePushSubscriptionMock).toHaveBeenCalled()
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "Разрешите уведомления в настройках браузера, чтобы получать пуши",
-        sev: "info",
+        text: tNotifications('messages.enableInSettings'),
+        sev: 'info',
       }),
     )
     expect(result.current.notificationsEnabled).toBe(false)
@@ -337,8 +340,8 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "Подтвердите запрос на отправку уведомлений, чтобы получать пуши",
-        sev: "info",
+        text: tNotifications('messages.confirmPermission'),
+        sev: 'info',
       }),
     )
     expect(result.current.notificationsEnabled).toBe(false)
@@ -358,8 +361,8 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "Не удалось оформить подписку на push-уведомления",
-        sev: "error",
+        text: tNotifications('messages.subscriptionFailed'),
+        sev: 'error',
       }),
     )
     expect(result.current.notificationsEnabled).toBe(false)

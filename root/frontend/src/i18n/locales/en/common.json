@@ -15,7 +15,8 @@
     "reset": "Reset",
     "edit": "Edit",
     "uploadPhoto": "Upload photo",
-    "changePhoto": "Change photo"
+    "changePhoto": "Change photo",
+    "backToTop": "Back to top"
   },
   "statuses": {
     "loading": "Loading…",

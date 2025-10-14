@@ -10,6 +10,10 @@ import { server } from '@/tests/mocks/server';
 import { routerFutureFlags } from '../../App';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import i18n from '../../i18n/config';
+
+const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options);
+const matchText = (text: string) => (content: string) => content.startsWith(text);
 
 const clients: QueryClient[] = [];
 
@@ -31,7 +35,7 @@ const renderLogin = () => {
           <MemoryRouter future={routerFutureFlags} initialEntries={['/login']}>
             <Routes>
               <Route path="/login" element={<Login />} />
-              <Route path="/dashboard" element={<div>Добро пожаловать!</div>} />
+              <Route path="/dashboard" element={<div>Welcome!</div>} />
             </Routes>
           </MemoryRouter>
         </AuthProvider>
@@ -43,7 +47,7 @@ const renderLogin = () => {
 describe('Login page', () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem('ue:language', 'ru');
+    localStorage.setItem('ue:language', 'en');
   });
 
   afterEach(() => {
@@ -55,18 +59,18 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+    const emailInput = screen.getByLabelText(matchText(tAuth('fields.email')), {
       selector: 'input[type="email"]',
     });
 
     await user.type(emailInput, 'invalid');
     await user.type(
-      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      screen.getByLabelText(matchText(tAuth('fields.password')), { selector: 'input[type="password"]' }),
       'secret123',
     );
-    await user.click(screen.getByRole('button', { name: /войти/i }));
+    await user.click(screen.getByRole('button', { name: tAuth('actions.signIn') }));
 
-    expect(await screen.findByText('Введите корректный email')).toBeInTheDocument();
+    expect(await screen.findByText(tAuth('messages.invalidEmail'))).toBeInTheDocument();
   });
 
   it('submits credentials and redirects on success', async () => {
@@ -83,43 +87,43 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+    const emailInput = screen.getByLabelText(matchText(tAuth('fields.email')), {
       selector: 'input[type="email"]',
     });
 
     await user.type(emailInput, 'user@example.com');
     await user.type(
-      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      screen.getByLabelText(matchText(tAuth('fields.password')), { selector: 'input[type="password"]' }),
       'secret123',
     );
-    await user.click(screen.getByLabelText('Показать пароль'));
-    await user.click(screen.getByLabelText('Показать пароль'));
-    await user.click(screen.getByRole('button', { name: /войти/i }));
+    await user.click(screen.getByLabelText(tAuth('actions.showPassword')));
+    await user.click(screen.getByLabelText(tAuth('actions.showPassword')));
+    await user.click(screen.getByRole('button', { name: tAuth('actions.signIn') }));
 
-    await waitFor(() => expect(screen.getByText('Добро пожаловать!')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Welcome!')).toBeInTheDocument());
     expect(captured).toEqual([{ username: 'user@example.com', password: 'secret123' }]);
   });
 
   it('returns server errors to the user', async () => {
     server.use(
-      http.post('*/auth/login', () => HttpResponse.json({ detail: 'Неверные данные для входа' }, { status: 401 })),
+      http.post('*/auth/login', () => HttpResponse.json({ detail: tAuth('login.error') }, { status: 401 })),
     );
 
     const user = userEvent.setup();
     renderLogin();
 
-    const emailInput = screen.getByLabelText(/e-mail|email|почта/i, {
+    const emailInput = screen.getByLabelText(matchText(tAuth('fields.email')), {
       selector: 'input[type="email"]',
     });
 
     await user.type(emailInput, 'user@example.com');
     await user.type(
-      screen.getByLabelText(/^(пароль|password)/i, { selector: 'input[type="password"]' }),
+      screen.getByLabelText(matchText(tAuth('fields.password')), { selector: 'input[type="password"]' }),
       'secret123',
     );
-    await user.click(screen.getByRole('button', { name: /войти/i }));
+    await user.click(screen.getByRole('button', { name: tAuth('actions.signIn') }));
 
-    expect(await screen.findByText('Неверные данные для входа')).toBeInTheDocument();
+    expect(await screen.findByText(tAuth('login.error'))).toBeInTheDocument();
   });
 
   it('meets basic accessibility requirements', async () => {

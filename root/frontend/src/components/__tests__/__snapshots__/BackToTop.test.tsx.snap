@@ -2,7 +2,7 @@
 
 exports[`BackToTop > renders hidden button by default 1`] = `
 <button
-  aria-label="Наверх"
+  aria-label="Back to top"
   class="back-to-top"
   type="button"
 >

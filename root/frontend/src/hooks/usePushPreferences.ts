@@ -14,15 +14,9 @@ import {
 } from "@/push/subscribe"
 import { currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
+import { useTranslation } from "react-i18next"
 
 export type NotificationTopicKey = "news" | "schedule" | "events" | "system"
-
-export const NOTIFICATION_TOPIC_LABELS: Record<NotificationTopicKey, string> = {
-  schedule: "Расписание",
-  news: "Новости",
-  events: "Мероприятия",
-  system: "Системные",
-}
 
 export const NOTIFICATION_TOPIC_KEYS: NotificationTopicKey[] = [
   "schedule",
@@ -51,6 +45,7 @@ const SAFARI_IOS_GUIDE_URL = "https://support.apple.com/ru-ru/guide/iphone/iph42
 
 export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
+  const { t } = useTranslation(["notifications"])
 
   const topicKeys = useMemo(() => NOTIFICATION_TOPIC_KEYS, [])
   const { user } = useAuth()
@@ -82,6 +77,14 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const [pushInitializing, setPushInitializing] = useState(true)
   const [safariIOS] = useState(() => isSafariIOS())
   const queryClient = useQueryClient()
+  const topicLabels = useMemo(
+    () =>
+      NOTIFICATION_TOPIC_KEYS.reduce((acc, key) => {
+        acc[key] = t(`notifications:topics.${key}`)
+        return acc
+      }, {} as Record<NotificationTopicKey, string>),
+    [t],
+  )
 
   const invalidatePushQueries = useCallback(() => {
     queryClient.invalidateQueries({
@@ -111,20 +114,17 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const notificationsEnabled = !!pushSubscription
 
   const permissionText = useMemo(() => {
-    switch (notificationPermission) {
-      case "granted":
-        return "разрешено"
-      case "denied":
-        return "запрещено"
-      default:
-        return "не запрошено"
-    }
-  }, [notificationPermission])
+    const key = notificationPermission === "default" ? "default" : notificationPermission
+    return t(`notifications:permission.${key}`)
+  }, [notificationPermission, t])
 
   const selectedTopicsDescription = useMemo(() => {
-    if (!selectedTopics.length) return "Темы не выбраны"
-    return selectedTopics.map(key => NOTIFICATION_TOPIC_LABELS[key]).join(", ")
-  }, [selectedTopics])
+    if (!selectedTopics.length) return t("notifications:messages.noTopics")
+    return selectedTopics
+      .map(key => topicLabels[key])
+      .filter(Boolean)
+      .join(", ")
+  }, [selectedTopics, t, topicLabels])
 
   const applyServerTopics = useCallback(
     (topics?: string[] | null) => {
@@ -148,18 +148,18 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const enableNotifications = useCallback(async () => {
     if (!isPushSupported()) {
       setPushSupported(false)
-      notify({ text: "Ваш браузер не поддерживает push-уведомления", sev: "warning" })
+      notify({ text: t("notifications:messages.browserUnsupported"), sev: "warning" })
       return
     }
     if (typeof Notification === "undefined") {
-      notify({ text: "Браузер не поддерживает уведомления", sev: "warning" })
+      notify({ text: t("notifications:messages.notificationsUnsupported"), sev: "warning" })
       return
     }
     setPushBusy(true)
     try {
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
-        notify({ text: "Сервис-воркер ещё не готов", sev: "info" })
+        notify({ text: t("notifications:messages.workerNotReady"), sev: "info" })
         return
       }
       const sub = await ensurePushSubscription({
@@ -172,17 +172,17 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       if (!sub) {
         const text =
           permission === "denied"
-            ? "Разрешите уведомления в настройках браузера, чтобы получать пуши"
+            ? t("notifications:messages.enableInSettings")
             : permission === "default"
-              ? "Подтвердите запрос на отправку уведомлений, чтобы получать пуши"
-              : "Не удалось оформить подписку на push-уведомления"
+              ? t("notifications:messages.confirmPermission")
+              : t("notifications:messages.subscriptionFailed")
         notify({ text, sev: permission === "granted" ? "error" : "info" })
         setPushSubscription(sub)
         return
       }
       if (permission !== "granted") {
         notify({
-          text: "Разрешите уведомления в настройках браузера, чтобы получать пуши",
+          text: t("notifications:messages.enableInSettings"),
           sev: "info",
         })
         setPushSubscription(sub)
@@ -193,15 +193,15 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       setPushSubscription(sub)
       setPushConsent(true)
       invalidatePushQueries()
-      notify({ text: "Уведомления включены", sev: "success" })
+      notify({ text: t("notifications:messages.enabled"), sev: "success" })
     } catch (error) {
       console.error("Failed to enable notifications", error)
-      notify({ text: "Не удалось включить уведомления", sev: "error" })
+      notify({ text: t("notifications:messages.enableFailed"), sev: "error" })
     } finally {
       setPushBusy(false)
       setPushInitializing(false)
     }
-  }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics])
+  }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics, t])
 
   const disableNotifications = useCallback(async () => {
     if (!isPushSupported()) {
@@ -213,14 +213,14 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     try {
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
-        notify({ text: "Сервис-воркер недоступен", sev: "warning" })
+        notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
         return
       }
       const sub = await registration.pushManager.getSubscription()
       if (!sub) {
         setPushSubscription(null)
         setPushConsent(false)
-        notify({ text: "Уведомления выключены", sev: "success" })
+        notify({ text: t("notifications:messages.disabled"), sev: "success" })
         invalidatePushQueries()
         return
       }
@@ -235,24 +235,24 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         try {
           await deleteSubscription(endpoint)
         } catch (error) {
-          console.warn("Не удалось удалить подписку на сервере", error)
+          console.warn("Failed to delete push subscription on server", error)
         }
       }
       setPushSubscription(null)
       setPushConsent(false)
       if (unsubscribed || !endpoint) {
-        notify({ text: "Уведомления выключены", sev: "success" })
+        notify({ text: t("notifications:messages.disabled"), sev: "success" })
       } else {
-        notify({ text: "Уведомления отключены локально", sev: "info" })
+        notify({ text: t("notifications:messages.disabledLocal"), sev: "info" })
       }
       invalidatePushQueries()
     } catch (error) {
       console.error("Failed to disable notifications", error)
-      notify({ text: "Не удалось выключить уведомления", sev: "error" })
+      notify({ text: t("notifications:messages.disableFailed"), sev: "error" })
     } finally {
       setPushBusy(false)
     }
-  }, [invalidatePushQueries, notify])
+  }, [invalidatePushQueries, notify, t])
 
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) =>
@@ -272,7 +272,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           const registration = await resolveServiceWorkerRegistration()
           if (!registration) {
             setTopicState(previousState)
-            notify({ text: "Сервис-воркер недоступен", sev: "warning" })
+            notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
             return
           }
           const sub = await ensurePushSubscription({
@@ -284,7 +284,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
             setPushSubscription(null)
             setPushConsent(false)
             notify({
-              text: "Подписка недоступна: проверьте разрешения браузера",
+              text: t("notifications:messages.subscriptionPermissionHint"),
               sev: "warning",
             })
             setTopicState(previousState)
@@ -294,17 +294,19 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           applyServerTopics(persisted)
           setPushSubscription(sub)
           invalidatePushQueries()
-          const label = NOTIFICATION_TOPIC_LABELS[key]
+          const label = topicLabels[key]
           if (label) {
             notify({
-              text: `Тема «${label}» ${checked ? "включена" : "отключена"}`,
+              text: checked
+                ? t("notifications:messages.topicEnabled", { label })
+                : t("notifications:messages.topicDisabled", { label }),
               sev: "success",
             })
           }
         } catch (error) {
           console.error("Failed to update topics", error)
           setTopicState(previousState)
-          notify({ text: "Не удалось обновить настройки уведомлений", sev: "error" })
+          notify({ text: t("notifications:messages.updateFailed"), sev: "error" })
         } finally {
           setPushBusy(false)
         }
@@ -318,6 +320,8 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       topicKeys,
       topicState,
       notify,
+      t,
+      topicLabels,
     ],
   )
 
@@ -419,7 +423,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         }
       } catch (error) {
         if (active) {
-          console.warn("Не удалось определить подписку на push", error)
+          console.warn(t("notifications:messages.detectFailed"), error)
         }
       } finally {
         if (active) setPushInitializing(false)

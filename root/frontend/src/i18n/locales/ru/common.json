@@ -15,7 +15,8 @@
     "reset": "Сбросить",
     "edit": "Редактировать",
     "uploadPhoto": "Загрузить фото",
-    "changePhoto": "Изменить фото"
+    "changePhoto": "Изменить фото",
+    "backToTop": "Наверх"
   },
   "statuses": {
     "loading": "Загрузка…",

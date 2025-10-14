@@ -21,6 +21,10 @@ import newsEn from "./locales/en/news.json" assert { type: "json" }
 import newsRu from "./locales/ru/news.json" assert { type: "json" }
 import eventsEn from "./locales/en/events.json" assert { type: "json" }
 import eventsRu from "./locales/ru/events.json" assert { type: "json" }
+import profileEn from "./locales/en/profile.json" assert { type: "json" }
+import profileRu from "./locales/ru/profile.json" assert { type: "json" }
+import notificationsEn from "./locales/en/notifications.json" assert { type: "json" }
+import notificationsRu from "./locales/ru/notifications.json" assert { type: "json" }
 
 export const defaultNS = "common"
 
@@ -36,6 +40,8 @@ export const resources = {
     system: systemEn,
     news: newsEn,
     events: eventsEn,
+    profile: profileEn,
+    notifications: notificationsEn,
   },
   ru: {
     common: commonRu,
@@ -48,6 +54,8 @@ export const resources = {
     system: systemRu,
     news: newsRu,
     events: eventsRu,
+    profile: profileRu,
+    notifications: notificationsRu,
   },
 } as const
 

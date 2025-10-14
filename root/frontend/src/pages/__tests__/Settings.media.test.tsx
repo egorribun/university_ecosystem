@@ -10,6 +10,9 @@ import Settings from "@/pages/Settings";
 import type { User } from "@/types/User";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import theme from "@/theme";
+import i18n from "../../i18n/config";
+
+const tSettings = (key: string, options?: Record<string, unknown>) => i18n.t(`settings:${key}`, options);
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ unreadCount: 0 }),
@@ -32,7 +35,6 @@ vi.mock("@/hooks/usePushPreferences", () => ({
     safariIOS: false,
     safariGuideUrl: "#",
   }),
-  NOTIFICATION_TOPIC_LABELS: {},
 }));
 
 const baseUser: User = {
@@ -113,7 +115,7 @@ describe("Settings media actions", () => {
 
     const { mockSetUser } = renderSettings();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Аккаунт" }));
+    fireEvent.click(screen.getByRole("tab", { name: tSettings('tabs.account') }));
 
     await waitFor(() => expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1));
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']");
@@ -149,10 +151,10 @@ describe("Settings media actions", () => {
   });
 
   it("shows an error when avatar upload fails", async () => {
-    vi.spyOn(api, "post").mockRejectedValue({ response: { data: { detail: "Ошибка загрузки" } } });
+    vi.spyOn(api, "post").mockRejectedValue({ response: { data: { detail: "Upload error" } } });
 
     renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Аккаунт" }));
+    fireEvent.click(screen.getByRole("tab", { name: tSettings('tabs.account') }));
     await waitFor(() => expect(document.querySelector("input[type='file']")).toBeTruthy());
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']");
     const file = new File(["avatar"], "avatar.png", { type: "image/png" });
@@ -163,7 +165,7 @@ describe("Settings media actions", () => {
 
     await waitFor(() => expect(api.post).toHaveBeenCalled());
 
-    expect(await screen.findByText("Не удалось загрузить аватар", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByText(tSettings('media.avatar.uploadFailed'), {}, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it("uploads cover and updates preview", async () => {
@@ -178,12 +180,12 @@ describe("Settings media actions", () => {
 
     const { mockSetUser } = renderSettings();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Аккаунт" }));
+    fireEvent.click(screen.getByRole("tab", { name: tSettings('tabs.account') }));
 
     await waitFor(() => expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1));
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']");
 
-    const coverLabel = await screen.findByText("Обложка профиля");
+    const coverLabel = await screen.findByText(tSettings('media.cover.title'));
     const coverItem = coverLabel.closest("li") as HTMLElement;
     const preview = coverItem.querySelector<HTMLElement>("[data-testid='settings-cover-preview']");
     expect(preview).toBeTruthy();

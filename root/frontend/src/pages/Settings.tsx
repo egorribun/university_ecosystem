@@ -544,7 +544,7 @@ export default function Settings() {
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар обновлён", sev: "success" });
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, "Не удалось загрузить аватар"), sev: "error" });
+      setSnack({ text: resolveDetailMessage(error, tSettings("media.avatar.uploadFailed")), sev: "error" });
     } finally {
       setAvatarBusy(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -559,7 +559,7 @@ export default function Settings() {
       setAvatarVersion(Date.now());
       setSnack({ text: "Аватар удалён", sev: "success" });
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, "Не удалось удалить аватар"), sev: "error" });
+      setSnack({ text: resolveDetailMessage(error, tSettings("media.avatar.deleteFailed")), sev: "error" });
     } finally {
       setAvatarBusy(false);
     }
@@ -577,7 +577,7 @@ export default function Settings() {
       setCoverVersion(Date.now());
       setSnack({ text: "Обложка обновлена", sev: "success" });
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, "Не удалось загрузить обложку"), sev: "error" });
+      setSnack({ text: resolveDetailMessage(error, tSettings("media.cover.uploadFailed")), sev: "error" });
     } finally {
       setCoverBusy(false);
       if (coverInputRef.current) coverInputRef.current.value = "";
@@ -623,7 +623,7 @@ export default function Settings() {
             }}
           >
             <Tab label="Общее" />
-            <Tab label="Аккаунт" />
+            <Tab label={tSettings("tabs.account")} />
             <Tab label="Интеграции" />
           </Tabs>
         </Paper>
@@ -861,7 +861,7 @@ export default function Settings() {
                     }}
                   />
                 </ListItemAvatar>
-                <ListItemText primary="Обложка профиля" secondary="Рекомендация: 1600×400+" />
+                <ListItemText primary={tSettings("media.cover.title")} secondary="Рекомендация: 1600×400+" />
                 <input
                   ref={coverInputRef}
                   type="file"
