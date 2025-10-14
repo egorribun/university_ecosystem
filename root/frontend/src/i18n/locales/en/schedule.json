@@ -1,0 +1,114 @@
+{
+  "title": {
+    "student": "My schedule",
+    "default": "Schedule"
+  },
+  "header": {
+    "groupName": "Group: {{name}}"
+  },
+  "weekdays": {
+    "backend": [
+      "Понедельник",
+      "Вторник",
+      "Среда",
+      "Четверг",
+      "Пятница",
+      "Суббота"
+    ],
+    "long": [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ],
+    "short": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat"
+    ]
+  },
+  "lessonTypes": {
+    "Лекция": "Lecture",
+    "ПЗ": "Practical class",
+    "ЛЗ": "Lab work",
+    "Проектная деятельность": "Project work"
+  },
+  "time": {
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes"
+  },
+  "timeLeft": {
+    "current": "Current lesson ends in {{duration}}",
+    "next": "Next lesson starts in {{duration}}"
+  },
+  "week": {
+    "label": "Week",
+    "odd": "Odd",
+    "even": "Even",
+    "both": "Both"
+  },
+  "break": "Break {{minutes}} min",
+  "lesson": {
+    "conflict": "Time conflict",
+    "details": "More details"
+  },
+  "aria": {
+    "deleteLesson": "Delete lesson",
+    "addLesson": "Add lesson for {{day}}",
+    "currentProgress": "Current lesson progress"
+  },
+  "table": {
+    "noLessons": "No lessons scheduled"
+  },
+  "mobile": {
+    "noLessons": "No lessons for this day"
+  },
+  "chips": {
+    "current": "Now",
+    "next": "Next"
+  },
+  "summary": {
+    "noMoreToday": "No more lessons today"
+  },
+  "form": {
+    "groupLabel": "Group",
+    "subject": "Subject",
+    "teacher": "Teacher",
+    "room": "Room",
+    "lessonType": "Lesson type",
+    "day": "Day",
+    "startTime": "Start time",
+    "endTime": "End time",
+    "week": "Week"
+  },
+  "dialog": {
+    "detailsFallback": "Lesson details",
+    "typeLabel": "Type",
+    "timeLabel": "Time",
+    "teacherLabel": "Teacher",
+    "roomLabel": "Room",
+    "editTitle": "Edit lesson",
+    "addTitle": "Add lesson"
+  },
+  "buttons": {
+    "edit": "Edit",
+    "close": "Close",
+    "add": "Add lesson"
+  },
+  "snackbar": {
+    "updated": "Changes saved",
+    "updateError": "Failed to save changes",
+    "fillAllFields": "Please fill in all fields",
+    "added": "Lesson added",
+    "addError": "Failed to add lesson",
+    "deleted": "Lesson deleted",
+    "deleteError": "Failed to delete lesson"
+  }
+}

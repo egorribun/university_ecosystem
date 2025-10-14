@@ -1,7 +1,16 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import { useAuth } from "../contexts/AuthContext"
-import { useState, useEffect, useMemo, useRef, useDeferredValue, startTransition, type CSSProperties } from "react"
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useDeferredValue,
+  startTransition,
+  useCallback,
+  type CSSProperties
+} from "react"
 import api from "../api/client"
 import {
   Box,
@@ -40,21 +49,12 @@ import useMediaQuery from "@mui/material/useMediaQuery"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
+import "dayjs/locale/en"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-
-const days = [
-  "Понедельник",
-  "Вторник",
-  "Среда",
-  "Четверг",
-  "Пятница",
-  "Суббота"
-]
-
-const dayShort = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+import { useTranslation } from "react-i18next"
+import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 
 dayjs.extend(isoWeek)
-dayjs.locale("ru")
 
 const scheduleGroupsQueryKey = ["schedule", "groups"] as const
 const scheduleQueryKey = (groupId: number) => ["schedule", "group", groupId] as const
@@ -86,7 +86,7 @@ const writeToStorage = (key: string, value: unknown) => {
 }
 
 type LessonParity = "odd" | "even" | "both"
-type LessonWeekday = (typeof days)[number] | string
+type LessonWeekday = string
 
 type Lesson = {
   id: number
@@ -157,15 +157,15 @@ function parseMinutes(s?: string | null) {
   return h * 60 + m
 }
 
-function buildTable(schedule: Lesson[]) {
-  const lessonsByDay = days.map(day =>
+function buildTable(schedule: Lesson[], weekdayOrder: readonly string[]) {
+  const lessonsByDay = weekdayOrder.map(day =>
     schedule
       .filter(l => l.weekday === day)
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   )
   const maxLessons = Math.max(...lessonsByDay.map(arr => arr.length), 0)
   const rows: (Lesson | null)[][] = []
-  for (let i = 0; i < maxLessons; ++i) rows.push(days.map((_, d) => lessonsByDay[d][i] || null))
+  for (let i = 0; i < maxLessons; ++i) rows.push(weekdayOrder.map((_, d) => lessonsByDay[d][i] || null))
   return rows
 }
 
@@ -190,6 +190,67 @@ const toDayjs = (s?: string | null) => {
 export default function Schedule() {
   const { user, loading } = useAuth()
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["schedule", "common"])
+  const { language } = useLanguage()
+  const locale = getLocaleForLanguage(language)
+  const weekdayBackend = useMemo(() => {
+    const result = t("schedule:weekdays.backend", { returnObjects: true }) as unknown
+    if (Array.isArray(result) && result.length > 0) {
+      return result as string[]
+    }
+    return ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
+  }, [t])
+  const weekdayLabels = useMemo(() => {
+    const result = t("schedule:weekdays.long", { returnObjects: true }) as unknown
+    if (Array.isArray(result) && result.length === weekdayBackend.length) {
+      return result as string[]
+    }
+    return weekdayBackend
+  }, [t, weekdayBackend])
+  const weekdayShort = useMemo(() => {
+    const result = t("schedule:weekdays.short", { returnObjects: true }) as unknown
+    if (Array.isArray(result) && result.length === weekdayBackend.length) {
+      return result as string[]
+    }
+    return weekdayBackend.map(label => label.slice(0, 2))
+  }, [t, weekdayBackend])
+  const getDayLabel = useCallback(
+    (value: string) => {
+      const index = weekdayBackend.indexOf(value)
+      return index >= 0 ? weekdayLabels[index] : value
+    },
+    [weekdayBackend, weekdayLabels]
+  )
+  const lessonTypeOptions = useMemo(
+    () => [
+      { value: "Лекция", label: t("schedule:lessonTypes.Лекция") },
+      { value: "ПЗ", label: t("schedule:lessonTypes.ПЗ") },
+      { value: "ЛЗ", label: t("schedule:lessonTypes.ЛЗ") },
+      { value: "Проектная деятельность", label: t("schedule:lessonTypes.Проектная деятельность") },
+    ],
+    [t]
+  )
+  const lessonTypeLabels = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const option of lessonTypeOptions) {
+      map.set(option.value, option.label)
+    }
+    return map
+  }, [lessonTypeOptions])
+  const defaultLessonType = lessonTypeOptions[0]?.value ?? "Лекция"
+  const formatDuration = useCallback(
+    (hours: number, minutes: number) => {
+      const parts: string[] = []
+      if (hours > 0) {
+        parts.push(t("schedule:time.hours", { count: hours }))
+      }
+      if (minutes > 0 || hours === 0) {
+        parts.push(t("schedule:time.minutes", { count: minutes }))
+      }
+      return parts.join(" ")
+    },
+    [t]
+  )
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null)
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
   const [snack, setSnack] = useState("")
@@ -203,20 +264,23 @@ export default function Schedule() {
     subject: "",
     teacher: "",
     room: "",
-    lessonType: "Лекция",
+    lessonType: defaultLessonType,
     startTime: "",
     endTime: "",
     parity: "both"
   })
+  const addDayLabel = addDay ? getDayLabel(addDay) : ""
   const isMobile = useMediaQuery("(max-width:1730px)")
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const headRefs = useRef<(HTMLTableCellElement | null)[]>([])
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
-  if (headRefs.current.length !== days.length) headRefs.current = Array(days.length).fill(null)
-  if (dayCardRefs.current.length !== days.length) dayCardRefs.current = Array(days.length).fill(null)
+  if (headRefs.current.length !== weekdayBackend.length)
+    headRefs.current = Array(weekdayBackend.length).fill(null)
+  if (dayCardRefs.current.length !== weekdayBackend.length)
+    dayCardRefs.current = Array(weekdayBackend.length).fill(null)
   const mainAlignSx = { ml: { xs: 0, sm: 2, md: 3, lg: 6 }, mr: { xs: 0, sm: 2, md: 3, lg: 6 } }
   const todayIdx = getTodayIdx()
-  const hasToday = todayIdx >= 0 && todayIdx < days.length
+  const hasToday = todayIdx >= 0 && todayIdx < weekdayBackend.length
   const [nowTick, setNowTick] = useState(dayjs())
   useEffect(() => {
     const id = setInterval(() => setNowTick(dayjs()), 30000)
@@ -300,7 +364,7 @@ export default function Schedule() {
 
   const todayLessons = useMemo(() => {
     if (!hasToday) return []
-    const today = days.at(todayIdx)
+    const today = weekdayBackend.at(todayIdx)
     if (!today) return []
     return filteredSchedule
       .filter(l => l.weekday === today)
@@ -327,20 +391,23 @@ export default function Schedule() {
 
   const [timeLeftText, setTimeLeftText] = useState<string>("")
   useEffect(() => {
-    const fmtLeft = (h: number, m: number) => (h > 0 ? `${h}ч ${m}м` : `${m}м`)
     const calc = () => {
       if (currentLesson) {
         const end = parseMinutes(currentLesson.end_time) ?? 0
         const left = Math.max(0, end - (dayjs().hour() * 60 + dayjs().minute()))
         const h = Math.floor(left / 60)
         const m = left % 60
-        setTimeLeftText(`До конца: ${fmtLeft(h, m)}`)
+        setTimeLeftText(
+          t("schedule:timeLeft.current", { duration: formatDuration(h, m) })
+        )
       } else if (nextLesson) {
         const start = parseMinutes(nextLesson.start_time) ?? 0
         const left = Math.max(0, start - (dayjs().hour() * 60 + dayjs().minute()))
         const h = Math.floor(left / 60)
         const m = left % 60
-        setTimeLeftText(`До начала: ${fmtLeft(h, m)}`)
+        setTimeLeftText(
+          t("schedule:timeLeft.next", { duration: formatDuration(h, m) })
+        )
       } else {
         setTimeLeftText("")
       }
@@ -348,7 +415,7 @@ export default function Schedule() {
     calc()
     const id = setInterval(calc, 30000)
     return () => clearInterval(id)
-  }, [currentLesson, nextLesson])
+  }, [currentLesson, nextLesson, t, formatDuration])
 
   const currentProgress = useMemo(() => {
     if (!currentLesson) return 0
@@ -360,7 +427,10 @@ export default function Schedule() {
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 
-  const tableRowsBase = useMemo(() => buildTable(filteredSchedule), [filteredSchedule])
+  const tableRowsBase = useMemo(
+    () => buildTable(filteredSchedule, weekdayBackend),
+    [filteredSchedule, weekdayBackend]
+  )
   const tableRows = useDeferredValue(tableRowsBase)
   const [rowLimit, setRowLimit] = useState(0)
   useEffect(() => {
@@ -402,7 +472,19 @@ export default function Schedule() {
     }
   }, [rowLimit, isMobile, todayIdx, hasToday])
 
-  const todayLabel = useMemo(() => dayjs().format("DD MMM, dddd"), [])
+  const todayLabel = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(locale, {
+      weekday: "long",
+      day: "2-digit",
+      month: "short"
+    })
+    const parts = formatter.formatToParts(new Date())
+    const dayPart = parts.find(part => part.type === "day")?.value ?? ""
+    const monthPart = parts.find(part => part.type === "month")?.value ?? ""
+    const weekdayPart = parts.find(part => part.type === "weekday")?.value ?? ""
+    const datePart = [dayPart, monthPart].filter(Boolean).join(" ")
+    return `${datePart}${weekdayPart ? `, ${weekdayPart}` : ""}`
+  }, [locale])
   const activeGroupName = groups.find(g => g.id === selectedGroup)?.name || ""
 
   const conflictedIds = useMemo(() => {
@@ -458,18 +540,18 @@ export default function Schedule() {
 
   const headerActions = (
     <Stack direction="row" spacing={2} alignItems="center" mb={2.5} flexWrap="wrap">
-      <Typography component="span">Неделя:</Typography>
+      <Typography component="span">{t("schedule:week.label")}</Typography>
       <Button
         variant={currentParity === "odd" ? "contained" : "outlined"}
         onClick={() => setCurrentParity("odd")}
       >
-        Нечётная
+        {t("schedule:week.odd")}
       </Button>
       <Button
         variant={currentParity === "even" ? "contained" : "outlined"}
         onClick={() => setCurrentParity("even")}
       >
-        Чётная
+        {t("schedule:week.even")}
       </Button>
     </Stack>
   )
@@ -492,7 +574,7 @@ export default function Schedule() {
           zIndex: 3
         }}
       >
-        <Chip size="small" label={`перерыв ${gap} мин`} className="chip-break" />
+        <Chip size="small" label={t("schedule:break", { minutes: gap })} className="chip-break" />
       </Box>
     )
   }
@@ -529,14 +611,14 @@ export default function Schedule() {
         mt: hasBreakBefore ? 2.5 : 0,
         "&:hover": { transform: "translateY(-1px)", boxShadow: "0 10px 28px #0000001f, 0 2px 10px #0003" }
       }}
-      title={isConflict ? "Пересечение по времени" : undefined}
+      title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
       <Box sx={{ position: "absolute", left: -1, top: -1, bottom: -1, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
       <Stack spacing={0.6}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Chip
             size="small"
-            label={lesson.lesson_type ?? ""}
+            label={lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
             sx={{ height: 22, fontWeight: 700, color: "#fff", background: getLessonTypeColor(lesson.lesson_type) }}
           />
           <Chip
@@ -565,12 +647,12 @@ export default function Schedule() {
           <Chip size="small" variant="outlined" icon={<RoomIcon sx={{ fontSize: 16 }} />} label={lesson.room} sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }} />
         </Stack>
       </Stack>
-      <Tooltip title="Подробнее">
+      <Tooltip title={t("schedule:lesson.details")}>
         <InfoOutlinedIcon sx={{ position: "absolute", right: 8, bottom: 8, fontSize: 18, color: "var(--secondary-text)" }} />
       </Tooltip>
       {(user?.role === "admin" || user?.role === "teacher") && (
         <IconButton
-          aria-label="Удалить занятие"
+          aria-label={t("schedule:aria.deleteLesson")}
           size="small"
           sx={{ position: "absolute", top: 6, right: 6, bgcolor: "var(--card-bg)", zIndex: 2 }}
           onClick={(e) => { e.stopPropagation(); onDelete() }}
@@ -607,7 +689,9 @@ export default function Schedule() {
           <TableHead>
             <TableRow>
               <TableCell align="center" sx={{ fontWeight: 700, width: 45, background: "var(--table-header-bg)", zIndex: 10, position: "sticky", left: 0, color: "var(--page-text)", fontSize: "clamp(0.98rem,1.7vw,1.13rem)" }}>№</TableCell>
-              {days.map((day, idx) => (
+              {weekdayBackend.map((day, idx) => {
+                const label = weekdayLabels[idx] ?? day
+                return (
                 <TableCell
                   align="center"
                   key={day}
@@ -626,7 +710,7 @@ export default function Schedule() {
                   }}
                 >
                   <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
-                    {day}
+                    {label}
                     {(user?.role === "admin" || user?.role === "teacher") && (
                       <IconButton
                         size="small"
@@ -636,20 +720,22 @@ export default function Schedule() {
                           setAddDialogOpen(true)
                         }}
                         sx={{ ml: 1, border: "1px solid var(--btn-border)", bgcolor: "var(--card-bg)", "&:hover": { bgcolor: "var(--option-bg)" }, height: 26, width: 26 }}
-                        aria-label={`Добавить занятие на день ${day}`}
+                        aria-label={t("schedule:aria.addLesson", { day: label })}
                       >
                         <AddIcon fontSize="small" />
                       </IconButton>
                     )}
                   </Box>
                 </TableCell>
-              ))}
+              )})}
             </TableRow>
           </TableHead>
           <TableBody sx={{ contentVisibility: "auto" }}>
             {visibleRows.length === 0 ? (
               <TableRow>
-                <TableCell align="center" colSpan={days.length + 1}>Нет занятий</TableCell>
+                <TableCell align="center" colSpan={weekdayBackend.length + 1}>
+                  {t("schedule:table.noLessons")}
+                </TableCell>
               </TableRow>
             ) : (
               visibleRows.map((row, rowIdx) => (
@@ -715,13 +801,13 @@ export default function Schedule() {
 
   const renderMobileDayAnchors = () => (
     <Stack direction="row" gap={1} sx={{ overflowX: "auto", pb: 1, px: 0.5 }}>
-      {days.map((d, i) => (
+      {weekdayBackend.map((day, i) => (
         <Chip
-          key={d}
+          key={day}
           clickable
           className="chip-day"
           color={hasToday && i === todayIdx ? "primary" : "default"}
-          label={dayShort[i]}
+          label={weekdayShort[i] ?? getDayLabel(day)}
           onClick={() => dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })}
           sx={{ flex: "0 0 auto" }}
         />
@@ -732,7 +818,8 @@ export default function Schedule() {
   const renderMobileCards = () => (
     <Stack spacing={2} sx={{ width: "100%", mt: 1 }}>
       {renderMobileDayAnchors()}
-      {days.map((day, dayIdx) => {
+      {weekdayBackend.map((day, dayIdx) => {
+        const label = weekdayLabels[dayIdx] ?? day
         const lessons = filteredSchedule
           .filter(l => l.weekday === day)
           .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
@@ -755,7 +842,7 @@ export default function Schedule() {
             }}
           >
             <Box display="flex" alignItems="center" mb={1} gap={1}>
-              <Typography fontWeight={800} fontSize="1.12rem">{day}</Typography>
+              <Typography fontWeight={800} fontSize="1.12rem">{label}</Typography>
               {(user?.role === "admin" || user?.role === "teacher") && (
                 <IconButton
                   size="small"
@@ -765,14 +852,14 @@ export default function Schedule() {
                     setAddDialogOpen(true)
                   }}
                   sx={{ ml: 0.5, border: "1px solid var(--btn-border)", bgcolor: "var(--card-bg)", "&:hover": { bgcolor: "var(--option-bg)" }, height: 26, width: 26 }}
-                  aria-label={`Добавить занятие на день ${day}`}
+                  aria-label={t("schedule:aria.addLesson", { day: label })}
                 >
                   <AddIcon fontSize="small" />
                 </IconButton>
               )}
             </Box>
             {lessons.length === 0 ? (
-              <Typography sx={{ color: "var(--secondary-text)" }}>Нет занятий</Typography>
+              <Typography sx={{ color: "var(--secondary-text)" }}>{t("schedule:mobile.noLessons")}</Typography>
             ) : (
               <Stack spacing={1}>
                 {lessons.map((lesson, idx) => {
@@ -781,7 +868,12 @@ export default function Schedule() {
                   return (
                     <Box key={lesson.id}>
                       {idx > 0 && gap > 0 && (
-                        <Chip size="small" label={`перерыв ${gap} мин`} className="chip-break" sx={{ mb: 0.8 }} />
+                        <Chip
+                          size="small"
+                          label={t("schedule:break", { minutes: gap })}
+                          className="chip-break"
+                          sx={{ mb: 0.8 }}
+                        />
                       )}
                       <Box
                         onClick={() => { setDialogLesson(lesson); setOpenDialog(true) }}
@@ -799,7 +891,12 @@ export default function Schedule() {
                       >
                         <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
                         <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" sx={{ pl: 1 }}>
-                          <Chip size="small" label={lesson.lesson_type ?? ""} className="chip-type" sx={{ background: getLessonTypeColor(lesson.lesson_type), color: "#fff", height: 24, fontWeight: 700 }} />
+                          <Chip
+                            size="small"
+                            label={lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
+                            className="chip-type"
+                            sx={{ background: getLessonTypeColor(lesson.lesson_type), color: "#fff", height: 24, fontWeight: 700 }}
+                          />
                           <Chip size="small" className="chip-time" icon={<AccessTimeIcon sx={{ fontSize: 16 }} />} label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`} />
                         </Stack>
                         <Typography fontWeight={700} fontSize="1.02rem" sx={{ color: "var(--page-text)", pl: 1, mt: 0.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -825,7 +922,7 @@ export default function Schedule() {
     return (
       <Layout>
         <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
-          Загрузка...
+          {t("common:statuses.loading")}
         </Box>
       </Layout>
     )
@@ -848,10 +945,16 @@ export default function Schedule() {
           <Stack data-fade style={{ '--fade-delay': '80ms' } as CSSProperties } direction="row" alignItems="center" flexWrap="wrap" gap={1.3} mb={2.2} mt={0.5}>
             <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
             <Typography variant="h4" fontWeight={700} color="primary.main" sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}>
-              {user?.role === "student" ? "Расписание моей группы" : "Расписание групп"}
+              {user?.role === "student"
+                ? t("schedule:title.student")
+                : t("schedule:title.default")}
             </Typography>
             <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>{todayLabel}</Box>
-            {activeGroupName && <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>Группа: {activeGroupName}</Box>}
+            {activeGroupName && (
+              <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>
+                {t("schedule:header.groupName", { name: activeGroupName })}
+              </Box>
+            )}
           </Stack>
 
           <Stack data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } direction="row" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
@@ -862,7 +965,7 @@ export default function Schedule() {
             {currentLesson ? (
               <Box>
                 <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                  <Chip size="small" className="chip-clock" label="Сейчас идёт" />
+                  <Chip size="small" className="chip-clock" label={t("schedule:chips.current") } />
                   <Chip size="small" className="chip-time" label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`} />
                   <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
                   {!!timeLeftText && <Chip size="small" className="chip-left" label={timeLeftText} />}
@@ -885,27 +988,29 @@ export default function Schedule() {
                       transition: "transform 0.4s linear"
                     }
                   }}
-                  aria-label="Прогресс текущего занятия"
+                  aria-label={t("schedule:aria.currentProgress")}
                 />
               </Box>
             ) : nextLesson ? (
               <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                <Chip size="small" className="chip-clock" label="Далее" />
+                <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
                 <Chip size="small" className="chip-time" label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`} />
                 <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
                 {!!timeLeftText && <Chip size="small" className="chip-left" label={timeLeftText} />}
               </Stack>
             ) : (
-              <Typography sx={{ color: "var(--secondary-text)" }}>На сегодня занятий больше нет</Typography>
+              <Typography sx={{ color: "var(--secondary-text)" }}>
+                {t("schedule:summary.noMoreToday")}
+              </Typography>
             )}
           </Box>
 
           {(user?.role === "teacher" || user?.role === "admin") && (
             <FormControl data-fade style={{ '--fade-delay': '240ms' } as CSSProperties } fullWidth sx={{ mb: 2, maxWidth: 340 }}>
-              <InputLabel>Группа</InputLabel>
+              <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
               <Select
                 value={selectedGroup ?? ""}
-                label="Группа"
+                label={t("schedule:form.groupLabel")}
                 onChange={e => setSelectedGroup(Number(e.target.value))}
               >
                 {groups.map(g => (
@@ -921,27 +1026,33 @@ export default function Schedule() {
         </Box>
 
         <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-          <DialogTitle>{dialogLesson?.subject || "Детали занятия"}</DialogTitle>
+          <DialogTitle>{dialogLesson?.subject || t("schedule:dialog.detailsFallback")}</DialogTitle>
           <DialogContent>
             {dialogLesson && (
               <Box>
                 <Box mb={1}>
-                  <b>Тип:</b>{" "}
+                  <b>{t("schedule:dialog.typeLabel")}:</b>{" "}
                   <span style={{ color: "#fff", background: getLessonTypeColor(dialogLesson.lesson_type), borderRadius: 5, padding: "2px 8px" }}>
-                    {dialogLesson.lesson_type ?? ""}
+                    {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ?? dialogLesson.lesson_type ?? ""}
                   </span>
                 </Box>
-                <Box><b>Время:</b> {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}</Box>
-                <Box><b>Преподаватель:</b> {dialogLesson.teacher}</Box>
-                <Box><b>Аудитория:</b> {dialogLesson.room}</Box>
+                <Box>
+                  <b>{t("schedule:dialog.timeLabel")}:</b> {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}
+                </Box>
+                <Box>
+                  <b>{t("schedule:dialog.teacherLabel")}:</b> {dialogLesson.teacher}
+                </Box>
+                <Box>
+                  <b>{t("schedule:dialog.roomLabel")}:</b> {dialogLesson.room}
+                </Box>
                 <Stack direction="row" gap={1.2} mt={2}>
                   {(user?.role === "admin" || user?.role === "teacher") && (
                     <Button variant="outlined" onClick={() => { setEditing(true); setEditLesson(dialogLesson) }}>
-                      Редактировать
+                      {t("schedule:buttons.edit")}
                     </Button>
                   )}
                   <Button variant="outlined" color="secondary" onClick={() => setOpenDialog(false)}>
-                    Закрыть
+                    {t("schedule:buttons.close")}
                   </Button>
                 </Stack>
               </Box>
@@ -950,45 +1061,72 @@ export default function Schedule() {
         </Dialog>
 
         <Dialog open={editing} onClose={() => setEditing(false)}>
-          <DialogTitle>Редактировать занятие</DialogTitle>
+          <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
           <DialogContent>
             {editLesson && (
               <Stack spacing={2} mt={1}>
-                <TextField label="Предмет" value={editLesson.subject} onChange={e => setEditLesson({ ...editLesson, subject: e.target.value })} />
-                <TextField label="Преподаватель" value={editLesson.teacher} onChange={e => setEditLesson({ ...editLesson, teacher: e.target.value })} />
-                <TextField label="Аудитория" value={editLesson.room} onChange={e => setEditLesson({ ...editLesson, room: e.target.value })} />
-                <TextField select label="Тип занятия" value={editLesson.lesson_type} onChange={e => setEditLesson({ ...editLesson, lesson_type: e.target.value })}>
-                  <MenuItem value="Лекция">Лекция</MenuItem>
-                  <MenuItem value="ПЗ">Практика</MenuItem>
-                  <MenuItem value="ЛЗ">Лабораторная</MenuItem>
-                  <MenuItem value="Проектная деятельность">Проектная деятельность</MenuItem>
+                <TextField
+                  label={t("schedule:form.subject")}
+                  value={editLesson.subject}
+                  onChange={e => setEditLesson({ ...editLesson, subject: e.target.value })}
+                />
+                <TextField
+                  label={t("schedule:form.teacher")}
+                  value={editLesson.teacher}
+                  onChange={e => setEditLesson({ ...editLesson, teacher: e.target.value })}
+                />
+                <TextField
+                  label={t("schedule:form.room")}
+                  value={editLesson.room}
+                  onChange={e => setEditLesson({ ...editLesson, room: e.target.value })}
+                />
+                <TextField
+                  select
+                  label={t("schedule:form.lessonType")}
+                  value={editLesson.lesson_type}
+                  onChange={e => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
+                >
+                  {lessonTypeOptions.map(option => (
+                    <MenuItem value={option.value} key={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
                 </TextField>
-                <TextField select label="День" value={editLesson.weekday} onChange={e => setEditLesson({ ...editLesson, weekday: e.target.value })}>
-                  {days.map(day => <MenuItem key={day} value={day}>{day}</MenuItem>)}
+                <TextField
+                  select
+                  label={t("schedule:form.day")}
+                  value={editLesson.weekday}
+                  onChange={e => setEditLesson({ ...editLesson, weekday: e.target.value })}
+                >
+                  {weekdayBackend.map(day => (
+                    <MenuItem key={day} value={day}>
+                      {getDayLabel(day)}
+                    </MenuItem>
+                  ))}
                 </TextField>
                 <TextField
                   type="time"
-                  label="Начало"
+                  label={t("schedule:form.startTime")}
                   value={getTimeStr(editLesson)}
                   onChange={e => setEditLesson({ ...editLesson, start_time: `${editLesson.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00` })}
                 />
                 <TextField
                   type="time"
-                  label="Конец"
+                  label={t("schedule:form.endTime")}
                   value={getEndTimeStr(editLesson)}
                   onChange={e => setEditLesson({ ...editLesson, end_time: `${editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00` })}
                 />
                 <TextField
                   select
-                  label="Неделя"
+                  label={t("schedule:form.week")}
                   value={editLesson.parity}
                   onChange={e =>
                     setEditLesson(prev => (prev ? { ...prev, parity: e.target.value as LessonParity } : prev))
                   }
                 >
-                  <MenuItem value="both">Обе</MenuItem>
-                  <MenuItem value="odd">Нечётная</MenuItem>
-                  <MenuItem value="even">Чётная</MenuItem>
+                  <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
+                  <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
+                  <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
                 </TextField>
                 <Box display="flex" gap={2} mt={2}>
                   <Button
@@ -1010,20 +1148,20 @@ export default function Schedule() {
                           end_time: editLesson.end_time,
                           parity: editLesson.parity
                         })
-                        setSnack("Изменения сохранены")
+                        setSnack(t("schedule:snackbar.updated"))
                         setEditing(false)
                         setOpenDialog(false)
                         await scheduleQuery.refetch().catch(() => {})
                       } catch {
-                        setSnack("Ошибка при сохранении")
+                        setSnack(t("schedule:snackbar.updateError"))
                         applyScheduleUpdate(() => backup)
                       }
                     }}
                   >
-                    Сохранить
+                    {t("common:buttons.save")}
                   </Button>
                   <Button variant="outlined" color="secondary" onClick={() => setEditing(false)}>
-                    Отмена
+                    {t("common:buttons.cancel")}
                   </Button>
                 </Box>
               </Stack>
@@ -1032,34 +1170,74 @@ export default function Schedule() {
         </Dialog>
 
         <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)}>
-          <DialogTitle>Добавить занятие ({addDay})</DialogTitle>
+          <DialogTitle>
+            {`${t("schedule:dialog.addTitle")}${addDayLabel ? ` (${addDayLabel})` : ""}`}
+          </DialogTitle>
           <DialogContent>
             <Stack spacing={2} mt={1} sx={{ minWidth: { xs: "auto", sm: 340 } }}>
-              <TextField label="Предмет" value={addFields.subject} onChange={e => setAddFields({ ...addFields, subject: e.target.value })} fullWidth />
-              <TextField label="Преподаватель" value={addFields.teacher} onChange={e => setAddFields({ ...addFields, teacher: e.target.value })} fullWidth />
-              <TextField label="Аудитория" value={addFields.room} onChange={e => setAddFields({ ...addFields, room: e.target.value })} fullWidth />
-              <TextField select label="Тип занятия" value={addFields.lessonType} onChange={e => setAddFields({ ...addFields, lessonType: e.target.value })} fullWidth>
-                <MenuItem value="Лекция">Лекция</MenuItem>
-                <MenuItem value="ПЗ">Практика</MenuItem>
-                <MenuItem value="ЛЗ">Лабораторная</MenuItem>
-                <MenuItem value="Проектная деятельность">Проектная деятельность</MenuItem>
-              </TextField>
-              <TextField type="time" label="Начало" value={addFields.startTime} onChange={e => setAddFields({ ...addFields, startTime: e.target.value })} fullWidth />
-              <TextField type="time" label="Конец" value={addFields.endTime} onChange={e => setAddFields({ ...addFields, endTime: e.target.value })} fullWidth />
+              <TextField
+                label={t("schedule:form.subject")}
+                value={addFields.subject}
+                onChange={e => setAddFields({ ...addFields, subject: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label={t("schedule:form.teacher")}
+                value={addFields.teacher}
+                onChange={e => setAddFields({ ...addFields, teacher: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label={t("schedule:form.room")}
+                value={addFields.room}
+                onChange={e => setAddFields({ ...addFields, room: e.target.value })}
+                fullWidth
+              />
               <TextField
                 select
-                label="Неделя"
+                label={t("schedule:form.lessonType")}
+                value={addFields.lessonType}
+                onChange={e => setAddFields({ ...addFields, lessonType: e.target.value })}
+                fullWidth
+              >
+                {lessonTypeOptions.map(option => (
+                  <MenuItem value={option.value} key={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                type="time"
+                label={t("schedule:form.startTime")}
+                value={addFields.startTime}
+                onChange={e => setAddFields({ ...addFields, startTime: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                type="time"
+                label={t("schedule:form.endTime")}
+                value={addFields.endTime}
+                onChange={e => setAddFields({ ...addFields, endTime: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                select
+                label={t("schedule:form.week")}
                 value={addFields.parity}
                 onChange={e => setAddFields(prev => ({ ...prev, parity: e.target.value as LessonParity }))}
                 fullWidth
               >
-                <MenuItem value="both">Обе</MenuItem>
-                <MenuItem value="odd">Нечётная</MenuItem>
-                <MenuItem value="even">Чётная</MenuItem>
+                <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
+                <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
+                <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
               </TextField>
               <Box display="flex" gap={2} mt={2}>
-                <Button variant="contained" onClick={handleAddLesson}>Добавить</Button>
-                <Button variant="outlined" color="secondary" onClick={() => setAddDialogOpen(false)}>Отмена</Button>
+                <Button variant="contained" onClick={handleAddLesson}>
+                  {t("schedule:buttons.add")}
+                </Button>
+                <Button variant="outlined" color="secondary" onClick={() => setAddDialogOpen(false)}>
+                  {t("common:buttons.cancel")}
+                </Button>
               </Box>
             </Stack>
           </DialogContent>
@@ -1080,7 +1258,7 @@ export default function Schedule() {
   async function handleAddLesson() {
     const { subject, teacher, room, lessonType, startTime, endTime, parity } = addFields
     if (!subject || !teacher || !room || !addDay || !startTime || !endTime || !selectedGroup) {
-      setSnack("Заполните все поля")
+      setSnack(t("schedule:snackbar.fillAllFields"))
       return
     }
     const optimistic: Lesson = {
@@ -1108,12 +1286,12 @@ export default function Schedule() {
         end_time: optimistic.end_time,
         parity
       })
-      setSnack("Занятие добавлено")
-      setAddFields({ subject: "", teacher: "", room: "", lessonType: "Лекция", startTime: "", endTime: "", parity: "both" })
+      setSnack(t("schedule:snackbar.added"))
+      setAddFields({ subject: "", teacher: "", room: "", lessonType: defaultLessonType, startTime: "", endTime: "", parity: "both" })
       setAddDialogOpen(false)
       await scheduleQuery.refetch().catch(() => {})
     } catch {
-      setSnack("Ошибка при добавлении")
+      setSnack(t("schedule:snackbar.addError"))
       applyScheduleUpdate(prev => prev.filter(l => l.id !== optimistic.id))
     }
   }
@@ -1124,9 +1302,9 @@ export default function Schedule() {
     try {
       await api.delete(`/schedule/${id}`)
       await scheduleQuery.refetch().catch(() => {})
-      setSnack("Занятие удалено")
+      setSnack(t("schedule:snackbar.deleted"))
     } catch {
-      setSnack("Ошибка при удалении")
+      setSnack(t("schedule:snackbar.deleteError"))
       applyScheduleUpdate(() => backup)
     }
   }

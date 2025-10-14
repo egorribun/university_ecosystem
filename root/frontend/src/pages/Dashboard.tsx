@@ -39,7 +39,6 @@ type Lesson = {
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const fmtTime = (s?: string) => (!s ? "" : s.length >= 16 && s[10] === "T" ? s.slice(11, 16) : s.slice(0, 5))
-const WEEK = ["Воскресенье", "Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"] as const
 const nowParity = () => {
   const onejan = new Date(new Date().getFullYear(), 0, 1)
   const week = Math.ceil(((+new Date() - +onejan) / 86400000 + onejan.getDay() + 1) / 7)
@@ -156,6 +155,38 @@ export default function Dashboard() {
   const locale = getLocaleForLanguage(language)
   const { t } = useTranslation(["dashboard", "common", "navigation"])
   const { hh, mm, showColon, dateStr, time } = useClock(locale)
+  const weekDaysDisplay = useMemo(() => {
+    const result = t("dashboard:weekDays.display", { returnObjects: true }) as unknown
+    if (Array.isArray(result) && result.length === 7) {
+      return result as string[]
+    }
+    return [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ]
+  }, [t])
+  const weekDaysRaw = useMemo(() => {
+    const result = t("dashboard:weekDays.raw", { returnObjects: true }) as unknown
+    if (Array.isArray(result) && result.length === 7) {
+      return result as string[]
+    }
+    return weekDaysDisplay
+  }, [t, weekDaysDisplay])
+  const weekdayIndex = useMemo(() => {
+    const map = new Map<string, number>()
+    weekDaysDisplay.forEach((name, index) => {
+      map.set(name.toLowerCase(), index)
+    })
+    weekDaysRaw.forEach((name, index) => {
+      map.set(name.toLowerCase(), index)
+    })
+    return map
+  }, [weekDaysDisplay, weekDaysRaw])
   const greetingKey = useMemo(() => getGreetingKey(time.getHours()), [time])
   const greeting = t(`dashboard:greeting.${greetingKey}`)
 
@@ -170,13 +201,17 @@ export default function Dashboard() {
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
   const parity = useMemo(nowParity, [])
-  const today = useMemo(() => WEEK[time.getDay()], [time])
+  const todayIndex = time.getDay()
 
   const todayLessons = useMemo(() => {
     return schedule
-      .filter(l => (l.parity === "both" || l.parity === parity) && l.weekday === today)
+      .filter(l => {
+        const normalized = (l.weekday ?? "").toLowerCase()
+        const lessonIndex = weekdayIndex.get(normalized)
+        return (l.parity === "both" || l.parity === parity) && lessonIndex === todayIndex
+      })
       .sort((a, b) => fmtTime(a.start_time).localeCompare(fmtTime(b.start_time)))
-  }, [schedule, parity, today])
+  }, [schedule, parity, todayIndex, weekdayIndex])
 
   const minutesNow = time.getHours() * 60 + time.getMinutes()
   const currentLesson = useMemo(() => {

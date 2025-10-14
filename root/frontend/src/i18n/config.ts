@@ -7,6 +7,10 @@ import navigationEn from "./locales/en/navigation.json" assert { type: "json" }
 import navigationRu from "./locales/ru/navigation.json" assert { type: "json" }
 import dashboardEn from "./locales/en/dashboard.json" assert { type: "json" }
 import dashboardRu from "./locales/ru/dashboard.json" assert { type: "json" }
+import activityEn from "./locales/en/activity.json" assert { type: "json" }
+import activityRu from "./locales/ru/activity.json" assert { type: "json" }
+import scheduleEn from "./locales/en/schedule.json" assert { type: "json" }
+import scheduleRu from "./locales/ru/schedule.json" assert { type: "json" }
 import authEn from "./locales/en/auth.json" assert { type: "json" }
 import authRu from "./locales/ru/auth.json" assert { type: "json" }
 import settingsEn from "./locales/en/settings.json" assert { type: "json" }
@@ -25,6 +29,8 @@ export const resources = {
     common: commonEn,
     navigation: navigationEn,
     dashboard: dashboardEn,
+    activity: activityEn,
+    schedule: scheduleEn,
     auth: authEn,
     settings: settingsEn,
     system: systemEn,
@@ -35,6 +41,8 @@ export const resources = {
     common: commonRu,
     navigation: navigationRu,
     dashboard: dashboardRu,
+    activity: activityRu,
+    schedule: scheduleRu,
     auth: authRu,
     settings: settingsRu,
     system: systemRu,

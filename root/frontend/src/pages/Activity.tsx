@@ -39,6 +39,8 @@ import TrendingDownIcon from "@mui/icons-material/TrendingDown"
 import EventAvailableIcon from "@mui/icons-material/EventAvailable"
 import SchoolIcon from "@mui/icons-material/School"
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents"
+import { useTranslation } from "react-i18next"
+import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 
 const toNumber = (value: unknown, fallback = 0) => {
   const num = Number(value)
@@ -46,6 +48,20 @@ const toNumber = (value: unknown, fallback = 0) => {
 }
 
 const easeOutExpo = [0.22, 1, 0.36, 1] as const
+const periodValues = ["30d", "90d", "180d"] as const
+type PeriodKey = (typeof periodValues)[number]
+const periodDayCount = (key: PeriodKey): number => {
+  switch (key) {
+    case "30d":
+      return 30
+    case "90d":
+      return 90
+    case "180d":
+      return 180
+    default:
+      return 0
+  }
+}
 
 type AttendanceStats = {
   percent: number
@@ -92,6 +108,8 @@ type ParticipationSummaryResponse = {
   trend?: unknown
   recent?: unknown
 }
+
+type DetailSection = "" | "attendance" | "grades" | "participation"
 
 const MotionBox = motion(Box)
 const MotionCard = motion(Card)
@@ -185,6 +203,9 @@ function AnimatedRing({
 
 export default function Activity() {
   const theme = useTheme()
+  const { t } = useTranslation(["activity", "common"])
+  const { language } = useLanguage()
+  const locale = getLocaleForLanguage(language)
   const isDark = theme.palette.mode === "dark"
   const reduce = useReducedMotion()
   const isSm = useMediaQuery(theme.breakpoints.down("sm"))
@@ -197,7 +218,7 @@ export default function Activity() {
   const darkToggleBorder = alpha(theme.palette.common.white, 0.24)
   const darkToggleSelected = lighten(theme.palette.primary.main, 0.6)
 
-  const [period, setPeriod] = useState<"30d" | "90d" | "180d">("90d")
+  const [period, setPeriod] = useState<PeriodKey>("90d")
   const [attendance, setAttendance] = useState<AttendanceStats | null>(null)
   const [grades, setGrades] = useState<GradeStats | null>(null)
   const [participation, setParticipation] = useState<ParticipationStats | null>(null)
@@ -211,9 +232,54 @@ export default function Activity() {
     | "grades_recent"
     | "participation_recent"
   >("")
+  const detailSection: DetailSection = detail.startsWith("attendance")
+    ? "attendance"
+    : detail.startsWith("grades")
+      ? "grades"
+      : detail.startsWith("participation")
+        ? "participation"
+        : ""
 
-  const labelByPeriod = (p: "30d" | "90d" | "180d") =>
-    p === "30d" ? "за 30 дней" : p === "180d" ? "за 180 дней" : "за 90 дней"
+  const labelByPeriod = useCallback(
+    (p: PeriodKey) =>
+      t(`activity:period.labels.${p}`, {
+        defaultValue: p,
+        count: periodDayCount(p),
+      }),
+    [t]
+  )
+  const periodOptions = useMemo(
+    () =>
+      periodValues.map((value) => ({
+        value,
+        label: t(`activity:period.options.${value}`, {
+          defaultValue: value,
+          count: periodDayCount(value),
+        }),
+      })),
+    [t]
+  )
+  const separator = t("activity:common.separator", { defaultValue: " • " })
+  const noDataText = t("activity:common.noData")
+  const attendanceLessonFallback = t("activity:sections.attendance.lessonFallback")
+  const formatDate = useCallback(
+    (value?: string | null) => {
+      if (!value) return ""
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return ""
+      return date.toLocaleDateString(locale, {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    },
+    [locale]
+  )
+  const attendanceStatusLabel = useCallback(
+    (status: AttendanceStats["recent"][number]["status"]) =>
+      t(`activity:sections.attendance.status.${status}`, { defaultValue: status }),
+    [t]
+  )
 
   const fetchSummary = useCallback(async () => {
     setLoading(true)
@@ -230,7 +296,7 @@ export default function Activity() {
           present: toNumber(d.present),
           total: toNumber(d.total),
           trend: toNumber(d.trend),
-          windowLabel: d.window_label || labelByPeriod(period),
+          windowLabel: labelByPeriod(period),
           recent: Array.isArray(d.recent) ? d.recent : [],
         })
       } else {
@@ -291,7 +357,7 @@ export default function Activity() {
     } finally {
       setLoading(false)
     }
-  }, [period])
+  }, [period, labelByPeriod])
 
   useEffect(() => {
     fetchSummary()
@@ -519,7 +585,7 @@ export default function Activity() {
                   letterSpacing: "-.01em",
                 }}
               >
-                Активность
+                {t("activity:title")}
               </Typography>
             </Stack>
             <motion.div
@@ -537,7 +603,7 @@ export default function Activity() {
                 color="primary"
                 value={period}
                 exclusive
-                onChange={(_, v) => v && setPeriod(v)}
+                onChange={(_, v: PeriodKey | null) => v && setPeriod(v)}
                 sx={{
                   borderRadius: 999,
                   p: 0.5,
@@ -596,9 +662,11 @@ export default function Activity() {
                   },
                 }}
               >
-                <ToggleButton value="30d">30 дней</ToggleButton>
-                <ToggleButton value="90d">90 дней</ToggleButton>
-                <ToggleButton value="180d">180 дней</ToggleButton>
+                {periodOptions.map((option) => (
+                  <ToggleButton key={option.value} value={option.value}>
+                    {option.label}
+                  </ToggleButton>
+                ))}
               </ToggleButtonGroup>
             </motion.div>
           </Stack>
@@ -629,7 +697,7 @@ export default function Activity() {
                 <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
                 <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
-                    Посещаемость
+                    {t("activity:sections.attendance.title")}
                   </Typography>
                   <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
                     <Typography sx={numberSx}>{attendancePctAnimated}%</Typography>
@@ -657,7 +725,13 @@ export default function Activity() {
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
-                  >{`${attendance?.present ?? 0}/${attendance?.total ?? 0} ${attendance?.windowLabel || ""}`}</Typography>
+                  >
+                    {t("activity:sections.attendance.summary", {
+                      present: attendance?.present ?? 0,
+                      total: attendance?.total ?? 0,
+                      period: attendance?.windowLabel || labelByPeriod(period),
+                    })}
+                  </Typography>
                 </Stack>
               </Stack>
             </CardShell>
@@ -665,7 +739,7 @@ export default function Activity() {
             <CardShell tone="info" onClick={() => setDetail("grades")}>
               <Stack spacing={1}>
                 <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
-                  Успеваемость
+                  {t("activity:sections.grades.title")}
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={1.2}>
                   <Typography sx={numberSx}>
@@ -678,27 +752,40 @@ export default function Activity() {
                   <TrendChip value={grades?.trend} />
                 </Stack>
                 <Typography variant="body2" sx={{ color: muted }}>
-                  Средний балл за период
+                  {t("activity:sections.grades.averageLabel")}
                 </Typography>
               </Stack>
             </CardShell>
 
             <CardShell tone="warning" onClick={() => setDetail("participation")}>
               <Stack spacing={1}>
-                <Typography variant="overline" sx={{ letterSpacing: ".06ем", color: subMuted }}>
-                  Участие
+                <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
+                  {t("activity:sections.participation.title")}
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={1.2}>
-                  <Typography sx={numberSx}>{`${partEventsAnimated} событий`}</Typography>
+                  <Typography sx={numberSx}>
+                    {t("activity:sections.participation.eventsCount", {
+                      value: partEventsAnimated,
+                      count: participation?.events ?? 0,
+                    })}
+                  </Typography>
                   <TrendChip value={participation?.trend} />
                 </Stack>
                 <Typography variant="body2" sx={{ color: muted }}>
                   {[
-                    participation?.hours ? `${participation.hours} ч.` : null,
-                    participation?.groups ? `${participation.groups} круж.` : null,
+                    participation?.hours != null
+                      ? t("activity:sections.participation.summaryHours", {
+                          count: participation.hours ?? 0,
+                        })
+                      : null,
+                    participation?.groups != null
+                      ? t("activity:sections.participation.summaryGroups", {
+                          count: participation.groups ?? 0,
+                        })
+                      : null,
                   ]
                     .filter(Boolean)
-                    .join(" • ")}
+                    .join(separator)}
                 </Typography>
               </Stack>
             </CardShell>
@@ -727,7 +814,9 @@ export default function Activity() {
               <Stack>
                 <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                   <EventAvailableIcon fontSize="small" />
-                  <Typography fontWeight={900}>Недавние посещения</Typography>
+                  <Typography fontWeight={900}>
+                    {t("activity:sections.attendance.recent")}
+                  </Typography>
                 </Stack>
                 <List dense disablePadding>
                   <AnimatePresence initial={true}>
@@ -785,19 +874,15 @@ export default function Activity() {
                                   }}
                                 >
                                   <Typography component="span" sx={{ fontWeight: 700 }}>
-                                    {r.course || "Занятие"}
+                                    {r.course || attendanceLessonFallback}
                                   </Typography>
                                   <Typography component="span" sx={{ color: subMuted }}>
-                                    {r.status === "present"
-                                      ? "присутствовал"
-                                      : r.status === "late"
-                                        ? "опоздание"
-                                        : "отсутствовал"}
+                                    {attendanceStatusLabel(r.status)}
                                   </Typography>
                                 </Box>
                               </Box>
                             }
-                            secondary={new Date(r.date).toLocaleDateString()}
+                            secondary={formatDate(r.date)}
                             secondaryTypographyProps={{ sx: { color: subMuted } }}
                           />
                         </MotionListItem>
@@ -806,7 +891,7 @@ export default function Activity() {
                   </AnimatePresence>
                   {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
                     <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
-                      Нет данных
+                      {noDataText}
                     </Typography>
                   )}
                 </List>
@@ -817,7 +902,7 @@ export default function Activity() {
               <Stack>
                 <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                   <SchoolIcon fontSize="small" />
-                  <Typography fontWeight={900}>Недавние оценки</Typography>
+                  <Typography fontWeight={900}>{t("activity:sections.grades.recent")}</Typography>
                 </Stack>
                 <List dense disablePadding>
                   <AnimatePresence initial={true}>
@@ -872,7 +957,7 @@ export default function Activity() {
                                 </Box>
                               </Box>
                             }
-                            secondary={new Date(r.date).toLocaleDateString()}
+                            secondary={formatDate(r.date)}
                             secondaryTypographyProps={{ sx: { color: subMuted } }}
                           />
                         </MotionListItem>
@@ -881,7 +966,7 @@ export default function Activity() {
                   </AnimatePresence>
                   {!loading && (!grades?.recent || grades.recent.length === 0) && (
                     <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
-                      Нет данных
+                      {noDataText}
                     </Typography>
                   )}
                 </List>
@@ -892,7 +977,9 @@ export default function Activity() {
               <Stack>
                 <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                   <EmojiEventsIcon fontSize="small" />
-                  <Typography fontWeight={900}>Недавнее участие</Typography>
+                  <Typography fontWeight={900}>
+                    {t("activity:sections.participation.recent")}
+                  </Typography>
                 </Stack>
                 <List dense disablePadding>
                   <AnimatePresence initial={true}>
@@ -942,9 +1029,7 @@ export default function Activity() {
                                     {r.title}
                                   </Typography>
                                   <Typography component="span" sx={{ color: subMuted }}>
-                                    {[new Date(r.date).toLocaleDateString(), r.role]
-                                      .filter(Boolean)
-                                      .join(" • ")}
+                                    {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                                   </Typography>
                                 </Box>
                               </Box>
@@ -956,7 +1041,7 @@ export default function Activity() {
                   </AnimatePresence>
                   {!loading && (!participation?.recent || participation.recent.length === 0) && (
                     <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
-                      Нет данных
+                      {noDataText}
                     </Typography>
                   )}
                 </List>
@@ -967,18 +1052,17 @@ export default function Activity() {
 
         <Dialog open={detail !== ""} onClose={() => setDetail("")} maxWidth="sm" fullWidth>
           <DialogTitle>
-            {detail === "attendance" || detail === "attendance_recent"
-              ? "Посещаемость"
-              : detail === "grades" || detail === "grades_recent"
-                ? "Успеваемость"
-                : "Участие"}
+            {detailSection ? t(`activity:sections.${detailSection}.dialogTitle`) : ""}
           </DialogTitle>
           <DialogContent dividers>
             {detail === "attendance" && (
               <Stack spacing={2}>
                 <Typography>
-                  Всего: {attendance?.present ?? 0}/{attendance?.total ?? 0}{" "}
-                  {attendance?.windowLabel || ""}
+                  {t("activity:sections.attendance.dialogTotal", {
+                    present: attendance?.present ?? 0,
+                    total: attendance?.total ?? 0,
+                    period: attendance?.windowLabel || labelByPeriod(period),
+                  })}
                 </Typography>
                 <LinearProgress
                   variant="determinate"
@@ -989,8 +1073,8 @@ export default function Activity() {
                   {(attendance?.recent ?? []).map((r, i) => (
                     <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
                       <ListItemText
-                        primary={`${r.course || "Занятие"} — ${r.status === "present" ? "присутствовал" : r.status === "late" ? "опоздание" : "отсутствовал"}`}
-                        secondary={new Date(r.date).toLocaleDateString()}
+                        primary={`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
+                        secondary={formatDate(r.date)}
                       />
                     </ListItem>
                   ))}
@@ -1011,7 +1095,7 @@ export default function Activity() {
                     <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
                       <ListItemText
                         primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                        secondary={new Date(r.date).toLocaleDateString()}
+                        secondary={formatDate(r.date)}
                       />
                     </ListItem>
                   ))}
@@ -1022,21 +1106,30 @@ export default function Activity() {
               <Stack spacing={2}>
                 <Typography>
                   {[
-                    `${participation?.events ?? 0} событий`,
-                    participation?.hours ? `${participation.hours} ч.` : null,
-                    participation?.groups ? `${participation.groups} круж.` : null,
+                    t("activity:sections.participation.eventsCount", {
+                      value: String(participation?.events ?? 0),
+                      count: participation?.events ?? 0,
+                    }),
+                    participation?.hours != null
+                      ? t("activity:sections.participation.summaryHours", {
+                          count: participation.hours ?? 0,
+                        })
+                      : null,
+                    participation?.groups != null
+                      ? t("activity:sections.participation.summaryGroups", {
+                          count: participation.groups ?? 0,
+                        })
+                      : null,
                   ]
                     .filter(Boolean)
-                    .join(" • ")}
+                    .join(separator)}
                 </Typography>
                 <List dense>
                   {(participation?.recent ?? []).map((r, i) => (
                     <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
                       <ListItemText
                         primary={r.title}
-                        secondary={[new Date(r.date).toLocaleDateString(), r.role]
-                          .filter(Boolean)
-                          .join(" • ")}
+                        secondary={[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                       />
                     </ListItem>
                   ))}
@@ -1048,8 +1141,8 @@ export default function Activity() {
                 {(attendance?.recent ?? []).map((r, i) => (
                   <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
-                      primary={`${r.course || "Занятие"} — ${r.status === "present" ? "присутствовал" : r.status === "late" ? "опоздание" : "отсутствовал"}`}
-                      secondary={new Date(r.date).toLocaleDateString()}
+                      primary={`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
+                      secondary={formatDate(r.date)}
                     />
                   </ListItem>
                 ))}
@@ -1061,7 +1154,7 @@ export default function Activity() {
                   <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
                       primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                      secondary={new Date(r.date).toLocaleDateString()}
+                      secondary={formatDate(r.date)}
                     />
                   </ListItem>
                 ))}
@@ -1073,9 +1166,7 @@ export default function Activity() {
                   <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
                       primary={r.title}
-                      secondary={[new Date(r.date).toLocaleDateString(), r.role]
-                        .filter(Boolean)
-                        .join(" • ")}
+                      secondary={[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                     />
                   </ListItem>
                 ))}
@@ -1083,7 +1174,7 @@ export default function Activity() {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setDetail("")}>Закрыть</Button>
+            <Button onClick={() => setDetail("")}>{t("activity:dialog.close")}</Button>
           </DialogActions>
         </Dialog>
       </PageFadeIn>
