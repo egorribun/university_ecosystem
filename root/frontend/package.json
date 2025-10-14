@@ -17,6 +17,7 @@
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=vitest-report.xml",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "lhci": "lhci autorun --budget-path=../../budget.json --upload.target=filesystem --upload.outputDir=.lighthouseci",
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
     "prepare": "husky ../.husky"
