@@ -40,7 +40,11 @@ def _format_room(value: Any, *, locale: str | None = None) -> str | None:
     if not room:
         return None
     normalized = room.lower()
-    if normalized.startswith("ауд") or normalized.startswith("aud") or normalized.startswith("room"):
+    if (
+        normalized.startswith("ауд")
+        or normalized.startswith("aud")
+        or normalized.startswith("room")
+    ):
         return room
     return translate("notifications.schedule.room_label", locale=locale, room=room)
 
@@ -276,9 +280,7 @@ def _build_schedule_reminder(
             subject=subject,
         )
     else:
-        title = translate(
-            "notifications.schedule.reminder.title", locale=locale
-        )
+        title = translate("notifications.schedule.reminder.title", locale=locale)
     tag = f"schedule-reminder:{identifier}" if identifier else "schedule-reminder"
 
     data_payload = {
@@ -320,7 +322,9 @@ def _build_schedule_reminder(
     }
 
 
-def _build_news(context: ScenarioContext, *, locale: str | None = None) -> dict[str, Any]:
+def _build_news(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     headline = context.get_text("headline", "title", "subject", "name")
     summary = _clean_text(
         context.get("summary", "body", "excerpt", "description"),
@@ -340,9 +344,7 @@ def _build_news(context: ScenarioContext, *, locale: str | None = None) -> dict[
     if detail_parts:
         lines.append(" · ".join(detail_parts))
     if not lines:
-        lines.append(
-            translate("notifications.news.no_summary", locale=locale)
-        )
+        lines.append(translate("notifications.news.no_summary", locale=locale))
 
     if headline:
         title = translate(
@@ -426,9 +428,7 @@ def _build_event(
     if details:
         lines.append(" · ".join(details))
     if not lines:
-        lines.append(
-            translate("notifications.events.no_details", locale=locale)
-        )
+        lines.append(translate("notifications.events.no_details", locale=locale))
 
     if title:
         notif_title = translate(
@@ -487,9 +487,7 @@ def _build_system(
     if message:
         lines.append(message)
     if not lines:
-        lines.append(
-            translate("notifications.system.no_details", locale=locale)
-        )
+        lines.append(translate("notifications.system.no_details", locale=locale))
 
     title = subject or translate("notifications.system.title", locale=locale)
     tag = f"system-message:{identifier}" if identifier else "system-message"

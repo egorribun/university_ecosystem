@@ -83,9 +83,7 @@ async def attend(
     if user.role in ("admin", "teacher"):
         raise HTTPException(
             status_code=403,
-            detail=translate(
-                "errors.events.registration_forbidden", locale=locale
-            ),
+            detail=translate("errors.events.registration_forbidden", locale=locale),
         )
     return await crud.register_attendance(db, data, user_id=user.id)
 

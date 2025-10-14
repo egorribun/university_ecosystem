@@ -129,8 +129,7 @@ def test_build_payload_schedule_change_english_locale():
 
     assert payload["title"] == "Class change"
     assert (
-        payload["options"]["body"]
-        == "Check the schedule for the latest information."
+        payload["options"]["body"] == "Check the schedule for the latest information."
     )
 
 

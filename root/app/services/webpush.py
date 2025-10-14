@@ -19,8 +19,8 @@ from sqlalchemy.orm import selectinload, sessionmaker
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
-from app.models.models import PushSubscription
 from app.localization import translate
+from app.models.models import PushSubscription
 from app.services.notification_templates import render_notification_template
 from app.services.push_schema import ensure_push_subscription_schema_sync
 from app.services.push_topics import normalize_topic, subscription_supports_topic
@@ -416,8 +416,7 @@ def build_payload(
         source = raw_source
 
     title = str(
-        source.get("title")
-        or translate("notifications.default_title", locale=locale)
+        source.get("title") or translate("notifications.default_title", locale=locale)
     )
     payload_data: dict[str, Any] = {}
     if isinstance(source.get("data"), Mapping):

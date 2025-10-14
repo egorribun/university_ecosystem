@@ -265,6 +265,7 @@ async def now_playing(
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
+
     def _as_response(data: SpotifyNowPlayingOut):
         if data.track_id or data.track_name or data.artists:
             return data

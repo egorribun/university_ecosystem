@@ -29,9 +29,9 @@ from app.api.utils import save_upload
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.database import get_db
+from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
-from app.localization import resolve_locale, translate
 from app.utils.email import (
     RESET_TOKEN_EXPIRY_MINUTES,
     build_reset_email_content,
@@ -81,9 +81,7 @@ def _send_reset_email(
     security = (
         settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")
     ).lower()
-    subject, plain, html = build_reset_email_content(
-        link, full_name, locale=locale
-    )
+    subject, plain, html = build_reset_email_content(link, full_name, locale=locale)
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = mail_from
@@ -186,9 +184,7 @@ async def reset_password(
     if not rec or rec.expires_at < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate(
-                "errors.password.invalid_or_expired_link", locale=locale
-            ),
+            detail=translate("errors.password.invalid_or_expired_link", locale=locale),
         )
     user = await db.get(models.User, rec.user_id)
     if not user or not getattr(user, "is_active", True):

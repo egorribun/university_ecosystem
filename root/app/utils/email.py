@@ -3,8 +3,7 @@ import ssl
 from email.message import EmailMessage
 
 from app.core.config import settings
-from app.localization import translate
-from app.localization import resolve_locale
+from app.localization import resolve_locale, translate
 
 RESET_TOKEN_EXPIRY_MINUTES = 45
 
@@ -55,9 +54,7 @@ def send_reset_email(
     mail_from = settings.mail_from
 
     msg = EmailMessage()
-    subject, plain, html = build_reset_email_content(
-        link, full_name, locale=locale
-    )
+    subject, plain, html = build_reset_email_content(link, full_name, locale=locale)
     msg["Subject"] = subject
     msg["From"] = mail_from
     msg["To"] = to_email

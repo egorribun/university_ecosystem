@@ -496,9 +496,7 @@ async def notify_about_news(
         )
     else:
         default_title = translate("notifications.news.title", locale=locale)
-    default_body = summary or translate(
-        "notifications.news.no_summary", locale=locale
-    )
+    default_body = summary or translate("notifications.news.no_summary", locale=locale)
     default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
     if template:
         title = str(template.get("title") or default_title)

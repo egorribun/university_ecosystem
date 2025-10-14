@@ -194,7 +194,7 @@ async def upload_news_image(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user)
+    user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
