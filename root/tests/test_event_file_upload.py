@@ -57,7 +57,9 @@ async def test_upload_event_file_offloads_io(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    result = await events.upload_event_file(event.id, upload, db=db_session, user=admin)
+    result = await events.upload_event_file(
+        event.id, upload, request=None, db=db_session, user=admin
+    )
 
     assert result.event_id == event.id
     assert result.file_url.startswith("/static/event_files/")
@@ -88,7 +90,9 @@ async def test_upload_event_file_rejects_large_payload(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 8)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(event.id, upload, db=db_session, user=admin)
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
     folder = tmp_path / "event_files"
@@ -114,7 +118,9 @@ async def test_upload_event_file_rejects_forbidden_type(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(event.id, upload, db=db_session, user=admin)
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
     folder = tmp_path / "event_files"
@@ -145,7 +151,9 @@ async def test_upload_event_file_rejects_mismatched_magic_bytes(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(event.id, upload, db=db_session, user=admin)
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
     assert excinfo.value.detail == "content type mismatch"
@@ -172,7 +180,9 @@ async def test_update_event_replaces_image_removes_old_file(
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
     payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
-    result = await events.update_event(event.id, payload, db=db_session, user=admin)
+    result = await events.update_event(
+        event.id, payload, request=None, db=db_session, user=admin
+    )
 
     assert result.image_url == "/static/event_images/new.png"
     assert not old_path.exists()
@@ -198,13 +208,15 @@ async def test_delete_event_file_removes_payload(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     event_file = await events.upload_event_file(
-        event.id, upload, db=db_session, user=admin
+        event.id, upload, request=None, db=db_session, user=admin
     )
 
     stored_path = tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
     assert stored_path.exists()
 
-    result = await events.delete_event_file(event_file.id, db=db_session, user=admin)
+    result = await events.delete_event_file(
+        event_file.id, request=None, db=db_session, user=admin
+    )
 
     assert result == {"ok": True}
     assert not stored_path.exists()
@@ -237,7 +249,7 @@ async def test_delete_event_removes_all_files(
             headers=Headers({"content-type": "text/plain"}),
         )
         event_file = await events.upload_event_file(
-            event.id, upload, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin
         )
         stored_paths.append(
             tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
@@ -246,7 +258,9 @@ async def test_delete_event_removes_all_files(
     for path in stored_paths:
         assert path.exists()
 
-    result = await events.delete_event(event.id, db=db_session, user=admin)
+    result = await events.delete_event(
+        event.id, request=None, db=db_session, user=admin
+    )
 
     assert result == {"ok": True}
     for path in stored_paths:

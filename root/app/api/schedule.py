@@ -1,6 +1,14 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +16,7 @@ from app import crud
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.deps.cache import etag_matches, format_etag, get_cache
+from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
 
@@ -21,11 +30,16 @@ def _schedule_cache_key(group_id: int) -> str:
 @router.post("", response_model=schemas.ScheduleOut)
 async def add_schedule(
     data: schemas.ScheduleCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role not in ("teacher", "admin"):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     result = await crud.create_schedule(db, data)
     cache = get_cache()
     await cache.invalidate(_schedule_cache_key(result.group_id))
@@ -67,14 +81,22 @@ async def get_schedule(
 async def update_schedule(
     schedule_id: int,
     data: schemas.ScheduleUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role not in ("teacher", "admin"):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     sched = await db.get(models.Schedule, schedule_id)
     if not sched:
-        raise HTTPException(status_code=404, detail="Schedule not found")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.schedule.not_found", locale=locale),
+        )
     previous_group = sched.group_id
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(sched, field, value)
@@ -91,14 +113,22 @@ async def update_schedule(
 @router.delete("/{schedule_id}", response_model=dict)
 async def delete_schedule(
     schedule_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role not in ("teacher", "admin"):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     sched = await db.get(models.Schedule, schedule_id)
     if not sched:
-        raise HTTPException(status_code=404, detail="Schedule not found")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.schedule.not_found", locale=locale),
+        )
     group_id = sched.group_id
     await db.delete(sched)
     await db.commit()

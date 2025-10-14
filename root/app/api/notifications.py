@@ -1,12 +1,13 @@
 from datetime import UTC, datetime, timedelta
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.localization import resolve_locale, translate
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import NotificationOut, NotificationsListOut
 from app.services.notifications import (
@@ -38,16 +39,21 @@ def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
 
 @router.get("", response_model=NotificationsListOut)
 async def list_notifications(
+    request: Request,
     cursor: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     where = [Notification.user_id == user.id]
     if cursor:
         parsed = _decode_cursor(cursor)
         if not parsed:
-            raise HTTPException(status_code=400, detail="bad cursor")
+            raise HTTPException(
+                status_code=400,
+                detail=translate("errors.notifications.bad_cursor", locale=locale),
+            )
         c_dt, c_id = parsed
         c_dt = _ensure_utc(c_dt)
         where.append(
@@ -89,12 +95,17 @@ async def list_notifications(
 @router.patch("/{notif_id}/read")
 async def mark_read_single(
     notif_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     notif = await db.get(Notification, notif_id)
     if not notif or notif.user_id != user.id:
-        raise HTTPException(status_code=404, detail="notification not found")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.notifications.not_found", locale=locale),
+        )
 
     if notif.read:
         return {"ok": True}
@@ -137,12 +148,16 @@ async def clear_notifications(
 
 @router.post("/check-schedule", response_model=NotificationsListOut)
 async def check_schedule_and_generate(
+    request: Request,
     lookahead_minutes: int = Query(15, ge=1, le=180),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if not user.group_id:
-        return await list_notifications(db=db, user=user, limit=20, cursor=None)
+        return await list_notifications(
+            request=request, db=db, user=user, limit=20, cursor=None
+        )
 
     now = datetime.now(UTC)
     soon = now + timedelta(minutes=lookahead_minutes)
@@ -161,7 +176,9 @@ async def check_schedule_and_generate(
     lessons = (await db.execute(q)).scalars().all()
 
     for les in lessons:
-        title, body, tag, data_payload = build_schedule_reminder_message(les)
+        title, body, tag, data_payload = build_schedule_reminder_message(
+            les, locale=locale
+        )
         url = "/schedule"
 
         dupe = select(func.count(Notification.id)).where(
@@ -175,6 +192,7 @@ async def check_schedule_and_generate(
         exists = (await db.execute(dupe)).scalar_one() or 0
         if exists:
             continue
+        action_title = translate("notifications.actions.open_schedule", locale=locale)
         await create_notifications_for_users(
             db,
             title=title,
@@ -186,7 +204,7 @@ async def check_schedule_and_generate(
             actions=[
                 {
                     "action": "open-schedule",
-                    "title": "Открыть расписание",
+                    "title": action_title,
                     "url": url,
                 }
             ],
@@ -194,4 +212,6 @@ async def check_schedule_and_generate(
             topic="schedule",
         )
 
-    return await list_notifications(db=db, user=user, limit=20, cursor=None)
+    return await list_notifications(
+        request=request, db=db, user=user, limit=20, cursor=None
+    )
