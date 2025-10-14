@@ -50,7 +50,18 @@ const toNumber = (value: unknown, fallback = 0) => {
 const easeOutExpo = [0.22, 1, 0.36, 1] as const
 const periodValues = ["30d", "90d", "180d"] as const
 type PeriodKey = (typeof periodValues)[number]
-const periodDays: Record<PeriodKey, number> = { "30d": 30, "90d": 90, "180d": 180 }
+const periodDayCount = (key: PeriodKey): number => {
+  switch (key) {
+    case "30d":
+      return 30
+    case "90d":
+      return 90
+    case "180d":
+      return 180
+    default:
+      return 0
+  }
+}
 
 type AttendanceStats = {
   percent: number
@@ -233,7 +244,7 @@ export default function Activity() {
     (p: PeriodKey) =>
       t(`activity:period.labels.${p}`, {
         defaultValue: p,
-        count: periodDays[p],
+        count: periodDayCount(p),
       }),
     [t]
   )
@@ -243,7 +254,7 @@ export default function Activity() {
         value,
         label: t(`activity:period.options.${value}`, {
           defaultValue: value,
-          count: periodDays[value],
+          count: periodDayCount(value),
         }),
       })),
     [t]
