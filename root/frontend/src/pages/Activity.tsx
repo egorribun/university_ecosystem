@@ -250,7 +250,7 @@ export default function Activity() {
   )
   const periodOptions = useMemo(
     () =>
-      periodValues.map(value => ({
+      periodValues.map((value) => ({
         value,
         label: t(`activity:period.options.${value}`, {
           defaultValue: value,
@@ -662,7 +662,7 @@ export default function Activity() {
                   },
                 }}
               >
-                {periodOptions.map(option => (
+                {periodOptions.map((option) => (
                   <ToggleButton key={option.value} value={option.value}>
                     {option.label}
                   </ToggleButton>
@@ -902,9 +902,7 @@ export default function Activity() {
               <Stack>
                 <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                   <SchoolIcon fontSize="small" />
-                  <Typography fontWeight={900}>
-                    {t("activity:sections.grades.recent")}
-                  </Typography>
+                  <Typography fontWeight={900}>{t("activity:sections.grades.recent")}</Typography>
                 </Stack>
                 <List dense disablePadding>
                   <AnimatePresence initial={true}>
@@ -1031,9 +1029,7 @@ export default function Activity() {
                                     {r.title}
                                   </Typography>
                                   <Typography component="span" sx={{ color: subMuted }}>
-                                    {[formatDate(r.date), r.role]
-                                      .filter(Boolean)
-                                      .join(separator)}
+                                    {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                                   </Typography>
                                 </Box>
                               </Box>
@@ -1133,9 +1129,7 @@ export default function Activity() {
                     <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
                       <ListItemText
                         primary={r.title}
-                        secondary={[formatDate(r.date), r.role]
-                          .filter(Boolean)
-                          .join(separator)}
+                        secondary={[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                       />
                     </ListItem>
                   ))}
@@ -1172,9 +1166,7 @@ export default function Activity() {
                   <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
                     <ListItemText
                       primary={r.title}
-                      secondary={[formatDate(r.date), r.role]
-                        .filter(Boolean)
-                        .join(separator)}
+                      secondary={[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                     />
                   </ListItem>
                 ))}
@@ -1182,9 +1174,7 @@ export default function Activity() {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setDetail("")}>
-              {t("activity:dialog.close")}
-            </Button>
+            <Button onClick={() => setDetail("")}>{t("activity:dialog.close")}</Button>
           </DialogActions>
         </Dialog>
       </PageFadeIn>
