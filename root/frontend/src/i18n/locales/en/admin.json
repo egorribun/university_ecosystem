@@ -1,0 +1,25 @@
+{
+  "users": {
+    "title": "Users",
+    "confirmDelete": "Delete this user?",
+    "filters": {
+      "fullName": "Full name",
+      "group": "Group",
+      "role": "Role",
+      "all": "All"
+    },
+    "roles": {
+      "student": "Student",
+      "teacher": "Teacher",
+      "admin": "Admin"
+    },
+    "table": {
+      "avatar": "Avatar",
+      "fullName": "Full name",
+      "email": "Email",
+      "role": "Role",
+      "group": "Group",
+      "actions": "Actions"
+    }
+  }
+}

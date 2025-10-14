@@ -14,6 +14,26 @@
     "empty": "Nothing yet",
     "markRead": "Mark as read"
   },
+  "map": {
+    "title": "Campus map",
+    "openInYandex": "Open in Yandex Maps",
+    "reset": "Reset",
+    "iframeTitle": "GUU campus map",
+    "loadError": "Could not load the map",
+    "layer": {
+      "map": "Map",
+      "hybrid": "Satellite"
+    },
+    "layerAria": {
+      "map": "Map view",
+      "hybrid": "Satellite view"
+    },
+    "traffic": {
+      "label": "Traffic",
+      "show": "Show traffic",
+      "hide": "Hide traffic"
+    }
+  },
   "installPrompt": {
     "installTitle": "Install “{{appName}}”",
     "title": "{{appName}}",

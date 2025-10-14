@@ -14,6 +14,26 @@
     "empty": "Пока пусто",
     "markRead": "Прочитано"
   },
+  "map": {
+    "title": "Карта кампуса",
+    "openInYandex": "Открыть в Яндекс Картах",
+    "reset": "Сбросить",
+    "iframeTitle": "Карта кампуса ГУУ",
+    "loadError": "Не удалось загрузить карту",
+    "layer": {
+      "map": "Карта",
+      "hybrid": "Спутник"
+    },
+    "layerAria": {
+      "map": "Режим карты",
+      "hybrid": "Режим спутника"
+    },
+    "traffic": {
+      "label": "Пробки",
+      "show": "Показать пробки",
+      "hide": "Скрыть пробки"
+    }
+  },
   "installPrompt": {
     "installTitle": "Установить «{{appName}}»",
     "title": "{{appName}}",
