@@ -15,8 +15,10 @@ import NotificationsIcon from "@mui/icons-material/Notifications"
 import DoneIcon from "@mui/icons-material/Done"
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep"
 import { useNotifications } from "@/hooks/useNotifications"
+import { useTranslation } from "react-i18next"
 
 export default function NotificationsBell() {
+  const { t } = useTranslation(["system"])
   const {
     data,
     unreadCount,
@@ -35,7 +37,7 @@ export default function NotificationsBell() {
       <IconButton
         color="inherit"
         onClick={(e) => setAnchor(e.currentTarget)}
-        aria-label="Открыть уведомления"
+        aria-label={t("system:notificationsBell.open")}
       >
         <Badge badgeContent={unreadCount || 0} color="error">
           <NotificationsIcon />
@@ -61,7 +63,7 @@ export default function NotificationsBell() {
             }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-              Уведомления
+              {t("system:notificationsBell.title")}
             </Typography>
             <Box sx={{ display: "flex", gap: 1 }}>
               <Button
@@ -70,7 +72,7 @@ export default function NotificationsBell() {
                 onClick={() => markAll()}
                 disabled={isLoading || !hasNotifications || isMarkingAll || isClearing}
               >
-                Прочитать все
+                {t("system:notificationsBell.markAll")}
               </Button>
               <Button
                 size="small"
@@ -83,18 +85,18 @@ export default function NotificationsBell() {
                 }
                 disabled={isLoading || !hasNotifications || isClearing}
               >
-                Очистить
+                {t("system:notificationsBell.clear")}
               </Button>
             </Box>
           </Box>
           <List dense disablePadding>
             {isLoading ? (
               <Box sx={{ p: 2 }}>
-                <Typography variant="body2">Загрузка…</Typography>
+                <Typography variant="body2">{t("system:notificationsBell.loading")}</Typography>
               </Box>
             ) : data.length === 0 ? (
               <Box sx={{ p: 2 }}>
-                <Typography variant="body2">Пока пусто</Typography>
+                <Typography variant="body2">{t("system:notificationsBell.empty")}</Typography>
               </Box>
             ) : (
               data.map((n) => (
@@ -124,7 +126,7 @@ export default function NotificationsBell() {
                           markRead(n.id)
                         }}
                       >
-                        Прочитано
+                        {t("system:notificationsBell.markRead")}
                       </Button>
                     ) : null}
                   </ListItemButton>

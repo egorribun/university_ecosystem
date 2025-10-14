@@ -11,6 +11,8 @@ import authEn from "./locales/en/auth.json" assert { type: "json" }
 import authRu from "./locales/ru/auth.json" assert { type: "json" }
 import settingsEn from "./locales/en/settings.json" assert { type: "json" }
 import settingsRu from "./locales/ru/settings.json" assert { type: "json" }
+import systemEn from "./locales/en/system.json" assert { type: "json" }
+import systemRu from "./locales/ru/system.json" assert { type: "json" }
 
 export const defaultNS = "common"
 
@@ -21,6 +23,7 @@ export const resources = {
     dashboard: dashboardEn,
     auth: authEn,
     settings: settingsEn,
+    system: systemEn,
   },
   ru: {
     common: commonRu,
@@ -28,6 +31,7 @@ export const resources = {
     dashboard: dashboardRu,
     auth: authRu,
     settings: settingsRu,
+    system: systemRu,
   },
 } as const
 

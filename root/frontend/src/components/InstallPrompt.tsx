@@ -26,6 +26,7 @@ import {
   type NotificationToast,
 } from "@/hooks/usePushPreferences"
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
+import { Trans, useTranslation } from "react-i18next"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]
@@ -76,6 +77,7 @@ const clearDismissed = () => {
 }
 
 export default function InstallPrompt() {
+  const { t } = useTranslation(["system", "navigation"])
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [visible, setVisible] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -85,6 +87,7 @@ export default function InstallPrompt() {
   const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
 
   const isEligible = useMemo(() => !isStandalone(), [])
+  const appName = t("navigation:brandName")
 
   const {
     topicKeys,
@@ -250,16 +253,18 @@ export default function InstallPrompt() {
           <Stack spacing={2.5} alignItems="flex-start">
             <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
               <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
-                {deferredPrompt ? "Установить «Экосистема ГУУ»" : "Экосистема ГУУ"}
+                {deferredPrompt
+                  ? t("system:installPrompt.installTitle", { appName })
+                  : t("system:installPrompt.title", { appName })}
               </Typography>
-              <IconButton aria-label="Скрыть предложение" onClick={handleClose} size="small">
+              <IconButton aria-label={t("system:installPrompt.closeOffer")} onClick={handleClose} size="small">
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Stack>
             {deferredPrompt ? (
               <>
                 <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                  Добавьте приложение на главный экран, чтобы открывать профиль, расписание и новости без браузера.
+                  {t("system:installPrompt.description")}
                 </Typography>
                 <Stack direction="row" spacing={1.5} sx={{ width: "100%" }}>
                   <Button
@@ -269,16 +274,16 @@ export default function InstallPrompt() {
                     disabled={!deferredPrompt || installing}
                     sx={{ flexGrow: 1 }}
                   >
-                    Установить
+                    {t("system:installPrompt.install")}
                   </Button>
                   <Button variant="text" color="inherit" onClick={handleClose}>
-                    Позже
+                    {t("system:installPrompt.later")}
                   </Button>
                 </Stack>
               </>
             ) : (
               <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                Управляйте уведомлениями, чтобы не пропускать важные обновления.
+                {t("system:installPrompt.manageNotifications")}
               </Typography>
             )}
             {(pushSupported || notificationPermission !== "granted") && (
@@ -286,24 +291,27 @@ export default function InstallPrompt() {
                 <Divider sx={{ width: "100%" }} />
                 <Stack spacing={1.2} sx={{ width: "100%" }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                    Уведомления
+                    {t("system:installPrompt.notificationsTitle")}
                   </Typography>
                   {!pushSupported ? (
                     <Alert severity="warning" variant="outlined">
-                      Push-уведомления недоступны в этом браузере.
+                      {t("system:installPrompt.unsupported")}
                     </Alert>
                   ) : notificationPermission === "denied" ? (
                     <Stack spacing={1}>
                       <Alert severity="error" variant="outlined">
-                        Включите уведомления для «Экосистема ГУУ» в настройках браузера, затем нажмите «Проверить».
+                        {t("system:installPrompt.blocked", { appName })}
                       </Alert>
                       {safariIOS && (
                         <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления. {" "}
-                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
-                            Инструкция
-                          </Link>
-                          .
+                          <Trans
+                            i18nKey="system:installPrompt.safariGuide"
+                            components={{
+                              link: (
+                                <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener" />
+                              ),
+                            }}
+                          />
                         </Alert>
                       )}
                       <Stack direction="row" spacing={1} alignItems="center">
@@ -313,17 +321,17 @@ export default function InstallPrompt() {
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy}
                         >
-                          Проверить
+                          {t("system:installPrompt.check")}
                         </Button>
                         <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
-                          Состояние: {permissionText}.
+                          {t("system:installPrompt.status", { status: permissionText })}
                         </Typography>
                       </Stack>
                     </Stack>
                   ) : notificationPermission === "default" ? (
                     <Stack spacing={1}>
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        Разрешите уведомления, чтобы получать расписание, мероприятия и важные новости.
+                        {t("system:installPrompt.defaultPermissionDescription")}
                       </Typography>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Button
@@ -332,19 +340,22 @@ export default function InstallPrompt() {
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy || pushInitializing}
                         >
-                          Разрешить
+                          {t("system:installPrompt.allow")}
                         </Button>
                         <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
-                          Состояние: {permissionText}.
+                          {t("system:installPrompt.status", { status: permissionText })}
                         </Typography>
                       </Stack>
                       {safariIOS && (
                         <Alert severity="info" variant="outlined">
-                          Установите приложение на Домой, затем разрешите уведомления. {" "}
-                          <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener">
-                            Инструкция
-                          </Link>
-                          .
+                          <Trans
+                            i18nKey="system:installPrompt.safariGuide"
+                            components={{
+                              link: (
+                                <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener" />
+                              ),
+                            }}
+                          />
                         </Alert>
                       )}
                     </Stack>
@@ -363,13 +374,13 @@ export default function InstallPrompt() {
                             label={
                               <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "var(--page-text)" }}>
                                 {notificationsEnabled ? <NotificationsActiveIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
-                                <span>Уведомления</span>
+                                <span>{t("system:installPrompt.toggleLabel")}</span>
                               </Stack>
                             }
                           />
                         </FormGroup>
                         <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          Разрешение браузера: {permissionText}
+                          {t("system:installPrompt.browserPermission", { status: permissionText })}
                         </FormHelperText>
                       </FormControl>
                       <FormControl
@@ -398,7 +409,7 @@ export default function InstallPrompt() {
                           ))}
                         </FormGroup>
                         <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          Активные темы: {selectedTopicsDescription}
+                          {t("system:installPrompt.activeTopics", { topics: selectedTopicsDescription })}
                         </FormHelperText>
                       </FormControl>
                     </Stack>
@@ -436,11 +447,11 @@ export default function InstallPrompt() {
           sx={{ alignItems: "center", gap: 1 }}
           action={
             <Button color="inherit" size="small" onClick={handleUpdateReload}>
-              Перезагрузить
+              {t("system:installPrompt.reload")}
             </Button>
           }
         >
-          Доступно обновление
+          {t("system:installPrompt.updateAvailable")}
         </Alert>
       </Snackbar>
     </>

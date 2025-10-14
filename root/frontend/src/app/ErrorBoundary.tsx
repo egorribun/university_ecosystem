@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 
 export const APP_ERROR_EVENT = "app:error"
 
@@ -19,6 +20,7 @@ type ErrorBoundaryState = {
 }
 
 function DefaultFallback({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation(["system"])
   return (
     <div
       role="alert"
@@ -37,10 +39,10 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
     >
       <div style={{ maxWidth: "32rem" }}>
         <h1 style={{ fontSize: "clamp(1.5rem, 4vw, 2.5rem)", marginBottom: "0.5rem" }}>
-          Что-то пошло не так
+          {t("system:errorBoundary.title")}
         </h1>
         <p style={{ opacity: 0.8, lineHeight: 1.6 }}>
-          Мы уже работаем над проблемой. Попробуйте обновить страницу или вернуться чуть позже.
+          {t("system:errorBoundary.description")}
         </p>
       </div>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center" }}>
@@ -64,7 +66,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
             fontWeight: 600,
           }}
         >
-          Перезагрузить страницу
+          {t("system:errorBoundary.reload")}
         </button>
         <button
           type="button"
@@ -80,7 +82,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
             fontWeight: 500,
           }}
         >
-          Попробовать снова
+          {t("system:errorBoundary.retry")}
         </button>
       </div>
     </div>
