@@ -5,5 +5,64 @@
     "albumFallback": "Album cover",
     "paused": "Paused",
     "progress": "Track progress"
+  },
+  "aria": {
+    "page": "Profile",
+    "copyEmail": "Copy email",
+    "copyTelegram": "Copy Telegram handle"
+  },
+  "buttons": {
+    "showQr": "Show QR"
+  },
+  "snackbar": {
+    "spotifyConnected": "Spotify connected",
+    "spotifyError": "Spotify connection failed",
+    "copied": "Copied",
+    "profileUpdated": "Profile updated",
+    "error": "Error"
+  },
+  "sections": {
+    "nowPlaying": "Now playing",
+    "details": "Details",
+    "profileDetails": "Profile details",
+    "achievements": "Achievements"
+  },
+  "form": {
+    "name": "Name",
+    "email": "Email",
+    "telegram": "Telegram",
+    "telegramHint": "You can enter @username or a link",
+    "department": "Department",
+    "position": "Position",
+    "about": "About",
+    "recordBookNumber": "Record book number",
+    "status": "Status",
+    "institute": "Institute",
+    "course": "Course",
+    "educationLevel": "Education level",
+    "track": "Specialization",
+    "program": "Education program",
+    "achievements": "Achievements",
+    "save": "SAVE",
+    "saving": "SAVING...",
+    "cancel": "CANCEL"
+  },
+  "chips": {
+    "teacher": "Teacher",
+    "student": "Student",
+    "admin": "Administrator",
+    "course": "Course {{value}}"
+  },
+  "dialog": {
+    "qr": {
+      "title": "QR code",
+      "hint": "Point your camera — the contact will be added automatically"
+    },
+    "achievement": {
+      "organizer": "Organizer: {{issuer}}",
+      "date": "Date: {{date}}",
+      "openLink": "Open link",
+      "close": "Close"
+    }
   }
 }

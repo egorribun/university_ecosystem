@@ -68,6 +68,14 @@ const onlinePulse = keyframes`
 const MotionPaper = motion.create(Paper);
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test";
 
+type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error";
+
+type SnackState = {
+  key?: SnackKey;
+  message?: string;
+  sev?: "success" | "info" | "warning" | "error";
+};
+
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const theme = useTheme();
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -309,13 +317,14 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
 export default function Profile() {
   const { user, loading, setUser } = useAuth();
   const theme = useTheme();
-  const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
+  const [snack, setSnack] = useState<SnackState | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(Date.now());
   const [coverVersion, setCoverVersion] = useState(Date.now());
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const isTwoCol = useMediaQuery("(min-width:1400px)");
   const isMobile = useMediaQuery("(max-width:600px)");
   const reduced = useReducedMotion();
+  const { t } = useTranslation(["profile", "common"]);
   const [scrollY, setScrollY] = useState(0);
   const [qrOpen, setQrOpen] = useState(false);
   const [achOpen, setAchOpen] = useState<{ name: string; issuer?: string; date?: string; url?: string } | null>(null);
@@ -396,9 +405,9 @@ export default function Profile() {
         void queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
         void queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey });
         void refetchNowPlaying({ throwOnError: false });
-        setSnack({ text: "Spotify подключён", sev: "success" });
+        setSnack({ key: "spotifyConnected", sev: "success" });
       } else {
-        setSnack({ text: "Ошибка подключения Spotify", sev: "error" });
+        setSnack({ key: "spotifyError", sev: "error" });
       }
       sp.delete("spotify");
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "");
@@ -529,14 +538,14 @@ export default function Profile() {
   );
 
   useEffect(() => {
-    if (snack && snack.sev === "success" && snack.text !== "Скопировано") burstConfetti();
+    if (snack && snack.sev === "success" && snack.key !== "copied") burstConfetti();
   }, [snack, burstConfetti]);
 
   const copy = async (text: string, evt?: { clientX: number; clientY: number }) => {
     try {
       await navigator.clipboard?.writeText(text);
     } finally {
-      setSnack({ text: "Скопировано", sev: "success" });
+      setSnack({ key: "copied", sev: "success" });
       if (evt) burstConfetti(evt.clientX, evt.clientY);
     }
   };
@@ -617,16 +626,22 @@ export default function Profile() {
       setUser(res.data);
       setEdit(false);
       navigate("/profile", { replace: true });
-      setSnack({ text: "Профиль обновлён", sev: "success" });
+      setSnack({ key: "profileUpdated", sev: "success" });
       setAvatarVersion(Date.now());
       setCoverVersion(Date.now());
     } catch (e: any) {
-      let message = "Ошибка";
+      let messageKey: SnackKey | undefined = "error";
+      let messageText: string | undefined;
       if (e?.response?.data?.detail) {
-        if (typeof e.response.data.detail === "string") message = e.response.data.detail;
-        else if (Array.isArray(e.response.data.detail)) message = e.response.data.detail.map((err: any) => err.msg).join("; ");
+        if (typeof e.response.data.detail === "string") {
+          messageKey = undefined;
+          messageText = e.response.data.detail;
+        } else if (Array.isArray(e.response.data.detail)) {
+          messageKey = undefined;
+          messageText = e.response.data.detail.map((err: any) => err.msg).join("; ");
+        }
       }
-      setSnack({ text: message, sev: "error" });
+      setSnack({ key: messageKey, message: messageText, sev: "error" });
     } finally {
       setSaving(false);
     }
@@ -636,6 +651,8 @@ export default function Profile() {
     setEdit(false);
     navigate("/profile", { replace: true });
   };
+
+  const snackMessage = snack?.key ? t(`profile:snackbar.${snack.key}`) : snack?.message || "";
 
   return (
     <>
@@ -676,7 +693,7 @@ export default function Profile() {
             id="main"
             className="profile-page"
             data-testid="profile-root"
-            aria-label="Профиль"
+            aria-label={t("profile:aria.page")}
             sx={{ position: "relative", minHeight: "100svh", display: "flex", flexDirection: "column", py: { xs: 8, sm: 9, md: 10 }, px: { xs: 1.5, sm: 2, md: 3 } }}
           >
           <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
@@ -833,9 +850,15 @@ export default function Profile() {
                         )}
                       </Box>
                       <Stack direction="row" spacing={1.2} useFlexGap flexWrap="wrap" sx={{ justifyContent: { xs: "center", md: "flex-start" } }}>
-                        {[
-                          user!.role === "teacher" ? "Преподаватель" : user!.role === "student" ? "Студент" : "Администратор",
-                          ...(user!.role === "student" && user!.course ? [`Курс ${user!.course}`] : []),
+                        {[ 
+                          user!.role === "teacher"
+                            ? t("profile:chips.teacher")
+                            : user!.role === "student"
+                            ? t("profile:chips.student")
+                            : t("profile:chips.admin"),
+                          ...(user!.role === "student" && user!.course
+                            ? [t("profile:chips.course", { value: user!.course })]
+                            : []),
                           ...(user!.institute ? [user!.institute] : [])
                         ].map((chip, idx) => (
                           <Grow in key={`${chip}-${idx}`} timeout={isTest || reduced ? 0 : 560} style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}>
@@ -879,7 +902,7 @@ export default function Profile() {
                         data-testid="open-qr"
                         sx={{ width: "100%", borderRadius: 2, py: 1.05, fontWeight: 800, letterSpacing: 0.24 }}
                       >
-                        Показать QR
+                        {t("profile:buttons.showQr")}
                       </Button>
                     </Stack>
                     <Divider />
@@ -897,8 +920,8 @@ export default function Profile() {
                           size="small"
                           className="glass--btn"
                           onClick={(e) => copy(user!.email, e)}
-                          aria-label="Скопировать email"
-                          title="Скопировать email"
+                          aria-label={t("profile:aria.copyEmail")}
+                          title={t("profile:aria.copyEmail")}
                           data-testid="copy-email"
                           sx={{
                             transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
@@ -923,8 +946,8 @@ export default function Profile() {
                             size="small"
                             className="glass--btn"
                             onClick={(e) => copy(user!.telegram!, e)}
-                            aria-label="Скопировать ник в Telegram"
-                            title="Скопировать ник в Telegram"
+                            aria-label={t("profile:aria.copyTelegram")}
+                            title={t("profile:aria.copyTelegram")}
                             data-testid="copy-telegram"
                             sx={{
                               transition: reduced ? "color 140ms ease" : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
@@ -942,7 +965,7 @@ export default function Profile() {
                     <Fade in timeout={isTest || reduced ? 0 : 720}>
                       <Stack spacing={1.4}>
                         <Typography variant="overline" sx={{ letterSpacing: 2.2, color: textSecondary }}>
-                          Сейчас играет
+                          {t("profile:sections.nowPlaying")}
                         </Typography>
                         <NowPlayingCard data={nowPlaying} />
                       </Stack>
@@ -964,34 +987,34 @@ export default function Profile() {
                       }}
                     >
                       <Stack spacing={2.2}>
-                        <TextField label="Имя" value={fullName} onChange={(e) => setFullName(e.target.value)} fullWidth inputProps={{ maxLength: 120 }} />
-                        <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth type="email" />
-                        <TextField label="Telegram" value={telegram} onChange={(e) => setTelegram(e.target.value)} fullWidth helperText="Можно ввести @username или ссылку" />
+                        <TextField label={t("profile:form.name")} value={fullName} onChange={(e) => setFullName(e.target.value)} fullWidth inputProps={{ maxLength: 120 }} />
+                        <TextField label={t("profile:form.email")} value={email} onChange={(e) => setEmail(e.target.value)} fullWidth type="email" />
+                        <TextField label={t("profile:form.telegram")} value={telegram} onChange={(e) => setTelegram(e.target.value)} fullWidth helperText={t("profile:form.telegramHint")} />
                         {user!.role === "teacher" && (
                           <>
-                            <TextField label="Кафедра/отдел" value={department} onChange={(e) => setDepartment(e.target.value)} fullWidth />
-                            <TextField label="Должность" value={position} onChange={(e) => setPosition(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.department")} value={department} onChange={(e) => setDepartment(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.position")} value={position} onChange={(e) => setPosition(e.target.value)} fullWidth />
                           </>
                         )}
                         {user!.role === "student" && (
                           <>
-                            <TextField label="О себе" value={about} onChange={(e) => setAbout(e.target.value)} fullWidth multiline minRows={3} />
-                            <TextField label="Номер зачётной книжки" value={recordBookNumber} onChange={(e) => setRecordBookNumber(e.target.value)} fullWidth />
-                            <TextField label="Статус" value={status} onChange={(e) => setStatus(e.target.value)} fullWidth />
-                            <TextField label="Институт" value={institute} onChange={(e) => setInstitute(e.target.value)} fullWidth />
-                            <TextField label="Курс" value={course} onChange={(e) => setCourse(e.target.value)} fullWidth />
-                            <TextField label="Уровень образования" value={educationLevel} onChange={(e) => setEducationLevel(e.target.value)} fullWidth />
-                            <TextField label="Направление" value={track} onChange={(e) => setTrack(e.target.value)} fullWidth />
-                            <TextField label="Образовательная программа" value={program} onChange={(e) => setProgram(e.target.value)} fullWidth />
-                            <TextField label="Достижения" value={achievements} onChange={(e) => setAchievements(e.target.value)} fullWidth multiline minRows={2} />
+                            <TextField label={t("profile:form.about")} value={about} onChange={(e) => setAbout(e.target.value)} fullWidth multiline minRows={3} />
+                            <TextField label={t("profile:form.recordBookNumber")} value={recordBookNumber} onChange={(e) => setRecordBookNumber(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.status")} value={status} onChange={(e) => setStatus(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.institute")} value={institute} onChange={(e) => setInstitute(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.course")} value={course} onChange={(e) => setCourse(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.educationLevel")} value={educationLevel} onChange={(e) => setEducationLevel(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.track")} value={track} onChange={(e) => setTrack(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.program")} value={program} onChange={(e) => setProgram(e.target.value)} fullWidth />
+                            <TextField label={t("profile:form.achievements")} value={achievements} onChange={(e) => setAchievements(e.target.value)} fullWidth multiline minRows={2} />
                           </>
                         )}
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ alignItems: { xs: "stretch", sm: "center" } }}>
                           <Button onClick={handleSave} variant="contained" disabled={saving} className="glass--btn" sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}>
-                            {saving ? "СОХРАНЯЕМ..." : "СОХРАНИТЬ"}
+                            {saving ? t("profile:form.saving") : t("profile:form.save")}
                           </Button>
                           <Button onClick={handleCancel} variant="outlined" className="glass--btn" sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}>
-                            ОТМЕНА
+                            {t("profile:form.cancel")}
                           </Button>
                         </Stack>
                       </Stack>
@@ -1010,7 +1033,7 @@ export default function Profile() {
                         }}
                       >
                         <Typography variant="h5" component="h2" sx={{ fontWeight: 900, fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)", mb: 2.2, letterSpacing: "-.01em" }}>
-                          Сведения
+                          {t("profile:sections.details")}
                         </Typography>
                         <Accordion
                           disableGutters
@@ -1028,19 +1051,19 @@ export default function Profile() {
                             expandIcon={<ExpandMoreIcon />}
                             sx={{ px: 2.2, py: 1.4, borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.08)}` }}
                           >
-                            <Typography fontWeight={900}>Детали профиля</Typography>
+                            <Typography fontWeight={900}>{t("profile:sections.profileDetails")}</Typography>
                           </AccordionSummary>
                           <AccordionDetails sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}>
                             {(() => {
                               const rows = [
-                                { label: "О себе", value: user!.about },
-                                { label: "Статус", value: user!.status },
-                                { label: "Номер зачётной книжки", value: user!.record_book_number },
-                                { label: "Уровень образования", value: user!.education_level },
-                                { label: "Направление", value: user!.track },
-                                { label: "Образовательная программа", value: user!.program },
-                                { label: "Кафедра/отдел", value: user!.department },
-                                { label: "Должность", value: user!.position }
+                                { label: t("profile:form.about"), value: user!.about },
+                                { label: t("profile:form.status"), value: user!.status },
+                                { label: t("profile:form.recordBookNumber"), value: user!.record_book_number },
+                                { label: t("profile:form.educationLevel"), value: user!.education_level },
+                                { label: t("profile:form.track"), value: user!.track },
+                                { label: t("profile:form.program"), value: user!.program },
+                                { label: t("profile:form.department"), value: user!.department },
+                                { label: t("profile:form.position"), value: user!.position }
                               ];
                               return (
                                 <Box
@@ -1059,7 +1082,7 @@ export default function Profile() {
                             {achievementsList.length > 0 && (
                               <Box sx={{ mt: 2.4 }}>
                                 <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 800, mb: 1.4 }}>
-                                  Достижения
+                                  {t("profile:sections.achievements")}
                                 </Typography>
                                 <Box
                                   sx={{
@@ -1124,7 +1147,7 @@ export default function Profile() {
           }
         }}
       >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>QR-код</DialogTitle>
+        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>{t("profile:dialog.qr.title")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1.2, minHeight: 320 }}>
           <Box
             sx={{
@@ -1151,12 +1174,12 @@ export default function Profile() {
             />
           </Box>
           <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-            Наведите камеру — контакт добавится автоматически
+            {t("profile:dialog.qr.hint")}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
           <Button onClick={closeQrModal} className="glass--btn" variant="contained" sx={{ fontWeight: 800 }}>
-            Готово
+            {t("common:buttons.done")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1177,17 +1200,17 @@ export default function Profile() {
       >
         <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
         <DialogContent sx={{ display: "grid", gap: 1.2 }}>
-          {achOpen?.issuer && <Typography>Организатор: {achOpen.issuer}</Typography>}
-          {achOpen?.date && <Typography>Дата: {achOpen.date}</Typography>}
+          {achOpen?.issuer && <Typography>{t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}</Typography>}
+          {achOpen?.date && <Typography>{t("profile:dialog.achievement.date", { date: achOpen.date })}</Typography>}
           {achOpen?.url && (
             <Button variant="outlined" className="glass--btn" href={achOpen.url} target="_blank" rel="noreferrer" sx={{ fontWeight: 800 }}>
-              Открыть ссылку
+              {t("profile:dialog.achievement.openLink")}
             </Button>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAchOpen(null)} className="glass--btn" variant="contained" sx={{ fontWeight: 800 }}>
-            Закрыть
+            {t("profile:dialog.achievement.close")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1197,10 +1220,10 @@ export default function Profile() {
         autoHideDuration={2600}
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        data-testid={snack?.text === "Скопировано" ? "snackbar-copied" : undefined}
+        data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
       >
         <Alert onClose={() => setSnack(null)} severity={snack?.sev || "info"} variant="filled" sx={{ width: "100%" }}>
-          {snack?.text}
+          {snackMessage}
         </Alert>
       </Snackbar>
     </>
