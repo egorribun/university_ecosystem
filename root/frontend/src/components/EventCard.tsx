@@ -29,6 +29,7 @@ import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { cardHoverSx } from "@/constants/cardHover"
+import { useTranslation } from "react-i18next"
 
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -89,6 +90,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   const { user } = useAuth()
   const navigate = useNavigate()
   const isMobile = useMediaQuery("(max-width: 600px)")
+  const { t } = useTranslation(["events", "common"])
 
   const [registered, setRegistered] = useState(is_registered)
   const [count, setCount] = useState(participant_count)
@@ -263,7 +265,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setRegistered(true)
       setQr(code)
       setCount((c) => c + 1)
-      setSnack("Вы зарегистрированы на мероприятие")
+      setSnack(t("events:card.messages.registerSuccess"))
       try { localStorage.setItem(qrKey(id, user), code) } catch {}
     } catch (error) {
       const shouldResync =
@@ -274,7 +276,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (shouldResync) {
         const restored = await syncRegistrationState()
         if (restored === "registered") {
-          setSnack("Вы зарегистрированы на мероприятие")
+          setSnack(t("events:card.messages.registerSuccess"))
           return
         }
       }
@@ -282,7 +284,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       const detail =
         (isAxiosError(error) && typeof error.response?.data?.detail === "string"
           ? error.response?.data?.detail
-          : null) || "Не удалось зарегистрироваться"
+          : null) || t("events:card.messages.registerFailure")
       setSnack(detail)
     } finally {
       setLoading(false)
@@ -297,7 +299,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setRegistered(false)
       setQr(undefined)
       setCount((c) => Math.max(0, c - 1))
-      setSnack("Регистрация отменена")
+      setSnack(t("events:card.messages.unregisterSuccess"))
       try { localStorage.removeItem(qrKey(id, user)) } catch {}
     } catch (error) {
       const shouldResync =
@@ -308,7 +310,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (shouldResync) {
         const restored = await syncRegistrationState()
         if (restored === "unregistered") {
-          setSnack("Регистрация отменена")
+          setSnack(t("events:card.messages.unregisterSuccess"))
           return
         }
       }
@@ -316,7 +318,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       const detail =
         (isAxiosError(error) && typeof error.response?.data?.detail === "string"
           ? error.response?.data?.detail
-          : null) || "Не удалось отменить регистрацию"
+          : null) || t("events:card.messages.unregisterFailure")
       setSnack(detail)
     } finally {
       setLoading(false)
@@ -328,10 +330,10 @@ const EventCardComponent: FC<EventCardProps> = ({
     try {
       await api.delete(`/events/${id}`)
       try { localStorage.removeItem(qrKey(id, user)) } catch {}
-      setSnack("Мероприятие удалено")
+      setSnack(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
-      setSnack("Ошибка удаления")
+      setSnack(t("events:card.messages.deleteFailure"))
     } finally {
       setLoading(false)
       setConfirmDeleteOpen(false)
@@ -362,9 +364,9 @@ const EventCardComponent: FC<EventCardProps> = ({
       setEditData((prev) => ({ ...prev, image_url: imgUrl }))
       closeEditDialog()
       onChange && onChange()
-      setSnack("Сохранено")
+      setSnack(t("events:card.messages.saveSuccess"))
     } catch {
-      setSnack("Не удалось сохранить")
+      setSnack(t("events:card.messages.saveFailure"))
     } finally {
       setLoading(false)
     }
@@ -435,7 +437,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       {user && (user.role === "admin" || user.role === "teacher") && (
         <>
           <IconButton
-            aria-label="Действия"
+            aria-label={t("events:card.aria.actions")}
             aria-controls={menuAnchor ? menuId : undefined}
             aria-haspopup="true"
             aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
@@ -475,7 +477,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               }}
             >
               <EditIcon fontSize="small" sx={{ mr: 1 }} />
-              Редактировать
+              {t("common:buttons.edit")}
             </MenuItem>
             <MenuItem
               onClick={(e) => {
@@ -485,7 +487,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               }}
             >
               <DeleteIcon fontSize="small" sx={{ mr: 1 }} color="error" />
-              <span style={{ color: "#d32f2f" }}>Удалить</span>
+              <span style={{ color: "#d32f2f" }}>{t("common:buttons.delete")}</span>
             </MenuItem>
           </Menu>
         </>
@@ -526,7 +528,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         >
           <SmartImage
             srcRaw={cardImageUrl}
-            alt="Изображение мероприятия"
+            alt={t("events:alt.image")}
             sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
             style={{
               width: "100%",
@@ -552,7 +554,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
       {speaker && (
         <Typography color="secondary" fontSize={15} fontWeight={600} sx={{ mb: 1 }}>
-          Спикер: {speaker}
+          {t("events:form.speaker")}: {speaker}
         </Typography>
       )}
 
@@ -565,7 +567,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
       {eventEnded && (
         <Typography color="error.main" fontWeight={700} sx={{ mb: 1 }}>
-          Мероприятие завершено
+          {t("events:card.statuses.ended")}
         </Typography>
       )}
 
@@ -591,7 +593,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
       <Box display="flex" gap={1} alignItems="center" sx={{ mb: 2 }}>
         <PeopleAltIcon sx={{ fontSize: 19, color: "var(--nav-link)" }} />
-        <Typography fontSize={15}>Участников: {count}</Typography>
+        <Typography fontSize={15}>{t("events:card.participants", { count })}</Typography>
       </Box>
 
       {is_active && !eventEnded && !registered && user?.role !== "admin" && user?.role !== "teacher" && (
@@ -602,7 +604,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           onClick={(e) => handleRegister(e)}
           disabled={loading}
         >
-          Зарегистрироваться
+          {t("events:card.actions.register")}
         </Button>
       )}
 
@@ -615,12 +617,12 @@ const EventCardComponent: FC<EventCardProps> = ({
             onClick={(e) => handleUnregister(e)}
             disabled={loading}
           >
-            Отменить регистрацию
+            {t("events:card.actions.unregister")}
           </Button>
 
           {qr && (
             <>
-              <Tooltip title="Открыть QR" arrow>
+              <Tooltip title={t("events:card.actions.openQr")} arrow>
                 <SmartImage
                   srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
                   alt="QR"
@@ -697,7 +699,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                     />
                   </Box>
                   <Button sx={{ mt: 2 }} variant="outlined" onClick={() => setQrOpen(false)}>
-                    Закрыть
+                    {t("events:card.actions.closeQr")}
                   </Button>
                 </Box>
               </Dialog>
@@ -712,18 +714,18 @@ const EventCardComponent: FC<EventCardProps> = ({
         PaperProps={{ sx: { minWidth: 340, bgcolor: "var(--card-bg)", color: "var(--page-text)" } }}
       >
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <EditIcon fontSize="small" /> Редактировать мероприятие
+          <EditIcon fontSize="small" /> {t("events:card.dialogs.edit.title")}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1}>
             <TextField
-              label="Название"
+              label={t("events:form.title")}
               value={editData.title}
               onChange={(e) => setEditData({ ...editData, title: e.target.value })}
               fullWidth
             />
             <TextField
-              label="Описание"
+              label={t("events:form.description")}
               value={editData.description}
               onChange={(e) => setEditData({ ...editData, description: e.target.value })}
               multiline
@@ -731,19 +733,19 @@ const EventCardComponent: FC<EventCardProps> = ({
               fullWidth
             />
             <TextField
-              label="Тип"
+              label={t("events:form.type")}
               value={editData.event_type}
               onChange={(e) => setEditData({ ...editData, event_type: e.target.value })}
               fullWidth
             />
             <TextField
-              label="Место"
+              label={t("events:form.location")}
               value={editData.location}
               onChange={(e) => setEditData({ ...editData, location: e.target.value })}
               fullWidth
             />
             <TextField
-              label="Начало"
+              label={t("events:form.start")}
               type="datetime-local"
               value={editData.starts_at.slice(0, 16)}
               onChange={(e) => setEditData({ ...editData, starts_at: e.target.value })}
@@ -751,17 +753,17 @@ const EventCardComponent: FC<EventCardProps> = ({
               fullWidth
             />
             <TextField
-              label="Окончание"
+              label={t("events:form.end")}
               type="datetime-local"
               value={editData.ends_at.slice(0, 16)}
               onChange={(e) => setEditData({ ...editData, ends_at: e.target.value })}
               InputLabelProps={{ shrink: true }}
               error={dateError}
-              helperText={dateError ? "Окончание не может быть раньше начала" : " "}
+              helperText={dateError ? t("events:form.errors.endsBeforeStarts") : " "}
               fullWidth
             />
             <TextField
-              label="Спикер"
+              label={t("events:form.speaker")}
               value={editData.speaker}
               onChange={(e) => setEditData({ ...editData, speaker: e.target.value })}
               fullWidth
@@ -774,7 +776,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                 disabled={imageLoading}
                 onClick={(e) => e.stopPropagation()}
               >
-                {imageLoading ? "Загрузка..." : "Изменить фото"}
+                {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
                 <input
                   type="file"
                   accept="image/*"
@@ -791,7 +793,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                 <Box mt={1}>
                   <SmartImage
                     srcRaw={cardImageUrl}
-                    alt="Предпросмотр изображения"
+                    alt={t("events:alt.preview")}
                     style={{
                       width: 220,
                       maxHeight: 140,
@@ -808,29 +810,29 @@ const EventCardComponent: FC<EventCardProps> = ({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="outlined" color="secondary" onClick={closeEditDialog} startIcon={<CloseIcon />}>
-            Отмена
+            {t("common:buttons.cancel")}
           </Button>
           <Button
             variant="contained"
             onClick={handleEdit}
             disabled={loading || imageLoading || dateError}
           >
-            Сохранить
+            {t("common:buttons.save")}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
-        <DialogTitle>Удалить мероприятие?</DialogTitle>
+        <DialogTitle>{t("events:card.dialogs.delete.title")}</DialogTitle>
         <DialogContent>
-          <Typography>Действие необратимо. Подтвердите удаление.</Typography>
+          <Typography>{t("events:card.dialogs.delete.description")}</Typography>
         </DialogContent>
         <DialogActions>
           <Button variant="outlined" color="secondary" onClick={() => setConfirmDeleteOpen(false)}>
-            Отмена
+            {t("common:buttons.cancel")}
           </Button>
           <Button variant="contained" color="error" onClick={handleDelete} disabled={loading}>
-            <DeleteIcon sx={{ mr: 1 }} /> Удалить
+            <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
           </Button>
         </DialogActions>
       </Dialog>

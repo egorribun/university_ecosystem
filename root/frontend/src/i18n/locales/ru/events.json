@@ -42,5 +42,83 @@
   "alt": {
     "preview": "Предпросмотр изображения события",
     "image": "Изображение события"
+  },
+  "card": {
+    "aria": {
+      "actions": "Действия с мероприятием"
+    },
+    "actions": {
+      "register": "Зарегистрироваться",
+      "unregister": "Отменить регистрацию",
+      "openQr": "Открыть QR",
+      "closeQr": "Закрыть"
+    },
+    "statuses": {
+      "ended": "Мероприятие завершено"
+    },
+    "participants": "Участников: {{count}}",
+    "messages": {
+      "registerSuccess": "Вы зарегистрированы на мероприятие",
+      "registerFailure": "Не удалось зарегистрироваться",
+      "unregisterSuccess": "Регистрация отменена",
+      "unregisterFailure": "Не удалось отменить регистрацию",
+      "deleteSuccess": "Мероприятие удалено",
+      "deleteFailure": "Не удалось удалить мероприятие",
+      "saveSuccess": "Изменения сохранены",
+      "saveFailure": "Не удалось сохранить изменения"
+    },
+    "dialogs": {
+      "edit": {
+        "title": "Редактировать мероприятие"
+      },
+      "delete": {
+        "title": "Удалить мероприятие?",
+        "description": "Действие необратимо. Подтвердите удаление."
+      }
+    }
+  },
+  "detail": {
+    "messages": {
+      "loadFailed": "Ошибка загрузки",
+      "notFound": "Мероприятие не найдено",
+      "fileAdded": "Файл добавлен",
+      "fileAddFailed": "Ошибка добавления файла",
+      "fileDeleted": "Файл удалён",
+      "fileDeleteFailed": "Ошибка удаления файла",
+      "aboutUpdated": "Описание обновлено",
+      "aboutUpdateFailed": "Ошибка сохранения описания"
+    },
+    "upload": {
+      "errors": {
+        "noFile": "Выберите файл",
+        "failed": "Не удалось добавить файл"
+      },
+      "submit": {
+        "label": "Добавить",
+        "pending": "Добавление..."
+      }
+    },
+    "fields": {
+      "location": "Место",
+      "date": "Дата",
+      "speaker": "Спикер"
+    },
+    "sections": {
+      "about": {
+        "title": "Описание мероприятия",
+        "fieldLabel": "Описание мероприятия",
+        "editAria": "Редактировать описание",
+        "savePending": "Сохраняю...",
+        "empty": "Описание мероприятия не заполнено."
+      },
+      "files": {
+        "title": "Файлы",
+        "pickFile": "Файл",
+        "empty": "Файлов пока нет",
+        "pending": "Добавление файла...",
+        "downloadAria": "Скачать файл {{label}}",
+        "deleteAria": "Удалить файл"
+      }
+    }
   }
 }

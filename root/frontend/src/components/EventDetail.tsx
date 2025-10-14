@@ -17,6 +17,7 @@ import Layout from '../components/Layout'
 import { resolveMediaUrl } from '@/utils/media'
 import SmartImage from '@/components/SmartImage'
 import type { Event } from '@/types/Event'
+import { useTranslation } from 'react-i18next'
 import {
   applyOptimisticFileAction,
   isUploadErrorState,
@@ -57,6 +58,7 @@ const EventDetail = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isMobile = useMediaQuery('(max-width: 900px)')
+  const { t } = useTranslation(['events', 'common'])
 
   const [event, setEvent] = useState<Event | null>(null)
   const [loading, setLoading] = useState(true)
@@ -75,11 +77,11 @@ const EventDetail = () => {
 
     const file = input.get('file')
     if (!(file instanceof File) || file.size === 0) {
-      return { status: 'error', error: 'Выберите файл' }
+      return { status: 'error', error: t('events:detail.upload.errors.noFile') }
     }
 
     if (!event) {
-      return { status: 'error', error: 'Мероприятие не найдено' }
+      return { status: 'error', error: t('events:detail.messages.notFound') }
     }
 
     const optimisticId = `pending-${Date.now()}`
@@ -101,15 +103,15 @@ const EventDetail = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       mutateFiles({ type: 'remove', id: optimisticId })
-      setSnack('Файл добавлен')
+      setSnack(t('events:detail.messages.fileAdded'))
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await refreshEvent().catch(() => {})
       return { status: 'success' }
     } catch (err) {
       mutateFiles({ type: 'remove', id: optimisticId })
-      setSnack('Ошибка добавления файла')
-      return { status: 'error', error: 'Не удалось добавить файл' }
+      setSnack(t('events:detail.messages.fileAddFailed'))
+      return { status: 'error', error: t('events:detail.upload.errors.failed') }
     }
   }, { status: 'idle' })
 
@@ -152,7 +154,7 @@ const EventDetail = () => {
       return data
     } catch (err) {
       if (!isCanceledRequestError(err) && !signal?.aborted) {
-        setSnack('Ошибка загрузки')
+        setSnack(t('events:detail.messages.loadFailed'))
       }
       throw err
     } finally {
@@ -182,9 +184,9 @@ const EventDetail = () => {
     mutateFiles({ type: 'remove', id: fileId })
     try {
       await api.delete(`/events/file/${fileId}`)
-      setSnack('Файл удалён')
+      setSnack(t('events:detail.messages.fileDeleted'))
     } catch {
-      setSnack('Ошибка удаления файла')
+      setSnack(t('events:detail.messages.fileDeleteFailed'))
     } finally {
       await refreshEvent().catch(() => {})
     }
@@ -201,7 +203,7 @@ const EventDetail = () => {
 
   const handleSaveAbout = async () => {
     if (!event) {
-      setSnack('Ошибка сохранения описания')
+      setSnack(t('events:detail.messages.aboutUpdateFailed'))
       return
     }
 
@@ -209,11 +211,11 @@ const EventDetail = () => {
     try {
       await api.patch(`/events/${event.id}`, { about: aboutDraft.trim() })
       setEditingAbout(false)
-      setSnack('Описание обновлено')
+      setSnack(t('events:detail.messages.aboutUpdated'))
       await refreshEvent().catch(() => {})
       setTimeout(() => aboutSectionRef.current?.focus?.(), 0)
     } catch {
-      setSnack('Ошибка сохранения описания')
+      setSnack(t('events:detail.messages.aboutUpdateFailed'))
     } finally {
       setSavingAbout(false)
     }
@@ -244,7 +246,7 @@ const EventDetail = () => {
     return (
       <Layout>
         <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
-          <Typography>Мероприятие не найдено</Typography>
+          <Typography>{t('events:detail.messages.notFound')}</Typography>
         </Box>
       </Layout>
     )
@@ -281,7 +283,7 @@ const EventDetail = () => {
         zIndex: 99
       }}
     >
-      Назад
+      {t('common:buttons.back')}
     </Button>
   )
 
@@ -311,17 +313,23 @@ const EventDetail = () => {
               )}
               <Chip
                 icon={<PeopleAltIcon sx={{ color: '#1976d2' }} />}
-                label={`Участников: ${event.participant_count || 0}`}
+                label={t('events:card.participants', { count: event.participant_count || 0 })}
                 sx={{ fontWeight: 500, fontSize: 14 }}
               />
             </Stack>
             <Typography variant="body1" fontWeight={600}>{event.description}</Typography>
             <Box>
-              <Typography variant="subtitle1" fontWeight={600}>Место: <b>{event.location}</b></Typography>
-              <Typography variant="subtitle1">
-                Дата: <b>{formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}</b>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {t('events:detail.fields.location')}: <b>{event.location}</b>
               </Typography>
-              {event.speaker && <Typography variant="subtitle1">Спикер: <b>{event.speaker}</b></Typography>}
+              <Typography variant="subtitle1">
+                {t('events:detail.fields.date')}: <b>{formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}</b>
+              </Typography>
+              {event.speaker && (
+                <Typography variant="subtitle1">
+                  {t('events:detail.fields.speaker')}: <b>{event.speaker}</b>
+                </Typography>
+              )}
             </Box>
             <Box
               sx={{
@@ -337,7 +345,7 @@ const EventDetail = () => {
             >
               <SmartImage
                 srcRaw={imageUrl}
-                alt="Изображение мероприятия"
+                alt={t('events:alt.image')}
                 onLoad={handleHeroLoad}
                 style={{
                   position: 'absolute',
@@ -358,10 +366,10 @@ const EventDetail = () => {
                   variant="h6"
                   fontWeight={700}
                 >
-                  Описание мероприятия
+                  {t('events:detail.sections.about.title')}
                 </Typography>
                 {(user?.role === 'admin' || user?.role === 'teacher') && !editingAbout && (
-                  <IconButton aria-label="Редактировать описание" size="small" onClick={handleEditAbout}>
+                  <IconButton aria-label={t('events:detail.sections.about.editAria')} size="small" onClick={handleEditAbout}>
                     <EditIcon fontSize="small" />
                   </IconButton>
                 )}
@@ -369,7 +377,7 @@ const EventDetail = () => {
               {editingAbout ? (
                 <Stack spacing={1}>
                   <TextField
-                    label="Описание мероприятия"
+                    label={t('events:detail.sections.about.fieldLabel')}
                     multiline
                     minRows={3}
                     value={aboutDraft}
@@ -385,10 +393,10 @@ const EventDetail = () => {
                       onClick={handleSaveAbout}
                       disabled={savingAbout || aboutDraft.trim() === (event.about || '')}
                     >
-                      {savingAbout ? 'Сохраняю...' : 'Сохранить'}
+                      {savingAbout ? t('events:detail.sections.about.savePending') : t('common:buttons.save')}
                     </Button>
                     <Button variant="outlined" size="small" startIcon={<CloseIcon />} onClick={handleCancelAbout} disabled={savingAbout}>
-                      Отмена
+                      {t('common:buttons.cancel')}
                     </Button>
                   </Stack>
                 </Stack>
@@ -398,7 +406,7 @@ const EventDetail = () => {
                   fontSize={16}
                   sx={{ whiteSpace: 'pre-line', color: event.about ? 'inherit' : 'text.disabled' }}
                 >
-                  {event.about || 'Описание мероприятия не заполнено.'}
+                  {event.about || t('events:detail.sections.about.empty')}
                 </Typography>
               )}
             </Box>
@@ -408,7 +416,7 @@ const EventDetail = () => {
                 <form action={uploadAction}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Button variant="contained" component="label" disabled={uploadPending}>
-                      Файл
+                      {t('events:detail.sections.files.pickFile')}
                       <input
                         type="file"
                         name="file"
@@ -420,7 +428,7 @@ const EventDetail = () => {
                       />
                     </Button>
                     <Button variant="outlined" type="submit" disabled={!selectedFile || uploadPending}>
-                      {uploadPending ? 'Добавление...' : 'Добавить'}
+                      {uploadPending ? t('events:detail.upload.submit.pending') : t('events:detail.upload.submit.label')}
                     </Button>
                     {selectedFile && (
                       <Typography
@@ -449,7 +457,7 @@ const EventDetail = () => {
 
             {optimisticFiles.length > 0 ? (
               <Box>
-                <Typography variant="subtitle1" fontWeight={600}>Файлы:</Typography>
+                <Typography variant="subtitle1" fontWeight={600}>{t('events:detail.sections.files.title')}</Typography>
                 <Stack spacing={1}>
                   {optimisticFiles.map(f => {
                     const isPendingFile = f.pending === true || typeof f.id !== 'number'
@@ -459,7 +467,7 @@ const EventDetail = () => {
                       <Box key={f.id} display="flex" alignItems="center">
                         {isPendingFile ? (
                           <Typography color="text.secondary" sx={{ flex: 1 }}>
-                            {f.description || 'Добавление файла...'}
+                            {f.description || t('events:detail.sections.files.pending')}
                           </Typography>
                         ) : (
                           <a
@@ -468,7 +476,7 @@ const EventDetail = () => {
                             rel="noopener noreferrer"
                             download
                             title={fileLabel}
-                            aria-label={`Скачать файл ${fileLabel}`}
+                            aria-label={t('events:detail.sections.files.downloadAria', { label: fileLabel })}
                             style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
                           >
                             {fileLabel}
@@ -476,7 +484,7 @@ const EventDetail = () => {
                         )}
                         {(user?.role === 'admin' || user?.role === 'teacher') && (
                           <IconButton
-                            aria-label="Удалить файл"
+                            aria-label={t('events:detail.sections.files.deleteAria')}
                             color="error"
                             disabled={isPendingFile}
                             onClick={async () => {
@@ -496,7 +504,7 @@ const EventDetail = () => {
                 </Stack>
               </Box>
             ) : (
-              <Typography variant="body2" color="text.secondary">Файлов пока нет</Typography>
+              <Typography variant="body2" color="text.secondary">{t('events:detail.sections.files.empty')}</Typography>
             )}
           </Stack>
 
@@ -541,7 +549,7 @@ const EventDetail = () => {
               >
                 <SmartImage
                   srcRaw={imageUrl}
-                  alt="Изображение мероприятия"
+                  alt={t('events:alt.image')}
                   onLoad={handleHeroLoad}
                   style={{
                     position: 'absolute',
@@ -563,10 +571,10 @@ const EventDetail = () => {
                 variant="h5"
                 fontWeight={700}
               >
-                Описание мероприятия
+                {t('events:detail.sections.about.title')}
               </Typography>
               {(user?.role === 'admin' || user?.role === 'teacher') && !editingAbout && (
-                <IconButton aria-label="Редактировать описание" size="small" onClick={handleEditAbout}>
+                <IconButton aria-label={t('events:detail.sections.about.editAria')} size="small" onClick={handleEditAbout}>
                   <EditIcon fontSize="small" />
                 </IconButton>
               )}
@@ -574,7 +582,7 @@ const EventDetail = () => {
             {editingAbout ? (
               <Stack spacing={1}>
                 <TextField
-                  label="Описание мероприятия"
+                  label={t('events:detail.sections.about.fieldLabel')}
                   multiline
                   minRows={3}
                   value={aboutDraft}
@@ -590,10 +598,10 @@ const EventDetail = () => {
                     onClick={handleSaveAbout}
                     disabled={savingAbout || aboutDraft.trim() === (event.about || '')}
                   >
-                    {savingAbout ? 'Сохраняю...' : 'Сохранить'}
+                    {savingAbout ? t('events:detail.sections.about.savePending') : t('common:buttons.save')}
                   </Button>
                   <Button variant="outlined" size="small" startIcon={<CloseIcon />} onClick={handleCancelAbout} disabled={savingAbout}>
-                    Отмена
+                    {t('common:buttons.cancel')}
                   </Button>
                 </Stack>
               </Stack>
@@ -603,7 +611,7 @@ const EventDetail = () => {
                 fontSize={18}
                 sx={{ whiteSpace: 'pre-line', color: event.about ? 'inherit' : 'text.disabled' }}
               >
-                {event.about || 'Описание мероприятия не заполнено.'}
+                {event.about || t('events:detail.sections.about.empty')}
               </Typography>
             )}
           </Stack>
@@ -616,7 +624,7 @@ const EventDetail = () => {
               )}
               <Chip
                 icon={<PeopleAltIcon sx={{ color: '#1976d2' }} />}
-                label={`Участников: ${event.participant_count || 0}`}
+                label={t('events:card.participants', { count: event.participant_count || 0 })}
                 sx={{ fontWeight: 500, fontSize: 16 }}
               />
             </Stack>
@@ -625,18 +633,24 @@ const EventDetail = () => {
               {event.description}
             </Typography>
             <Divider />
-            <Typography variant="subtitle1" fontWeight={600}>Место: <b>{event.location}</b></Typography>
-            <Typography variant="subtitle1">
-              Дата: <b>{formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}</b>
+            <Typography variant="subtitle1" fontWeight={600}>
+              {t('events:detail.fields.location')}: <b>{event.location}</b>
             </Typography>
-            {event.speaker && <Typography variant="subtitle1">Спикер: <b>{event.speaker}</b></Typography>}
+            <Typography variant="subtitle1">
+              {t('events:detail.fields.date')}: <b>{formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}</b>
+            </Typography>
+            {event.speaker && (
+              <Typography variant="subtitle1">
+                {t('events:detail.fields.speaker')}: <b>{event.speaker}</b>
+              </Typography>
+            )}
 
             {user && (user.role === 'admin' || user.role === 'teacher') && (
               <Box mt={2}>
                 <form action={uploadAction}>
                   <Stack direction="row" spacing={2} alignItems="center">
                     <Button variant="contained" component="label" disabled={uploadPending}>
-                      Файл
+                      {t('events:detail.sections.files.pickFile')}
                       <input
                         type="file"
                         name="file"
@@ -648,7 +662,7 @@ const EventDetail = () => {
                       />
                     </Button>
                     <Button variant="outlined" type="submit" disabled={!selectedFile || uploadPending}>
-                      {uploadPending ? 'Добавление...' : 'Добавить'}
+                      {uploadPending ? t('events:detail.upload.submit.pending') : t('events:detail.upload.submit.label')}
                     </Button>
                     {selectedFile && (
                       <Typography
@@ -678,7 +692,7 @@ const EventDetail = () => {
             {optimisticFiles.length > 0 ? (
               <Box>
                 <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle1" fontWeight={600}>Файлы:</Typography>
+                <Typography variant="subtitle1" fontWeight={600}>{t('events:detail.sections.files.title')}</Typography>
                 <Stack spacing={1}>
                   {optimisticFiles.map(f => {
                     const isPendingFile = f.pending === true || typeof f.id !== 'number'
@@ -688,7 +702,7 @@ const EventDetail = () => {
                       <Box key={f.id} display="flex" alignItems="center">
                         {isPendingFile ? (
                           <Typography color="text.secondary" sx={{ flex: 1 }}>
-                            {f.description || 'Добавление файла...'}
+                            {f.description || t('events:detail.sections.files.pending')}
                           </Typography>
                         ) : (
                           <a
@@ -697,7 +711,7 @@ const EventDetail = () => {
                             rel="noopener noreferrer"
                             download
                             title={fileLabel}
-                            aria-label={`Скачать файл ${fileLabel}`}
+                            aria-label={t('events:detail.sections.files.downloadAria', { label: fileLabel })}
                             style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
                           >
                             {fileLabel}
@@ -705,7 +719,7 @@ const EventDetail = () => {
                         )}
                         {(user?.role === 'admin' || user?.role === 'teacher') && (
                           <IconButton
-                            aria-label="Удалить файл"
+                            aria-label={t('events:detail.sections.files.deleteAria')}
                             color="error"
                             disabled={isPendingFile}
                             onClick={async () => {
@@ -725,7 +739,7 @@ const EventDetail = () => {
                 </Stack>
               </Box>
             ) : (
-              <Typography variant="body2" color="text.secondary">Файлов пока нет</Typography>
+              <Typography variant="body2" color="text.secondary">{t('events:detail.sections.files.empty')}</Typography>
             )}
           </Stack>
         </Stack>
