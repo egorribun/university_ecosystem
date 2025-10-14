@@ -1,6 +1,21 @@
 {
+  "page": {
+    "title": "Настройки"
+  },
   "tabs": {
-    "account": "Аккаунт"
+    "general": "Общее",
+    "account": "Аккаунт",
+    "integrations": "Интеграции"
+  },
+  "appearance": {
+    "theme": {
+      "title": "Тема",
+      "options": {
+        "system": "Система",
+        "light": "Светлая",
+        "dark": "Тёмная"
+      }
+    }
   },
   "language": {
     "title": "Язык интерфейса",
@@ -11,14 +26,94 @@
       "en": "Английский"
     }
   },
+  "notifications": {
+    "title": "Уведомления",
+    "unsupported": "Веб push-уведомления недоступны в вашем браузере.",
+    "blocked": {
+      "description": "Уведомления запрещены в браузере. Откройте настройки сайта и включите уведомления для «Экосистема ГУУ».",
+      "hint": "После изменения настроек браузера нажмите «Проверить разрешение», чтобы обновить статус."
+    },
+    "cta": {
+      "prompt": "Включите уведомления, чтобы первым узнавать о расписании, мероприятиях и важных новостях.",
+      "allow": "Разрешить уведомления",
+      "checkPermission": "Проверить разрешение"
+    },
+    "status": "Текущее состояние: {{status}}.",
+    "toggles": {
+      "notifications": {
+        "label": "Включить уведомления",
+        "aria": "Включить уведомления"
+      },
+      "dnd": {
+        "label": "Включить тихий период",
+        "aria": "Включить тихий период"
+      }
+    }
+  },
+  "dnd": {
+    "start": "С",
+    "end": "До",
+    "validation": {
+      "missingRange": "Укажите время начала и окончания режима \"Не беспокоить\""
+    },
+    "snackbar": {
+      "enabled": "Режим \"Не беспокоить\" включён",
+      "disabled": "Режим \"Не беспокоить\" выключен",
+      "updated": "Настройки режима \"Не беспокоить\" обновлены",
+      "updateFailed": "Не удалось обновить настройки режима \"Не беспокоить\""
+    }
+  },
   "media": {
+    "validation": {
+      "supportedFormats": "Поддерживаются PNG/JPG/WebP/AVIF/GIF",
+      "fileTooLarge": "Файл слишком большой (>12 МБ)"
+    },
     "avatar": {
+      "title": "Фото профиля",
+      "subtitle": "PNG/JPG/WebP/AVIF/GIF, до 12 МБ",
+      "change": "Сменить",
+      "delete": "Удалить",
+      "updated": "Аватар обновлён",
+      "deleted": "Аватар удалён",
       "uploadFailed": "Не удалось загрузить аватар",
       "deleteFailed": "Не удалось удалить аватар"
     },
     "cover": {
-      "uploadFailed": "Не удалось загрузить обложку",
-      "title": "Обложка профиля"
+      "title": "Обложка профиля",
+      "recommendation": "Рекомендация: 1600×400+",
+      "change": "Сменить",
+      "updated": "Обложка обновлена",
+      "uploadFailed": "Не удалось загрузить обложку"
+    }
+  },
+  "account": {
+    "profile": {
+      "title": "Профиль",
+      "subtitle": "Имя, контакты, соцсети"
+    },
+    "logout": {
+      "button": "Выйти",
+      "dialogTitle": "Выйти из аккаунта?",
+      "dialogDescription": "Вы сможете войти снова. Данные не удаляются.",
+      "confirm": "Выйти"
+    }
+  },
+  "integrations": {
+    "spotify": {
+      "status": {
+        "connected": "Подключено",
+        "disconnected": "Не подключено",
+        "connectedFallback": "Аккаунт подключен"
+      },
+      "connect": "Подключить Spotify",
+      "disconnect": "Отключить Spotify",
+      "snackbar": {
+        "connected": "Spotify подключён",
+        "connectFailed": "Ошибка подключения Spotify",
+        "openFailed": "Не удалось открыть авторизацию Spotify",
+        "disconnected": "Spotify отключён",
+        "disconnectFailed": "Не удалось отключить Spotify"
+      }
     }
   }
 }
