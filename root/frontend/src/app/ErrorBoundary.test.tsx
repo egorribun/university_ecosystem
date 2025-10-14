@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import ErrorBoundary, { APP_ERROR_EVENT } from "./ErrorBoundary"
+import i18n from "@/i18n/config"
 
 describe("ErrorBoundary", () => {
   it("logs, dispatches and renders a fallback screen", () => {
@@ -27,8 +28,12 @@ describe("ErrorBoundary", () => {
     expect(eventCall?.[0]).toBeInstanceOf(CustomEvent)
     expect((eventCall?.[0] as CustomEvent<unknown>).type).toBe(APP_ERROR_EVENT)
 
-    expect(screen.getByRole("heading", { name: /что-то пошло не так/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /перезагрузить страницу/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { name: i18n.t("system:errorBoundary.title") }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: i18n.t("system:errorBoundary.reload") }),
+    ).toBeInTheDocument()
 
     consoleSpy.mockRestore()
     dispatchSpy.mockRestore()
