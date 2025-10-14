@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
+from app.localization import translate
 from app.models.models import (
     Event,
     News,
@@ -99,7 +100,7 @@ def _ensure_aware(value: dt.datetime | None) -> dt.datetime:
 
 
 def build_schedule_reminder_message(
-    lesson: Schedule,
+    lesson: Schedule, *, locale: str | None = None
 ) -> tuple[str, str, str, dict[str, Any]]:
     start_dt = _ensure_aware(getattr(lesson, "start_time", None))
     start_local = start_dt.astimezone()
@@ -115,29 +116,53 @@ def build_schedule_reminder_message(
         "url": "/schedule",
         "lesson_id": getattr(lesson, "id", None),
     }
-    template = render_notification_template("schedule.reminder", payload_input)
-    default_title = (
-        f"Скоро пара: {lesson.subject}"
-        if getattr(lesson, "subject", None)
-        else "Скоро пара"
+    template = render_notification_template(
+        "schedule.reminder", payload_input, locale=locale
     )
+    subject_value = getattr(lesson, "subject", None)
+    if subject_value:
+        default_title = translate(
+            "notifications.schedule.reminder.title_with_subject",
+            locale=locale,
+            subject=subject_value,
+        )
+    else:
+        default_title = translate(
+            "notifications.schedule.reminder.title", locale=locale
+        )
     summary_parts: list[str] = []
     if getattr(lesson, "lesson_type", None):
         summary_parts.append(str(lesson.lesson_type))
     room_value = getattr(lesson, "room", None)
     if room_value:
         room_text = str(room_value)
-        summary_parts.append(
-            room_text if room_text.lower().startswith("ауд") else f"ауд. {room_text}"
-        )
+        normalized = room_text.strip().lower()
+        if normalized.startswith("ауд") or normalized.startswith("aud"):
+            summary_parts.append(room_text)
+        else:
+            summary_parts.append(
+                translate(
+                    "notifications.schedule.room_label",
+                    locale=locale,
+                    room=room_text,
+                )
+            )
     if getattr(lesson, "teacher", None):
         summary_parts.append(str(lesson.teacher))
     when_line = f"{start_local.strftime('%d.%m')} · {start_local.strftime('%H:%M')}"
-    default_lines = [f"Начало: {when_line}"]
+    default_lines = [
+        translate(
+            "notifications.schedule.reminder.start_line",
+            locale=locale,
+            start=when_line,
+        )
+    ]
     if summary_parts:
         default_lines.append(" · ".join(summary_parts))
     else:
-        default_lines.append("Проверьте расписание для подробностей.")
+        default_lines.append(
+            translate("notifications.schedule.reminder.no_details", locale=locale)
+        )
     default_body = "\n".join(default_lines)
     default_tag = f"schedule-reminder:{getattr(lesson, 'id', 'lesson')}:{int(start_dt.timestamp())}"
     default_data: dict[str, Any] = {
@@ -429,6 +454,7 @@ async def generate_schedule_reminders(
         to_notify = [u for u in uids_all if u not in existing]
         if not to_notify:
             continue
+        action_title = translate("notifications.actions.open_schedule", locale=None)
         total_created += await create_notifications_for_users(
             db,
             title=title,
@@ -439,7 +465,7 @@ async def generate_schedule_reminders(
             actions=[
                 {
                     "action": "open-schedule",
-                    "title": "Открыть расписание",
+                    "title": action_title,
                     "url": "/schedule",
                 }
             ],
@@ -450,7 +476,9 @@ async def generate_schedule_reminders(
     return total_created
 
 
-async def notify_about_news(db: AsyncSession, news: News) -> int:
+async def notify_about_news(
+    db: AsyncSession, news: News, *, locale: str | None = None
+) -> int:
     summary = _plain_text(getattr(news, "content", None), limit=220)
     url = f"/news/{news.id}" if getattr(news, "id", None) else "/news"
     template_payload = {
@@ -459,13 +487,18 @@ async def notify_about_news(db: AsyncSession, news: News) -> int:
         "id": getattr(news, "id", None),
         "url": url,
     }
-    template = render_notification_template("news.new", template_payload)
-    default_title = (
-        f"Новая новость: {news.title}"
-        if getattr(news, "title", None)
-        else "Новая новость"
+    template = render_notification_template("news.new", template_payload, locale=locale)
+    if getattr(news, "title", None):
+        default_title = translate(
+            "notifications.news.title_with_headline",
+            locale=locale,
+            headline=news.title,
+        )
+    else:
+        default_title = translate("notifications.news.title", locale=locale)
+    default_body = summary or translate(
+        "notifications.news.no_summary", locale=locale
     )
-    default_body = summary or "Откройте новость, чтобы узнать подробности."
     default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
     if template:
         title = str(template.get("title") or default_title)
@@ -504,7 +537,9 @@ async def notify_about_news(db: AsyncSession, news: News) -> int:
     )
 
 
-async def notify_about_event(db: AsyncSession, event: Event) -> int:
+async def notify_about_event(
+    db: AsyncSession, event: Event, *, locale: str | None = None
+) -> int:
     summary = _plain_text(
         getattr(event, "description", None) or getattr(event, "about", None), limit=220
     )
@@ -523,12 +558,17 @@ async def notify_about_event(db: AsyncSession, event: Event) -> int:
         "url": url,
         "id": getattr(event, "id", None),
     }
-    template = render_notification_template("events.new", template_payload)
-    default_title = (
-        f"Новое мероприятие: {event.title}"
-        if getattr(event, "title", None)
-        else "Новое мероприятие"
+    template = render_notification_template(
+        "events.new", template_payload, locale=locale
     )
+    if getattr(event, "title", None):
+        default_title = translate(
+            "notifications.events.title_with_name",
+            locale=locale,
+            title=event.title,
+        )
+    else:
+        default_title = translate("notifications.events.title", locale=locale)
     details = [start_local.strftime("%d.%m · %H:%M")]
     if getattr(event, "location", None):
         details.append(str(event.location))
@@ -541,7 +581,9 @@ async def notify_about_event(db: AsyncSession, event: Event) -> int:
         default_lines.append(summary)
     if details:
         default_lines.append(" · ".join(details))
-    default_body = "\n".join(default_lines) or "Подробнее в карточке события."
+    default_body = "\n".join(default_lines) or translate(
+        "notifications.events.no_details", locale=locale
+    )
     default_tag = f"event:{event.id}" if getattr(event, "id", None) else "event"
     if template:
         title = str(template.get("title") or default_title)

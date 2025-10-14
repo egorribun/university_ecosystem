@@ -9,6 +9,8 @@ from html import unescape
 from textwrap import shorten
 from typing import Any, Mapping
 
+from app.localization import translate
+
 _DEFAULT_ICON = "/maskable-icon-192.png"
 _DEFAULT_BADGE = _DEFAULT_ICON
 _SYSTEM_ICON = "/guu_logo.png"
@@ -33,14 +35,14 @@ def _clean_text(value: Any, *, limit: int | None = None) -> str | None:
     return text
 
 
-def _format_room(value: Any) -> str | None:
+def _format_room(value: Any, *, locale: str | None = None) -> str | None:
     room = _clean_text(value)
     if not room:
         return None
     normalized = room.lower()
-    if normalized.startswith("ауд"):
+    if normalized.startswith("ауд") or normalized.startswith("aud") or normalized.startswith("room"):
         return room
-    return f"ауд. {room}"
+    return translate("notifications.schedule.room_label", locale=locale, room=room)
 
 
 def _parse_datetime_like(value: Any) -> datetime | None:
@@ -119,7 +121,9 @@ class ScenarioContext:
         return text or default
 
 
-def _build_schedule_change(context: ScenarioContext) -> dict[str, Any]:
+def _build_schedule_change(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     subject = context.get_text("subject", "subject_name", "title", "name")
     group = context.get_text("group", "group_name", "group_title")
     change_summary = context.get_text("summary", "change", "status", "state")
@@ -127,7 +131,8 @@ def _build_schedule_change(context: ScenarioContext) -> dict[str, Any]:
     teacher = context.get_text("teacher", "lecturer", "professor")
     date_text = context.get_text("date", "day", "date_text")
     time_text = context.get_text("time", "start_time", "starts_at", "start")
-    room = context.get_text("room", "auditory", "location")
+    room_text = context.get_text("room", "auditory", "location")
+    room_display = _format_room(room_text, locale=locale)
     url = context.get_url("url", "link", default="/schedule")
     identifier = context.get_identifier(
         "lesson_id",
@@ -147,8 +152,8 @@ def _build_schedule_change(context: ScenarioContext) -> dict[str, Any]:
             detail_parts.append(date_text)
         if time_text:
             detail_parts.append(time_text)
-    if room:
-        detail_parts.append(f"ауд. {room}")
+    if room_display:
+        detail_parts.append(room_display)
     if teacher:
         detail_parts.append(teacher)
     if group:
@@ -162,9 +167,18 @@ def _build_schedule_change(context: ScenarioContext) -> dict[str, Any]:
     if detail_parts:
         lines.append(" · ".join(detail_parts))
     if not lines:
-        lines.append("Проверьте расписание для актуальной информации.")
+        lines.append(
+            translate("notifications.schedule.change.no_details", locale=locale)
+        )
 
-    title = f"Изменение пары: {subject}" if subject else "Изменение пары"
+    if subject:
+        title = translate(
+            "notifications.schedule.change.title_with_subject",
+            locale=locale,
+            subject=subject,
+        )
+    else:
+        title = translate("notifications.schedule.change.title", locale=locale)
     tag = f"schedule-change:{identifier}" if identifier else "schedule-change"
 
     data_payload = {
@@ -192,12 +206,15 @@ def _build_schedule_change(context: ScenarioContext) -> dict[str, Any]:
     }
 
 
-def _build_schedule_reminder(context: ScenarioContext) -> dict[str, Any]:
+def _build_schedule_reminder(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     subject = context.get_text("subject", "subject_name", "title", "name")
     group = context.get_text("group", "group_name", "group_title")
     lesson_type = context.get_text("lesson_type", "type", "format")
     teacher = context.get_text("teacher", "lecturer", "professor")
-    room = _format_room(context.get("room", "auditory", "location"))
+    room_text = context.get_text("room", "auditory", "location")
+    room = _format_room(room_text, locale=locale)
     manual_date = context.get_text("date", "day", "date_text")
     manual_time = context.get_text("time", "start_time_text", "start_text")
     start_source = context.get(
@@ -238,13 +255,30 @@ def _build_schedule_reminder(context: ScenarioContext) -> dict[str, Any]:
 
     lines: list[str] = []
     if when_line:
-        lines.append(f"Начало: {when_line}")
+        lines.append(
+            translate(
+                "notifications.schedule.reminder.start_line",
+                locale=locale,
+                start=when_line,
+            )
+        )
     if summary_parts:
         lines.append(" · ".join(summary_parts))
     if not lines:
-        lines.append("Проверьте расписание для подробностей.")
+        lines.append(
+            translate("notifications.schedule.reminder.no_details", locale=locale)
+        )
 
-    title = f"Скоро пара: {subject}" if subject else "Скоро пара"
+    if subject:
+        title = translate(
+            "notifications.schedule.reminder.title_with_subject",
+            locale=locale,
+            subject=subject,
+        )
+    else:
+        title = translate(
+            "notifications.schedule.reminder.title", locale=locale
+        )
     tag = f"schedule-reminder:{identifier}" if identifier else "schedule-reminder"
 
     data_payload = {
@@ -263,6 +297,8 @@ def _build_schedule_reminder(context: ScenarioContext) -> dict[str, Any]:
         data_payload["teacher"] = teacher
     if room:
         data_payload["room"] = room
+    elif room_text:
+        data_payload["room"] = room_text
     if when_line:
         data_payload["startText"] = when_line
     if start_iso:
@@ -284,7 +320,7 @@ def _build_schedule_reminder(context: ScenarioContext) -> dict[str, Any]:
     }
 
 
-def _build_news(context: ScenarioContext) -> dict[str, Any]:
+def _build_news(context: ScenarioContext, *, locale: str | None = None) -> dict[str, Any]:
     headline = context.get_text("headline", "title", "subject", "name")
     summary = _clean_text(
         context.get("summary", "body", "excerpt", "description"),
@@ -304,9 +340,16 @@ def _build_news(context: ScenarioContext) -> dict[str, Any]:
     if detail_parts:
         lines.append(" · ".join(detail_parts))
     if not lines:
-        lines.append("Откройте новость, чтобы узнать подробности.")
+        lines.append(
+            translate("notifications.news.no_summary", locale=locale)
+        )
 
-    title = f"Новая новость: {headline}" if headline else "Новая новость"
+    if headline:
+        title = translate(
+            "notifications.news.title_with_headline", locale=locale, headline=headline
+        )
+    else:
+        title = translate("notifications.news.title", locale=locale)
     tag = f"news:{identifier}" if identifier else "news"
 
     data_payload = {
@@ -334,7 +377,9 @@ def _build_news(context: ScenarioContext) -> dict[str, Any]:
     }
 
 
-def _build_event(context: ScenarioContext) -> dict[str, Any]:
+def _build_event(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     title = context.get_text("title", "name", "headline")
     summary = _clean_text(
         context.get("summary", "description", "about", "details"),
@@ -381,9 +426,16 @@ def _build_event(context: ScenarioContext) -> dict[str, Any]:
     if details:
         lines.append(" · ".join(details))
     if not lines:
-        lines.append("Подробнее в карточке события.")
+        lines.append(
+            translate("notifications.events.no_details", locale=locale)
+        )
 
-    notif_title = f"Новое мероприятие: {title}" if title else "Новое мероприятие"
+    if title:
+        notif_title = translate(
+            "notifications.events.title_with_name", locale=locale, title=title
+        )
+    else:
+        notif_title = translate("notifications.events.title", locale=locale)
     tag = f"event:{identifier}" if identifier else "event"
 
     data_payload = {
@@ -423,7 +475,9 @@ def _build_event(context: ScenarioContext) -> dict[str, Any]:
     }
 
 
-def _build_system(context: ScenarioContext) -> dict[str, Any]:
+def _build_system(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     subject = context.get_text("title", "subject", "heading")
     message = context.get_text("message", "body", "text")
     url = context.get_url("url", "link", default="/")
@@ -433,9 +487,11 @@ def _build_system(context: ScenarioContext) -> dict[str, Any]:
     if message:
         lines.append(message)
     if not lines:
-        lines.append("Подробности доступны в приложении.")
+        lines.append(
+            translate("notifications.system.no_details", locale=locale)
+        )
 
-    title = subject or "Системное сообщение"
+    title = subject or translate("notifications.system.title", locale=locale)
     tag = f"system-message:{identifier}" if identifier else "system-message"
 
     data_payload = {
@@ -500,6 +556,8 @@ def _normalize_type(notification_type: str | None) -> str:
 def render_notification_template(
     notification_type: str | None,
     data: Mapping[str, Any] | None,
+    *,
+    locale: str | None = None,
 ) -> dict[str, Any] | None:
     """Return payload defaults for a known notification scenario."""
 
@@ -511,7 +569,7 @@ def render_notification_template(
     if not builder:
         return None
     context = ScenarioContext(data or {})
-    return builder(context)
+    return builder(context, locale=locale)
 
 
 __all__ = ["render_notification_template"]

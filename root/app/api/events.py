@@ -7,6 +7,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -17,6 +18,7 @@ from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
 from app.core.database import get_db
+from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
 from app.services.notifications import notify_about_event
@@ -31,14 +33,19 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.post("", response_model=schemas.EventOut)
 async def create_event(
     data: schemas.EventCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role not in ("teacher", "admin"):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     record = await crud.create_event(db, data, user_id=user.id)
     try:
-        await notify_about_event(db, record)
+        await notify_about_event(db, record, locale=locale)
     except Exception:
         logger.exception(
             "Failed to dispatch event notification", extra={"event_id": record.id}
@@ -68,13 +75,17 @@ async def all_events(
 @router.post("/attendance", response_model=schemas.EventAttendanceOut)
 async def attend(
     data: schemas.EventAttendanceCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role in ("admin", "teacher"):
         raise HTTPException(
             status_code=403,
-            detail="Регистрация на мероприятия недоступна для вашей роли",
+            detail=translate(
+                "errors.events.registration_forbidden", locale=locale
+            ),
         )
     return await crud.register_attendance(db, data, user_id=user.id)
 
@@ -99,14 +110,23 @@ async def my_events(
 async def upload_event_file(
     id: int,
     file: UploadFile = File(...),
+    *,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
     if not event:
-        raise HTTPException(status_code=404, detail="Событие не найдено")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.not_found", locale=locale),
+        )
     if user.role not in ("admin", "teacher") and event.created_by != user.id:
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     url = await save_attachment(file, "event_files", f"event_{id}")
     ef = models.EventFile(event_id=id, file_url=url)
     db.add(ef)
@@ -132,11 +152,17 @@ async def get_event_files(id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/upload_image")
 async def upload_event_image(
     file: UploadFile = File(...),
+    *,
+    request: Request,
     user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role not in ("admin", "teacher"):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     url = await save_upload(file, "event_images", "event")
     return {"url": url}
 
@@ -145,14 +171,22 @@ async def upload_event_image(
 async def update_event(
     event_id: int,
     data: schemas.EventUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     if not q:
-        raise HTTPException(status_code=404, detail="Событие не найдено")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.not_found", locale=locale),
+        )
     if user.role not in ("admin", "teacher") and q.created_by != user.id:
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     old_image_url = q.image_url
     try:
         q = await crud.update_event(db, q, data)
@@ -185,14 +219,22 @@ async def update_event(
 @router.delete("/{event_id}", response_model=dict)
 async def delete_event(
     event_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     if not q:
-        raise HTTPException(status_code=404, detail="Событие не найдено")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.not_found", locale=locale),
+        )
     if user.role not in ("admin", "teacher") and q.created_by != user.id:
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     event_image_url = q.image_url
     file_urls = [
         row[0]
@@ -220,12 +262,17 @@ async def delete_event(
 @router.get("/{id}", response_model=schemas.EventOut)
 async def get_event(
     id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, id)
     if not q:
-        raise HTTPException(status_code=404, detail="Событие не найдено")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.not_found", locale=locale),
+        )
     attendance = (
         await db.execute(
             select(models.EventAttendance).where(
@@ -267,15 +314,23 @@ async def get_event(
 @router.delete("/file/{file_id}", response_model=dict)
 async def delete_event_file(
     file_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
     if not ef:
-        raise HTTPException(status_code=404, detail="Файл не найден")
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.file_not_found", locale=locale),
+        )
     event = await db.get(models.Event, ef.event_id)
     if user.role not in ("admin", "teacher") and event.created_by != user.id:
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     file_url = ef.file_url
     await db.delete(ef)
     await db.commit()

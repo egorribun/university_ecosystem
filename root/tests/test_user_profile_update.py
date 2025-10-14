@@ -57,10 +57,12 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
 
     headers = await _login(async_client, user.email, password)
 
+    headers_ru = {**headers, "Accept-Language": "ru"}
+
     response = await async_client.put(
         "/users/me",
         json={"email": "Existing@Example.com"},
-        headers=headers,
+        headers=headers_ru,
     )
 
     assert response.status_code == 400

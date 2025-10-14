@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription
+from app.localization import translate
 from app.services.notification_templates import render_notification_template
 from app.services.push_schema import ensure_push_subscription_schema_sync
 from app.services.push_topics import normalize_topic, subscription_supports_topic
@@ -368,14 +369,19 @@ async def _check_rate_limit(
 
 
 def build_payload(
-    notification_type: str, data: Mapping[str, Any] | None
+    notification_type: str,
+    data: Mapping[str, Any] | None,
+    *,
+    locale: str | None = None,
 ) -> dict[str, Any]:
     if isinstance(data, Mapping):
         raw_source = {key: deepcopy(value) for key, value in data.items()}
     else:
         raw_source = {}
 
-    template_defaults = render_notification_template(notification_type, raw_source)
+    template_defaults = render_notification_template(
+        notification_type, raw_source, locale=locale
+    )
     if template_defaults:
         source: dict[str, Any] = {
             key: deepcopy(value) for key, value in template_defaults.items()
@@ -409,7 +415,10 @@ def build_payload(
     else:
         source = raw_source
 
-    title = str(source.get("title") or "Уведомление")
+    title = str(
+        source.get("title")
+        or translate("notifications.default_title", locale=locale)
+    )
     payload_data: dict[str, Any] = {}
     if isinstance(source.get("data"), Mapping):
         payload_data.update(
@@ -425,6 +434,8 @@ def build_payload(
         value = source.get(key)
         if value is not None:
             options[key] = str(value)
+    if locale and "lang" not in options:
+        options["lang"] = locale
     actions, action_urls = _prepare_actions(source.get("actions"))
     if actions:
         options["actions"] = actions

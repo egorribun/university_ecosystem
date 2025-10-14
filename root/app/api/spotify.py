@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.api.deps import get_current_user
 from app.auth.security import create_access_token, decode_token
 from app.core.config import settings
 from app.core.database import get_db
+from app.localization import resolve_locale, translate
 from app.models.models import User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 
@@ -112,7 +113,9 @@ async def _save_tokens(
     await db.refresh(user)
 
 
-async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
+async def _ensure_access_token(
+    db: AsyncSession, user: User, *, locale: str | None = None
+) -> Optional[str]:
     """Return a usable Spotify access token, refreshing it when possible.
 
     Previously we returned ``None`` when ``spotify_access_token`` was empty,
@@ -135,7 +138,10 @@ async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
             return None
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
+        raise HTTPException(
+            status_code=401,
+            detail=translate("errors.spotify.reconnect_required", locale=locale),
+        )
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
             "https://accounts.spotify.com/api/token",
@@ -151,13 +157,19 @@ async def _ensure_access_token(db: AsyncSession, user: User) -> Optional[str]:
     if r.status_code != 200:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
+        raise HTTPException(
+            status_code=401,
+            detail=translate("errors.spotify.reconnect_required", locale=locale),
+        )
     data = r.json()
     access_token = data.get("access_token")
     if not access_token:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
+        raise HTTPException(
+            status_code=401,
+            detail=translate("errors.spotify.reconnect_required", locale=locale),
+        )
     await _save_tokens(
         db,
         user,
@@ -186,14 +198,25 @@ async def spotify_auth_url(user: User = Depends(get_current_user)):
 
 @router.get("/callback")
 async def spotify_callback(
-    code: str = Query(...), state: str = Query(...), db: AsyncSession = Depends(get_db)
+    request: Request,
+    code: str = Query(...),
+    state: str = Query(...),
+    db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request)
     payload = decode_token(state) or {}
     if not payload.get("sub"):
-        raise HTTPException(status_code=400, detail="invalid state")
+        raise HTTPException(
+            status_code=400,
+            detail=translate("errors.spotify.invalid_state", locale=locale),
+        )
     user = await db.get(User, int(payload["sub"]))
     if not user:
-        raise HTTPException(status_code=400, detail="user not found")
+        raise HTTPException(
+            status_code=400,
+            detail=translate("errors.spotify.user_not_found", locale=locale),
+        )
+    locale = resolve_locale(request=request, user=user)
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
             "https://accounts.spotify.com/api/token",
@@ -208,7 +231,10 @@ async def spotify_callback(
             },
         )
     if r.status_code != 200:
-        raise HTTPException(status_code=400, detail="token exchange failed")
+        raise HTTPException(
+            status_code=400,
+            detail=translate("errors.spotify.token_exchange_failed", locale=locale),
+        )
     data = r.json()
     await _save_tokens(
         db,
@@ -234,14 +260,17 @@ async def spotify_callback(
 
 @router.get("/now-playing", response_model=SpotifyNowPlayingOut)
 async def now_playing(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     def _as_response(data: SpotifyNowPlayingOut):
         if data.track_id or data.track_name or data.artists:
             return data
         return Response(status_code=204)
 
-    token = await _ensure_access_token(db, user)
+    token = await _ensure_access_token(db, user, locale=locale)
     if not token:
         return _as_response(_fallback_now_playing(user))
     async with httpx.AsyncClient(timeout=15) as client:
@@ -257,7 +286,10 @@ async def now_playing(
     if r.status_code == 401:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise HTTPException(status_code=401, detail="Требуется переподключить Spotify")
+        raise HTTPException(
+            status_code=401,
+            detail=translate("errors.spotify.reconnect_required", locale=locale),
+        )
     if r.status_code == 429:
         retry_after_header = r.headers.get("Retry-After")
         try:
@@ -270,7 +302,7 @@ async def now_playing(
         await db.commit()
         raise HTTPException(
             status_code=429,
-            detail="Rate limited by Spotify",
+            detail=translate("errors.spotify.rate_limited", locale=locale),
             headers={"Retry-After": str(retry_after)},
         )
     if r.status_code != 200:

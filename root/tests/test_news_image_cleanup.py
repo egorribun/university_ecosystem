@@ -30,7 +30,9 @@ async def test_update_news_removes_replaced_image(
         image_url="/static/news_images/new.png",
     )
 
-    updated = await news.update_news(record.id, payload, db=db_session, user=admin)
+    updated = await news.update_news(
+        record.id, payload, request=None, db=db_session, user=admin
+    )
 
     assert updated.image_url == "/static/news_images/new.png"
     assert not old_path.exists()
@@ -54,7 +56,9 @@ async def test_delete_news_removes_image_file(
 
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
-    result = await news.delete_news(record.id, db=db_session, user=admin)
+    result = await news.delete_news(
+        record.id, request=None, db=db_session, user=admin
+    )
 
     assert result == {"ok": True}
     assert await db_session.get(models.News, record.id) is None

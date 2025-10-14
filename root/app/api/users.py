@@ -15,6 +15,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -30,6 +31,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
+from app.localization import resolve_locale, translate
+from app.utils.email import (
+    RESET_TOKEN_EXPIRY_MINUTES,
+    build_reset_email_content,
+)
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger(__name__)
@@ -64,7 +70,9 @@ def _redact_sensitive_query(url: str) -> str:
     return result or "[redacted]"
 
 
-def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
+def _send_reset_email(
+    to_email: str, link: str, full_name: str = "", locale: str | None = None
+) -> None:
     host = settings.smtp_host or ""
     port = int(settings.smtp_port or 0)
     user = settings.smtp_user or ""
@@ -73,21 +81,14 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
     security = (
         settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")
     ).lower()
-    name = f", {full_name}" if full_name else ""
-    html = f"""
-    <div style="font-family:Inter,Arial,sans-serif">
-      <h2>Сброс пароля</h2>
-      <p>Здравствуйте{name}!</p>
-      <p>Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует 45 минут.</p>
-      <p><a href="{link}" style="display:inline-block;padding:10px 16px;background:#1d5fff;color:#fff;border-radius:8px;text-decoration:none">Сбросить пароль</a></p>
-      <p>Если вы не запрашивали сброс, проигнорируйте это письмо.</p>
-    </div>
-    """
+    subject, plain, html = build_reset_email_content(
+        link, full_name, locale=locale
+    )
     msg = EmailMessage()
-    msg["Subject"] = "Сброс пароля — Экосистема ГУУ"
+    msg["Subject"] = subject
     msg["From"] = mail_from
     msg["To"] = to_email
-    msg.set_content(f"Ссылка для сброса пароля: {link}\nОна действует 45 минут.")
+    msg.set_content(plain)
     msg.add_alternative(html, subtype="html")
     try:
         if not host or not port:
@@ -131,6 +132,7 @@ def _send_reset_email(to_email: str, link: str, full_name: str = "") -> None:
 )
 async def forgot_password(
     payload: schemas.ForgotPasswordIn,
+    request: Request,
     bg: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
@@ -141,7 +143,9 @@ async def forgot_password(
     if user:
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
-        expires = datetime.now(timezone.utc) + timedelta(minutes=45)
+        expires = datetime.now(timezone.utc) + timedelta(
+            minutes=RESET_TOKEN_EXPIRY_MINUTES
+        )
         db.add(
             models.PasswordResetToken(
                 user_id=user.id, token_hash=token_hash, expires_at=expires, used=False
@@ -150,7 +154,14 @@ async def forgot_password(
         await db.commit()
         base = settings.app_base_url_clean
         reset_link = f"{base}/reset-password?token={token}"
-        bg.add_task(_send_reset_email, user.email, reset_link, user.full_name or "")
+        locale = resolve_locale(request=request, user=user)
+        bg.add_task(
+            _send_reset_email,
+            user.email,
+            reset_link,
+            user.full_name or "",
+            locale,
+        )
     return {"ok": True}
 
 
@@ -159,8 +170,11 @@ async def forgot_password(
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def reset_password(
-    payload: schemas.ResetPasswordIn, db: AsyncSession = Depends(get_db)
+    payload: schemas.ResetPasswordIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request)
     token_hash = _hash_token(payload.token)
     result = await db.execute(
         select(models.PasswordResetToken).where(
@@ -172,12 +186,15 @@ async def reset_password(
     if not rec or rec.expires_at < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недействительная или просроченная ссылка",
+            detail=translate(
+                "errors.password.invalid_or_expired_link", locale=locale
+            ),
         )
     user = await db.get(models.User, rec.user_id)
     if not user or not getattr(user, "is_active", True):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Недействительная ссылка"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.password.invalid_link", locale=locale),
         )
     try:
         user.hashed_password = get_password_hash(payload.password)
@@ -204,11 +221,13 @@ async def me(user: models.User = Depends(get_current_user)):
 @users_router.put("/me", response_model=schemas.UserOut)
 async def update_me(
     data: schemas.UserProfileUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     db_user = await db.get(models.User, user.id)
     update_fields = data.model_dump(exclude_unset=True)
+    locale = resolve_locale(request=request, user=user)
 
     if "email" in update_fields and update_fields["email"] is not None:
         raw_email = str(update_fields["email"]).strip().lower()
@@ -220,7 +239,7 @@ async def update_me(
         ) as exc:  # pragma: no cover - defensive, TypeAdapter raises ValueError
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Некорректный email",
+                detail=translate("errors.users.invalid_email", locale=locale),
             ) from exc
 
         existing = await db.execute(
@@ -232,7 +251,7 @@ async def update_me(
         if existing.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Указанный email уже используется",
+                detail=translate("errors.users.email_in_use", locale=locale),
             )
 
         update_fields["email"] = validated_email
@@ -273,12 +292,17 @@ async def upload_cover(
 
 
 @users_router.post("", response_model=schemas.UserOut)
-async def create_user(data: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
+async def create_user(
+    data: schemas.UserCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    locale = resolve_locale(request=request)
     if data.role in ["teacher", "admin"]:
         if not data.invite_code:
             raise HTTPException(
                 status_code=400,
-                detail="Необходим уникальный код для регистрации преподавателя/админа",
+                detail=translate("errors.users.invite_required", locale=locale),
             )
         q = select(models.InviteCode).where(
             models.InviteCode.code == data.invite_code,
@@ -287,21 +311,29 @@ async def create_user(data: schemas.UserCreate, db: AsyncSession = Depends(get_d
         )
         code_obj = (await db.execute(q)).scalar_one_or_none()
         if not code_obj:
-            raise HTTPException(status_code=400, detail="Неверный или неактивный код")
+            raise HTTPException(
+                status_code=400,
+                detail=translate("errors.users.invalid_invite", locale=locale),
+            )
     user = await crud.create_user(db, data)
     return user
 
 
 @users_router.get("", response_model=List[schemas.UserOut])
 async def get_users(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     full_name: Optional[str] = Query(None),
     group_id: Optional[int] = Query(None),
     role: Optional[str] = Query(None),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     return await crud.get_users(db, full_name=full_name, group_id=group_id, role=role)
 
 
@@ -309,11 +341,16 @@ async def get_users(
 async def update_user_admin(
     user_id: int,
     data: schemas.UserAdminUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     return await crud.admin_update_user(db, user_id, data)
 
 
@@ -340,13 +377,21 @@ async def delete_avatar(
 @users_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     if user.id == user_id:
-        raise HTTPException(status_code=400, detail="Нельзя удалить самого себя")
+        raise HTTPException(
+            status_code=400,
+            detail=translate("errors.users.cannot_delete_self", locale=locale),
+        )
     await crud.delete_user(db, user_id)
     return None
 
@@ -354,11 +399,16 @@ async def delete_user(
 @groups_router.post("", response_model=schemas.GroupOut)
 async def create_group(
     data: schemas.GroupCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     return await crud.create_group(db, data)
 
 

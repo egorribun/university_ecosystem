@@ -12,6 +12,7 @@ def test_build_payload_schedule_change_template():
             "time": "10:00",
             "room": "101",
         },
+        locale="ru",
     )
 
     assert payload["title"] == "Изменение пары: Математика"
@@ -35,6 +36,7 @@ def test_build_payload_news_template_merges_overrides():
             "data": {"foo": "bar"},
             "icon": "/custom-icon.png",
         },
+        locale="ru",
     )
 
     assert payload["title"] == "Новая новость: Ректор выступил"
@@ -60,6 +62,7 @@ def test_build_payload_schedule_reminder_template():
             "time": "09:40",
             "lesson_id": 512,
         },
+        locale="ru",
     )
 
     assert payload["title"] == "Скоро пара: Менеджмент"
@@ -87,6 +90,7 @@ def test_build_payload_events_template():
             "starts_at": "2025-04-10T15:00:00+03:00",
             "id": 77,
         },
+        locale="ru",
     )
 
     assert payload["title"] == "День открытых дверей"
@@ -108,6 +112,7 @@ def test_build_payload_system_message_template():
             "id": "maint",
             "url": "/status",
         },
+        locale="ru",
     )
 
     assert payload["title"] == "Системное сообщение"
@@ -117,3 +122,33 @@ def test_build_payload_system_message_template():
     assert options["requireInteraction"] is True
     assert options["renotify"] is False
     assert payload["data"]["url"] == "/status"
+
+
+def test_build_payload_schedule_change_english_locale():
+    payload = build_payload("schedule.change", None, locale="en")
+
+    assert payload["title"] == "Class change"
+    assert (
+        payload["options"]["body"]
+        == "Check the schedule for the latest information."
+    )
+
+
+def test_build_payload_schedule_reminder_english_locale():
+    payload = build_payload(
+        "schedule.reminder",
+        {
+            "subject": "Management",
+            "lesson_type": "Seminar",
+            "teacher": "John Doe",
+            "room": "203",
+            "starts_at": "2025-03-25T09:40:00+03:00",
+            "date": "25.03",
+            "time": "09:40",
+        },
+        locale="en",
+    )
+
+    assert payload["title"] == "Upcoming class: Management"
+    assert "Starts at:" in payload["options"]["body"]
+    assert payload["data"]["room"] == "room 203"

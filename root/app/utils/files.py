@@ -117,6 +117,10 @@ def detect_mime_type(data: bytes) -> str | None:
         if normalized:
             return normalized
 
+    # Handle a few lightweight signatures when libmagic is unavailable.
+    if data.startswith(b"%PDF-"):
+        return "application/pdf"
+
     # Fall back to lightweight signature checks for common image formats.
     return _normalize_mime_type(_detect_image_mime(data)) or None
 

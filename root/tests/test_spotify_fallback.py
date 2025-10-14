@@ -110,6 +110,7 @@ async def test_now_playing_returns_204_when_user_has_no_track(
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     headers = await _login(async_client, user, password)
+    headers["Accept-Language"] = "ru"
 
     response = await async_client.get("/spotify/now-playing", headers=headers)
 
@@ -131,6 +132,7 @@ async def test_now_playing_uses_last_known_track_from_fallback(
     await db_session.refresh(user)
 
     headers = await _login(async_client, user, password)
+    headers["Accept-Language"] = "ru"
 
     response = await async_client.get("/spotify/now-playing", headers=headers)
 
@@ -173,6 +175,7 @@ async def test_now_playing_returns_401_when_refresh_fails(
     monkeypatch.setattr("httpx.AsyncClient.post", fake_post)
 
     headers = await _login(async_client, user, password)
+    headers["Accept-Language"] = "ru"
 
     response = await async_client.get("/spotify/now-playing", headers=headers)
 
@@ -233,6 +236,7 @@ async def test_now_playing_refreshes_when_access_token_missing(
     monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
 
     headers = await _login(async_client, user, password)
+    headers["Accept-Language"] = "ru"
 
     response = await async_client.get("/spotify/now-playing", headers=headers)
 
@@ -275,6 +279,7 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
 
     headers = await _login(async_client, user, password)
+    headers["Accept-Language"] = "ru"
 
     response = await async_client.get("/spotify/now-playing", headers=headers)
 
