@@ -13,8 +13,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import i18n from '../../i18n/config';
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options);
-const escapeRegExp = (value: string) => value.replace(/[\^$*+?.()|[\]{}-]/g, '\\$&');
-const labelRegex = (value: string) => new RegExp(`^${escapeRegExp(value)}`, 'i');
+const matchText = (text: string) => (content: string) => content.startsWith(text);
 
 const clients: QueryClient[] = [];
 
@@ -60,13 +59,13 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    const emailInput = screen.getByLabelText(labelRegex(tAuth('fields.email')), {
+    const emailInput = screen.getByLabelText(matchText(tAuth('fields.email')), {
       selector: 'input[type="email"]',
     });
 
     await user.type(emailInput, 'invalid');
     await user.type(
-      screen.getByLabelText(labelRegex(tAuth('fields.password')), { selector: 'input[type="password"]' }),
+      screen.getByLabelText(matchText(tAuth('fields.password')), { selector: 'input[type="password"]' }),
       'secret123',
     );
     await user.click(screen.getByRole('button', { name: tAuth('actions.signIn') }));
@@ -88,13 +87,13 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    const emailInput = screen.getByLabelText(labelRegex(tAuth('fields.email')), {
+    const emailInput = screen.getByLabelText(matchText(tAuth('fields.email')), {
       selector: 'input[type="email"]',
     });
 
     await user.type(emailInput, 'user@example.com');
     await user.type(
-      screen.getByLabelText(labelRegex(tAuth('fields.password')), { selector: 'input[type="password"]' }),
+      screen.getByLabelText(matchText(tAuth('fields.password')), { selector: 'input[type="password"]' }),
       'secret123',
     );
     await user.click(screen.getByLabelText(tAuth('actions.showPassword')));
@@ -113,13 +112,13 @@ describe('Login page', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    const emailInput = screen.getByLabelText(labelRegex(tAuth('fields.email')), {
+    const emailInput = screen.getByLabelText(matchText(tAuth('fields.email')), {
       selector: 'input[type="email"]',
     });
 
     await user.type(emailInput, 'user@example.com');
     await user.type(
-      screen.getByLabelText(labelRegex(tAuth('fields.password')), { selector: 'input[type="password"]' }),
+      screen.getByLabelText(matchText(tAuth('fields.password')), { selector: 'input[type="password"]' }),
       'secret123',
     );
     await user.click(screen.getByRole('button', { name: tAuth('actions.signIn') }));

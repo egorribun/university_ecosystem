@@ -16,15 +16,14 @@ const renderForgot = () =>
     </MemoryRouter>,
   );
 
-const escapeRegExp = (value: string) => value.replace(/[\^$*+?.()|[\]{}-]/g, '\\$&');
-const labelRegex = (value: string) => new RegExp(`^${escapeRegExp(value)}`, 'i');
+const startsWithText = (text: string) => (content: string) => content.startsWith(text);
 
 describe('ForgotPassword page', () => {
   it('shows validation message for malformed email', async () => {
     const user = userEvent.setup();
     renderForgot();
 
-    const emailInput = screen.getByLabelText(labelRegex(tAuth('fields.email')));
+    const emailInput = screen.getByLabelText(startsWithText(tAuth('fields.email')));
     await user.type(emailInput, 'invalid');
     await user.tab();
 
@@ -36,7 +35,7 @@ describe('ForgotPassword page', () => {
     const user = userEvent.setup();
     renderForgot();
 
-    await user.type(screen.getByLabelText(labelRegex(tAuth('fields.email'))), 'user@example.com');
+    await user.type(screen.getByLabelText(startsWithText(tAuth('fields.email'))), 'user@example.com');
     await user.click(screen.getByRole('button', { name: tAuth('forgot.sendLink') }));
 
     const successText = tAuth('forgot.success', { email: 'user@example.com' }).replace(/<[^>]+>/g, '');
@@ -45,7 +44,7 @@ describe('ForgotPassword page', () => {
     );
     expect(successMessages.length).toBeGreaterThan(0);
     const retryButton = screen.getByRole('button', {
-      name: new RegExp(`^${escapeRegExp(tAuth('forgot.enterAnother'))}`),
+      name: startsWithText(tAuth('forgot.enterAnother')),
     });
     expect(retryButton).toBeDisabled();
     expect(retryButton.textContent).toMatch(/\d+s/);
