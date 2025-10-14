@@ -42,5 +42,83 @@
   "alt": {
     "preview": "Preview of the event image",
     "image": "Event image"
+  },
+  "card": {
+    "aria": {
+      "actions": "Event actions"
+    },
+    "actions": {
+      "register": "Register",
+      "unregister": "Cancel registration",
+      "openQr": "Open QR code",
+      "closeQr": "Close"
+    },
+    "statuses": {
+      "ended": "Event has ended"
+    },
+    "participants": "Participants: {{count}}",
+    "messages": {
+      "registerSuccess": "You are registered for the event",
+      "registerFailure": "Couldn't register for the event",
+      "unregisterSuccess": "Registration cancelled",
+      "unregisterFailure": "Couldn't cancel registration",
+      "deleteSuccess": "Event deleted",
+      "deleteFailure": "Couldn't delete the event",
+      "saveSuccess": "Changes saved",
+      "saveFailure": "Couldn't save changes"
+    },
+    "dialogs": {
+      "edit": {
+        "title": "Edit event"
+      },
+      "delete": {
+        "title": "Delete event?",
+        "description": "This action cannot be undone. Confirm deletion."
+      }
+    }
+  },
+  "detail": {
+    "messages": {
+      "loadFailed": "Couldn't load event",
+      "notFound": "Event not found",
+      "fileAdded": "File added",
+      "fileAddFailed": "Couldn't add file",
+      "fileDeleted": "File deleted",
+      "fileDeleteFailed": "Couldn't delete file",
+      "aboutUpdated": "Description updated",
+      "aboutUpdateFailed": "Couldn't update description"
+    },
+    "upload": {
+      "errors": {
+        "noFile": "Select a file",
+        "failed": "Couldn't add file"
+      },
+      "submit": {
+        "label": "Add",
+        "pending": "Adding..."
+      }
+    },
+    "fields": {
+      "location": "Location",
+      "date": "Date",
+      "speaker": "Speaker"
+    },
+    "sections": {
+      "about": {
+        "title": "About the event",
+        "fieldLabel": "Event description",
+        "editAria": "Edit description",
+        "savePending": "Saving...",
+        "empty": "The event description is empty."
+      },
+      "files": {
+        "title": "Files",
+        "pickFile": "File",
+        "empty": "No files yet",
+        "pending": "Adding file...",
+        "downloadAria": "Download file {{label}}",
+        "deleteAria": "Delete file"
+      }
+    }
   }
 }
