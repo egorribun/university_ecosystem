@@ -1,0 +1,46 @@
+{
+  "pageTitle": "Events",
+  "states": {
+    "empty": "No events found"
+  },
+  "tabs": {
+    "active": "Upcoming",
+    "archive": "Archive",
+    "my": "My events"
+  },
+  "filters": {
+    "search": "Search",
+    "type": "Type",
+    "location": "Location"
+  },
+  "actions": {
+    "openCreate": "Create event"
+  },
+  "dialogs": {
+    "create": {
+      "title": "Create event"
+    }
+  },
+  "form": {
+    "title": "Title",
+    "description": "Description",
+    "type": "Type",
+    "location": "Location",
+    "speaker": "Speaker",
+    "uploadImage": "Upload image",
+    "imageSelected": "Image selected",
+    "start": "Start",
+    "end": "End",
+    "errors": {
+      "endsBeforeStarts": "End time cannot be before the start time"
+    }
+  },
+  "aria": {
+    "clearSearch": "Clear search",
+    "openFilters": "Open filters"
+  },
+  "alt": {
+    "preview": "Preview of the event image",
+    "image": "Event image"
+  }
+}

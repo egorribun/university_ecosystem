@@ -4,5 +4,22 @@
   "dateUnknown": "Date unknown",
   "ariaDatePublished": "Publication date: {{date}}",
   "ariaCurrentTime": "Current time",
-  "ariaCurrentLessonProgress": "Current lesson progress"
+  "ariaCurrentLessonProgress": "Current lesson progress",
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "create": "Create",
+    "back": "Back",
+    "done": "Done",
+    "reset": "Reset",
+    "edit": "Edit",
+    "uploadPhoto": "Upload photo",
+    "changePhoto": "Change photo"
+  },
+  "statuses": {
+    "loading": "Loading…",
+    "uploading": "Uploading…",
+    "publishing": "Publishing…"
+  }
 }

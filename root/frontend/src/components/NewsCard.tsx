@@ -17,6 +17,7 @@ import timezone from "dayjs/plugin/timezone"
 import SmartImage from "@/components/SmartImage"
 import { cardHoverSx } from "@/constants/cardHover"
 import { sanitizeNewsText } from "@/utils/sanitize"
+import { useTranslation } from "react-i18next"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -48,6 +49,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 }) => {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { t } = useTranslation(["news", "common"])
 
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -222,7 +224,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       {user?.role === "admin" && (
         <>
           <IconButton
-            aria-label="Действия с новостью"
+            aria-label={t("news:aria.cardActions")}
             aria-controls={menuAnchor ? menuId : undefined}
             aria-haspopup="true"
             aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
@@ -254,11 +256,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           >
             <MenuItem onClick={e => { e.stopPropagation(); openEditDialog(); setMenuAnchor(null) }}>
               <EditIcon fontSize="small" sx={{ mr: 1 }} />
-              Редактировать
+              {t("common:buttons.edit")}
             </MenuItem>
             <MenuItem onClick={e => { e.stopPropagation(); setConfirmDeleteOpen(true); setMenuAnchor(null) }}>
               <DeleteIcon fontSize="small" sx={{ mr: 1 }} color="error" />
-              <span style={{ color: "#d32f2f" }}>Удалить</span>
+              <span style={{ color: "#d32f2f" }}>{t("common:buttons.delete")}</span>
             </MenuItem>
           </Menu>
         </>
@@ -296,7 +298,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       >
         <SmartImage
           srcRaw={cardImageUrl}
-          alt={title ? `Изображение новости ${title}` : "Обложка новости"}
+          alt={title ? t("news:alt.hero", { title }) : t("news:alt.heroFallback")}
           sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
           style={{
             width: "100%",
@@ -357,19 +359,19 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         }}
       >
         <DialogTitle sx={{ fontWeight: 700, fontSize: "1.2rem" }}>
-          Редактировать новость
+          {t("news:dialogs.edit.title")}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
             <TextField
-              label="Заголовок"
+              label={t("news:form.title")}
               value={editData.title}
               onChange={e => setEditData({ ...editData, title: e.target.value })}
               fullWidth
               sx={{ fontSize: "1rem" }}
             />
             <TextField
-              label="Текст"
+              label={t("news:form.text")}
               value={editData.content}
               onChange={e => setEditData({ ...editData, content: e.target.value })}
               multiline
@@ -391,7 +393,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 }}
                 onClick={e => e.stopPropagation()}
               >
-                {imageLoading ? "Загрузка..." : "Изменить фото"}
+                {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
                 <input
                   type="file"
                   accept="image/*"
@@ -405,7 +407,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 <Box mt={1}>
                   <SmartImage
                     srcRaw={editImageUrl}
-                    alt="Предпросмотр изображения новости"
+                    alt={t("news:alt.preview")}
                     style={{
                       width: 140,
                       maxHeight: 90,
@@ -426,7 +428,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 disabled={loading || imageLoading}
                 sx={{ fontWeight: 700, borderRadius: 2.2, px: 3, fontSize: "1.02rem" }}
               >
-                Сохранить
+                {t("common:buttons.save")}
               </Button>
               <Button
                 variant="outlined"
@@ -434,7 +436,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 onClick={closeEditDialog}
                 sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
               >
-                Отмена
+                {t("common:buttons.cancel")}
               </Button>
             </Stack>
           </Stack>
@@ -443,9 +445,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
       {/* Delete confirm */}
       <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
-        <DialogTitle>Удалить новость?</DialogTitle>
+        <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
         <DialogContent>
-          <Typography>Действие необратимо. Подтвердите удаление.</Typography>
+          <Typography>{t("news:dialogs.delete.description")}</Typography>
         </DialogContent>
         <DialogActions>
           <Button
@@ -454,7 +456,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             onClick={() => setConfirmDeleteOpen(false)}
             disabled={loading}
           >
-            Отмена
+            {t("common:buttons.cancel")}
           </Button>
           <Button
             variant="contained"
@@ -462,7 +464,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             onClick={handleDelete}
             disabled={loading}
           >
-            <DeleteIcon sx={{ mr: 1 }} /> Удалить
+            <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
           </Button>
         </DialogActions>
       </Dialog>

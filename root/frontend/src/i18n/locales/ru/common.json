@@ -4,5 +4,22 @@
   "dateUnknown": "Дата неизвестна",
   "ariaDatePublished": "Дата публикации: {{date}}",
   "ariaCurrentTime": "Текущее время",
-  "ariaCurrentLessonProgress": "Прогресс текущего занятия"
+  "ariaCurrentLessonProgress": "Прогресс текущего занятия",
+  "buttons": {
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "create": "Создать",
+    "back": "Назад",
+    "done": "Готово",
+    "reset": "Сбросить",
+    "edit": "Редактировать",
+    "uploadPhoto": "Загрузить фото",
+    "changePhoto": "Изменить фото"
+  },
+  "statuses": {
+    "loading": "Загрузка…",
+    "uploading": "Загрузка файла…",
+    "publishing": "Публикация…"
+  }
 }
