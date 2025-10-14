@@ -102,6 +102,9 @@ Content-Security-Policy:
 - `npm run dev --prefix frontend` — запустить Vite dev-сервер на `localhost:5173` (прокси к API и статику backend).
 - `ENABLE_STRICT_SECURITY_HEADERS=true ENABLE_COOP=true uvicorn app.main:app --host 0.0.0.0 --port 8000` — пример запуска production-инстанса со строгими заголовками (COOP/COEP включайте по необходимости, проксируйте статику через reverse-proxy).
 - `pytest` — прогнать автотесты (включая smoke-тесты заголовков, статики и Alembic).
+- `npm run lhci --prefix root/frontend` — собрать фронтенд, запустить Lighthouse CI с бюджетами (`budget.json`) и сохранить HTML-отчёты в `root/frontend/.lighthouseci`.
+
+> 💡 Перед пушем прогоните Lighthouse локально: CI падает при регрессе бюджетов, зато отчёты можно посмотреть в `root/frontend/.lighthouseci/*.report.html`.
 
 ## Проверка
 
