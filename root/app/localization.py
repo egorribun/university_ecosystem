@@ -293,9 +293,17 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Расписание",
         "en": "Schedule",
     },
+    "schedule.ics.prodid": {
+        "ru": "-//University Ecosystem//Schedule//RU",
+        "en": "-//University Ecosystem//Schedule//EN",
+    },
     "schedule.ics.lesson_default_subject": {
         "ru": "Занятие",
         "en": "Lesson",
+    },
+    "schedule.ics.description.lesson_type": {
+        "ru": "Тип занятия: {lesson_type}",
+        "en": "Lesson type: {lesson_type}",
     },
     "schedule.ics.description.teacher": {
         "ru": "Преподаватель: {teacher}",
@@ -312,6 +320,26 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "schedule.ics.description.parity_even": {
         "ru": "Чётные недели",
         "en": "Even weeks",
+    },
+    "schedule.lesson.type.lecture": {
+        "ru": "Лекция",
+        "en": "Lecture",
+    },
+    "schedule.lesson.type.practice": {
+        "ru": "Практическое занятие",
+        "en": "Practical class",
+    },
+    "schedule.lesson.type.lab": {
+        "ru": "Лабораторная работа",
+        "en": "Lab work",
+    },
+    "schedule.lesson.type.seminar": {
+        "ru": "Семинар",
+        "en": "Seminar",
+    },
+    "schedule.lesson.type.consultation": {
+        "ru": "Консультация",
+        "en": "Consultation",
     },
     "schedule.lesson.default_type": {
         "ru": "Лекция",
@@ -460,4 +488,60 @@ def translate(
     return text
 
 
-__all__ = ["SUPPORTED_LOCALES", "DEFAULT_LOCALE", "resolve_locale", "translate"]
+_LESSON_TYPE_TRANSLATIONS: Mapping[str, str] = {
+    "lecture": "schedule.lesson.type.lecture",
+    "practice": "schedule.lesson.type.practice",
+    "lab": "schedule.lesson.type.lab",
+    "seminar": "schedule.lesson.type.seminar",
+    "consultation": "schedule.lesson.type.consultation",
+}
+
+_LESSON_TYPE_ALIASES: Mapping[str, str] = {
+    "лекция": "lecture",
+    "лк": "lecture",
+    "лекцияонлайн": "lecture",
+    "lecture": "lecture",
+    "пз": "practice",
+    "практика": "practice",
+    "практическоезанятие": "practice",
+    "семинар": "seminar",
+    "семинарское": "seminar",
+    "семинарскоезанятие": "seminar",
+    "лз": "lab",
+    "лр": "lab",
+    "лаб": "lab",
+    "лабораторная": "lab",
+    "лабораторнаяработа": "lab",
+    "консультация": "consultation",
+    "consultation": "consultation",
+}
+
+
+def translate_lesson_type(
+    lesson_type: str | None, *, locale: str | None = None
+) -> str | None:
+    if lesson_type is None:
+        return None
+
+    raw_value = str(lesson_type).strip()
+    if not raw_value:
+        return raw_value
+
+    normalized = "".join(ch for ch in raw_value.lower() if ch.isalnum())
+    canonical = _LESSON_TYPE_ALIASES.get(normalized)
+    if canonical is None and normalized in _LESSON_TYPE_TRANSLATIONS:
+        canonical = normalized
+    if canonical:
+        translation_key = _LESSON_TYPE_TRANSLATIONS[canonical]
+        return translate(translation_key, locale=locale)
+
+    return raw_value
+
+
+__all__ = [
+    "SUPPORTED_LOCALES",
+    "DEFAULT_LOCALE",
+    "resolve_locale",
+    "translate",
+    "translate_lesson_type",
+]
