@@ -9,6 +9,7 @@ import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import { useAuth } from "../contexts/AuthContext"
+import { useLanguage } from "@/contexts/LanguageContext"
 import api from "../api/client"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -26,6 +27,8 @@ type NewsCardProps = {
   id: number
   title: string
   content: string
+  title_en?: string | null
+  content_en?: string | null
   created_at: string
   image_url?: string
   onChange?: () => void
@@ -43,6 +46,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   id,
   title,
   content,
+  title_en,
+  content_en,
   created_at,
   image_url,
   onChange
@@ -50,12 +55,19 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const { user } = useAuth()
   const navigate = useNavigate()
   const { t } = useTranslation(["news", "common"])
+  const { language } = useLanguage()
 
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
-  const [editData, setEditData] = useState({ title, content, image_url: image_url || "" })
+  const [editData, setEditData] = useState({
+    title,
+    content,
+    title_en: title_en ?? "",
+    content_en: content_en ?? "",
+    image_url: image_url || "",
+  })
   const [loading, setLoading] = useState(false)
 
   const [newImage, setNewImage] = useState<File | null>(null)
@@ -67,7 +79,22 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const isMobile = useMediaQuery("(max-width:600px)")
   const menuId = `news-card-menu-${id}`
 
-  const sanitizedPreview = useMemo(() => sanitizeNewsText(content), [content])
+  const localizedTitle = useMemo(() => {
+    const english = title_en ?? ""
+    if (language === "en" && english.trim()) return english
+    return title || english
+  }, [language, title, title_en])
+
+  const localizedContent = useMemo(() => {
+    const english = content_en ?? ""
+    if (language === "en" && english.trim()) return english
+    return content || english
+  }, [language, content, content_en])
+
+  const sanitizedPreview = useMemo(
+    () => sanitizeNewsText(localizedContent),
+    [localizedContent],
+  )
   const createdAtIso = useMemo(() => (created_at ? dayjs(created_at).toISOString() : ""), [created_at])
   const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
   const cardImageUrl = useMemo(() => image_url || "", [image_url])
@@ -96,7 +123,13 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   }, [previewUrl])
 
   const openEditDialog = useCallback(() => {
-    setEditData({ title, content, image_url: image_url || "" })
+    setEditData({
+      title,
+      content,
+      title_en: title_en ?? "",
+      content_en: content_en ?? "",
+      image_url: image_url || "",
+    })
     setEditOpen(true)
     setNewImage(null)
     if (previewUrl) {
@@ -104,7 +137,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       setPreviewUrl(null)
     }
     if (imageInputRef.current) imageInputRef.current.value = ""
-  }, [title, content, image_url, previewUrl])
+  }, [title, content, title_en, content_en, image_url, previewUrl])
 
   const closeEditDialog = useCallback(() => {
     setEditOpen(false)
@@ -144,7 +177,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           setImageLoading(false)
         }
       }
-      await api.patch(`/news/${id}`, { ...editData, image_url: imgUrl })
+      const payload = {
+        title: editData.title,
+        content: editData.content,
+        title_en: editData.title_en,
+        content_en: editData.content_en,
+        image_url: imgUrl,
+      }
+      await api.patch(`/news/${id}`, payload, {
+        headers: { "Accept-Language": language },
+      })
       setEditData(prev => ({ ...prev, image_url: imgUrl }))
       closeEditDialog()
       onChange && onChange()
@@ -153,12 +195,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     } finally {
       setLoading(false)
     }
-  }, [closeEditDialog, editData, id, newImage, onChange])
+  }, [closeEditDialog, editData, id, language, newImage, onChange])
 
   const handleDelete = useCallback(async () => {
     setLoading(true)
     try {
-      await api.delete(`/news/${id}`)
+      await api.delete(`/news/${id}`, {
+        headers: { "Accept-Language": language },
+      })
       onChange && onChange()
     } catch (e) {
       console.error(e)
@@ -166,7 +210,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       setLoading(false)
       setConfirmDeleteOpen(false)
     }
-  }, [id, onChange])
+  }, [id, language, onChange])
 
   const handleCardClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (editOpen) {
@@ -298,7 +342,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       >
         <SmartImage
           srcRaw={cardImageUrl}
-          alt={title ? t("news:alt.hero", { title }) : t("news:alt.heroFallback")}
+          alt={
+            localizedTitle
+              ? t("news:alt.hero", { title: localizedTitle })
+              : t("news:alt.heroFallback")
+          }
           sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
           style={{
             width: "100%",
@@ -324,7 +372,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           whiteSpace: "nowrap",
           fontSize: "clamp(1.07rem, 3vw, 1.18rem)"
         }}>
-          {title}
+          {localizedTitle}
         </Typography>
 
         <Typography mb={2} variant="body2" color="text.secondary" sx={{
@@ -374,6 +422,22 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               label={t("news:form.text")}
               value={editData.content}
               onChange={e => setEditData({ ...editData, content: e.target.value })}
+              multiline
+              rows={4}
+              fullWidth
+              sx={{ fontSize: "1rem" }}
+            />
+            <TextField
+              label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+              value={editData.title_en}
+              onChange={e => setEditData({ ...editData, title_en: e.target.value })}
+              fullWidth
+              sx={{ fontSize: "1rem" }}
+            />
+            <TextField
+              label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+              value={editData.content_en}
+              onChange={e => setEditData({ ...editData, content_en: e.target.value })}
               multiline
               rows={4}
               fullWidth
@@ -475,7 +539,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.id === next.id &&
   prev.title === next.title &&
+  prev.title_en === next.title_en &&
   prev.content === next.content &&
+  prev.content_en === next.content_en &&
   prev.created_at === next.created_at &&
   prev.image_url === next.image_url &&
   prev.onChange === next.onChange

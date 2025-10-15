@@ -28,6 +28,14 @@ _EVENT_TIME_ORDER_KEY = "validation.events.end_after_start"
 _EVENT_TIME_PAIR_KEY = "validation.events.times_required"
 
 
+def sanitize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
     raw_role = getattr(user_in, "role", None)
     requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
@@ -97,7 +105,11 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
 
 
 async def create_news(db: AsyncSession, news: schemas.NewsCreate):
-    record = models.News(**news.model_dump())
+    payload = news.model_dump()
+    payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
+    payload["content_en"] = sanitize_optional_text(payload.get("content_en"))
+
+    record = models.News(**payload)
     db.add(record)
     await db.commit()
     await db.refresh(record)

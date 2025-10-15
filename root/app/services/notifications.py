@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
-from app.localization import translate
+from app.localization import resolve_locale, translate
 from app.models.models import (
     Event,
     News,
@@ -479,24 +479,45 @@ async def generate_schedule_reminders(
 async def notify_about_news(
     db: AsyncSession, news: News, *, locale: str | None = None
 ) -> int:
-    summary = _plain_text(getattr(news, "content", None), limit=220)
+    resolved_locale = resolve_locale(locale=locale)
+
+    def _clean_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value)
+        return text if text.strip() else None
+
+    def _news_text(attr: str) -> str | None:
+        ru_value = _clean_text(getattr(news, attr, None))
+        en_value = _clean_text(getattr(news, f"{attr}_en", None))
+        if resolved_locale == "en":
+            return en_value or ru_value
+        return ru_value or en_value
+
+    headline = _news_text("title")
+    summary_source = _news_text("content")
+    summary = _plain_text(summary_source, limit=220)
     url = f"/news/{news.id}" if getattr(news, "id", None) else "/news"
     template_payload = {
-        "headline": getattr(news, "title", None),
+        "headline": headline or getattr(news, "title", None),
         "summary": summary,
         "id": getattr(news, "id", None),
         "url": url,
     }
-    template = render_notification_template("news.new", template_payload, locale=locale)
-    if getattr(news, "title", None):
+    template = render_notification_template(
+        "news.new", template_payload, locale=resolved_locale
+    )
+    if headline:
         default_title = translate(
             "notifications.news.title_with_headline",
-            locale=locale,
-            headline=news.title,
+            locale=resolved_locale,
+            headline=headline,
         )
     else:
-        default_title = translate("notifications.news.title", locale=locale)
-    default_body = summary or translate("notifications.news.no_summary", locale=locale)
+        default_title = translate("notifications.news.title", locale=resolved_locale)
+    default_body = summary or translate(
+        "notifications.news.no_summary", locale=resolved_locale
+    )
     default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
     if template:
         title = str(template.get("title") or default_title)
@@ -510,7 +531,7 @@ async def notify_about_news(
     else:
         title, body, resolved_url, tag = default_title, default_body, url, default_tag
         payload_data = {}
-    payload_data.setdefault("headline", getattr(news, "title", None))
+    payload_data.setdefault("headline", headline or getattr(news, "title", None))
     payload_data.setdefault("newsId", getattr(news, "id", None))
     if summary:
         payload_data.setdefault("summary", summary)

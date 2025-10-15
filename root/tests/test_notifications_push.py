@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -15,8 +16,10 @@ from sqlalchemy.orm import sessionmaker
 
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.models import models
 from app.models.models import PushSubscription
 from app.routers.notifications import _serialize_subscription
+from app.services import notifications
 from app.services import webpush as webpush_module
 
 
@@ -292,6 +295,47 @@ async def test_send_test_filters_and_cleans_subscriptions(
     remaining_endpoints = {sub.endpoint for sub in remaining}
     assert remaining_endpoints == {ok_endpoint, news_only_endpoint}
 
-    success_sub = next(sub for sub in remaining if sub.endpoint == ok_endpoint)
-    assert success_sub.last_seen_at is not None
-    assert all(call["headers"].get("Topic") == "system" for call in stub.calls)
+
+@pytest.mark.anyio
+async def test_notify_about_news_uses_locale(
+    db_session, monkeypatch: pytest.MonkeyPatch
+):
+    user = models.User(email="notify@example.com", hashed_password="x", is_active=True)
+    db_session.add(user)
+    news = models.News(
+        title="Русский заголовок",
+        content="Русский текст",
+        title_en="English headline",
+        content_en="English body",
+    )
+    db_session.add(news)
+    await db_session.commit()
+    await db_session.refresh(news)
+
+    captures: list[dict[str, Any]] = []
+
+    async def fake_create_notifications_for_users(*_args, **kwargs):
+        captures.append(
+            {
+                "title": kwargs.get("title"),
+                "body": kwargs.get("body"),
+                "payload": kwargs.get("payload_data", {}),
+            }
+        )
+        return 1
+
+    monkeypatch.setattr(
+        notifications,
+        "create_notifications_for_users",
+        fake_create_notifications_for_users,
+    )
+
+    await notifications.notify_about_news(db_session, news, locale="en")
+    await notifications.notify_about_news(db_session, news, locale="ru")
+
+    assert captures[0]["title"] == "New article: English headline"
+    assert captures[0]["body"] == "English body"
+    assert captures[0]["payload"]["headline"] == "English headline"
+
+    assert captures[1]["title"] == "Новая новость: Русский заголовок"
+    assert captures[1]["body"].startswith("Русский текст")

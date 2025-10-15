@@ -19,12 +19,15 @@ import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "../contexts/AuthContext"
+import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 
 type NewsItem = {
   id: number
   title: string
   content: string
+  title_en?: string | null
+  content_en?: string | null
   created_at: string
   image_url?: string | null
 }
@@ -42,11 +45,24 @@ const isNewsItem = (value: unknown): value is NewsItem => {
 
 const toNewsList = (value: unknown): NewsItem[] => (Array.isArray(value) ? value.filter(isNewsItem) : [])
 
-const initialNews = { title: "", content: "" }
+type NewsFormState = {
+  title: string
+  content: string
+  title_en: string
+  content_en: string
+}
+
+const initialNews: NewsFormState = {
+  title: "",
+  content: "",
+  title_en: "",
+  content_en: "",
+}
 
 const News = () => {
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
+  const { language } = useLanguage()
   const [newsList, setNewsList] = useState<NewsItem[]>([])
   const deferredList = useDeferredValue(newsList)
   const [visibleCount, setVisibleCount] = useState(0)
@@ -60,12 +76,16 @@ const News = () => {
   const hydratedFromCache = useRef(false)
   const isMobile = useMediaQuery("(max-width:600px)")
 
-  const cacheKey = "news:list"
-  const etagKey = "news:etag"
+  const cacheKey = useMemo(() => `news:list:${language}`, [language])
+  const etagKey = useMemo(() => `news:etag:${language}`, [language])
+  const legacyCacheKey = "news:list"
+  const legacyEtagKey = "news:etag"
 
   const fetchNews = useCallback(
     async (signal?: AbortSignal) => {
-      const cached = localStorage.getItem(cacheKey)
+      const cachedPrimary = localStorage.getItem(cacheKey)
+      const cachedLegacy = language === "ru" ? localStorage.getItem(legacyCacheKey) : null
+      const cached = cachedPrimary ?? cachedLegacy
 
       if (cached && !hydratedFromCache.current) {
         try {
@@ -79,9 +99,14 @@ const News = () => {
       if (shouldShowLoader) setLoading(true)
 
       try {
-        const etag = localStorage.getItem(etagKey) || ""
+        const storedTagPrimary = localStorage.getItem(etagKey)
+        const storedTagLegacy = language === "ru" ? localStorage.getItem(legacyEtagKey) : null
+        const etag = storedTagPrimary ?? storedTagLegacy ?? ""
         const res = await axios.get<NewsItem[]>("/news", {
-          headers: etag ? { "If-None-Match": etag } : {},
+          headers: {
+            ...(etag ? { "If-None-Match": etag } : {}),
+            "Accept-Language": language,
+          },
           signal,
           validateStatus: (s) => s === 200 || s === 304,
         })
@@ -93,8 +118,12 @@ const News = () => {
           startTransition(() => setNewsList(arr))
           hydratedFromCache.current = true
           localStorage.setItem(cacheKey, JSON.stringify(arr))
+          if (language === "ru") localStorage.setItem(legacyCacheKey, JSON.stringify(arr))
           const newTag = (res.headers?.etag as string) || ""
-          if (newTag) localStorage.setItem(etagKey, newTag)
+          if (newTag) {
+            localStorage.setItem(etagKey, newTag)
+            if (language === "ru") localStorage.setItem(legacyEtagKey, newTag)
+          }
         } else if (res.status === 304 && cached) {
           try {
             const arr = toNewsList(JSON.parse(cached))
@@ -112,7 +141,7 @@ const News = () => {
         if (shouldShowLoader) setLoading(false)
       }
     },
-    [cacheKey, etagKey],
+    [cacheKey, etagKey, language, legacyCacheKey, legacyEtagKey],
   )
 
   useEffect(() => {
@@ -175,7 +204,17 @@ const News = () => {
         image_url = res.data?.url || ""
       }
 
-      await axios.post("/news", { ...newsData, image_url })
+      const payload = {
+        title: newsData.title,
+        content: newsData.content,
+        image_url,
+        ...(newsData.title_en.trim() ? { title_en: newsData.title_en } : {}),
+        ...(newsData.content_en.trim() ? { content_en: newsData.content_en } : {}),
+      }
+
+      await axios.post("/news", payload, {
+        headers: { "Accept-Language": language },
+      })
       setAddOpen(false)
       setNewsData(initialNews)
       setImageFile(null)
@@ -188,7 +227,7 @@ const News = () => {
     } finally {
       setAdding(false)
     }
-  }, [adding, fetchNews, imageFile, imagePreview, newsData])
+  }, [adding, fetchNews, imageFile, imagePreview, language, newsData])
 
   const handleCloseDialog = useCallback(() => {
     setAddOpen(false)
@@ -327,6 +366,30 @@ const News = () => {
                 value={newsData.content}
                 onChange={(e) =>
                   setNewsData({ ...newsData, content: e.target.value })
+                }
+                multiline
+                minRows={5}
+                fullWidth
+                inputProps={{ maxLength: 3000 }}
+                sx={{ fontSize: "1rem" }}
+                disabled={adding}
+              />
+              <TextField
+                label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+                value={newsData.title_en}
+                onChange={(e) =>
+                  setNewsData({ ...newsData, title_en: e.target.value })
+                }
+                fullWidth
+                inputProps={{ maxLength: 100 }}
+                sx={{ fontSize: "1rem" }}
+                disabled={adding}
+              />
+              <TextField
+                label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+                value={newsData.content_en}
+                onChange={(e) =>
+                  setNewsData({ ...newsData, content_en: e.target.value })
                 }
                 multiline
                 minRows={5}

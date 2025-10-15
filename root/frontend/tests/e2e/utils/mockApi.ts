@@ -23,13 +23,17 @@ const mockNews = [
   {
     id: 1,
     title: "Новость дня",
+    title_en: "News of the day",
     content: "Кампус переходит на новую систему расписаний.",
+    content_en: "The campus is switching to a new scheduling system.",
     created_at: "2025-01-01T10:00:00Z",
   },
   {
     id: 2,
     title: "Библиотека открыта",
+    title_en: "Library hours extended",
     content: "Расширены часы работы библиотечного центра.",
+    content_en: "The library has extended its opening hours.",
     created_at: "2025-01-03T12:30:00Z",
   },
 ];
@@ -222,6 +226,36 @@ export async function useMockApi(page: Page) {
     if (pathname.startsWith("api/news")) {
       const headers = route.request().headers();
       const ifNoneMatch = headers["if-none-match"];
+      const acceptLanguage = headers["accept-language"]?.toLowerCase() ?? "";
+      const locale = acceptLanguage.startsWith("en") ? "en" : "ru";
+
+      const localize = (item: typeof mockNews[number]) => ({
+        ...item,
+        title:
+          locale === "en" && item.title_en ? item.title_en : item.title,
+        content:
+          locale === "en" && item.content_en ? item.content_en : item.content,
+      });
+
+      const detailMatch = pathname.match(/^api\/news\/(\d+)$/);
+      if (detailMatch) {
+        const id = Number.parseInt(detailMatch[1], 10);
+        const entry = mockNews.find((item) => item.id === id);
+        if (!entry) {
+          await route.fulfill({
+            status: 404,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Not found" }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(localize(entry)),
+        });
+        return;
+      }
 
       if (state.offline) {
         state.newsLog.push({ header: ifNoneMatch, status: 503 });
@@ -243,10 +277,11 @@ export async function useMockApi(page: Page) {
       }
 
       state.newsLog.push({ header: ifNoneMatch, status: 200 });
+      const localizedNews = mockNews.map(localize);
       await route.fulfill({
         status: 200,
         headers: { etag: state.newsVersion, "content-type": "application/json" },
-        body: JSON.stringify(mockNews),
+        body: JSON.stringify(localizedNews),
       });
       return;
     }

@@ -22,7 +22,8 @@
       "vite/client",
       "vite-plugin-pwa/client",
       "vitest",
-      "vitest/globals"
+      "vitest/globals",
+      "jsdom"
     ]
   },
   "include": ["src", "tests", "playwright.config.ts"]
