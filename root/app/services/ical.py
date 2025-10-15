@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable, Sequence
 
-from app.localization import translate
+from app.localization import translate, translate_lesson_type
 from app.models import models
 
 _WEEKDAY_ALIASES: dict[str, int] = {
@@ -110,9 +110,11 @@ def generate_schedule_ics(
         else translate("schedule.ics.calendar_name_generic", locale=locale)
     )
 
+    prodid = translate("schedule.ics.prodid", locale=locale)
+
     lines: list[str] = [
         "BEGIN:VCALENDAR",
-        "PRODID:-//University Ecosystem//Schedule//RU",
+        f"PRODID:{_escape(prodid)}",
         "VERSION:2.0",
         "CALSCALE:GREGORIAN",
         f"NAME:{_escape(calendar_name)}",
@@ -133,7 +135,12 @@ def generate_schedule_ics(
             "schedule.ics.lesson_default_subject", locale=locale
         )
         lesson_type = getattr(lesson, "lesson_type", None)
-        summary = subject if not lesson_type else f"{subject} ({lesson_type})"
+        lesson_type_display = translate_lesson_type(lesson_type, locale=locale)
+        summary = (
+            subject
+            if not lesson_type_display
+            else f"{subject} ({lesson_type_display})"
+        )
         teacher = getattr(lesson, "teacher", None)
         room = getattr(lesson, "room", None)
 
@@ -148,6 +155,14 @@ def generate_schedule_ics(
             end_dt = datetime.combine(lesson_date, end_time)
             uid = f"lesson-{getattr(lesson, 'id', 'x')}-{lesson_date.strftime('%Y%m%d')}@university-ecosystem"
             description_parts = []
+            if lesson_type_display:
+                description_parts.append(
+                    translate(
+                        "schedule.ics.description.lesson_type",
+                        locale=locale,
+                        lesson_type=lesson_type_display,
+                    )
+                )
             if teacher:
                 description_parts.append(
                     translate(
