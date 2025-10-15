@@ -1,0 +1,81 @@
+{
+  "id": "/?source=pwa",
+  "name": "GUU Ecosystem — digital campus",
+  "short_name": "GUU Ecosystem",
+  "description": "Class schedule, university news, and the campus map stay available even when you're offline.",
+  "lang": "en",
+  "dir": "ltr",
+  "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "orientation": "portrait-primary",
+  "theme_color": "#0b63f4",
+  "background_color": "#f4f8fd",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "categories": ["education", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Schedule",
+      "description": "Jump straight to your class schedule",
+      "url": "/schedule",
+      "icons": [
+        {
+          "src": "/maskable-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "News",
+      "description": "Latest campus updates",
+      "url": "/news",
+      "icons": [
+        {
+          "src": "/maskable-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Campus map",
+      "description": "Routes and buildings on the GUU map",
+      "url": "/map",
+      "icons": [
+        {
+          "src": "/maskable-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "/guu_logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/maskable-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/guu_logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/maskable-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ]
+}

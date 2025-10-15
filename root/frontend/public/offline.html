@@ -92,17 +92,32 @@
   </head>
   <body>
     <main>
-      <h1>Нет подключения к сети</h1>
-      <p>
+      <h1 data-i18n="offline.title">Нет подключения к сети</h1>
+      <p data-i18n="offline.description">
         Экосистема ГУУ продолжит синхронизировать расписание, новости и карту кампуса,
         как только появится интернет.
       </p>
       <ul>
-        <li>Расписание и новости, просмотренные ранее, останутся доступными офлайн.</li>
-        <li>Интерактивная карта загрузится автоматически после восстановления связи.</li>
+        <li data-i18n="offline.hints.0">Расписание и новости, просмотренные ранее, останутся доступными офлайн.</li>
+        <li data-i18n="offline.hints.1">Интерактивная карта загрузится автоматически после восстановления связи.</li>
       </ul>
-      <button type="button" onclick="window.location.reload()">Повторить попытку</button>
-      <small>Проверьте подключение или попробуйте открыть приложение позднее.</small>
+      <button type="button" onclick="window.location.reload()" data-i18n="offline.retry">
+        Повторить попытку
+      </button>
+      <small data-i18n="offline.footer">Проверьте подключение или попробуйте открыть приложение позднее.</small>
     </main>
+    <script>
+      (function () {
+        import("./static-shell-i18n.js")
+          .then(({ applyDocumentLanguage, applyOfflineTranslations, getPreferredLanguage }) => {
+            const language = getPreferredLanguage(window);
+            applyDocumentLanguage(document, language);
+            applyOfflineTranslations(document, language);
+          })
+          .catch((error) => {
+            console.error("Failed to load offline translations", error);
+          });
+      })();
+    </script>
   </body>
 </html>
