@@ -27,15 +27,38 @@ const tabs = [
   { key: "my" },
 ] as const satisfies readonly EventTab[]
 
-const initialEvent = {
+type EventDraft = {
+  title: string
+  title_en: string
+  description: string
+  description_en: string
+  event_type: string
+  event_type_en: string
+  location: string
+  location_en: string
+  starts_at: string
+  ends_at: string
+  speaker: string
+  image_url: string
+  about: string
+  about_en: string
+}
+
+const initialEvent: EventDraft = {
   title: "",
+  title_en: "",
   description: "",
+  description_en: "",
   event_type: "",
+  event_type_en: "",
   location: "",
+  location_en: "",
   starts_at: "",
   ends_at: "",
   speaker: "",
   image_url: "",
+  about: "",
+  about_en: "",
 }
 
 function useDebounced<T>(value: T, delay = 350) {
@@ -50,7 +73,8 @@ function useDebounced<T>(value: T, delay = 350) {
 const Events = () => {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { t } = useTranslation(["events", "common"])
+  const { t, i18n } = useTranslation(["events", "common"])
+  const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
   const [events, setEvents] = useState<Event[]>([])
   const [tab, setTab] = useState<EventTabKey>("active")
@@ -59,7 +83,7 @@ const Events = () => {
   const [location, setLocation] = useState("")
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [eventData, setEventData] = useState(initialEvent)
+  const [eventData, setEventData] = useState<EventDraft>(initialEvent)
   const [imageUploading, setImageUploading] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -151,13 +175,31 @@ const Events = () => {
     }
   }
 
+  const getLocalizedDraftValue = (field: "title" | "description" | "event_type" | "location" | "about") => {
+    const key = (language === "en" ? `${field}_en` : field) as keyof EventDraft
+    return eventData[key]
+  }
+
+  const updateLocalizedDraftValue = (
+    field: "title" | "description" | "event_type" | "location" | "about",
+    value: string
+  ) => {
+    const key = (language === "en" ? `${field}_en` : field) as keyof EventDraft
+    setEventData((prev) => ({ ...prev, [key]: value }))
+  }
+
   const handleCreateEvent = async () => {
+    const titleValue = normalizedTitle
+    const locationValue = normalizedLocation
     try {
-      const res = await axios.post<Event>("/events", {
+      const payload = {
         ...eventData,
+        title: titleValue,
+        location: locationValue,
         starts_at: eventData.starts_at,
         ends_at: eventData.ends_at,
-      })
+      }
+      const res = await axios.post<Event>("/events", payload)
       closeCreate()
       setTab("active")
       setEvents((prev) => [res.data, ...prev])
@@ -172,6 +214,8 @@ const Events = () => {
   const starts = new Date(eventData.starts_at).getTime()
   const ends = new Date(eventData.ends_at).getTime()
   const dateError = !!(eventData.starts_at && eventData.ends_at && ends < starts)
+  const normalizedTitle = eventData.title.trim() || eventData.title_en.trim()
+  const normalizedLocation = eventData.location.trim() || eventData.location_en.trim()
 
   const closeCreate = () => {
     setCreateOpen(false)
@@ -493,29 +537,53 @@ const Events = () => {
           <DialogContent>
             <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
               <TextField
-                label={t("events:form.title")}
-                value={eventData.title}
-                onChange={(e) => setEventData({ ...eventData, title: e.target.value })}
+                label={
+                  language === "en"
+                    ? t("events:form.title_en", {
+                        defaultValue: `${t("events:form.title")}${" (English)"}`
+                      })
+                    : t("events:form.title")
+                }
+                value={getLocalizedDraftValue("title")}
+                onChange={(e) => updateLocalizedDraftValue("title", e.target.value)}
                 fullWidth
               />
               <TextField
-                label={t("events:form.description")}
-                value={eventData.description}
-                onChange={(e) => setEventData({ ...eventData, description: e.target.value })}
+                label={
+                  language === "en"
+                    ? t("events:form.description_en", {
+                        defaultValue: `${t("events:form.description")}${" (English)"}`
+                      })
+                    : t("events:form.description")
+                }
+                value={getLocalizedDraftValue("description")}
+                onChange={(e) => updateLocalizedDraftValue("description", e.target.value)}
                 multiline
                 rows={3}
                 fullWidth
               />
               <TextField
-                label={t("events:form.type")}
-                value={eventData.event_type}
-                onChange={(e) => setEventData({ ...eventData, event_type: e.target.value })}
+                label={
+                  language === "en"
+                    ? t("events:form.type_en", {
+                        defaultValue: `${t("events:form.type")}${" (English)"}`
+                      })
+                    : t("events:form.type")
+                }
+                value={getLocalizedDraftValue("event_type")}
+                onChange={(e) => updateLocalizedDraftValue("event_type", e.target.value)}
                 fullWidth
               />
               <TextField
-                label={t("events:form.location")}
-                value={eventData.location}
-                onChange={(e) => setEventData({ ...eventData, location: e.target.value })}
+                label={
+                  language === "en"
+                    ? t("events:form.location_en", {
+                        defaultValue: `${t("events:form.location")}${" (English)"}`
+                      })
+                    : t("events:form.location")
+                }
+                value={getLocalizedDraftValue("location")}
+                onChange={(e) => updateLocalizedDraftValue("location", e.target.value)}
                 fullWidth
               />
               <TextField
@@ -585,10 +653,10 @@ const Events = () => {
                   variant="contained"
                   onClick={handleCreateEvent}
                   disabled={
-                    !eventData.title ||
+                    !normalizedTitle ||
                     !eventData.starts_at ||
                     !eventData.ends_at ||
-                    !eventData.location ||
+                    !normalizedLocation ||
                     imageUploading ||
                     dateError
                   }

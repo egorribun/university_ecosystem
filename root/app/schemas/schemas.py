@@ -170,13 +170,18 @@ class EventFileOut(OrmModel):
 class EventCreate(BaseModel):
     title: str
     description: Optional[str] = None
+    title_en: Optional[str] = None
+    description_en: Optional[str] = None
     location: Optional[str] = None
+    location_en: Optional[str] = None
     event_type: Optional[str] = None
+    event_type_en: Optional[str] = None
     starts_at: datetime
     ends_at: datetime
     speaker: Optional[str] = None
     image_url: Optional[str] = None
     about: Optional[str] = None
+    about_en: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_time_order(self):  # type: ignore[override]
@@ -188,14 +193,19 @@ class EventCreate(BaseModel):
 class EventUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    title_en: Optional[str] = None
+    description_en: Optional[str] = None
     location: Optional[str] = None
+    location_en: Optional[str] = None
     event_type: Optional[str] = None
+    event_type_en: Optional[str] = None
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
     is_active: Optional[bool] = None
     speaker: Optional[str] = None
     image_url: Optional[str] = None
     about: Optional[str] = None
+    about_en: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_time_updates(self):  # type: ignore[override]
@@ -216,8 +226,12 @@ class EventOut(OrmModel):
     id: int
     title: str
     description: Optional[str] = None
+    title_en: Optional[str] = None
+    description_en: Optional[str] = None
     location: Optional[str] = None
+    location_en: Optional[str] = None
     event_type: Optional[str] = None
+    event_type_en: Optional[str] = None
     starts_at: datetime
     ends_at: datetime
     created_by: int
@@ -226,6 +240,7 @@ class EventOut(OrmModel):
     speaker: Optional[str] = None
     image_url: Optional[str] = None
     about: Optional[str] = None
+    about_en: Optional[str] = None
     files: List[EventFileOut] = Field(default_factory=list)
     participant_count: int = 0
     is_registered: Optional[bool] = None

@@ -58,7 +58,8 @@ const EventDetail = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isMobile = useMediaQuery('(max-width: 900px)')
-  const { t } = useTranslation(['events', 'common'])
+  const { t, i18n } = useTranslation(['events', 'common'])
+  const language = i18n.language?.startsWith('en') ? 'en' : 'ru'
 
   const [event, setEvent] = useState<Event | null>(null)
   const [loading, setLoading] = useState(true)
@@ -192,12 +193,19 @@ const EventDetail = () => {
     }
   }
 
+  const getAboutBaseline = useCallback(() => {
+    if (!event) return ''
+    return language === 'en' ? event.about_en ?? '' : event.about ?? ''
+  }, [event, language])
+
+  const aboutBaseline = getAboutBaseline()
+
   const handleEditAbout = () => {
     if (!event) {
       return
     }
 
-    setAboutDraft(event.about ?? '')
+    setAboutDraft(aboutBaseline)
     setEditingAbout(true)
   }
 
@@ -209,7 +217,8 @@ const EventDetail = () => {
 
     setSavingAbout(true)
     try {
-      await api.patch(`/events/${event.id}`, { about: aboutDraft.trim() })
+      const payloadKey = language === 'en' ? 'about_en' : 'about'
+      await api.patch(`/events/${event.id}`, { [payloadKey]: aboutDraft.trim() })
       setEditingAbout(false)
       setSnack(t('events:detail.messages.aboutUpdated'))
       await refreshEvent().catch(() => {})
@@ -223,7 +232,7 @@ const EventDetail = () => {
 
   const handleCancelAbout = () => {
     setEditingAbout(false)
-    setAboutDraft('')
+    setAboutDraft(aboutBaseline)
   }
 
   const handleBack = () => {
@@ -377,7 +386,13 @@ const EventDetail = () => {
               {editingAbout ? (
                 <Stack spacing={1}>
                   <TextField
-                    label={t('events:detail.sections.about.fieldLabel')}
+                    label={
+                      language === 'en'
+                        ? t('events:detail.sections.about.fieldLabel_en', {
+                            defaultValue: `${t('events:detail.sections.about.fieldLabel')} (English)`
+                          })
+                        : t('events:detail.sections.about.fieldLabel')
+                    }
                     multiline
                     minRows={3}
                     value={aboutDraft}
@@ -391,7 +406,7 @@ const EventDetail = () => {
                       size="small"
                       startIcon={<SaveIcon />}
                       onClick={handleSaveAbout}
-                      disabled={savingAbout || aboutDraft.trim() === (event.about || '')}
+                      disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
                     >
                       {savingAbout ? t('events:detail.sections.about.savePending') : t('common:buttons.save')}
                     </Button>
@@ -404,9 +419,9 @@ const EventDetail = () => {
                 <Typography
                   variant="body2"
                   fontSize={16}
-                  sx={{ whiteSpace: 'pre-line', color: event.about ? 'inherit' : 'text.disabled' }}
+                  sx={{ whiteSpace: 'pre-line', color: event?.about ? 'inherit' : 'text.disabled' }}
                 >
-                  {event.about || t('events:detail.sections.about.empty')}
+                  {event?.about || t('events:detail.sections.about.empty')}
                 </Typography>
               )}
             </Box>
@@ -582,7 +597,13 @@ const EventDetail = () => {
             {editingAbout ? (
               <Stack spacing={1}>
                 <TextField
-                  label={t('events:detail.sections.about.fieldLabel')}
+                  label={
+                    language === 'en'
+                      ? t('events:detail.sections.about.fieldLabel_en', {
+                          defaultValue: `${t('events:detail.sections.about.fieldLabel')} (English)`
+                        })
+                      : t('events:detail.sections.about.fieldLabel')
+                  }
                   multiline
                   minRows={3}
                   value={aboutDraft}
@@ -596,7 +617,7 @@ const EventDetail = () => {
                     size="small"
                     startIcon={<SaveIcon />}
                     onClick={handleSaveAbout}
-                    disabled={savingAbout || aboutDraft.trim() === (event.about || '')}
+                    disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
                   >
                     {savingAbout ? t('events:detail.sections.about.savePending') : t('common:buttons.save')}
                   </Button>
@@ -609,9 +630,9 @@ const EventDetail = () => {
               <Typography
                 variant="body1"
                 fontSize={18}
-                sx={{ whiteSpace: 'pre-line', color: event.about ? 'inherit' : 'text.disabled' }}
+                sx={{ whiteSpace: 'pre-line', color: event?.about ? 'inherit' : 'text.disabled' }}
               >
-                {event.about || t('events:detail.sections.about.empty')}
+                {event?.about || t('events:detail.sections.about.empty')}
               </Typography>
             )}
           </Stack>

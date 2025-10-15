@@ -7,6 +7,35 @@ from typing import Any, Mapping
 SUPPORTED_LOCALES: set[str] = {"en", "ru"}
 DEFAULT_LOCALE = "en"
 
+
+def normalize_locale(locale: str | None) -> str:
+    """Return a supported locale code, falling back to the default."""
+
+    candidate = (locale or "").strip().lower()
+    if candidate in SUPPORTED_LOCALES:
+        return candidate
+    return DEFAULT_LOCALE
+
+
+def localized_text(
+    locale: str | None,
+    *,
+    ru: str | None = None,
+    en: str | None = None,
+) -> str | None:
+    """Choose a localized string based on the requested locale."""
+
+    normalized = normalize_locale(locale)
+    candidates: tuple[str | None, str | None]
+    if normalized == "en":
+        candidates = (en, ru)
+    else:
+        candidates = (ru, en)
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate
+    return None
+
 _QUERY_PARAM_KEYS: tuple[str, ...] = ("lang", "locale", "language")
 _USER_ATTR_KEYS: tuple[str, ...] = (
     "preferred_locale",
@@ -542,6 +571,8 @@ __all__ = [
     "SUPPORTED_LOCALES",
     "DEFAULT_LOCALE",
     "resolve_locale",
+    "normalize_locale",
+    "localized_text",
     "translate",
     "translate_lesson_type",
 ]

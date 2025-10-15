@@ -132,9 +132,13 @@ class Event(Base):
 
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
+    title_en = Column(String)
     description = Column(Text)
+    description_en = Column(Text)
     location = Column(String)
+    location_en = Column(String)
     event_type = Column(String, index=True)
+    event_type_en = Column(String)
     starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
     ends_at = Column(DateTime(timezone=True), nullable=False, index=True)
     created_by = Column(
@@ -145,6 +149,7 @@ class Event(Base):
     speaker = Column(String)
     image_url = Column(String)
     about = Column(Text)
+    about_en = Column(Text)
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),

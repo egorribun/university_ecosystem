@@ -50,11 +50,12 @@ async def create_event(
         logger.exception(
             "Failed to dispatch event notification", extra={"event_id": record.id}
         )
-    return record
+    return crud.serialize_event(record, locale)
 
 
 @router.get("", response_model=List[schemas.EventOut])
 async def all_events(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     search: str = Query("", alias="search"),
@@ -62,6 +63,7 @@ async def all_events(
     location: str = Query("", alias="location"),
     is_active: bool = Query(True, alias="is_active"),
 ):
+    locale = resolve_locale(request=request, user=user)
     return await crud.get_all_events(
         db,
         user_id=user.id,
@@ -69,6 +71,7 @@ async def all_events(
         type=type,
         location=location,
         is_active=is_active,
+        locale=locale,
     )
 
 
@@ -99,9 +102,12 @@ async def unregister_event(
 
 @router.get("/my", response_model=List[schemas.EventOut])
 async def my_events(
-    db: AsyncSession = Depends(get_db), user: models.User = Depends(get_current_user)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
 ):
-    return await crud.get_my_events(db, user_id=user.id)
+    locale = resolve_locale(request=request, user=user)
+    return await crud.get_my_events(db, user_id=user.id, locale=locale)
 
 
 @router.post("/{id}/upload_file", response_model=schemas.EventFileOut)
@@ -208,10 +214,12 @@ async def update_event(
             .where(models.EventAttendance.event_id == q.id)
         )
     ).scalar()
-    out = schemas.EventOut.from_orm(q)
-    out.files = [schemas.EventFileOut.from_orm(f) for f in files]
-    out.participant_count = participant_count
-    return out
+    return crud.serialize_event(
+        q,
+        locale,
+        participant_count=participant_count,
+        files=files,
+    )
 
 
 @router.delete("/{event_id}", response_model=dict)
@@ -301,12 +309,14 @@ async def get_event(
             .where(models.EventAttendance.event_id == q.id)
         )
     ).scalar()
-    out = schemas.EventOut.from_orm(q)
-    out.files = [schemas.EventFileOut.from_orm(f) for f in files]
-    out.participant_count = participant_count
-    out.is_registered = attendance is not None
-    out.my_qr_code = attendance.qr_code if attendance else None
-    return out
+    return crud.serialize_event(
+        q,
+        locale,
+        participant_count=participant_count,
+        files=files,
+        is_registered=attendance is not None,
+        my_qr_code=attendance.qr_code if attendance else None,
+    )
 
 
 @router.delete("/file/{file_id}", response_model=dict)

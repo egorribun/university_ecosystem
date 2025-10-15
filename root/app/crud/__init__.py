@@ -1,13 +1,13 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
-from app.localization import translate
+from app.localization import localized_text, normalize_locale, translate
 from app.models import models
 from app.models.enums import UserRole
 from app.schemas import schemas
@@ -153,6 +153,90 @@ async def _files_by_event(
     return out
 
 
+def _localized_event_field(
+    locale: str | None,
+    ru_value: str | None,
+    en_value: str | None,
+    *,
+    required: bool = False,
+) -> str | None:
+    ru_clean = sanitize_optional_text(ru_value)
+    en_clean = sanitize_optional_text(en_value)
+    value = localized_text(locale, ru=ru_clean, en=en_clean)
+    if value is not None:
+        return value
+    if required:
+        if isinstance(ru_value, str) and ru_value.strip():
+            return ru_value
+        if isinstance(en_value, str) and en_value.strip():
+            return en_value
+        return ru_value or en_value or ""
+    return ru_clean or en_clean
+
+
+def serialize_event(
+    record: models.Event,
+    locale: str | None,
+    *,
+    participant_count: int = 0,
+    files: Sequence[models.EventFile | schemas.EventFileOut] = (),
+    is_registered: bool | None = None,
+    my_qr_code: str | None = None,
+) -> schemas.EventOut:
+    normalized_locale = normalize_locale(locale)
+    prepared_files: list[schemas.EventFileOut] = []
+    for f in files:
+        if isinstance(f, schemas.EventFileOut):
+            prepared_files.append(f)
+        else:
+            prepared_files.append(schemas.EventFileOut.from_orm(f))
+
+    data: dict[str, Any] = {
+        "id": record.id,
+        "title": _localized_event_field(
+            normalized_locale, getattr(record, "title", None), getattr(record, "title_en", None), required=True
+        ),
+        "description": _localized_event_field(
+            normalized_locale,
+            getattr(record, "description", None),
+            getattr(record, "description_en", None),
+        ),
+        "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
+        "description_en": sanitize_optional_text(getattr(record, "description_en", None)),
+        "location": _localized_event_field(
+            normalized_locale,
+            getattr(record, "location", None),
+            getattr(record, "location_en", None),
+        ),
+        "location_en": sanitize_optional_text(getattr(record, "location_en", None)),
+        "event_type": _localized_event_field(
+            normalized_locale,
+            getattr(record, "event_type", None),
+            getattr(record, "event_type_en", None),
+        ),
+        "event_type_en": sanitize_optional_text(getattr(record, "event_type_en", None)),
+        "starts_at": record.starts_at,
+        "ends_at": record.ends_at,
+        "created_by": record.created_by,
+        "created_at": record.created_at,
+        "is_active": getattr(record, "is_active", True),
+        "speaker": getattr(record, "speaker", None),
+        "image_url": getattr(record, "image_url", None),
+        "about": _localized_event_field(
+            normalized_locale,
+            getattr(record, "about", None),
+            getattr(record, "about_en", None),
+        ),
+        "about_en": sanitize_optional_text(getattr(record, "about_en", None)),
+        "files": prepared_files,
+        "participant_count": participant_count,
+        "is_registered": is_registered,
+        "my_qr_code": my_qr_code,
+    }
+
+    return schemas.EventOut.model_validate(data)
+
+
 async def get_all_events(
     db: AsyncSession,
     user_id: int | None = None,
@@ -160,21 +244,38 @@ async def get_all_events(
     type: str = "",
     location: str = "",
     is_active: bool = True,
+    locale: str | None = None,
 ):
     q = select(models.Event)
     now = datetime.now(UTC)
 
     if search:
+        like = f"%{search}%"
         q = q.where(
             or_(
-                models.Event.title.ilike(f"%{search}%"),
-                models.Event.description.ilike(f"%{search}%"),
+                models.Event.title.ilike(like),
+                models.Event.title_en.ilike(like),
+                models.Event.description.ilike(like),
+                models.Event.description_en.ilike(like),
+                models.Event.about.ilike(like),
+                models.Event.about_en.ilike(like),
             )
         )
     if type:
-        q = q.where(models.Event.event_type == type)
+        q = q.where(
+            or_(
+                models.Event.event_type == type,
+                models.Event.event_type_en == type,
+            )
+        )
     if location:
-        q = q.where(models.Event.location.ilike(f"%{location}%"))
+        like = f"%{location}%"
+        q = q.where(
+            or_(
+                models.Event.location.ilike(like),
+                models.Event.location_en.ilike(like),
+            )
+        )
     if is_active:
         q = q.where(models.Event.ends_at >= now)
     else:
@@ -211,31 +312,19 @@ async def get_all_events(
         registered_ids = {row.event_id for row in attendance_rows}
         qr_map = {row.event_id: row.qr_code for row in attendance_rows}
 
-    result = []
+    result: List[schemas.EventOut] = []
+    normalized_locale = normalize_locale(locale)
     for event in events:
+        files = files_map.get(event.id, [])
         result.append(
-            {
-                "id": event.id,
-                "title": event.title,
-                "description": event.description,
-                "about": getattr(event, "about", None),
-                "event_type": getattr(event, "event_type", None),
-                "location": event.location,
-                "starts_at": event.starts_at,
-                "ends_at": event.ends_at,
-                "created_by": event.created_by,
-                "created_at": event.created_at,
-                "participant_count": counts.get(event.id, 0),
-                "files": [
-                    schemas.EventFileOut.from_orm(f)
-                    for f in files_map.get(event.id, [])
-                ],
-                "is_active": getattr(event, "is_active", True),
-                "is_registered": event.id in registered_ids,
-                "my_qr_code": qr_map.get(event.id),
-                "speaker": getattr(event, "speaker", None),
-                "image_url": getattr(event, "image_url", None),
-            }
+            serialize_event(
+                event,
+                normalized_locale,
+                participant_count=counts.get(event.id, 0),
+                files=files,
+                is_registered=event.id in registered_ids,
+                my_qr_code=qr_map.get(event.id),
+            )
         )
     return result
 
@@ -249,8 +338,13 @@ async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: in
         title=event.title,
         description=event.description,
         about=getattr(event, "about", None),
+        about_en=sanitize_optional_text(getattr(event, "about_en", None)),
         event_type=getattr(event, "event_type", None),
+        event_type_en=sanitize_optional_text(getattr(event, "event_type_en", None)),
         location=event.location,
+        location_en=sanitize_optional_text(getattr(event, "location_en", None)),
+        title_en=sanitize_optional_text(getattr(event, "title_en", None)),
+        description_en=sanitize_optional_text(getattr(event, "description_en", None)),
         starts_at=starts_at,
         ends_at=ends_at,
         created_by=user_id,
@@ -273,6 +367,15 @@ async def update_event(
     db: AsyncSession, record: models.Event, data: schemas.EventUpdate
 ) -> models.Event:
     updates = data.model_dump(exclude_unset=True)
+    for field in (
+        "title_en",
+        "description_en",
+        "location_en",
+        "event_type_en",
+        "about_en",
+    ):
+        if field in updates:
+            updates[field] = sanitize_optional_text(updates[field])
     if not updates:
         return record
     if "starts_at" in updates:
@@ -359,7 +462,9 @@ async def unregister_attendance(
     return {"ok": True}
 
 
-async def get_my_events(db: AsyncSession, user_id: int):
+async def get_my_events(
+    db: AsyncSession, user_id: int, *, locale: str | None = None
+):
     attendance_rows = (
         (
             await db.execute(
@@ -387,31 +492,19 @@ async def get_my_events(db: AsyncSession, user_id: int):
     counts = await _attendance_counts(db, ids)
     files_map = await _files_by_event(db, ids)
 
-    result = []
+    normalized_locale = normalize_locale(locale)
+    result: List[schemas.EventOut] = []
     for event in events:
+        files = files_map.get(event.id, [])
         result.append(
-            {
-                "id": event.id,
-                "title": event.title,
-                "description": event.description,
-                "about": getattr(event, "about", None),
-                "event_type": getattr(event, "event_type", None),
-                "location": event.location,
-                "starts_at": event.starts_at,
-                "ends_at": event.ends_at,
-                "created_by": event.created_by,
-                "created_at": event.created_at,
-                "participant_count": counts.get(event.id, 0),
-                "files": [
-                    schemas.EventFileOut.from_orm(f)
-                    for f in files_map.get(event.id, [])
-                ],
-                "is_active": getattr(event, "is_active", True),
-                "is_registered": True,
-                "my_qr_code": qr_map.get(event.id),
-                "speaker": getattr(event, "speaker", None),
-                "image_url": getattr(event, "image_url", None),
-            }
+            serialize_event(
+                event,
+                normalized_locale,
+                participant_count=counts.get(event.id, 0),
+                files=files,
+                is_registered=True,
+                my_qr_code=qr_map.get(event.id),
+            )
         )
     return result
 
