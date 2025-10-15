@@ -23,11 +23,15 @@ def test_get_password_hash_uses_argon2id_by_default():
 
 
 def test_get_password_hash_enforces_length_bounds():
-    with pytest.raises(ValueError):
-        get_password_hash("short")
+    with pytest.raises(ValueError) as exc_ru:
+        get_password_hash("short", locale="ru")
 
-    with pytest.raises(ValueError):
-        get_password_hash("x" * 201)
+    assert str(exc_ru.value) == "Пароль должен содержать от 8 до 200 символов."
+
+    with pytest.raises(ValueError) as exc_en:
+        get_password_hash("x" * 201, locale="en")
+
+    assert str(exc_en.value) == "Password must be between 8 and 200 characters long."
 
 
 def test_password_policy_allows_limits():

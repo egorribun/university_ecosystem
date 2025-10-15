@@ -121,6 +121,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Пользователь деактивирован",
         "en": "User account is deactivated",
     },
+    "errors.auth.password_policy": {
+        "ru": "Пароль должен содержать от 8 до 200 символов.",
+        "en": "Password must be between 8 and 200 characters long.",
+    },
     "errors.forbidden": {
         "ru": "Доступ запрещён",
         "en": "Access denied",
