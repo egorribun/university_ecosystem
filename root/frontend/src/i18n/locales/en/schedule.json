@@ -7,36 +7,40 @@
     "groupName": "Group: {{name}}"
   },
   "weekdays": {
-    "backend": [
-      "Понедельник",
-      "Вторник",
-      "Среда",
-      "Четверг",
-      "Пятница",
-      "Суббота"
-    ],
-    "long": [
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday"
-    ],
-    "short": [
-      "Mon",
-      "Tue",
-      "Wed",
-      "Thu",
-      "Fri",
-      "Sat"
-    ]
+    "order": ["mon", "tue", "wed", "thu", "fri", "sat"],
+    "items": {
+      "mon": { "backend": "Понедельник", "long": "Monday", "short": "Mon" },
+      "tue": { "backend": "Вторник", "long": "Tuesday", "short": "Tue" },
+      "wed": { "backend": "Среда", "long": "Wednesday", "short": "Wed" },
+      "thu": { "backend": "Четверг", "long": "Thursday", "short": "Thu" },
+      "fri": { "backend": "Пятница", "long": "Friday", "short": "Fri" },
+      "sat": { "backend": "Суббота", "long": "Saturday", "short": "Sat" }
+    }
   },
   "lessonTypes": {
-    "Лекция": "Lecture",
-    "ПЗ": "Practical class",
-    "ЛЗ": "Lab work",
-    "Проектная деятельность": "Project work"
+    "order": ["lecture", "practice", "lab", "project"],
+    "items": {
+      "lecture": {
+        "backend": ["Лекция", "Lecture"],
+        "label": "Lecture",
+        "color": "var(--badge-lec)"
+      },
+      "practice": {
+        "backend": ["ПЗ", "Практика", "Practical class"],
+        "label": "Practical class",
+        "color": "var(--badge-prac)"
+      },
+      "lab": {
+        "backend": ["ЛЗ", "Лабораторная", "Lab work"],
+        "label": "Lab work",
+        "color": "var(--badge-lab)"
+      },
+      "project": {
+        "backend": ["Проектная деятельность", "Project work"],
+        "label": "Project work",
+        "color": "#607d8b"
+      }
+    }
   },
   "time": {
     "hours_one": "{{count}} hour",

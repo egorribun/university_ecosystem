@@ -117,6 +117,43 @@ type ScheduleGroup = {
   [key: string]: unknown
 }
 
+type LessonTypeConfig = {
+  id: string
+  backend: string[]
+  label: string
+  color: string
+}
+
+type WeekdayConfig = {
+  id: string
+  backend: string
+  long: string
+  short: string
+}
+
+const defaultLessonTypeColor = "#888"
+
+const fallbackLessonTypes: LessonTypeConfig[] = [
+  { id: "lecture", backend: ["Лекция"], label: "Lecture", color: "var(--badge-lec)" },
+  { id: "practice", backend: ["ПЗ"], label: "Practical class", color: "var(--badge-prac)" },
+  { id: "lab", backend: ["ЛЗ"], label: "Lab work", color: "var(--badge-lab)" },
+  {
+    id: "project",
+    backend: ["Проектная деятельность"],
+    label: "Project work",
+    color: "#607d8b"
+  }
+]
+
+const fallbackWeekdays: WeekdayConfig[] = [
+  { id: "mon", backend: "Понедельник", long: "Monday", short: "Mon" },
+  { id: "tue", backend: "Вторник", long: "Tuesday", short: "Tue" },
+  { id: "wed", backend: "Среда", long: "Wednesday", short: "Wed" },
+  { id: "thu", backend: "Четверг", long: "Thursday", short: "Thu" },
+  { id: "fri", backend: "Пятница", long: "Friday", short: "Fri" },
+  { id: "sat", backend: "Суббота", long: "Saturday", short: "Sat" }
+]
+
 const groupsPlaceholder = (previous?: ScheduleGroup[]) => {
   if (previous !== undefined) return previous
   return readFromStorage<ScheduleGroup[]>(groupsStorageKey)
@@ -127,15 +164,6 @@ const schedulePlaceholder = (groupId: number | null, previous?: Lesson[]) => {
   if (groupId == null) return previous
   return readFromStorage<Lesson[]>(scheduleStorageKey(groupId))
 }
-
-const lessonTypeColor: Record<string, string> = {
-  "Лекция": "var(--badge-lec)",
-  "ПЗ": "var(--badge-prac)",
-  "ЛЗ": "var(--badge-lab)",
-  "Проектная деятельность": "#607d8b"
-}
-
-const getLessonTypeColor = (type?: string | null) => lessonTypeColor[type ?? ""] ?? "#888"
 
 function getTimeStr(lesson: Lesson) {
   if (!lesson?.start_time) return ""
@@ -193,51 +221,160 @@ export default function Schedule() {
   const { t } = useTranslation(["schedule", "common"])
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
-  const weekdayBackend = useMemo(() => {
-    const result = t("schedule:weekdays.backend", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length > 0) {
-      return result as string[]
+  const weekdayConfigs = useMemo(() => {
+    const rawItems = t("schedule:weekdays.items", { returnObjects: true }) as unknown
+    const rawOrder = t("schedule:weekdays.order", { returnObjects: true }) as unknown
+    const items = rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
+      ? (rawItems as Record<string, unknown>)
+      : {}
+    const fallbackById = new Map(fallbackWeekdays.map(item => [item.id, item]))
+    const baseOrder = Array.isArray(rawOrder) && rawOrder.length > 0
+      ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : fallbackWeekdays.map(item => item.id)
+    const configs: WeekdayConfig[] = []
+    const seen = new Set<string>()
+    const toConfig = (id: string, value?: unknown): WeekdayConfig => {
+      const fallback = fallbackById.get(id) ?? {
+        id,
+        backend: id,
+        long: id,
+        short: id.slice(0, 3)
+      }
+      const entry = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+      const backend =
+        typeof entry?.backend === "string" && entry.backend.length > 0
+          ? entry.backend
+          : fallback.backend
+      const long =
+        typeof entry?.long === "string" && entry.long.length > 0
+          ? entry.long
+          : fallback.long
+      const short =
+        typeof entry?.short === "string" && entry.short.length > 0
+          ? entry.short
+          : fallback.short
+      return { id, backend, long, short }
     }
-    return ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
+    for (const id of baseOrder) {
+      seen.add(id)
+      configs.push(toConfig(id, items[id]))
+    }
+    for (const [id, value] of Object.entries(items)) {
+      if (seen.has(id)) continue
+      configs.push(toConfig(id, value))
+    }
+    return configs.length > 0 ? configs : fallbackWeekdays
   }, [t])
-  const weekdayLabels = useMemo(() => {
-    const result = t("schedule:weekdays.long", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length === weekdayBackend.length) {
-      return result as string[]
-    }
-    return weekdayBackend
-  }, [t, weekdayBackend])
-  const weekdayShort = useMemo(() => {
-    const result = t("schedule:weekdays.short", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length === weekdayBackend.length) {
-      return result as string[]
-    }
-    return weekdayBackend.map(label => label.slice(0, 2))
-  }, [t, weekdayBackend])
-  const getDayLabel = useCallback(
-    (value: string) => {
-      const index = weekdayBackend.indexOf(value)
-      return index >= 0 ? weekdayLabels[index] : value
-    },
-    [weekdayBackend, weekdayLabels]
-  )
-  const lessonTypeOptions = useMemo(
-    () => [
-      { value: "Лекция", label: t("schedule:lessonTypes.Лекция") },
-      { value: "ПЗ", label: t("schedule:lessonTypes.ПЗ") },
-      { value: "ЛЗ", label: t("schedule:lessonTypes.ЛЗ") },
-      { value: "Проектная деятельность", label: t("schedule:lessonTypes.Проектная деятельность") },
-    ],
-    [t]
-  )
-  const lessonTypeLabels = useMemo(() => {
+  const weekdayBackend = useMemo(() => weekdayConfigs.map(config => config.backend), [weekdayConfigs])
+  const weekdayLabels = useMemo(() => weekdayConfigs.map(config => config.long), [weekdayConfigs])
+  const weekdayShort = useMemo(() => weekdayConfigs.map(config => config.short), [weekdayConfigs])
+  const weekdayLabelMap = useMemo(() => {
     const map = new Map<string, string>()
-    for (const option of lessonTypeOptions) {
-      map.set(option.value, option.label)
+    for (const config of weekdayConfigs) {
+      map.set(config.backend, config.long)
+      map.set(config.id, config.long)
     }
     return map
-  }, [lessonTypeOptions])
-  const defaultLessonType = lessonTypeOptions[0]?.value ?? "Лекция"
+  }, [weekdayConfigs])
+  const getDayLabel = useCallback((value: string) => weekdayLabelMap.get(value) ?? value, [weekdayLabelMap])
+  const lessonTypeConfigs = useMemo(() => {
+    const rawItems = t("schedule:lessonTypes.items", { returnObjects: true }) as unknown
+    const rawOrder = t("schedule:lessonTypes.order", { returnObjects: true }) as unknown
+    const items = rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
+      ? (rawItems as Record<string, unknown>)
+      : {}
+    const fallbackById = new Map(fallbackLessonTypes.map(item => [item.id, item]))
+    const baseOrder = Array.isArray(rawOrder) && rawOrder.length > 0
+      ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : fallbackLessonTypes.map(item => item.id)
+    const configs: LessonTypeConfig[] = []
+    const seen = new Set<string>()
+    const toConfig = (id: string, value?: unknown): LessonTypeConfig => {
+      const fallback = fallbackById.get(id) ?? {
+        id,
+        backend: [id],
+        label: id,
+        color: defaultLessonTypeColor
+      }
+      const entry = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+      let backend: string[] = []
+      if (Array.isArray(entry?.backend)) {
+        backend = entry.backend.filter((item): item is string => typeof item === "string" && item.length > 0)
+      } else if (typeof entry?.backend === "string" && entry.backend.length > 0) {
+        backend = [entry.backend]
+      }
+      if (backend.length === 0) backend = [...fallback.backend]
+      const label =
+        typeof entry?.label === "string" && entry.label.length > 0
+          ? entry.label
+          : fallback.label
+      const color =
+        typeof entry?.color === "string" && entry.color.length > 0
+          ? entry.color
+          : fallback.color
+      return { id, backend, label, color }
+    }
+    for (const id of baseOrder) {
+      seen.add(id)
+      configs.push(toConfig(id, items[id]))
+    }
+    for (const [id, value] of Object.entries(items)) {
+      if (seen.has(id)) continue
+      configs.push(toConfig(id, value))
+    }
+    return configs.length > 0 ? configs : fallbackLessonTypes
+  }, [t])
+  const lessonTypeById = useMemo(() => new Map(lessonTypeConfigs.map(config => [config.id, config])), [lessonTypeConfigs])
+  const lessonTypeByBackend = useMemo(() => {
+    const map = new Map<string, LessonTypeConfig>()
+    for (const config of lessonTypeConfigs) {
+      for (const backend of config.backend) {
+        map.set(backend, config)
+      }
+    }
+    return map
+  }, [lessonTypeConfigs])
+  const lessonTypeLabels = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const config of lessonTypeConfigs) {
+      map.set(config.id, config.label)
+      for (const backend of config.backend) {
+        map.set(backend, config.label)
+      }
+    }
+    return map
+  }, [lessonTypeConfigs])
+  const lessonTypeOptions = useMemo(
+    () => lessonTypeConfigs.map(config => ({ value: config.id, label: config.label })),
+    [lessonTypeConfigs]
+  )
+  const defaultLessonType = lessonTypeOptions[0]?.value ?? fallbackLessonTypes[0]?.id ?? ""
+  const getLessonTypeColor = useCallback(
+    (value?: string | null) => {
+      if (!value) return defaultLessonTypeColor
+      const match = lessonTypeById.get(value) ?? lessonTypeByBackend.get(value)
+      return match?.color ?? defaultLessonTypeColor
+    },
+    [lessonTypeByBackend, lessonTypeById]
+  )
+  const resolveLessonTypeId = useCallback(
+    (value?: string | null) => {
+      if (!value) return defaultLessonType
+      if (lessonTypeById.has(value)) return value
+      const match = lessonTypeByBackend.get(value)
+      return match ? match.id : value
+    },
+    [defaultLessonType, lessonTypeByBackend, lessonTypeById]
+  )
+  const toBackendLessonType = useCallback(
+    (value?: string | null) => {
+      if (!value) return ""
+      const match = lessonTypeById.get(value)
+      if (match) return match.backend[0] ?? value
+      return value
+    },
+    [lessonTypeById]
+  )
   const formatDuration = useCallback(
     (hours: number, minutes: number) => {
       const parts: string[] = []
@@ -269,6 +406,21 @@ export default function Schedule() {
     endTime: "",
     parity: "both"
   })
+  useEffect(() => {
+    if (!defaultLessonType) return
+    setAddFields(prev => {
+      if (lessonTypeOptions.some(option => option.value === prev.lessonType)) return prev
+      return { ...prev, lessonType: defaultLessonType }
+    })
+  }, [lessonTypeOptions, defaultLessonType])
+  const editingLessonTypeOptions = useMemo(() => {
+    if (!editLesson?.lesson_type) return lessonTypeOptions
+    if (lessonTypeOptions.some(option => option.value === editLesson.lesson_type)) return lessonTypeOptions
+    return [
+      ...lessonTypeOptions,
+      { value: editLesson.lesson_type, label: lessonTypeLabels.get(editLesson.lesson_type) ?? editLesson.lesson_type }
+    ]
+  }, [editLesson?.lesson_type, lessonTypeLabels, lessonTypeOptions])
   const addDayLabel = addDay ? getDayLabel(addDay) : ""
   const isMobile = useMediaQuery("(max-width:1730px)")
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
@@ -1047,7 +1199,17 @@ export default function Schedule() {
                 </Box>
                 <Stack direction="row" gap={1.2} mt={2}>
                   {(user?.role === "admin" || user?.role === "teacher") && (
-                    <Button variant="outlined" onClick={() => { setEditing(true); setEditLesson(dialogLesson) }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        if (!dialogLesson) return
+                        setEditing(true)
+                        setEditLesson({
+                          ...dialogLesson,
+                          lesson_type: resolveLessonTypeId(dialogLesson.lesson_type)
+                        })
+                      }}
+                    >
                       {t("schedule:buttons.edit")}
                     </Button>
                   )}
@@ -1086,7 +1248,7 @@ export default function Schedule() {
                   value={editLesson.lesson_type}
                   onChange={e => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
                 >
-                  {lessonTypeOptions.map(option => (
+                  {editingLessonTypeOptions.map(option => (
                     <MenuItem value={option.value} key={option.value}>
                       {option.label}
                     </MenuItem>
@@ -1135,14 +1297,15 @@ export default function Schedule() {
                       if (!editLesson) return
                       const optimisticId = editLesson.id
                       const backup = groupSchedule.map(l => ({ ...l }))
-                      const updatedLesson: Lesson = { ...editLesson }
+                      const backendLessonType = toBackendLessonType(editLesson.lesson_type)
+                      const updatedLesson: Lesson = { ...editLesson, lesson_type: backendLessonType }
                       applyScheduleUpdate(prev => prev.map(l => (l.id === optimisticId ? updatedLesson : l)))
                       try {
                         await api.patch(`/schedule/${optimisticId}`, {
                           subject: editLesson.subject,
                           teacher: editLesson.teacher,
                           room: editLesson.room,
-                          lesson_type: editLesson.lesson_type,
+                          lesson_type: backendLessonType,
                           weekday: editLesson.weekday,
                           start_time: editLesson.start_time,
                           end_time: editLesson.end_time,
@@ -1261,13 +1424,14 @@ export default function Schedule() {
       setSnack(t("schedule:snackbar.fillAllFields"))
       return
     }
+    const backendLessonType = toBackendLessonType(lessonType)
     const optimistic: Lesson = {
       id: Date.now(),
       group_id: selectedGroup,
       subject,
       teacher,
       room,
-      lesson_type: lessonType,
+      lesson_type: backendLessonType,
       weekday: addDay,
       start_time: dayjs().format("YYYY-MM-DDT") + startTime + ":00",
       end_time: dayjs().format("YYYY-MM-DDT") + endTime + ":00",
@@ -1280,7 +1444,7 @@ export default function Schedule() {
         subject,
         teacher,
         room,
-        lesson_type: lessonType,
+        lesson_type: backendLessonType,
         weekday: addDay,
         start_time: optimistic.start_time,
         end_time: optimistic.end_time,

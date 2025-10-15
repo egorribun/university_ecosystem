@@ -46,8 +46,8 @@ const Navbar = () => {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const drawerTrapRef = useFocusTrap<HTMLDivElement>({
     active: mobileMenu && isMobile,
-    initialFocus: () => closeButtonRef.current ?? undefined,
-    fallbackFocus: () => closeButtonRef.current ?? undefined,
+    initialFocus: () => (closeButtonRef.current ?? navRef.current ?? document.body)!,
+    fallbackFocus: () => (closeButtonRef.current ?? navRef.current ?? document.body)!,
     onDeactivate: () => setMobileMenu(false),
   });
 
