@@ -18,6 +18,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
+from app.localization import resolve_locale, translate
 from app.models.models import PushSubscription, User
 from app.services.notifications import prepare_push_payload_for_user
 from app.services.push_schema import ensure_push_subscription_schema
@@ -179,7 +180,9 @@ class PushSubscriptionDelete(BaseModel):
 
 class DisableUserPushRequest(BaseModel):
     user_id: int = Field(
-        ..., ge=1, description="ID пользователя, для которого нужно отключить push"
+        ...,
+        ge=1,
+        description=translate("notifications.push.disable_user.description"),
     )
 
 
@@ -196,11 +199,11 @@ class PushTestRequest(NotifyBody):
         default=None, description="Target user id for testing", ge=1
     )
     title: str = Field(
-        default="Тестовое веб-push уведомление",
+        default=translate("notifications.push.test.title_default"),
         description="Notification title",
     )
     body: str | None = Field(
-        default="Проверка доставки уведомлений",
+        default=translate("notifications.push.test.body_default"),
         description="Notification body",
     )
     url: str | None = Field(
@@ -234,25 +237,51 @@ def _aggregate_results(
 
 async def _validate_subscription_payload(
     data: PushSubscriptionIn,
+    *,
+    locale: str | None,
 ) -> tuple[str, str, str]:
     endpoint = data.endpoint.strip()
     p256dh = data.keys.p256dh.strip()
     auth = data.keys.auth.strip()
     errors = []
     if not endpoint:
-        errors.append({"field": "endpoint", "message": "Endpoint is required"})
+        errors.append(
+            {
+                "field": "endpoint",
+                "message": translate(
+                    "notifications.push.validation.endpoint_required",
+                    locale=locale,
+                ),
+            }
+        )
     if not p256dh:
         errors.append(
-            {"field": "keys.p256dh", "message": "keys.p256dh must not be empty"}
+            {
+                "field": "keys.p256dh",
+                "message": translate(
+                    "notifications.push.validation.keys_p256dh_required",
+                    locale=locale,
+                ),
+            }
         )
     if not auth:
-        errors.append({"field": "keys.auth", "message": "keys.auth must not be empty"})
+        errors.append(
+            {
+                "field": "keys.auth",
+                "message": translate(
+                    "notifications.push.validation.keys_auth_required",
+                    locale=locale,
+                ),
+            }
+        )
     if errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_subscription",
-                "message": "Subscription payload validation failed",
+                "message": translate(
+                    "errors.push.subscription_validation_failed", locale=locale
+                ),
                 "fields": errors,
             },
         )
@@ -272,8 +301,11 @@ async def subscribe(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
+    locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
-    endpoint, p256dh, auth = await _validate_subscription_payload(payload)
+    endpoint, p256dh, auth = await _validate_subscription_payload(
+        payload, locale=locale
+    )
 
     client_host = request.client.host if request.client else None
     try:
@@ -298,7 +330,7 @@ async def subscribe(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "error": "rate_limited",
-                "message": "Слишком много запросов подписки. Попробуйте позже.",
+                "message": translate("errors.rate_limit.push_subscribe", locale=locale),
                 "retry_after": info.retry_after,
             },
         ) from None
@@ -326,7 +358,9 @@ async def subscribe(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "error": "duplicate_endpoint",
-                        "message": "Subscription endpoint already registered",
+                        "message": translate(
+                            "errors.push.subscription_exists", locale=locale
+                        ),
                     },
                 )
             existing.p256dh = p256dh
@@ -361,7 +395,7 @@ async def subscribe(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "error": "duplicate_endpoint",
-                "message": "Subscription endpoint already exists",
+                "message": translate("errors.push.subscription_exists", locale=locale),
             },
         )
 
@@ -371,9 +405,11 @@ async def subscribe(
 @router.patch("/subscribe/topics", response_model=PushSubscriptionOut)
 async def update_subscription_topics(
     payload: PushSubscriptionTopicsUpdate,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
+    locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
@@ -381,7 +417,9 @@ async def update_subscription_topics(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_subscription",
-                "message": "Endpoint is required",
+                "message": translate(
+                    "notifications.push.validation.endpoint_required", locale=locale
+                ),
             },
         )
 
@@ -398,7 +436,9 @@ async def update_subscription_topics(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "subscription_not_found",
-                "message": "Subscription not found",
+                "message": translate(
+                    "errors.push.subscription_not_found", locale=locale
+                ),
             },
         )
 
@@ -416,6 +456,7 @@ async def unsubscribe(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, bool]:
+    locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
@@ -423,7 +464,9 @@ async def unsubscribe(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_subscription",
-                "message": "Endpoint is required",
+                "message": translate(
+                    "notifications.push.validation.endpoint_required", locale=locale
+                ),
             },
         )
 
@@ -450,7 +493,9 @@ async def unsubscribe(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "error": "rate_limited",
-                "message": "Слишком много попыток отключить уведомления.",
+                "message": translate(
+                    "errors.rate_limit.push_unsubscribe", locale=locale
+                ),
                 "retry_after": info.retry_after,
             },
         ) from None
@@ -478,17 +523,21 @@ async def send_test(
     user: Annotated[User, Depends(get_current_user)],
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
+    locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "forbidden", "message": "Admin access required"},
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
         )
 
     if not settings.VAPID_PRIVATE_KEY or not settings.VAPID_PUBLIC_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Web push is not configured",
+            detail=translate("errors.push.not_configured", locale=locale),
         )
 
     client_host = request.client.host if request and request.client else None
@@ -514,7 +563,7 @@ async def send_test(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "error": "rate_limited",
-                "message": "Too many test notifications",
+                "message": translate("errors.rate_limit.push_test", locale=locale),
                 "retry_after": info.retry_after,
             },
         )
@@ -524,7 +573,10 @@ async def send_test(
     if not target:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "user_not_found", "message": "Target user not found"},
+            detail={
+                "error": "user_not_found",
+                "message": translate("errors.users.not_found", locale=locale),
+            },
         )
 
     subscriptions = (
@@ -540,16 +592,25 @@ async def send_test(
     )
     if not subscriptions:
         return SendTestResponse(
-            total=0, sent=0, removed=0, failed=0, detail="No subscriptions found"
+            total=0,
+            sent=0,
+            removed=0,
+            failed=0,
+            detail=translate("notifications.push.test.no_subscriptions", locale=locale),
         )
 
     normalized_topic = normalize_topic(payload.topic if payload else None) or "system"
     base_url = payload.url if payload and payload.url else settings.app_base_url or "/"
     body = payload.body if payload else None
-    title = payload.title if payload else "Тестовое веб-push уведомление"
+    title = (
+        payload.title
+        if payload and payload.title
+        else translate("notifications.push.test.title_default", locale=locale)
+    )
     message = {
         "title": title,
-        "body": body or "Проверка доставки уведомлений",
+        "body": body
+        or translate("notifications.push.test.body_default", locale=locale),
         "url": base_url,
     }
     if normalized_topic:
@@ -573,7 +634,8 @@ async def send_test(
         result = await _deliver_to_subscription(sub, prepared)
         results.append(result)
     summary = _aggregate_results(
-        results, failure_detail="Не удалось отправить тестовое уведомление"
+        results,
+        failure_detail=translate("notifications.push.test_failure", locale=locale),
     )
     logger.info(
         "push.test.summary",
@@ -591,17 +653,29 @@ async def send_test(
 @router.post("/admin/disable-user")
 async def disable_user_push(
     payload: DisableUserPushRequest,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, int | bool]:
+    locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
     if user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
+        )
 
     target = await db.get(User, payload.user_id)
     if not target:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "user_not_found",
+                "message": translate("errors.users.not_found", locale=locale),
+            },
         )
 
     existing = (
@@ -634,12 +708,20 @@ async def disable_user_push(
 @router.post("/broadcast", response_model=SendTestResponse)
 async def broadcast(
     data: NotifyBody,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> SendTestResponse:
+    locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
     if user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
+        )
 
     subscriptions = (
         (
@@ -669,7 +751,8 @@ async def broadcast(
         results.append(await _deliver_to_subscription(subscription, prepared))
 
     summary = _aggregate_results(
-        results, failure_detail="Не удалось отправить уведомления"
+        results,
+        failure_detail=translate("notifications.push.broadcast_failure", locale=locale),
     )
     logger.info(
         "push.broadcast.summary",

@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app import crud
+from app.localization import translate
 from app.models import models
 from app.schemas import schemas
 
@@ -24,7 +25,10 @@ async def test_create_event_guard(db_session, user_factory):
         image_url=None,
         about=None,
     )
-    with pytest.raises(ValueError, match="Время окончания"):
+    with pytest.raises(
+        ValueError,
+        match=translate("validation.events.end_after_start"),
+    ):
         await crud.create_event(db_session, payload, user_id=user.id)
 
 
@@ -43,7 +47,10 @@ async def test_update_event_guard(db_session, user_factory):
         ends_at=starts,
         fields_set={"starts_at", "ends_at"},
     )
-    with pytest.raises(ValueError, match="Время окончания"):
+    with pytest.raises(
+        ValueError,
+        match=translate("validation.events.end_after_start"),
+    ):
         await crud.update_event(db_session, record, invalid_update)
 
 

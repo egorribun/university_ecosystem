@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable, Sequence
 
+from app.localization import translate
 from app.models import models
 
 _WEEKDAY_ALIASES: dict[str, int] = {
@@ -92,6 +93,7 @@ def generate_schedule_ics(
     lessons: Sequence[models.Schedule],
     *,
     weeks: int = 16,
+    locale: str | None = None,
 ) -> str:
     """Generate an iCalendar representation for the provided schedule."""
 
@@ -101,8 +103,11 @@ def generate_schedule_ics(
     current_week_number = today.isocalendar()[1]
     current_week_parity = "odd" if current_week_number % 2 else "even"
 
+    group_name = getattr(group, "name", None)
     calendar_name = (
-        f"Расписание {group.name}" if getattr(group, "name", None) else "Расписание"
+        translate("schedule.ics.calendar_name", locale=locale, group=group_name)
+        if group_name
+        else translate("schedule.ics.calendar_name_generic", locale=locale)
     )
 
     lines: list[str] = [
@@ -124,7 +129,9 @@ def generate_schedule_ics(
             continue
 
         parity = getattr(lesson, "parity", "both") or "both"
-        subject = getattr(lesson, "subject", "Занятие") or "Занятие"
+        subject = getattr(lesson, "subject", None) or translate(
+            "schedule.ics.lesson_default_subject", locale=locale
+        )
         lesson_type = getattr(lesson, "lesson_type", None)
         summary = subject if not lesson_type else f"{subject} ({lesson_type})"
         teacher = getattr(lesson, "teacher", None)
@@ -142,13 +149,28 @@ def generate_schedule_ics(
             uid = f"lesson-{getattr(lesson, 'id', 'x')}-{lesson_date.strftime('%Y%m%d')}@university-ecosystem"
             description_parts = []
             if teacher:
-                description_parts.append(f"Преподаватель: {teacher}")
-            if room:
-                description_parts.append(f"Аудитория: {room}")
-            if parity and parity.lower() in {"odd", "even"}:
                 description_parts.append(
-                    "Нечётные недели" if parity.lower() == "odd" else "Чётные недели"
+                    translate(
+                        "schedule.ics.description.teacher",
+                        locale=locale,
+                        teacher=teacher,
+                    )
                 )
+            if room:
+                description_parts.append(
+                    translate(
+                        "schedule.ics.description.room",
+                        locale=locale,
+                        room=room,
+                    )
+                )
+            if parity and parity.lower() in {"odd", "even"}:
+                parity_key = (
+                    "schedule.ics.description.parity_odd"
+                    if parity.lower() == "odd"
+                    else "schedule.ics.description.parity_even"
+                )
+                description_parts.append(translate(parity_key, locale=locale))
             description = "\\n".join(description_parts) if description_parts else ""
 
             lines.extend(

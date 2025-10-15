@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload, sessionmaker
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
-from app.localization import translate
+from app.localization import resolve_locale, translate
 from app.models.models import PushSubscription
 from app.services.notification_templates import render_notification_template
 from app.services.push_schema import ensure_push_subscription_schema_sync
@@ -163,6 +163,8 @@ def _prepare_actions(raw_actions: Any) -> tuple[list[dict[str, str]], dict[str, 
 
 def _normalize_payload(
     raw: Mapping[str, Any] | None,
+    *,
+    locale: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(raw, Mapping):
         raw = {}
@@ -275,7 +277,12 @@ def _normalize_payload(
     topic = meta.get("topic")
     if topic and isinstance(topic, str):
         payload_data.setdefault("topic", topic)
-    title = str(raw.get("title") or "Уведомление")
+    title_value = raw.get("title")
+    title = (
+        str(title_value)
+        if title_value not in (None, "")
+        else translate("notifications.default_title", locale=locale)
+    )
     payload = {
         "title": title,
         "options": payload_options,
@@ -304,10 +311,16 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
 
 
 def _compose_payload(
-    payload: Mapping[str, Any], meta: Mapping[str, Any] | None
+    payload: Mapping[str, Any],
+    meta: Mapping[str, Any] | None,
+    *,
+    locale: str | None = None,
 ) -> dict[str, Any]:
     result = {
-        "title": str(payload.get("title") or "Уведомление"),
+        "title": str(
+            payload.get("title")
+            or translate("notifications.default_title", locale=locale)
+        ),
         "options": deepcopy(payload.get("options", {})),
         "data": deepcopy(payload.get("data", {})),
     }
@@ -337,7 +350,8 @@ def _prepare_delivery_payload(
     topic: str | None,
     user: Any | None,
 ) -> dict[str, Any]:
-    normalized, meta = _normalize_payload(payload)
+    resolved_locale = resolve_locale(user=user)
+    normalized, meta = _normalize_payload(payload, locale=resolved_locale)
     normalized_topic = normalize_topic(topic) or normalize_topic(meta.get("topic"))
     if normalized_topic:
         meta["topic"] = normalized_topic
@@ -345,7 +359,7 @@ def _prepare_delivery_payload(
         normalized["data"].setdefault("topic", normalized_topic)
     if user and _is_user_in_quiet_hours(user):
         _apply_quiet_mode(normalized)
-    return _compose_payload(normalized, meta)
+    return _compose_payload(normalized, meta, locale=resolved_locale)
 
 
 async def _check_rate_limit(
@@ -474,7 +488,9 @@ def build_payload(
 
 
 def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
-    normalized_payload, meta = _normalize_payload(data)
+    user = getattr(sub, "user", None)
+    locale = resolve_locale(user=user)
+    normalized_payload, meta = _normalize_payload(data, locale=locale)
     ttl = _resolve_ttl(meta)
     headers = {"TTL": str(ttl)}
     urgency = meta.get("urgency")
