@@ -3,8 +3,8 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from app.models.enums import UserRole
 from app.localization import translate
+from app.models.enums import UserRole
 
 
 class OrmModel(BaseModel):
@@ -124,9 +124,7 @@ class ScheduleBase(BaseModel):
     start_time: datetime
     end_time: datetime
     parity: Optional[str] = "both"
-    lesson_type: Optional[str] = translate(
-        "schedule.lesson.default_type", locale="ru"
-    )
+    lesson_type: Optional[str] = translate("schedule.lesson.default_type", locale="ru")
 
 
 class ScheduleCreate(ScheduleBase):

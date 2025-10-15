@@ -1,9 +1,7 @@
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from sqlalchemy import select
 from starlette.requests import Request
-
-from fastapi import Request
 
 from app.localization import translate
 from app.models.models import PushSubscription

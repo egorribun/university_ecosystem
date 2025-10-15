@@ -64,9 +64,7 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     assert "schedule-" in disposition.lower()
     assert response.headers.get("content-language") == "en"
     assert "Алгебра" in response.text
-    expected_en = translate(
-        "schedule.ics.description.room", locale="en", room="А-101"
-    )
+    expected_en = translate("schedule.ics.description.room", locale="en", room="А-101")
     assert expected_en in response.text
 
     response_ru = await async_client.get(

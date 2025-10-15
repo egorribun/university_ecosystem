@@ -36,9 +36,7 @@ class MemoryLimiter:
     def __init__(self) -> None:
         self.bucket: dict[str, list[float]] = {}
 
-    def check(
-        self, key: str, limit: int, window_sec: int, *, message: str
-    ) -> None:
+    def check(self, key: str, limit: int, window_sec: int, *, message: str) -> None:
         if limit <= 0 or window_sec <= 0:
             return
         now = time.time()
@@ -87,8 +85,6 @@ def sensitive_route_limit(
         key = f"{key_prefix}:{ip}:{request.url.path}"
         locale = resolve_locale(request=request)
         message = translate("errors.rate_limit.generic", locale=locale)
-        limiter.check(
-            key, resolved_limit, resolved_window, message=message
-        )
+        limiter.check(key, resolved_limit, resolved_window, message=message)
 
     return dependency

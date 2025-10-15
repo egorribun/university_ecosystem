@@ -129,9 +129,8 @@ def generate_schedule_ics(
             continue
 
         parity = getattr(lesson, "parity", "both") or "both"
-        subject = (
-            getattr(lesson, "subject", None)
-            or translate("schedule.ics.lesson_default_subject", locale=locale)
+        subject = getattr(lesson, "subject", None) or translate(
+            "schedule.ics.lesson_default_subject", locale=locale
         )
         lesson_type = getattr(lesson, "lesson_type", None)
         summary = subject if not lesson_type else f"{subject} ({lesson_type})"

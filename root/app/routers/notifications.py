@@ -395,9 +395,7 @@ async def subscribe(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "error": "duplicate_endpoint",
-                "message": translate(
-                    "errors.push.subscription_exists", locale=locale
-                ),
+                "message": translate("errors.push.subscription_exists", locale=locale),
             },
         )
 
@@ -598,9 +596,7 @@ async def send_test(
             sent=0,
             removed=0,
             failed=0,
-            detail=translate(
-                "notifications.push.test.no_subscriptions", locale=locale
-            ),
+            detail=translate("notifications.push.test.no_subscriptions", locale=locale),
         )
 
     normalized_topic = normalize_topic(payload.topic if payload else None) or "system"

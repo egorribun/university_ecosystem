@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.core.database import get_db
-from app.models import models
 from app.localization import resolve_locale, translate
+from app.models import models
 from app.services.ical import generate_schedule_ics
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
