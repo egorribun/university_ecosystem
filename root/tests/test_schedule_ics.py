@@ -113,7 +113,5 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
     summary_line = next(line for line in lines if line.startswith("SUMMARY:"))
     assert not _contains_cyrillic(summary_line)
 
-    description_line = next(
-        line for line in lines if line.startswith("DESCRIPTION:")
-    )
+    description_line = next(line for line in lines if line.startswith("DESCRIPTION:"))
     assert not _contains_cyrillic(description_line)
