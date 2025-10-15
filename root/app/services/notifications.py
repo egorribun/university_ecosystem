@@ -566,7 +566,9 @@ async def notify_about_event(
         en=getattr(event, "title_en", None),
     )
     if not localized_title:
-        localized_title = getattr(event, "title", None) or getattr(event, "title_en", None) or ""
+        localized_title = (
+            getattr(event, "title", None) or getattr(event, "title_en", None) or ""
+        )
     localized_description = localized_text(
         normalized_locale,
         ru=getattr(event, "description", None),

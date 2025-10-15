@@ -36,6 +36,7 @@ def localized_text(
             return candidate
     return None
 
+
 _QUERY_PARAM_KEYS: tuple[str, ...] = ("lang", "locale", "language")
 _USER_ATTR_KEYS: tuple[str, ...] = (
     "preferred_locale",

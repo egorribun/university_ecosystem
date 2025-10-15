@@ -194,7 +194,10 @@ def serialize_event(
     data: dict[str, Any] = {
         "id": record.id,
         "title": _localized_event_field(
-            normalized_locale, getattr(record, "title", None), getattr(record, "title_en", None), required=True
+            normalized_locale,
+            getattr(record, "title", None),
+            getattr(record, "title_en", None),
+            required=True,
         ),
         "description": _localized_event_field(
             normalized_locale,
@@ -202,7 +205,9 @@ def serialize_event(
             getattr(record, "description_en", None),
         ),
         "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
-        "description_en": sanitize_optional_text(getattr(record, "description_en", None)),
+        "description_en": sanitize_optional_text(
+            getattr(record, "description_en", None)
+        ),
         "location": _localized_event_field(
             normalized_locale,
             getattr(record, "location", None),
@@ -462,9 +467,7 @@ async def unregister_attendance(
     return {"ok": True}
 
 
-async def get_my_events(
-    db: AsyncSession, user_id: int, *, locale: str | None = None
-):
+async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = None):
     attendance_rows = (
         (
             await db.execute(
