@@ -1,10 +1,35 @@
 <!doctype html>
 <html lang="ru">
   <head>
+    <script type="module">
+      import { applyDocumentLanguage, applyMetaTranslations, getPreferredLanguage } from "/static-shell-i18n.js";
+
+      const language = window.__UE_SELECTED_LANG__ || getPreferredLanguage(window);
+      window.__UE_SELECTED_LANG__ = language;
+      applyDocumentLanguage(document, language);
+      applyMetaTranslations(document, language);
+    </script>
     <script>
       (function () {
+        var lang = "ru";
+        try {
+          var storedLang = localStorage.getItem("ue:language");
+          if (storedLang === "en" || storedLang === "ru") {
+            lang = storedLang;
+          } else {
+            var browser = (navigator.language || "").toLowerCase();
+            if (browser.indexOf("en") === 0) {
+              lang = "en";
+            }
+          }
+        } catch (error) {}
+        document.documentElement.setAttribute("lang", lang);
+        window.__UE_SELECTED_LANG__ = lang;
+
         var s = null;
-        try { s = localStorage.getItem("theme"); } catch (e) {}
+        try {
+          s = localStorage.getItem("theme");
+        } catch (e) {}
         var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
         var dark = s ? s === "dark" : m;
         var bg = dark ? "#0b0d11" : "#f4f8fd";
