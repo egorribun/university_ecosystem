@@ -54,15 +54,20 @@ describe("auth page translations", () => {
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Forgot password?" })).toBeInTheDocument()
+    expect(screen.getByText("No account?")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Sign up" })).toBeInTheDocument()
 
     await user.click(toggle)
 
     expect(await screen.findByRole("heading", { name: "Вход" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Забыли пароль?" })).toBeInTheDocument()
+    expect(screen.getByText("Нет аккаунта?")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Зарегистрироваться" })).toBeInTheDocument()
 
     await user.click(toggle)
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Sign up" })).toBeInTheDocument()
   })
 })
 

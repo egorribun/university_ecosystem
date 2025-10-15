@@ -44,8 +44,12 @@
   },
   "time": {
     "hours_one": "{{count}} hour",
+    "hours_few": "{{count}} hours",
+    "hours_many": "{{count}} hours",
     "hours_other": "{{count}} hours",
     "minutes_one": "{{count}} minute",
+    "minutes_few": "{{count}} minutes",
+    "minutes_many": "{{count}} minutes",
     "minutes_other": "{{count}} minutes"
   },
   "timeLeft": {

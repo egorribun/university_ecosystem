@@ -63,6 +63,7 @@
       "summaryHours": "{{count}} ч.",
       "summaryHours_few": "{{count}} ч.",
       "summaryHours_many": "{{count}} ч.",
+      "summaryHours_other": "{{count}} ч.",
       "summaryGroups": "{{count}} кружок",
       "summaryGroups_few": "{{count}} кружка",
       "summaryGroups_many": "{{count}} кружков",

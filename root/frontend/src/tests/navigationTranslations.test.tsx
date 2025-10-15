@@ -68,10 +68,12 @@ describe("navigation components translations", () => {
     const toggle = screen.getByTestId("lang-toggle")
 
     expect(await screen.findByRole("link", { name: "Home" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Schedule" })).toBeInTheDocument()
 
     await user.click(toggle)
 
     expect(await screen.findByRole("link", { name: "Главная" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Расписание" })).toBeInTheDocument()
   })
 })
 
