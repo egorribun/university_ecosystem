@@ -7,6 +7,7 @@ from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
 from app.core.rate_limit import parse_rate_limit
+from app.localization import resolve_locale, translate
 
 DEFAULT_LIMIT = 5
 DEFAULT_WINDOW_SECONDS = 60
@@ -35,7 +36,9 @@ class MemoryLimiter:
     def __init__(self) -> None:
         self.bucket: dict[str, list[float]] = {}
 
-    def check(self, key: str, limit: int, window_sec: int) -> None:
+    def check(
+        self, key: str, limit: int, window_sec: int, *, message: str
+    ) -> None:
         if limit <= 0 or window_sec <= 0:
             return
         now = time.time()
@@ -46,7 +49,7 @@ class MemoryLimiter:
         if len(arr) >= limit:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Слишком много запросов",
+                detail=message,
             )
         arr.append(now)
         self.bucket[key] = arr
@@ -82,6 +85,10 @@ def sensitive_route_limit(
             return
         ip = request.client.host if request.client else "unknown"
         key = f"{key_prefix}:{ip}:{request.url.path}"
-        limiter.check(key, resolved_limit, resolved_window)
+        locale = resolve_locale(request=request)
+        message = translate("errors.rate_limit.generic", locale=locale)
+        limiter.check(
+            key, resolved_limit, resolved_window, message=message
+        )
 
     return dependency

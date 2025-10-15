@@ -117,6 +117,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Не удалось подтвердить учётные данные",
         "en": "Could not validate credentials",
     },
+    "errors.auth.user_deactivated": {
+        "ru": "Пользователь деактивирован",
+        "en": "User account is deactivated",
+    },
     "errors.forbidden": {
         "ru": "Доступ запрещён",
         "en": "Access denied",
@@ -145,9 +149,45 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Уведомление не найдено",
         "en": "Notification not found",
     },
+    "errors.push.not_configured": {
+        "ru": "Web push не настроен",
+        "en": "Web push is not configured",
+    },
+    "errors.push.subscription_exists": {
+        "ru": "Точка подписки уже зарегистрирована",
+        "en": "Subscription endpoint already registered",
+    },
+    "errors.push.subscription_not_found": {
+        "ru": "Подписка не найдена",
+        "en": "Subscription not found",
+    },
+    "errors.push.subscription_validation_failed": {
+        "ru": "Не удалось проверить данные подписки",
+        "en": "Subscription payload validation failed",
+    },
+    "errors.rate_limit.generic": {
+        "ru": "Слишком много запросов",
+        "en": "Too many requests",
+    },
+    "errors.rate_limit.push_subscribe": {
+        "ru": "Слишком много запросов подписки. Попробуйте позже.",
+        "en": "Too many subscription attempts. Please try again later.",
+    },
+    "errors.rate_limit.push_unsubscribe": {
+        "ru": "Слишком много попыток отключить уведомления.",
+        "en": "Too many unsubscribe attempts.",
+    },
+    "errors.rate_limit.push_test": {
+        "ru": "Слишком много тестовых уведомлений",
+        "en": "Too many test notifications",
+    },
     "errors.schedule.not_found": {
         "ru": "Запись расписания не найдена",
         "en": "Schedule entry not found",
+    },
+    "errors.schedule.group_not_found": {
+        "ru": "Группа не найдена",
+        "en": "Group not found",
     },
     "errors.spotify.reconnect_required": {
         "ru": "Требуется переподключить Spotify",
@@ -185,6 +225,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Указанный email уже используется",
         "en": "The specified email is already in use",
     },
+    "errors.users.create_failed": {
+        "ru": "Ошибка создания пользователя",
+        "en": "Failed to create user",
+    },
     "errors.users.invite_required": {
         "ru": "Необходим уникальный код для регистрации преподавателя/админа",
         "en": "A unique invite code is required to register a teacher or admin",
@@ -196,6 +240,94 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "errors.users.cannot_delete_self": {
         "ru": "Нельзя удалить самого себя",
         "en": "You cannot delete yourself",
+    },
+    "errors.users.not_found": {
+        "ru": "Пользователь не найден",
+        "en": "User not found",
+    },
+    "notifications.push.test.title_default": {
+        "ru": "Тестовое веб-push уведомление",
+        "en": "Test web push notification",
+    },
+    "notifications.push.test.body_default": {
+        "ru": "Проверка доставки уведомлений",
+        "en": "Delivery check",
+    },
+    "notifications.push.test.no_subscriptions": {
+        "ru": "Активные подписки не найдены",
+        "en": "No subscriptions found",
+    },
+    "notifications.push.test_failure": {
+        "ru": "Не удалось отправить тестовое уведомление",
+        "en": "Failed to send the test notification",
+    },
+    "notifications.push.broadcast_failure": {
+        "ru": "Не удалось отправить уведомления",
+        "en": "Failed to deliver notifications",
+    },
+    "notifications.push.disable_user.description": {
+        "ru": "ID пользователя, для которого нужно отключить push",
+        "en": "User ID for which push notifications should be disabled",
+    },
+    "notifications.push.validation.endpoint_required": {
+        "ru": "Endpoint обязателен",
+        "en": "Endpoint is required",
+    },
+    "notifications.push.validation.keys_auth_required": {
+        "ru": "keys.auth не может быть пустым",
+        "en": "keys.auth must not be empty",
+    },
+    "notifications.push.validation.keys_p256dh_required": {
+        "ru": "keys.p256dh не может быть пустым",
+        "en": "keys.p256dh must not be empty",
+    },
+    "schedule.ics.calendar_name": {
+        "ru": "Расписание {group}",
+        "en": "Schedule for {group}",
+    },
+    "schedule.ics.calendar_name_generic": {
+        "ru": "Расписание",
+        "en": "Schedule",
+    },
+    "schedule.ics.lesson_default_subject": {
+        "ru": "Занятие",
+        "en": "Lesson",
+    },
+    "schedule.ics.description.teacher": {
+        "ru": "Преподаватель: {teacher}",
+        "en": "Teacher: {teacher}",
+    },
+    "schedule.ics.description.room": {
+        "ru": "Аудитория: {room}",
+        "en": "Room: {room}",
+    },
+    "schedule.ics.description.parity_odd": {
+        "ru": "Нечётные недели",
+        "en": "Odd weeks",
+    },
+    "schedule.ics.description.parity_even": {
+        "ru": "Чётные недели",
+        "en": "Even weeks",
+    },
+    "schedule.lesson.default_type": {
+        "ru": "Лекция",
+        "en": "Lecture",
+    },
+    "schedule.query.group_id_description": {
+        "ru": "Идентификатор группы",
+        "en": "Group identifier",
+    },
+    "validation.dnd.times_required": {
+        "ru": 'Укажите время начала и окончания режима "Не беспокоить"',
+        "en": 'Provide both start and end times for "Do Not Disturb" mode',
+    },
+    "validation.events.end_after_start": {
+        "ru": "Время окончания должно быть позже времени начала мероприятия",
+        "en": "The end time must be later than the start time",
+    },
+    "validation.events.times_required": {
+        "ru": "Укажите время начала и окончания мероприятия одновременно",
+        "en": "Provide both start and end times for the event",
     },
 }
 

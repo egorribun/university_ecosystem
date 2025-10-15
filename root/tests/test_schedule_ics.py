@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from app.localization import translate
 from app.models import models
 from app.services.ical import generate_schedule_ics
 
@@ -21,13 +22,17 @@ def test_generate_schedule_ics_includes_lessons() -> None:
         lesson_type="Лекция",
     )
 
-    ics = generate_schedule_ics(group, [lesson], weeks=1)
+    ics = generate_schedule_ics(group, [lesson], weeks=1, locale="en")
 
     assert "BEGIN:VCALENDAR" in ics
     assert "END:VCALENDAR" in ics
     assert "SUMMARY:Алгебра (Лекция)" in ics
     assert "DTSTART:" in ics
     assert "DTEND:" in ics
+    expected_teacher = translate(
+        "schedule.ics.description.teacher", locale="en", teacher="Проф. Смирнов"
+    )
+    assert expected_teacher in ics
 
 
 @pytest.mark.anyio
@@ -57,4 +62,19 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     assert response.headers.get("content-type", "").startswith("text/calendar")
     disposition = response.headers.get("content-disposition", "")
     assert "schedule-" in disposition.lower()
+    assert response.headers.get("content-language") == "en"
     assert "Алгебра" in response.text
+    expected_en = translate(
+        "schedule.ics.description.room", locale="en", room="А-101"
+    )
+    assert expected_en in response.text
+
+    response_ru = await async_client.get(
+        f"/schedule/ics?group={group.id}", headers={"Accept-Language": "ru"}
+    )
+    assert response_ru.status_code == 200
+    assert response_ru.headers.get("content-language") == "ru"
+    expected_ru = translate(
+        "schedule.ics.description.teacher", locale="ru", teacher="Проф. Смирнов"
+    )
+    assert expected_ru in response_ru.text

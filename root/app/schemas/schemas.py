@@ -4,6 +4,7 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.enums import UserRole
+from app.localization import translate
 
 
 class OrmModel(BaseModel):
@@ -96,7 +97,7 @@ class UserProfileUpdate(BaseModel):
         start = payload.get("dnd_start")
         end = payload.get("dnd_end")
         if enabled and (start is None or end is None):
-            raise ValueError('Укажите время начала и окончания режима "Не беспокоить"')
+            raise ValueError(translate("validation.dnd.times_required"))
 
         return raw
 
@@ -123,7 +124,9 @@ class ScheduleBase(BaseModel):
     start_time: datetime
     end_time: datetime
     parity: Optional[str] = "both"
-    lesson_type: Optional[str] = "Лекция"
+    lesson_type: Optional[str] = translate(
+        "schedule.lesson.default_type", locale="ru"
+    )
 
 
 class ScheduleCreate(ScheduleBase):
@@ -178,9 +181,7 @@ class EventCreate(BaseModel):
     @model_validator(mode="after")
     def _validate_time_order(self):  # type: ignore[override]
         if self.ends_at <= self.starts_at:
-            raise ValueError(
-                "Время окончания должно быть позже времени начала мероприятия"
-            )
+            raise ValueError(translate("validation.events.end_after_start"))
         return self
 
 
@@ -202,18 +203,12 @@ class EventUpdate(BaseModel):
         starts_set = "starts_at" in provided
         ends_set = "ends_at" in provided
         if starts_set ^ ends_set:
-            raise ValueError(
-                "Укажите время начала и окончания мероприятия одновременно"
-            )
+            raise ValueError(translate("validation.events.times_required"))
         if starts_set or ends_set:
             if self.starts_at is None or self.ends_at is None:
-                raise ValueError(
-                    "Укажите время начала и окончания мероприятия одновременно"
-                )
+                raise ValueError(translate("validation.events.times_required"))
             if self.ends_at <= self.starts_at:
-                raise ValueError(
-                    "Время окончания должно быть позже времени начала мероприятия"
-                )
+                raise ValueError(translate("validation.events.end_after_start"))
         return self
 
 

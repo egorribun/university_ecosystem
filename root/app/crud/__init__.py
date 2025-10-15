@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
+from app.localization import translate
 from app.models import models
 from app.models.enums import UserRole
 from app.schemas import schemas
@@ -23,8 +24,8 @@ def _ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
 
-_EVENT_TIME_ORDER_ERROR = "Время окончания должно быть позже времени начала мероприятия"
-_EVENT_TIME_PAIR_ERROR = "Укажите время начала и окончания мероприятия одновременно"
+_EVENT_TIME_ORDER_KEY = "validation.events.end_after_start"
+_EVENT_TIME_PAIR_KEY = "validation.events.times_required"
 
 
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
@@ -44,7 +45,7 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         )
         code = (await db.execute(code_q)).scalar_one_or_none()
         if not code:
-            raise ValueError("Неверный или уже использованный invite code")
+            raise ValueError(translate("errors.users.invalid_invite"))
 
     exists = await db.execute(
         select(models.User).where(
@@ -52,7 +53,7 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         )
     )
     if exists.scalar_one_or_none():
-        raise ValueError("Пользователь с таким email уже существует")
+        raise ValueError(translate("errors.users.email_in_use"))
 
     hashed_password = get_password_hash(user_in.password)
     db_user = models.User(
@@ -81,7 +82,7 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise ValueError("Ошибка создания пользователя")
+        raise ValueError(translate("errors.users.create_failed"))
 
     await db.refresh(db_user)
 
@@ -231,7 +232,7 @@ async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: in
     starts_at = _ensure_utc(event.starts_at)
     ends_at = _ensure_utc(event.ends_at)
     if ends_at <= starts_at:
-        raise ValueError(_EVENT_TIME_ORDER_ERROR)
+        raise ValueError(translate(_EVENT_TIME_ORDER_KEY))
     record = models.Event(
         title=event.title,
         description=event.description,
@@ -250,7 +251,7 @@ async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: in
     except IntegrityError as exc:
         await db.rollback()
         if "ck_event_time_order" in str(exc.orig):
-            raise ValueError(_EVENT_TIME_ORDER_ERROR) from None
+            raise ValueError(translate(_EVENT_TIME_ORDER_KEY)) from None
         raise
     await db.refresh(record)
     return record
@@ -269,14 +270,14 @@ async def update_event(
     starts_set = "starts_at" in updates
     ends_set = "ends_at" in updates
     if starts_set ^ ends_set:
-        raise ValueError(_EVENT_TIME_PAIR_ERROR)
+        raise ValueError(translate(_EVENT_TIME_PAIR_KEY))
     if starts_set or ends_set:
         starts_at = updates.get("starts_at", record.starts_at)
         ends_at = updates.get("ends_at", record.ends_at)
         if starts_at is None or ends_at is None:
-            raise ValueError(_EVENT_TIME_PAIR_ERROR)
+            raise ValueError(translate(_EVENT_TIME_PAIR_KEY))
         if ends_at <= starts_at:
-            raise ValueError(_EVENT_TIME_ORDER_ERROR)
+            raise ValueError(translate(_EVENT_TIME_ORDER_KEY))
     for field, value in updates.items():
         setattr(record, field, value)
     db.add(record)
@@ -285,7 +286,7 @@ async def update_event(
     except IntegrityError as exc:
         await db.rollback()
         if "ck_event_time_order" in str(exc.orig):
-            raise ValueError(_EVENT_TIME_ORDER_ERROR) from None
+            raise ValueError(translate(_EVENT_TIME_ORDER_KEY)) from None
         raise
     await db.refresh(record)
     return record
@@ -424,7 +425,11 @@ async def create_schedule(db: AsyncSession, data: schemas.ScheduleCreate):
         start_time=start_time,
         end_time=end_time,
         parity=getattr(data, "parity", "both"),
-        lesson_type=getattr(data, "lesson_type", "Лекция"),
+        lesson_type=getattr(
+            data,
+            "lesson_type",
+            translate("schedule.lesson.default_type", locale="ru"),
+        ),
     )
     db.add(record)
     await db.commit()
@@ -462,7 +467,7 @@ async def admin_update_user(
 ) -> models.User:
     user = await db.get(models.User, user_id)
     if not user:
-        raise ValueError("Пользователь не найден")
+        raise ValueError(translate("errors.users.not_found"))
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     await db.commit()
@@ -473,6 +478,6 @@ async def admin_update_user(
 async def delete_user(db: AsyncSession, user_id: int):
     user = await db.get(models.User, user_id)
     if not user:
-        raise ValueError("Пользователь не найден")
+        raise ValueError(translate("errors.users.not_found"))
     await db.delete(user)
     await db.commit()

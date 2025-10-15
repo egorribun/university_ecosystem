@@ -2,6 +2,7 @@ import pytest
 from fastapi import status
 
 from app.auth.security import get_password_hash
+from app.localization import translate
 
 
 @pytest.mark.anyio
@@ -12,7 +13,8 @@ async def test_rate_limit_per_ip(async_client):
         assert response.headers.get("X-RateLimit-Limit") == "5"
     response = await async_client.get("/healthz")
     assert response.status_code == 429
-    assert response.json()["detail"] == "Too many requests"
+    expected = translate("errors.rate_limit.generic")
+    assert response.json()["detail"] == expected
     assert response.headers.get("Retry-After") is not None
 
 

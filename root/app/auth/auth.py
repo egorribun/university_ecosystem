@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from app.auth.security import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.localization import resolve_locale, translate
 from app.models.models import User
 from app.schemas.schemas import Token, UserCreate
 from app.utils.ratelimit import sensitive_route_limit
@@ -67,32 +68,38 @@ def _clear_access_token_cookie(response: Response) -> None:
 )
 async def login(
     response: Response,
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request)
     email = form_data.username.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
     if not user:
+        message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    locale = resolve_locale(request=request, user=user)
     verified, new_hash = verify_and_update_password(
         form_data.password, user.hashed_password
     )
     if not verified:
+        message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        message = translate("errors.auth.user_deactivated", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь деактивирован",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
     user_id = user.id
@@ -113,31 +120,37 @@ async def login(
 async def login_json(
     payload: LoginIn,
     response: Response,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request)
     email = payload.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
     if not user:
+        message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    locale = resolve_locale(request=request, user=user)
     verified, new_hash = verify_and_update_password(
         payload.password, user.hashed_password
     )
     if not verified:
+        message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        message = translate("errors.auth.user_deactivated", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь деактивирован",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
     user_id = user.id
@@ -151,13 +164,19 @@ async def login_json(
 
 
 @router.post("/register")
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(
+    user: UserCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     email = user.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     if res.scalars().first():
+        locale = resolve_locale(request=request)
+        message = translate("errors.users.email_in_use", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пользователь с таким email уже существует",
+            detail=message,
         )
     try:
         hashed_password = get_password_hash(user.password)
