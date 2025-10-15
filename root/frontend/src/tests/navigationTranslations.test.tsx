@@ -44,7 +44,7 @@ describe("navigation components translations", () => {
 
     const toggle = screen.getByTestId("lang-toggle")
 
-    expect(await screen.findByText("Navigation")).toBeInTheDocument()
+    expect(await screen.findByText("Explore")).toBeInTheDocument()
     const year = new Date().getFullYear()
     expect(
       screen.getByText((content) => content.includes(`© ${year} GUU Ecosystem`))
@@ -52,14 +52,14 @@ describe("navigation components translations", () => {
 
     await user.click(toggle)
 
-    expect(await screen.findByText("Навигация")).toBeInTheDocument()
+    expect(await screen.findByText("Разделы")).toBeInTheDocument()
     expect(
       screen.getByText((content) => content.includes(`© ${year} Экосистема ГУУ`))
     ).toBeInTheDocument()
 
     await user.click(toggle)
 
-    expect(await screen.findByText("Navigation")).toBeInTheDocument()
+    expect(await screen.findByText("Explore")).toBeInTheDocument()
   })
 
   it("switches bottom navigation labels with locale", async () => {

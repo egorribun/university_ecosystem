@@ -943,14 +943,16 @@ export default function Settings() {
               <Stack direction="row" alignItems="center" spacing={1}>
                 <img
                   src={spotifyLogo}
-                  alt="Spotify"
+                  alt={t("settings:integrations.spotify.alt")}
                   width={22}
                   height={22}
                   style={{ display: "block", borderRadius: "50%" }}
                   loading="lazy"
                   decoding="async"
                 />
-                <Typography variant="h6" sx={{ color: "var(--page-text)" }}>Spotify</Typography>
+                <Typography variant="h6" sx={{ color: "var(--page-text)" }}>
+                  {t("settings:integrations.spotify.title")}
+                </Typography>
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
                 <Chip

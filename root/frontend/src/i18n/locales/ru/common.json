@@ -1,8 +1,8 @@
 {
   "skipToContent": "Перейти к содержанию",
-  "skipToMain": "Перейти к содержимому",
-  "dateUnknown": "Дата неизвестна",
-  "ariaDatePublished": "Дата публикации: {{date}}",
+  "skipToMain": "Перейти к основному содержанию",
+  "dateUnknown": "Дата недоступна",
+  "ariaDatePublished": "Опубликовано: {{date}}",
   "ariaCurrentTime": "Текущее время",
   "ariaCurrentLessonProgress": "Прогресс текущего занятия",
   "buttons": {

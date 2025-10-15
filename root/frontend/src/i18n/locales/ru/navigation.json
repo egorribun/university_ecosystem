@@ -1,20 +1,20 @@
 {
   "brandName": "Экосистема ГУУ",
   "brandAlt": "Логотип ГУУ",
-  "brandDescription": "Профиль, расписание, новости и события университета в одном месте.",
+  "brandDescription": "Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте.",
   "menu": {
     "dashboard": "Главная",
     "news": "Новости",
     "schedule": "Расписание",
     "events": "События",
     "activity": "Активность",
-    "map": "Карта",
+    "map": "Карта кампуса",
     "users": "Пользователи",
     "profile": "Профиль",
     "settings": "Настройки"
   },
   "aria": {
-    "homeLink": "На главную",
+    "homeLink": "Перейти на главную",
     "openProfile": "Открыть профиль",
     "profileAvatar": "Аватар профиля",
     "profileAvatarNamed": "Аватар пользователя {{name}}",
@@ -25,12 +25,12 @@
     "close": "Закрыть"
   },
   "footer": {
-    "navigationTitle": "Навигация",
+    "navigationTitle": "Разделы",
     "profileTitle": "Профиль",
     "myProfile": "Мой профиль",
-    "contactTelegram": "Написать в Telegram",
-    "contactEmail": "Написать на email",
+    "contactTelegram": "Напишите нам в Telegram",
+    "contactEmail": "Отправить письмо",
     "copyright": "© {{year}} Экосистема ГУУ",
-    "careNote": "Сделано с заботой о студентах и преподавателях"
+    "careNote": "Создано с заботой о студентах и сотрудниках"
   }
 }

@@ -5,34 +5,34 @@
     "evening": "Good evening",
     "night": "Good night"
   },
-  "todaySchedule": "Today in schedule",
+  "todaySchedule": "Today's schedule",
   "aria": {
-    "openFullSchedule": "Open full schedule",
-    "viewAllNews": "View all news",
-    "newsList": "News list",
-    "newsItem": "News: {{title}}",
-    "viewAllEvents": "View all events",
-    "eventsToday": "Events for today",
-    "eventsWeek": "Events for the week",
+    "openFullSchedule": "Open the full schedule",
+    "viewAllNews": "See all news",
+    "newsList": "News feed",
+    "newsItem": "News item: {{title}}",
+    "viewAllEvents": "See all events",
+    "eventsToday": "Events happening today",
+    "eventsWeek": "Events this week",
     "eventItem": "Event: {{title}}"
   },
   "fullSchedule": "Full schedule",
   "now": "Now",
   "next": "Next",
-  "noClasses": "No classes today",
-  "lessonMeta": "{{teacher}} · room {{room}}",
+  "noClasses": "No classes scheduled today",
+  "lessonMeta": "{{teacher}} · Room {{room}}",
   "news": {
     "heading": "News",
-    "empty": "No news yet"
+    "empty": "No news to share yet"
   },
   "events": {
     "heading": "Events",
-    "empty": "No events found"
+    "empty": "No events scheduled yet"
   },
-  "viewAll": "View all",
+  "viewAll": "See all",
   "scope": {
     "today": "Today",
-    "week": "Week"
+    "week": "This week"
   },
   "weekDays": {
     "display": [
