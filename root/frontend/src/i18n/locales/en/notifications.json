@@ -1,4 +1,12 @@
 {
+  "defaultTitle": "University Ecosystem",
+  "defaultBody": "You have a new notification.",
+  "toast": {
+    "open": "Open"
+  },
+  "reminders": {
+    "startsSoon": "In {{minutes}} min."
+  },
   "topics": {
     "schedule": "Schedule",
     "news": "News",

@@ -1,4 +1,12 @@
 {
+  "defaultTitle": "Экосистема ГУУ",
+  "defaultBody": "У вас новое уведомление.",
+  "toast": {
+    "open": "Открыть"
+  },
+  "reminders": {
+    "startsSoon": "Через {{minutes}} мин."
+  },
   "topics": {
     "schedule": "Расписание",
     "news": "Новости",

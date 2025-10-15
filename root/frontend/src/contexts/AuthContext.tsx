@@ -12,6 +12,7 @@ import {
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
+import { useTranslation } from "react-i18next"
 import {
   hasPushConsent,
   softSyncPushSubscription,
@@ -239,6 +240,7 @@ const initializeCachedUser = (): UserState => {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("auth")
   const [userState, setUserState] = useState<UserState>(initializeCachedUser)
   const cachedUserRef = useRef<UserState>(userState)
   const [initializing, setInitializing] = useState<boolean>(true)
@@ -416,7 +418,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const message =
             typeof error.response?.data?.detail === "string"
               ? error.response.data.detail
-              : "Не удалось войти"
+              : t("login.error")
           throw new Error(message)
         }
 
@@ -424,7 +426,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw error
         }
 
-        throw new Error("Не удалось войти")
+        throw new Error(t("login.error"))
       } finally {
         if (activeRequestRef.current === controller) {
           activeRequestRef.current = null
@@ -435,7 +437,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     },
-    [handleUnauthorized, setUser]
+    [handleUnauthorized, setUser, t]
   )
 
   const logout = useCallback(async () => {
