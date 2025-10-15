@@ -6,6 +6,7 @@ from passlib.context import CryptContext
 from passlib.hash import bcrypt as passlib_bcrypt
 
 from app.core.config import settings
+from app.localization import translate
 
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 200
@@ -60,10 +61,14 @@ pwd_context = CryptContext(
 )
 
 
-def _validate_password_policy(password: str) -> None:
+def _validate_password_policy(
+    password: str, *, locale: str | None = None
+) -> None:
     length = len(password)
     if length < PASSWORD_MIN_LENGTH or length > PASSWORD_MAX_LENGTH:
-        raise ValueError("Пароль должен содержать от 8 до 200 символов.")
+        raise ValueError(
+            translate("errors.auth.password_policy", locale=locale)
+        )
 
 
 def _truncate_for_bcrypt(password: str) -> str:
@@ -90,8 +95,8 @@ def verify_and_update_password(
     return verified, new_hash
 
 
-def get_password_hash(password: str) -> str:
-    _validate_password_policy(password)
+def get_password_hash(password: str, *, locale: str | None = None) -> str:
+    _validate_password_policy(password, locale=locale)
     return pwd_context.hash(password)
 
 

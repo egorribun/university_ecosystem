@@ -169,17 +169,17 @@ async def register(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request)
     email = user.email.strip().lower()
     res = await db.execute(select(User).where(User.email == email))
     if res.scalars().first():
-        locale = resolve_locale(request=request)
         message = translate("errors.users.email_in_use", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=message,
         )
     try:
-        hashed_password = get_password_hash(user.password)
+        hashed_password = get_password_hash(user.password, locale=locale)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     new_user = User(

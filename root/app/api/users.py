@@ -193,7 +193,7 @@ async def reset_password(
             detail=translate("errors.password.invalid_link", locale=locale),
         )
     try:
-        user.hashed_password = get_password_hash(payload.password)
+        user.hashed_password = get_password_hash(payload.password, locale=locale)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     rec.used = True
