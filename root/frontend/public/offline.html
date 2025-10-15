@@ -106,12 +106,18 @@
       </button>
       <small data-i18n="offline.footer">Проверьте подключение или попробуйте открыть приложение позднее.</small>
     </main>
-    <script type="module">
-      import { applyDocumentLanguage, applyOfflineTranslations, getPreferredLanguage } from "./static-shell-i18n.js";
-
-      const language = getPreferredLanguage(window);
-      applyDocumentLanguage(document, language);
-      applyOfflineTranslations(document, language);
+    <script>
+      (function () {
+        import("./static-shell-i18n.js")
+          .then(({ applyDocumentLanguage, applyOfflineTranslations, getPreferredLanguage }) => {
+            const language = getPreferredLanguage(window);
+            applyDocumentLanguage(document, language);
+            applyOfflineTranslations(document, language);
+          })
+          .catch((error) => {
+            console.error("Failed to load offline translations", error);
+          });
+      })();
     </script>
   </body>
 </html>

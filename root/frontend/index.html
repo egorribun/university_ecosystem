@@ -1,13 +1,19 @@
 <!doctype html>
 <html lang="ru">
   <head>
-    <script type="module">
-      import { applyDocumentLanguage, applyMetaTranslations, getPreferredLanguage } from "/static-shell-i18n.js";
-
-      const language = window.__UE_SELECTED_LANG__ || getPreferredLanguage(window);
-      window.__UE_SELECTED_LANG__ = language;
-      applyDocumentLanguage(document, language);
-      applyMetaTranslations(document, language);
+    <script>
+      (function () {
+        import("/static-shell-i18n.js")
+          .then(({ applyDocumentLanguage, applyMetaTranslations, getPreferredLanguage }) => {
+            const language = window.__UE_SELECTED_LANG__ || getPreferredLanguage(window);
+            window.__UE_SELECTED_LANG__ = language;
+            applyDocumentLanguage(document, language);
+            applyMetaTranslations(document, language);
+          })
+          .catch((error) => {
+            console.error("Failed to load static shell translations", error);
+          });
+      })();
     </script>
     <script>
       (function () {
