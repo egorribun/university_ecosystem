@@ -115,7 +115,11 @@ const parseAttendanceRecent = (value: unknown): AttendanceStats["recent"] => {
       const status = entry.status
       if (!date || !isAttendanceStatus(status)) return null
       const course = typeof entry.course === "string" ? entry.course : undefined
-      return { date, status, course }
+      return {
+        date,
+        status,
+        ...(course !== undefined ? { course } : {}),
+      }
     })
     .filter((item): item is AttendanceStats["recent"][number] => item != null)
 }
@@ -152,7 +156,11 @@ const parseParticipationRecent = (value: unknown): ParticipationStats["recent"] 
       if (!title) return null
       const date = typeof entry.date === "string" ? entry.date : ""
       const role = typeof entry.role === "string" ? entry.role : undefined
-      return { title, date, role }
+      return {
+        title,
+        date,
+        ...(role !== undefined ? { role } : {}),
+      }
     })
     .filter((item): item is ParticipationStats["recent"][number] => item != null)
 }
