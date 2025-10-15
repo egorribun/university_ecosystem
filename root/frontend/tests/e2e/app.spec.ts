@@ -34,7 +34,7 @@ test.describe("University ecosystem app", () => {
     await page.getByRole("link", { name: "Смотреть все новости" }).click();
     await expect(page.getByText("Новость дня")).toBeVisible();
 
-    const cached = await page.evaluate(() => localStorage.getItem("news:list"));
+    const cached = await page.evaluate(() => localStorage.getItem("news:list:ru"));
     expect(cached).not.toBeNull();
 
     await page.reload();

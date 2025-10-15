@@ -150,6 +150,8 @@ class ScheduleOut(OrmModel, ScheduleBase):
 class NewsCreate(BaseModel):
     title: str
     content: str
+    title_en: Optional[str] = None
+    content_en: Optional[str] = None
     image_url: Optional[str] = None
 
 

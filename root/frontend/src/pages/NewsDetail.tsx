@@ -32,6 +32,7 @@ import api from "@/api/client"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 
 dayjs.extend(utc)
@@ -41,12 +42,16 @@ type NewsItem = {
   id: number
   title: string
   content: string
+  title_en?: string | null
+  content_en?: string | null
   image_url?: string | null
   created_at?: string
 }
 
-async function fetchNews(id: string) {
-  const { data } = await api.get<NewsItem>(`/news/${id}`)
+async function fetchNews(id: string, language: string) {
+  const { data } = await api.get<NewsItem>(`/news/${id}`, {
+    headers: { "Accept-Language": language },
+  })
   return data
 }
 
@@ -61,11 +66,18 @@ export default function NewsDetail() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
+  const { language } = useLanguage()
   const queryClient = useQueryClient()
   const isMobile = useMediaQuery("(max-width:600px)")
 
   const [editOpen, setEditOpen] = useState(false)
-  const [editData, setEditData] = useState({ title: "", content: "", image_url: "" })
+  const [editData, setEditData] = useState({
+    title: "",
+    content: "",
+    title_en: "",
+    content_en: "",
+    image_url: "",
+  })
   const [saving, setSaving] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -87,8 +99,8 @@ export default function NewsDetail() {
   }
 
   const query = useQuery({
-    queryKey: ["news", id],
-    queryFn: () => fetchNews(id),
+    queryKey: ["news", id, language],
+    queryFn: () => fetchNews(id, language),
     enabled: !!id,
     staleTime: 60000,
     retry: 1,
@@ -114,6 +126,8 @@ export default function NewsDetail() {
     setEditData({
       title: query.data.title || "",
       content: query.data.content || "",
+      title_en: query.data.title_en || "",
+      content_en: query.data.content_en || "",
       image_url: query.data.image_url || "",
     })
     resetPreview()
@@ -146,9 +160,17 @@ export default function NewsDetail() {
         })
         imageUrl = res.data.url
       }
-      const payload = { ...editData, image_url: imageUrl }
-      const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload)
-      queryClient.setQueryData(["news", id], data)
+      const payload = {
+        title: editData.title,
+        content: editData.content,
+        title_en: editData.title_en,
+        content_en: editData.content_en,
+        image_url: imageUrl,
+      }
+      const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload, {
+        headers: { "Accept-Language": language },
+      })
+      queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news"] })
       setSnack(t("news:notifications.updated"))
       closeEdit()
@@ -164,7 +186,9 @@ export default function NewsDetail() {
     if (!query.data) return
     setDeleting(true)
     try {
-      await api.delete(`/news/${query.data.id}`)
+      await api.delete(`/news/${query.data.id}`, {
+        headers: { "Accept-Language": language },
+      })
       setSnack(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news"] })
@@ -198,7 +222,19 @@ export default function NewsDetail() {
     setHeroPos('50% 38%')
   }, [imageUrl])
 
-  const content = query.data?.content ?? ""
+  const displayTitle = useMemo(() => {
+    const localized = query.data?.title ?? ""
+    const english = query.data?.title_en ?? ""
+    if (language === "en" && english.trim()) return english
+    return localized || english
+  }, [language, query.data?.title, query.data?.title_en])
+
+  const content = useMemo(() => {
+    const localized = query.data?.content ?? ""
+    const english = query.data?.content_en ?? ""
+    if (language === "en" && english.trim()) return english
+    return localized || english
+  }, [language, query.data?.content, query.data?.content_en])
   const createdAt = query.data?.created_at
   const createdAtIso = useMemo(
     () => (createdAt ? dayjs(createdAt).toISOString() : ""),
@@ -282,7 +318,7 @@ export default function NewsDetail() {
               fontWeight={900}
               sx={{ mr: 2, fontSize: "clamp(1.28rem,4vw,2.1rem)" }}
             >
-              {query.data.title}
+              {displayTitle}
             </Typography>
 
             {user?.role === "admin" && (
@@ -330,8 +366,8 @@ export default function NewsDetail() {
               <SmartImage
                 srcRaw={imageUrl}
                 alt={
-                  query.data.title
-                    ? t("news:alt.hero", { title: query.data.title })
+                  displayTitle
+                    ? t("news:alt.hero", { title: displayTitle })
                     : t("news:alt.heroFallback")
                 }
               onLoad={handleHeroLoad}
@@ -376,9 +412,25 @@ export default function NewsDetail() {
                   multiline
                   rows={4}
                   fullWidth
-                disabled={saving}
-              />
-              <Box display="flex" gap={2} alignItems="center" mt={1}>
+                  disabled={saving}
+                />
+                <TextField
+                  label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+                  value={editData.title_en}
+                  onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+                  fullWidth
+                  disabled={saving}
+                />
+                <TextField
+                  label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+                  value={editData.content_en}
+                  onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+                  multiline
+                  rows={4}
+                  fullWidth
+                  disabled={saving}
+                />
+                <Box display="flex" gap={2} alignItems="center" mt={1}>
                   <Button
                     component="label"
                     variant="outlined"

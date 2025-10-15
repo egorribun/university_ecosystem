@@ -99,8 +99,14 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     await db_session.commit()
     await db_session.refresh(news)
 
-    await fake_cache.invalidate("news:list")
-    await fake_cache.invalidate(f"news:item:{news.id}")
+    await fake_cache.invalidate(
+        "news:list",
+        "news:list:en",
+        "news:list:ru",
+        f"news:item:{news.id}",
+        f"news:item:{news.id}:en",
+        f"news:item:{news.id}:ru",
+    )
 
     list_after_update = await async_client.get(
         "/news", headers={"If-None-Match": list_etag}
@@ -120,7 +126,7 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     db_session.add(another_news)
     await db_session.commit()
 
-    await fake_cache.invalidate("news:list")
+    await fake_cache.invalidate("news:list", "news:list:en", "news:list:ru")
 
     list_with_two = await async_client.get("/news")
     assert list_with_two.status_code == 200
