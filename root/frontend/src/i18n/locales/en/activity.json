@@ -3,18 +3,30 @@
   "period": {
     "options": {
       "30d": "{{count}} day",
+      "30d_few": "{{count}} days",
+      "30d_many": "{{count}} days",
       "30d_other": "{{count}} days",
       "90d": "{{count}} day",
+      "90d_few": "{{count}} days",
+      "90d_many": "{{count}} days",
       "90d_other": "{{count}} days",
       "180d": "{{count}} day",
+      "180d_few": "{{count}} days",
+      "180d_many": "{{count}} days",
       "180d_other": "{{count}} days"
     },
     "labels": {
       "30d": "over the last {{count}} day",
+      "30d_few": "over the last {{count}} days",
+      "30d_many": "over the last {{count}} days",
       "30d_other": "over the last {{count}} days",
       "90d": "over the last {{count}} day",
+      "90d_few": "over the last {{count}} days",
+      "90d_many": "over the last {{count}} days",
       "90d_other": "over the last {{count}} days",
       "180d": "over the last {{count}} day",
+      "180d_few": "over the last {{count}} days",
+      "180d_many": "over the last {{count}} days",
       "180d_other": "over the last {{count}} days"
     }
   },
@@ -45,10 +57,16 @@
     "participation": {
       "title": "Participation",
       "eventsCount": "{{value}} event",
+      "eventsCount_few": "{{value}} events",
+      "eventsCount_many": "{{value}} events",
       "eventsCount_other": "{{value}} events",
       "summaryHours": "{{count}} h",
+      "summaryHours_few": "{{count}} h",
+      "summaryHours_many": "{{count}} h",
       "summaryHours_other": "{{count}} h",
       "summaryGroups": "{{count}} club",
+      "summaryGroups_few": "{{count}} clubs",
+      "summaryGroups_many": "{{count}} clubs",
       "summaryGroups_other": "{{count}} clubs",
       "recent": "Recent participation",
       "dialogTitle": "Participation"

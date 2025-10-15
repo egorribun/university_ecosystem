@@ -1,0 +1,384 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { MemoryRouter } from "react-router-dom"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import type { ReactNode } from "react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+
+import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext"
+import Activity from "@/pages/Activity"
+import Schedule from "@/pages/Schedule"
+import Settings from "@/pages/Settings"
+import Profile from "@/pages/Profile"
+import Events from "@/pages/Events"
+import MapContent from "@/pages/MapContent"
+import AdminUsers from "@/pages/AdminUsers"
+import type { User } from "@/types/User"
+
+const resizeObserverMock = vi.fn()
+
+class MockResizeObserver {
+  observe = resizeObserverMock
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+}
+
+const originalSetProperty = CSSStyleDeclaration.prototype.setProperty
+
+type ApiResponse<T = unknown> = Promise<{ data: T }>
+
+const {
+  baseUser,
+  apiGetMock,
+  apiPostMock,
+  apiPatchMock,
+  apiDeleteMock,
+  apiPutMock,
+  fetchCurrentUserMock,
+} = vi.hoisted(() => {
+  const baseUser: User = {
+    id: 1,
+    email: "test@example.com",
+    full_name: "Test User",
+    role: "student",
+    group_id: 1,
+    avatar_url: null,
+    cover_url: null,
+    about: "",
+    record_book_number: null,
+    status: "active",
+    institute: "Business",
+    course: "2",
+    education_level: "bachelor",
+    track: "Management",
+    program: "General",
+    telegram: "testuser",
+    achievements: null,
+    department: null,
+    position: null,
+    spotify_connected: false,
+    spotify_display_name: null,
+    spotify_is_connected: false,
+    dnd_enabled: false,
+    dnd_start: null,
+    dnd_end: null,
+    is_active: true,
+  }
+
+  const scheduleGroups = [{ id: 1, name: "IU5-21" }]
+  const scheduleLessons = [
+    {
+      id: 1,
+      weekday: "mon",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:30",
+      subject: "Linear Algebra",
+      teacher: "Dr. Matrix",
+      room: "101",
+      lesson_type: "lecture",
+      group_id: 1,
+    },
+  ]
+  const adminUsers = [
+    { id: 1, full_name: "Alice Admin", email: "alice@example.com", role: "admin", group_id: null, avatar_url: null },
+    { id: 2, full_name: "Bob Student", email: "bob@example.com", role: "student", group_id: 1, avatar_url: null },
+  ]
+  const sampleEvent = {
+    id: 1,
+    title: "Campus Hackathon",
+    description: "A friendly coding event",
+    location: "Main hall",
+    event_type: "hackathon",
+    starts_at: new Date().toISOString(),
+    ends_at: new Date(Date.now() + 3600_000).toISOString(),
+    created_by: 1,
+    created_at: new Date().toISOString(),
+    is_active: true,
+    speaker: "Mentor",
+    image_url: null,
+    about: null,
+    files: [],
+    participant_count: 42,
+    is_registered: false,
+    my_qr_code: null,
+  }
+  const attendanceSummary = {
+    percent: 85,
+    present: 17,
+    total: 20,
+    trend: 4,
+    window_label: "last 30 days",
+    recent: [{ date: "2025-09-19", status: "present", course: "Physics" }],
+  }
+  const gradeSummary = {
+    average: 4.6,
+    scale: "5" as const,
+    trend: 2,
+    recent: [{ course: "Physics", score: 5, date: "2025-09-10" }],
+  }
+  const participationSummary = {
+    events: 3,
+    hours: 6,
+    groups: 2,
+    trend: 1,
+    recent: [{ title: "Volunteer Day", date: "2025-09-12", role: "helper" }],
+  }
+
+  const apiGetMock = vi.fn((url: string): ApiResponse => {
+    if (url === "/stats/attendance") return Promise.resolve({ data: attendanceSummary })
+    if (url === "/stats/grades") return Promise.resolve({ data: gradeSummary })
+    if (url === "/stats/participation") return Promise.resolve({ data: participationSummary })
+    if (url === "/events") return Promise.resolve({ data: [sampleEvent] })
+    if (url === "/events/my") return Promise.resolve({ data: [] })
+    if (url === "/groups") return Promise.resolve({ data: scheduleGroups })
+    if (url.startsWith("/schedule/")) return Promise.resolve({ data: scheduleLessons })
+    if (url === "/users") return Promise.resolve({ data: adminUsers })
+    if (url === "/spotify/auth-url")
+      return Promise.resolve({ data: { url: "https://accounts.spotify.com/authorize?client_id=1" } })
+    return Promise.resolve({ data: [] })
+  })
+
+  const apiPostMock = vi.fn(() => Promise.resolve({ data: {} }))
+  const apiPatchMock = vi.fn(() => Promise.resolve({ data: {} }))
+  const apiDeleteMock = vi.fn(() => Promise.resolve({ data: {} }))
+  const apiPutMock = vi.fn(() => Promise.resolve({ data: baseUser }))
+
+  const fetchCurrentUserMock = vi.fn(async () => baseUser)
+
+  return { baseUser, apiGetMock, apiPostMock, apiPatchMock, apiDeleteMock, apiPutMock, fetchCurrentUserMock }
+})
+
+const authState = {
+  isAuth: true,
+  login: vi.fn(),
+  logout: vi.fn(),
+  refresh: vi.fn(),
+  user: baseUser,
+  loading: false,
+  setUser: vi.fn(),
+}
+
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => authState,
+  currentUserQueryKey: ["users", "me"] as const,
+  fetchCurrentUser: fetchCurrentUserMock,
+}))
+
+vi.mock("@/hooks/useNowPlaying", () => ({
+  useNowPlaying: () => ({
+    data: null,
+    isFetching: false,
+    status: "success",
+    refetch: vi.fn(),
+  }),
+  nowPlayingQueryKey: ["now-playing"],
+}))
+
+const pushPreferencesMock = {
+  pushSupported: true,
+  notificationPermission: "default" as NotificationPermission,
+  notificationsEnabled: false,
+  pushBusy: false,
+  pushInitializing: false,
+  permissionText: "Default",
+  enableNotifications: vi.fn(),
+  disableNotifications: vi.fn(),
+}
+
+vi.mock("@/hooks/usePushPreferences", () => ({
+  usePushPreferences: () => pushPreferencesMock,
+}))
+
+vi.mock("@/components/Layout", () => ({
+  default: ({ children }: { children: ReactNode }) => <div data-testid="layout-root">{children}</div>,
+}))
+
+vi.mock("@/components/PageFadeIn", () => ({
+  default: ({ children }: { children: ReactNode }) => <>{children}</>,
+}))
+
+vi.mock("@/components/SmartImage", () => ({
+  default: ({ alt }: { alt?: string }) => <img alt={alt ?? ""} />,
+}))
+
+vi.mock("@/assets/background.jpg", () => ({ default: "profile-bg.jpg" }))
+vi.mock("@/assets/guu_logo.png", () => ({ default: "guu-logo.png" }))
+vi.mock("@/assets/spotify_icon.png", () => ({ default: "spotify-icon.png" }))
+
+vi.mock("@/api/client", () => ({
+  __esModule: true,
+  default: {
+    get: apiGetMock,
+    post: apiPostMock,
+    patch: apiPatchMock,
+    delete: apiDeleteMock,
+    put: apiPutMock,
+    interceptors: { response: { use: vi.fn() } },
+  },
+  API_UNAUTHORIZED_EVENT: "auth:unauthorized",
+  SKIP_UNAUTHORIZED_HEADER: "X-Client-Skip-Unauthorized",
+}))
+
+function LanguageToggleHarness({ children }: { children: ReactNode }) {
+  const { language, setLanguage } = useLanguage()
+
+  return (
+    <>
+      <button type="button" data-testid="lang-toggle" onClick={() => setLanguage(language === "ru" ? "en" : "ru")}>
+        toggle
+      </button>
+      {children}
+    </>
+  )
+}
+
+const clients: QueryClient[] = []
+
+function renderWithProviders(ui: ReactNode, initialPath = "/") {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 1_000_000 },
+    },
+  })
+  clients.push(client)
+  const user = userEvent.setup()
+
+  const result = render(
+    <QueryClientProvider client={client}>
+      <LanguageProvider>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <LanguageToggleHarness>{ui}</LanguageToggleHarness>
+        </MemoryRouter>
+      </LanguageProvider>
+    </QueryClientProvider>,
+  )
+
+  return { user, client, ...result }
+}
+
+beforeAll(() => {
+  ;(globalThis as any).ResizeObserver = MockResizeObserver
+  vi.spyOn(window, "open").mockImplementation(() => null)
+  vi.spyOn(window, "confirm").mockReturnValue(true)
+  if (!(HTMLElement.prototype as any).scrollTo) {
+    ;(HTMLElement.prototype as any).scrollTo = () => {}
+  }
+  CSSStyleDeclaration.prototype.setProperty = function setProperty(name, value) {
+    try {
+      originalSetProperty.call(this, name, value)
+    } catch {
+      Object.defineProperty(this, name, {
+        configurable: true,
+        enumerable: true,
+        value: value ?? "",
+        writable: true,
+      })
+    }
+  }
+})
+
+beforeEach(() => {
+  localStorage.clear()
+  localStorage.setItem("ue:language", "en")
+  fetchCurrentUserMock.mockClear()
+  fetchCurrentUserMock.mockImplementation(async () => authState.user)
+  apiGetMock.mockClear()
+  apiPostMock.mockClear()
+  apiPatchMock.mockClear()
+  apiDeleteMock.mockClear()
+  apiPutMock.mockClear()
+  pushPreferencesMock.enableNotifications.mockClear()
+  pushPreferencesMock.disableNotifications.mockClear()
+})
+
+afterEach(() => {
+  while (clients.length) {
+    const client = clients.pop()
+    client?.clear()
+  }
+})
+
+afterAll(() => {
+  CSSStyleDeclaration.prototype.setProperty = originalSetProperty
+})
+
+describe("page translations", () => {
+  it("switches activity page translations", async () => {
+    const { user } = renderWithProviders(<Activity />)
+
+    expect(await screen.findByText("Activity")).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByText("Активность")).toBeInTheDocument()
+  })
+
+  it("switches schedule page translations", async () => {
+    const { user } = renderWithProviders(<Schedule />, "/schedule")
+
+    expect(await screen.findByText("My schedule")).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByText("Моё расписание")).toBeInTheDocument()
+  })
+
+  it("switches settings translations including notifications", async () => {
+    const { user } = renderWithProviders(<Settings />, "/settings")
+
+    expect(await screen.findByText("Settings")).toBeInTheDocument()
+    expect(screen.getByText("Notifications")).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByText("Настройки")).toBeInTheDocument()
+    expect(screen.getByText("Уведомления")).toBeInTheDocument()
+  })
+
+  it("switches profile translations", async () => {
+    const { user } = renderWithProviders(<Profile />, "/profile")
+
+    expect(await screen.findByLabelText("Profile")).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByLabelText("Профиль")).toBeInTheDocument()
+  })
+
+  it("switches events page translations", async () => {
+    const { user } = renderWithProviders(<Events />, "/events")
+
+    expect(await screen.findByText("Events")).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Upcoming" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByText("Мероприятия")).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Актуальные" })).toBeInTheDocument()
+  })
+
+  it("switches map controls translations", async () => {
+    const { user } = renderWithProviders(<MapContent />, "/map")
+
+    expect(await screen.findByRole("heading", { name: "Campus map" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Карта кампуса" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Сбросить" })).toBeInTheDocument()
+  })
+
+  it("switches admin users page translations", async () => {
+    const { user } = renderWithProviders(<AdminUsers />, "/admin/users")
+
+    expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument()
+    expect(screen.getByText("Role", { selector: "label" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Пользователи" })).toBeInTheDocument()
+    expect(screen.getByText("Роль", { selector: "label" })).toBeInTheDocument()
+  })
+})
+
