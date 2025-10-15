@@ -85,6 +85,80 @@ type ParticipationStats = {
   recent: Array<{ title: string; date: string; role?: string }>
 }
 
+const defaultAttendanceRecent: AttendanceStats["recent"] = [
+  { date: "2025-09-19", status: "present", course: "Algebra" },
+  { date: "2025-09-18", status: "late", course: "History" },
+  { date: "2025-09-17", status: "present", course: "Physics" },
+]
+
+const defaultGradeRecent: GradeStats["recent"] = [
+  { course: "Algebra", score: 5, date: "2025-09-18" },
+  { course: "Physics", score: 4, date: "2025-09-16" },
+  { course: "Literature", score: 5, date: "2025-09-13" },
+]
+
+const defaultParticipationRecent: ParticipationStats["recent"] = [
+  { title: "Department hackathon", date: "2025-09-14", role: "participant" },
+  { title: "Basketball tournament", date: "2025-09-07", role: "team" },
+]
+
+const isAttendanceStatus = (
+  value: unknown
+): value is AttendanceStats["recent"][number]["status"] =>
+  value === "present" || value === "late" || value === "absent"
+
+const parseAttendanceRecent = (value: unknown): AttendanceStats["recent"] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => {
+      if (!item || typeof item !== "object") return null
+      const entry = item as Record<string, unknown>
+      const date = typeof entry.date === "string" ? entry.date : null
+      const status = entry.status
+      if (!date || !isAttendanceStatus(status)) return null
+      const course = typeof entry.course === "string" ? entry.course : undefined
+      return { date, status, course }
+    })
+    .filter((item): item is AttendanceStats["recent"][number] => item != null)
+}
+
+const parseGradeRecent = (value: unknown): GradeStats["recent"] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => {
+      if (!item || typeof item !== "object") return null
+      const entry = item as Record<string, unknown>
+      const course = typeof entry.course === "string" ? entry.course : null
+      const score = toNumber(entry.score, Number.NaN)
+      if (!course || Number.isNaN(score)) return null
+      const maxRaw = entry.max
+      const max = maxRaw != null ? toNumber(maxRaw, Number.NaN) : undefined
+      const date = typeof entry.date === "string" ? entry.date : ""
+      return {
+        course,
+        score,
+        date,
+        ...(max != null && !Number.isNaN(max) ? { max } : {}),
+      }
+    })
+    .filter((item): item is GradeStats["recent"][number] => item != null)
+}
+
+const parseParticipationRecent = (value: unknown): ParticipationStats["recent"] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => {
+      if (!item || typeof item !== "object") return null
+      const entry = item as Record<string, unknown>
+      const title = typeof entry.title === "string" ? entry.title : null
+      if (!title) return null
+      const date = typeof entry.date === "string" ? entry.date : ""
+      const role = typeof entry.role === "string" ? entry.role : undefined
+      return { title, date, role }
+    })
+    .filter((item): item is ParticipationStats["recent"][number] => item != null)
+}
+
 type AttendanceSummaryResponse = {
   percent?: unknown
   present?: unknown
@@ -280,6 +354,21 @@ export default function Activity() {
       t(`activity:sections.attendance.status.${status}`, { defaultValue: status }),
     [t]
   )
+  const fallbackAttendanceRecent = useMemo(() => {
+    const raw = t("activity:fallback.attendance.recent", { returnObjects: true }) as unknown
+    const parsed = parseAttendanceRecent(raw)
+    return parsed.length > 0 ? parsed : defaultAttendanceRecent
+  }, [t])
+  const fallbackGradeRecent = useMemo(() => {
+    const raw = t("activity:fallback.grades.recent", { returnObjects: true }) as unknown
+    const parsed = parseGradeRecent(raw)
+    return parsed.length > 0 ? parsed : defaultGradeRecent
+  }, [t])
+  const fallbackParticipationRecent = useMemo(() => {
+    const raw = t("activity:fallback.participation.recent", { returnObjects: true }) as unknown
+    const parsed = parseParticipationRecent(raw)
+    return parsed.length > 0 ? parsed : defaultParticipationRecent
+  }, [t])
 
   const fetchSummary = useCallback(async () => {
     setLoading(true)
@@ -306,11 +395,7 @@ export default function Activity() {
           total: 90,
           trend: 1.4,
           windowLabel: labelByPeriod(period),
-          recent: [
-            { date: "2025-09-19", status: "present", course: "Алгебра" },
-            { date: "2025-09-18", status: "late", course: "История" },
-            { date: "2025-09-17", status: "present", course: "Физика" },
-          ],
+          recent: fallbackAttendanceRecent.map(item => ({ ...item })),
         })
       }
       if (g.status === "fulfilled" && g.value?.data) {
@@ -326,11 +411,7 @@ export default function Activity() {
           average: 4.4,
           scale: "5",
           trend: 0.3,
-          recent: [
-            { course: "Алгебра", score: 5, date: "2025-09-18" },
-            { course: "Физика", score: 4, date: "2025-09-16" },
-            { course: "Литература", score: 5, date: "2025-09-13" },
-          ],
+          recent: fallbackGradeRecent.map(item => ({ ...item })),
         })
       }
       if (p.status === "fulfilled" && p.value?.data) {
@@ -348,16 +429,13 @@ export default function Activity() {
           hours: 12,
           groups: 2,
           trend: 2.0,
-          recent: [
-            { title: "Хакатон кафедры", date: "2025-09-14", role: "участник" },
-            { title: "Турнир по баскетболу", date: "2025-09-07", role: "команда" },
-          ],
+          recent: fallbackParticipationRecent.map(item => ({ ...item })),
         })
       }
     } finally {
       setLoading(false)
     }
-  }, [period, labelByPeriod])
+  }, [period, labelByPeriod, fallbackAttendanceRecent, fallbackGradeRecent, fallbackParticipationRecent])
 
   useEffect(() => {
     fetchSummary()
