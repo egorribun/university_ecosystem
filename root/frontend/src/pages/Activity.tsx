@@ -102,15 +102,13 @@ const defaultParticipationRecent: ParticipationStats["recent"] = [
   { title: "Basketball tournament", date: "2025-09-07", role: "team" },
 ]
 
-const isAttendanceStatus = (
-  value: unknown
-): value is AttendanceStats["recent"][number]["status"] =>
+const isAttendanceStatus = (value: unknown): value is AttendanceStats["recent"][number]["status"] =>
   value === "present" || value === "late" || value === "absent"
 
 const parseAttendanceRecent = (value: unknown): AttendanceStats["recent"] => {
   if (!Array.isArray(value)) return []
   return value
-    .map(item => {
+    .map((item) => {
       if (!item || typeof item !== "object") return null
       const entry = item as Record<string, unknown>
       const date = typeof entry.date === "string" ? entry.date : null
@@ -125,7 +123,7 @@ const parseAttendanceRecent = (value: unknown): AttendanceStats["recent"] => {
 const parseGradeRecent = (value: unknown): GradeStats["recent"] => {
   if (!Array.isArray(value)) return []
   return value
-    .map(item => {
+    .map((item) => {
       if (!item || typeof item !== "object") return null
       const entry = item as Record<string, unknown>
       const course = typeof entry.course === "string" ? entry.course : null
@@ -147,7 +145,7 @@ const parseGradeRecent = (value: unknown): GradeStats["recent"] => {
 const parseParticipationRecent = (value: unknown): ParticipationStats["recent"] => {
   if (!Array.isArray(value)) return []
   return value
-    .map(item => {
+    .map((item) => {
       if (!item || typeof item !== "object") return null
       const entry = item as Record<string, unknown>
       const title = typeof entry.title === "string" ? entry.title : null
@@ -395,7 +393,7 @@ export default function Activity() {
           total: 90,
           trend: 1.4,
           windowLabel: labelByPeriod(period),
-          recent: fallbackAttendanceRecent.map(item => ({ ...item })),
+          recent: fallbackAttendanceRecent.map((item) => ({ ...item })),
         })
       }
       if (g.status === "fulfilled" && g.value?.data) {
@@ -411,7 +409,7 @@ export default function Activity() {
           average: 4.4,
           scale: "5",
           trend: 0.3,
-          recent: fallbackGradeRecent.map(item => ({ ...item })),
+          recent: fallbackGradeRecent.map((item) => ({ ...item })),
         })
       }
       if (p.status === "fulfilled" && p.value?.data) {
@@ -429,13 +427,19 @@ export default function Activity() {
           hours: 12,
           groups: 2,
           trend: 2.0,
-          recent: fallbackParticipationRecent.map(item => ({ ...item })),
+          recent: fallbackParticipationRecent.map((item) => ({ ...item })),
         })
       }
     } finally {
       setLoading(false)
     }
-  }, [period, labelByPeriod, fallbackAttendanceRecent, fallbackGradeRecent, fallbackParticipationRecent])
+  }, [
+    period,
+    labelByPeriod,
+    fallbackAttendanceRecent,
+    fallbackGradeRecent,
+    fallbackParticipationRecent,
+  ])
 
   useEffect(() => {
     fetchSummary()
