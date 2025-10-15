@@ -5,34 +5,34 @@
     "evening": "Добрый вечер",
     "night": "Доброй ночи"
   },
-  "todaySchedule": "Сегодня в расписании",
+  "todaySchedule": "Расписание на сегодня",
   "aria": {
-    "openFullSchedule": "Перейти к полному расписанию",
-    "viewAllNews": "Смотреть все новости",
-    "newsList": "Список новостей",
+    "openFullSchedule": "Открыть полное расписание",
+    "viewAllNews": "Посмотреть все новости",
+    "newsList": "Лента новостей",
     "newsItem": "Новость: {{title}}",
-    "viewAllEvents": "Смотреть все события",
-    "eventsToday": "События на сегодня",
-    "eventsWeek": "События на неделю",
+    "viewAllEvents": "Посмотреть все события",
+    "eventsToday": "События сегодня",
+    "eventsWeek": "События на этой неделе",
     "eventItem": "Событие: {{title}}"
   },
   "fullSchedule": "Полное расписание",
   "now": "Сейчас",
   "next": "Далее",
-  "noClasses": "На сегодня занятий нет",
+  "noClasses": "Сегодня занятий не запланировано",
   "lessonMeta": "{{teacher}} · ауд. {{room}}",
   "news": {
     "heading": "Новости",
-    "empty": "Новостей пока нет"
+    "empty": "Пока нет новостей"
   },
   "events": {
     "heading": "События",
-    "empty": "Событий не найдено"
+    "empty": "Пока нет событий"
   },
-  "viewAll": "Смотреть все",
+  "viewAll": "Посмотреть все",
   "scope": {
     "today": "Сегодня",
-    "week": "Неделя"
+    "week": "Эта неделя"
   },
   "weekDays": {
     "display": [

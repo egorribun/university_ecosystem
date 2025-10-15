@@ -1,20 +1,20 @@
 {
   "brandName": "GUU Ecosystem",
   "brandAlt": "GUU logo",
-  "brandDescription": "Profile, schedule, news, and campus events in one place.",
+  "brandDescription": "Everything you need—profile, schedule, news, and campus events—in one place.",
   "menu": {
     "dashboard": "Home",
     "news": "News",
     "schedule": "Schedule",
     "events": "Events",
     "activity": "Activity",
-    "map": "Map",
+    "map": "Campus map",
     "users": "Users",
     "profile": "Profile",
     "settings": "Settings"
   },
   "aria": {
-    "homeLink": "Go to dashboard",
+    "homeLink": "Go to home page",
     "openProfile": "Open profile",
     "profileAvatar": "Profile avatar",
     "profileAvatarNamed": "Profile avatar for {{name}}",
@@ -25,12 +25,12 @@
     "close": "Close"
   },
   "footer": {
-    "navigationTitle": "Navigation",
+    "navigationTitle": "Explore",
     "profileTitle": "Profile",
     "myProfile": "My profile",
-    "contactTelegram": "Message on Telegram",
-    "contactEmail": "Write via email",
+    "contactTelegram": "Message us on Telegram",
+    "contactEmail": "Send an email",
     "copyright": "© {{year}} GUU Ecosystem",
-    "careNote": "Built with care for students and faculty"
+    "careNote": "Created with care for students and staff."
   }
 }

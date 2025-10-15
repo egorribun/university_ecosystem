@@ -4,40 +4,90 @@
     "default": "Расписание"
   },
   "header": {
-    "groupName": "Группа: {{name}}"
+    "groupName": "Группа {{name}}"
   },
   "weekdays": {
-    "order": ["mon", "tue", "wed", "thu", "fri", "sat"],
+    "order": [
+      "mon",
+      "tue",
+      "wed",
+      "thu",
+      "fri",
+      "sat"
+    ],
     "items": {
-      "mon": { "backend": "Понедельник", "long": "Понедельник", "short": "Пн" },
-      "tue": { "backend": "Вторник", "long": "Вторник", "short": "Вт" },
-      "wed": { "backend": "Среда", "long": "Среда", "short": "Ср" },
-      "thu": { "backend": "Четверг", "long": "Четверг", "short": "Чт" },
-      "fri": { "backend": "Пятница", "long": "Пятница", "short": "Пт" },
-      "sat": { "backend": "Суббота", "long": "Суббота", "short": "Сб" }
+      "mon": {
+        "backend": "Понедельник",
+        "long": "Понедельник",
+        "short": "Пн"
+      },
+      "tue": {
+        "backend": "Вторник",
+        "long": "Вторник",
+        "short": "Вт"
+      },
+      "wed": {
+        "backend": "Среда",
+        "long": "Среда",
+        "short": "Ср"
+      },
+      "thu": {
+        "backend": "Четверг",
+        "long": "Четверг",
+        "short": "Чт"
+      },
+      "fri": {
+        "backend": "Пятница",
+        "long": "Пятница",
+        "short": "Пт"
+      },
+      "sat": {
+        "backend": "Суббота",
+        "long": "Суббота",
+        "short": "Сб"
+      }
     }
   },
   "lessonTypes": {
-    "order": ["lecture", "practice", "lab", "project"],
+    "order": [
+      "lecture",
+      "practice",
+      "lab",
+      "project"
+    ],
     "items": {
       "lecture": {
-        "backend": ["Лекция", "Lecture"],
+        "backend": [
+          "Лекция",
+          "Lecture"
+        ],
         "label": "Лекция",
         "color": "var(--badge-lec)"
       },
       "practice": {
-        "backend": ["ПЗ", "Практика", "Practical class"],
+        "backend": [
+          "ПЗ",
+          "Практика",
+          "Practical class"
+        ],
         "label": "Практика",
         "color": "var(--badge-prac)"
       },
       "lab": {
-        "backend": ["ЛЗ", "Лабораторная", "Lab work"],
+        "backend": [
+          "ЛЗ",
+          "Лабораторная",
+          "Lab work"
+        ],
         "label": "Лабораторная",
         "color": "var(--badge-lab)"
       },
       "project": {
-        "backend": ["Проектная деятельность", "Project work"],
-        "label": "Проектная деятельность",
+        "backend": [
+          "Проектная деятельность",
+          "Project work"
+        ],
+        "label": "Проектная работа",
         "color": "#607d8b"
       }
     }
@@ -62,9 +112,9 @@
     "even": "Чётная",
     "both": "Обе"
   },
-  "break": "Перерыв {{minutes}} мин",
+  "break": "Перерыв — {{minutes}} мин",
   "lesson": {
-    "conflict": "Конфликт по времени",
+    "conflict": "Конфликт расписания",
     "details": "Подробнее"
   },
   "aria": {
@@ -73,17 +123,17 @@
     "currentProgress": "Прогресс текущего занятия"
   },
   "table": {
-    "noLessons": "Нет занятий"
+    "noLessons": "Занятия не запланированы"
   },
   "mobile": {
-    "noLessons": "Нет занятий в этот день"
+    "noLessons": "В этот день занятий нет"
   },
   "chips": {
     "current": "Сейчас",
     "next": "Далее"
   },
   "summary": {
-    "noMoreToday": "Сегодня занятий больше нет"
+    "noMoreToday": "Сегодня больше нет занятий"
   },
   "form": {
     "groupLabel": "Группа",
@@ -102,21 +152,21 @@
     "timeLabel": "Время",
     "teacherLabel": "Преподаватель",
     "roomLabel": "Аудитория",
-    "editTitle": "Редактирование занятия",
+    "editTitle": "Редактировать занятие",
     "addTitle": "Добавить занятие"
   },
   "buttons": {
     "edit": "Редактировать",
     "close": "Закрыть",
-    "add": "Добавить"
+    "add": "Добавить занятие"
   },
   "snackbar": {
     "updated": "Изменения сохранены",
-    "updateError": "Ошибка при сохранении",
+    "updateError": "Не удалось сохранить изменения",
     "fillAllFields": "Заполните все поля",
     "added": "Занятие добавлено",
-    "addError": "Ошибка при добавлении",
+    "addError": "Не удалось добавить занятие",
     "deleted": "Занятие удалено",
-    "deleteError": "Ошибка при удалении"
+    "deleteError": "Не удалось удалить занятие"
   }
 }

@@ -1,24 +1,24 @@
 {
   "pageTitle": "Events",
   "states": {
-    "empty": "No events found"
+    "empty": "No events match your filters"
   },
   "tabs": {
     "active": "Upcoming",
-    "archive": "Archive",
+    "archive": "Past events",
     "my": "My events"
   },
   "filters": {
-    "search": "Search",
+    "search": "Search events",
     "type": "Type",
     "location": "Location"
   },
   "actions": {
-    "openCreate": "Create event"
+    "openCreate": "New event"
   },
   "dialogs": {
     "create": {
-      "title": "Create event"
+      "title": "Create an event"
     }
   },
   "form": {
@@ -32,15 +32,15 @@
     "start": "Start",
     "end": "End",
     "errors": {
-      "endsBeforeStarts": "End time cannot be before the start time"
+      "endsBeforeStarts": "End time must be after the start time"
     }
   },
   "aria": {
     "clearSearch": "Clear search",
-    "openFilters": "Open filters"
+    "openFilters": "Open filters panel"
   },
   "alt": {
-    "preview": "Preview of the event image",
+    "preview": "Event image preview",
     "image": "Event image"
   },
   "card": {
@@ -50,18 +50,18 @@
     "actions": {
       "register": "Register",
       "unregister": "Cancel registration",
-      "openQr": "Open QR code",
+      "openQr": "Show QR code",
       "closeQr": "Close"
     },
     "statuses": {
-      "ended": "Event has ended"
+      "ended": "Event ended"
     },
     "participants": "Participants: {{count}}",
     "messages": {
-      "registerSuccess": "You are registered for the event",
+      "registerSuccess": "You're registered for the event",
       "registerFailure": "Couldn't register for the event",
-      "unregisterSuccess": "Registration cancelled",
-      "unregisterFailure": "Couldn't cancel registration",
+      "unregisterSuccess": "Registration canceled",
+      "unregisterFailure": "Couldn't cancel the registration",
       "deleteSuccess": "Event deleted",
       "deleteFailure": "Couldn't delete the event",
       "saveSuccess": "Changes saved",
@@ -79,23 +79,23 @@
   },
   "detail": {
     "messages": {
-      "loadFailed": "Couldn't load event",
+      "loadFailed": "Couldn't load the event",
       "notFound": "Event not found",
-      "fileAdded": "File added",
-      "fileAddFailed": "Couldn't add file",
-      "fileDeleted": "File deleted",
-      "fileDeleteFailed": "Couldn't delete file",
+      "fileAdded": "File uploaded",
+      "fileAddFailed": "Couldn't upload the file",
+      "fileDeleted": "File removed",
+      "fileDeleteFailed": "Couldn't remove the file",
       "aboutUpdated": "Description updated",
-      "aboutUpdateFailed": "Couldn't update description"
+      "aboutUpdateFailed": "Couldn't update the description"
     },
     "upload": {
       "errors": {
-        "noFile": "Select a file",
-        "failed": "Couldn't add file"
+        "noFile": "Choose a file",
+        "failed": "Couldn't upload the file"
       },
       "submit": {
         "label": "Add",
-        "pending": "Adding..."
+        "pending": "Adding…"
       }
     },
     "fields": {
@@ -108,14 +108,14 @@
         "title": "About the event",
         "fieldLabel": "Event description",
         "editAria": "Edit description",
-        "savePending": "Saving...",
-        "empty": "The event description is empty."
+        "savePending": "Saving…",
+        "empty": "The event description hasn't been added yet."
       },
       "files": {
         "title": "Files",
         "pickFile": "File",
-        "empty": "No files yet",
-        "pending": "Adding file...",
+        "empty": "No files uploaded yet",
+        "pending": "Uploading file…",
         "downloadAria": "Download file {{label}}",
         "deleteAria": "Delete file"
       }

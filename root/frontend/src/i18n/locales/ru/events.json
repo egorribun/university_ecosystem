@@ -1,20 +1,20 @@
 {
   "pageTitle": "Мероприятия",
   "states": {
-    "empty": "Нет мероприятий"
+    "empty": "Нет событий, подходящих под фильтры"
   },
   "tabs": {
     "active": "Актуальные",
-    "archive": "Архив",
+    "archive": "Прошедшие",
     "my": "Мои события"
   },
   "filters": {
-    "search": "Поиск",
+    "search": "Поиск мероприятий",
     "type": "Тип",
     "location": "Место"
   },
   "actions": {
-    "openCreate": "Создать мероприятие"
+    "openCreate": "Новое мероприятие"
   },
   "dialogs": {
     "create": {
@@ -32,12 +32,12 @@
     "start": "Начало",
     "end": "Окончание",
     "errors": {
-      "endsBeforeStarts": "Окончание не может быть раньше начала"
+      "endsBeforeStarts": "Время окончания должно быть позже начала"
     }
   },
   "aria": {
     "clearSearch": "Очистить поиск",
-    "openFilters": "Открыть фильтры"
+    "openFilters": "Открыть панель фильтров"
   },
   "alt": {
     "preview": "Предпросмотр изображения события",
@@ -50,7 +50,7 @@
     "actions": {
       "register": "Зарегистрироваться",
       "unregister": "Отменить регистрацию",
-      "openQr": "Открыть QR",
+      "openQr": "Показать QR-код",
       "closeQr": "Закрыть"
     },
     "statuses": {
@@ -58,8 +58,8 @@
     },
     "participants": "Участников: {{count}}",
     "messages": {
-      "registerSuccess": "Вы зарегистрированы на мероприятие",
-      "registerFailure": "Не удалось зарегистрироваться",
+      "registerSuccess": "Вы записаны на мероприятие",
+      "registerFailure": "Не удалось зарегистрироваться на мероприятие",
       "unregisterSuccess": "Регистрация отменена",
       "unregisterFailure": "Не удалось отменить регистрацию",
       "deleteSuccess": "Мероприятие удалено",
@@ -79,23 +79,23 @@
   },
   "detail": {
     "messages": {
-      "loadFailed": "Ошибка загрузки",
+      "loadFailed": "Не удалось загрузить мероприятие",
       "notFound": "Мероприятие не найдено",
-      "fileAdded": "Файл добавлен",
-      "fileAddFailed": "Ошибка добавления файла",
+      "fileAdded": "Файл загружен",
+      "fileAddFailed": "Не удалось загрузить файл",
       "fileDeleted": "Файл удалён",
-      "fileDeleteFailed": "Ошибка удаления файла",
+      "fileDeleteFailed": "Не удалось удалить файл",
       "aboutUpdated": "Описание обновлено",
-      "aboutUpdateFailed": "Ошибка сохранения описания"
+      "aboutUpdateFailed": "Не удалось обновить описание"
     },
     "upload": {
       "errors": {
         "noFile": "Выберите файл",
-        "failed": "Не удалось добавить файл"
+        "failed": "Не удалось загрузить файл"
       },
       "submit": {
         "label": "Добавить",
-        "pending": "Добавление..."
+        "pending": "Добавление…"
       }
     },
     "fields": {
@@ -108,14 +108,14 @@
         "title": "Описание мероприятия",
         "fieldLabel": "Описание мероприятия",
         "editAria": "Редактировать описание",
-        "savePending": "Сохраняю...",
-        "empty": "Описание мероприятия не заполнено."
+        "savePending": "Сохранение…",
+        "empty": "Описание ещё не добавлено."
       },
       "files": {
         "title": "Файлы",
         "pickFile": "Файл",
-        "empty": "Файлов пока нет",
-        "pending": "Добавление файла...",
+        "empty": "Файлы пока не загружены",
+        "pending": "Загрузка файла…",
         "downloadAria": "Скачать файл {{label}}",
         "deleteAria": "Удалить файл"
       }

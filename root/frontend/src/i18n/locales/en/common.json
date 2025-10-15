@@ -1,10 +1,10 @@
 {
   "skipToContent": "Skip to content",
   "skipToMain": "Skip to main content",
-  "dateUnknown": "Date unknown",
-  "ariaDatePublished": "Publication date: {{date}}",
+  "dateUnknown": "Date unavailable",
+  "ariaDatePublished": "Published on {{date}}",
   "ariaCurrentTime": "Current time",
-  "ariaCurrentLessonProgress": "Current lesson progress",
+  "ariaCurrentLessonProgress": "Progress of the current lesson",
   "buttons": {
     "save": "Save",
     "cancel": "Cancel",
