@@ -12,6 +12,7 @@ import {
   getManifestStrings,
   getStrings,
 } from "../../public/static-shell-i18n.js";
+import type { ManifestShortcutStrings } from "../../public/static-shell-i18n.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,7 +98,10 @@ describe("static shell i18n integration", () => {
     expect(manifest.short_name).toBe(manifestStrings?.short_name);
     expect(manifest.description).toBe(manifestStrings?.description);
     expect(
-      manifest.shortcuts?.map((shortcut) => ({ name: shortcut.name, description: shortcut.description })),
+      manifest.shortcuts?.map((shortcut: ManifestShortcutStrings) => ({
+        name: shortcut.name,
+        description: shortcut.description,
+      })),
     ).toEqual(manifestStrings?.shortcuts);
   });
 });
