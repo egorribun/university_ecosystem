@@ -19,6 +19,7 @@ import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt"
 import TrafficIcon from "@mui/icons-material/Traffic"
 import RestartAltIcon from "@mui/icons-material/RestartAlt"
 import "../assets/themes.css"
+import { useTranslation } from "react-i18next"
 
 type LayerMode = "map" | "hybrid"
 
@@ -30,6 +31,7 @@ const LOAD_TIMEOUT_MS = 12000
 export default function MapContent() {
   const theme = useTheme()
   const isMobile = useMediaQuery("(max-width:900px)")
+  const { t } = useTranslation("system")
   const [layer, setLayer] = useState<LayerMode>("map")
   const [traffic, setTraffic] = useState(false)
   const [iframeLoaded, setIframeLoaded] = useState(false)
@@ -160,13 +162,13 @@ export default function MapContent() {
                   fontWeight={800}
                   sx={{ letterSpacing: 0.2, fontSize: "clamp(1.1rem, 3.6vw, 2.4rem)" }}
                 >
-                  Карта кампуса
+                  {t("map.title")}
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={1}>
-                <Tooltip title="Открыть в Яндекс-Картах" {...tooltipCfg}>
+                <Tooltip title={t("map.openInYandex") ?? undefined} {...tooltipCfg}>
                   <IconButton
-                    aria-label="Открыть в Яндекс-Картах"
+                    aria-label={t("map.openInYandex")}
                     className="glass glass--btn map-btn map-btn--open"
                     onClick={openInYandex}
                     sx={{ touchAction: "manipulation" }}
@@ -174,9 +176,9 @@ export default function MapContent() {
                     <OpenInNewIcon />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Сбросить" {...tooltipCfg}>
+                <Tooltip title={t("map.reset") ?? undefined} {...tooltipCfg}>
                   <IconButton
-                    aria-label="Сбросить"
+                    aria-label={t("map.reset")}
                     className="glass glass--btn map-btn map-btn--reset"
                     onClick={reset}
                     sx={{ touchAction: "manipulation" }}
@@ -191,7 +193,7 @@ export default function MapContent() {
           <iframe
             key={`${frameKey}`}
             src={mapSrc}
-            title="Карта кампуса ГУУ"
+            title={t("map.iframeTitle")}
             width="100%"
             height="100%"
             style={{ border: 0, position: "absolute", inset: 0, display: "block" }}
@@ -227,7 +229,7 @@ export default function MapContent() {
                 }} />
               ) : (
                 <Stack spacing={2} alignItems="center">
-                  <Typography>Не удалось загрузить карту</Typography>
+                  <Typography>{t("map.loadError")}</Typography>
                   <IconButton color="primary" onClick={() => { setLoadError(false); setIframeLoaded(false); setFrameKey(k => k + 1) }}>
                     <RestartAltIcon />
                   </IconButton>
@@ -271,28 +273,28 @@ export default function MapContent() {
                     "& .MuiToggleButton-root.Mui-selected .MuiSvgIcon-root": { color: "inherit" }
                   }}
                 >
-                  <ToggleButton value="map" disableRipple aria-label="Схема">
+                  <ToggleButton value="map" disableRipple aria-label={t("map.layerAria.map")}>
                     <MapIcon fontSize="small" sx={{ color: "inherit" }} />
                     {!isMobile && (
                       <Box component="span" ml={1} sx={{ color: "inherit" }}>
-                        Карта
+                        {t("map.layer.map")}
                       </Box>
                     )}
                   </ToggleButton>
-                  <ToggleButton value="hybrid" disableRipple aria-label="Спутник">
+                  <ToggleButton value="hybrid" disableRipple aria-label={t("map.layerAria.hybrid")}>
                     <SatelliteAltIcon fontSize="small" sx={{ color: "inherit" }} />
                     {!isMobile && (
                       <Box component="span" ml={1} sx={{ color: "inherit" }}>
-                        Спутник
+                        {t("map.layer.hybrid")}
                       </Box>
                     )}
                   </ToggleButton>
                 </ToggleButtonGroup>
               </Box>
-              <Tooltip title={traffic ? "Скрыть пробки" : "Показать пробки"} {...tooltipCfg}>
+              <Tooltip title={(traffic ? t("map.traffic.hide") : t("map.traffic.show")) ?? undefined} {...tooltipCfg}>
                 <IconButton
                   aria-pressed={traffic}
-                  aria-label="Пробки"
+                  aria-label={t("map.traffic.label")}
                   onClick={() => setTraffic(v => !v)}
                   className="glass glass--btn"
                   sx={{

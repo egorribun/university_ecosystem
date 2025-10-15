@@ -1,0 +1,25 @@
+{
+  "users": {
+    "title": "Пользователи",
+    "confirmDelete": "Удалить пользователя?",
+    "filters": {
+      "fullName": "ФИО",
+      "group": "Группа",
+      "role": "Роль",
+      "all": "Все"
+    },
+    "roles": {
+      "student": "Студент",
+      "teacher": "Преподаватель",
+      "admin": "Администратор"
+    },
+    "table": {
+      "avatar": "Аватар",
+      "fullName": "ФИО",
+      "email": "Email",
+      "role": "Роль",
+      "group": "Группа",
+      "actions": "Действия"
+    }
+  }
+}

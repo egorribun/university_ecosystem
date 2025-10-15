@@ -9,6 +9,7 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete"
 import { useAuth } from "../contexts/AuthContext"
 import useMediaQuery from "@mui/material/useMediaQuery"
+import { useTranslation } from "react-i18next"
 
 const backendBaseUrl = "http://localhost:8000"
 
@@ -43,6 +44,13 @@ export default function AdminUsers() {
   const [filters, setFilters] = useState<UserFilters>({ full_name: "", group_id: "", role: "" })
   const { user: userContext } = useAuth()
   const isMobile = useMediaQuery("(max-width:1200px)")
+  const { t } = useTranslation("admin")
+
+  const roleOptions: Record<UserRole, string> = {
+    student: t("users.roles.student"),
+    teacher: t("users.roles.teacher"),
+    admin: t("users.roles.admin")
+  }
 
   const fetchUsers = useCallback(async () => {
     const params: Record<string, string> = {}
@@ -73,7 +81,7 @@ export default function AdminUsers() {
   }
 
   const handleDelete = async (userId: number) => {
-    if (!window.confirm("Удалить пользователя?")) return
+    if (!window.confirm(t("users.confirmDelete"))) return
     await api.delete(`/users/${userId}`)
     void fetchUsers()
   }
@@ -127,19 +135,19 @@ export default function AdminUsers() {
               textOverflow: "ellipsis"
             }}
           >
-            Пользователи
+            {t("users.title")}
           </Typography>
           <Box mb={2} display="flex" gap={2} flexWrap="wrap">
             <TextField
-              label="ФИО"
+              label={t("users.filters.fullName")}
               value={filters.full_name}
               onChange={e => handleFilterChange("full_name")(e.target.value)}
               sx={{ minWidth: 220 }}
             />
             <FormControl sx={{ minWidth: 150 }}>
-              <InputLabel>Группа</InputLabel>
+              <InputLabel>{t("users.filters.group")}</InputLabel>
               <Select value={filters.group_id} onChange={handleGroupFilterChange}>
-                <MenuItem value="">Все</MenuItem>
+                <MenuItem value="">{t("users.filters.all")}</MenuItem>
                 {groups.map(g => (
                   <MenuItem value={String(g.id)} key={g.id}>
                     {g.name}
@@ -148,12 +156,12 @@ export default function AdminUsers() {
               </Select>
             </FormControl>
             <FormControl sx={{ minWidth: 150 }}>
-              <InputLabel>Роль</InputLabel>
+              <InputLabel>{t("users.filters.role")}</InputLabel>
               <Select value={filters.role} onChange={handleRoleChange}>
-                <MenuItem value="">Все</MenuItem>
-                <MenuItem value="student">Студент</MenuItem>
-                <MenuItem value="teacher">Преподаватель</MenuItem>
-                <MenuItem value="admin">Админ</MenuItem>
+                <MenuItem value="">{t("users.filters.all")}</MenuItem>
+                <MenuItem value="student">{roleOptions.student}</MenuItem>
+                <MenuItem value="teacher">{roleOptions.teacher}</MenuItem>
+                <MenuItem value="admin">{roleOptions.admin}</MenuItem>
               </Select>
             </FormControl>
           </Box>
@@ -183,7 +191,7 @@ export default function AdminUsers() {
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center" mt={0.4}>
                       <Typography fontSize={14} sx={{ bgcolor: "#e3f1fd", color: "#1565c0", borderRadius: 1, px: 1.2, py: 0.2 }}>
-                        {user.role}
+                        {roleOptions[user.role]}
                       </Typography>
                       {user.role !== "teacher" && user.role !== "admin" && (
                         <FormControl size="small" sx={{ minWidth: 60 }}>
@@ -228,12 +236,12 @@ export default function AdminUsers() {
               <Table stickyHeader sx={{ minWidth: 700, width: "100%" }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>Аватар</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>ФИО</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>Email</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>Роль</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>Группа</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>Действия</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.avatar")}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.fullName")}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.email")}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.role")}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.group")}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.actions")}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -244,7 +252,7 @@ export default function AdminUsers() {
                       </TableCell>
                       <TableCell align="center">{user.full_name}</TableCell>
                       <TableCell align="center">{user.email}</TableCell>
-                      <TableCell align="center">{user.role}</TableCell>
+                      <TableCell align="center">{roleOptions[user.role]}</TableCell>
                       <TableCell align="center">
                         {user.role !== "teacher" && user.role !== "admin" ? (
                           <Select
