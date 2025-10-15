@@ -61,14 +61,10 @@ pwd_context = CryptContext(
 )
 
 
-def _validate_password_policy(
-    password: str, *, locale: str | None = None
-) -> None:
+def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
     length = len(password)
     if length < PASSWORD_MIN_LENGTH or length > PASSWORD_MAX_LENGTH:
-        raise ValueError(
-            translate("errors.auth.password_policy", locale=locale)
-        )
+        raise ValueError(translate("errors.auth.password_policy", locale=locale))
 
 
 def _truncate_for_bcrypt(password: str) -> str:

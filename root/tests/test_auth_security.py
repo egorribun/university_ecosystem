@@ -31,10 +31,7 @@ def test_get_password_hash_enforces_length_bounds():
     with pytest.raises(ValueError) as exc_en:
         get_password_hash("x" * 201, locale="en")
 
-    assert (
-        str(exc_en.value)
-        == "Password must be between 8 and 200 characters long."
-    )
+    assert str(exc_en.value) == "Password must be between 8 and 200 characters long."
 
 
 def test_password_policy_allows_limits():
