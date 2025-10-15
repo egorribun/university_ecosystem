@@ -490,7 +490,7 @@ self.addEventListener("push", (event) => {
           type: "PUSH_NOTIFICATION",
           toast: {
             title,
-            body: payload.body,
+            body: options.body,
             url: typeof data.url === "string" ? data.url : undefined,
             icon: options.icon,
             tag: options.tag,

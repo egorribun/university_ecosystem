@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 
 export type RemindItem = {
   id: string | number
@@ -24,6 +25,7 @@ function openUrl(u: string) {
 }
 
 export function useClassReminders(items: RemindItem[] | undefined, opts?: { defaultMinutesBefore?: number }) {
+  const { t } = useTranslation("notifications")
   const timers = useRef<Timer[]>([])
   const defMins = Math.max(0, opts?.defaultMinutesBefore ?? 10)
 
@@ -54,7 +56,7 @@ export function useClassReminders(items: RemindItem[] | undefined, opts?: { defa
         if (!("Notification" in window) || Notification.permission !== "granted") return
         const data = { url: ev.url || "/", id: ev.id, type: "reminder" }
         const title = ev.title
-        const body = `Через ${mins} мин.`
+        const body = t("reminders.startsSoon", { minutes: mins })
         const tag = ev.tag || `reminder:${ev.id}`
         try {
           const reg = await navigator.serviceWorker?.getRegistration()
@@ -80,7 +82,7 @@ export function useClassReminders(items: RemindItem[] | undefined, opts?: { defa
     })
 
     return clearAll
-  }, [items, defMins, clearAll])
+  }, [items, defMins, clearAll, t])
 
   return { requestPermission, clear: clearAll }
 }

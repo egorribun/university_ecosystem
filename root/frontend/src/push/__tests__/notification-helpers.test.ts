@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
   DEFAULT_ICON,
-  DEFAULT_TITLE,
   buildNotificationDetails,
+  getDefaultNotificationBody,
+  getDefaultNotificationTitle,
   parsePushEventData,
 } from "../notification-helpers"
 
@@ -35,9 +36,10 @@ describe("parsePushEventData", () => {
 describe("buildNotificationDetails", () => {
   it("applies defaults for title and icon", () => {
     const result = buildNotificationDetails({})
-    expect(result.title).toBe(DEFAULT_TITLE)
+    expect(result.title).toBe(getDefaultNotificationTitle())
     expect(result.options.icon).toBe(DEFAULT_ICON)
     expect(result.options.badge).toBe(DEFAULT_ICON)
+    expect(result.options.body).toBe(getDefaultNotificationBody())
     expect(result.data.url).toBe("/")
   })
 

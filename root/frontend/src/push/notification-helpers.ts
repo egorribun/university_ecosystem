@@ -1,3 +1,5 @@
+import i18n from "@/i18n/config"
+
 export type NotificationData = {
   url?: string
   actionUrls?: Record<string, string>
@@ -37,8 +39,14 @@ export type PushPayload = {
   actions?: NotificationActionPayload[]
 }
 
-export const DEFAULT_TITLE = "Экосистема ГУУ"
 export const DEFAULT_ICON = "/maskable-icon-192.png"
+
+const translateNotification = (key: string, options?: Record<string, unknown>) =>
+  i18n.t(`notifications:${key}`, options)
+
+export const getDefaultNotificationTitle = () => translateNotification("defaultTitle")
+
+export const getDefaultNotificationBody = () => translateNotification("defaultBody")
 
 export type ExtendedNotificationOptions = NotificationOptions & {
   renotify?: boolean
@@ -82,15 +90,19 @@ export function buildNotificationDetails(payload: PushPayload): {
       ? (payload.data as Record<string, unknown>)
       : undefined
 
-  const title = payload.title || DEFAULT_TITLE
+  const rawTitle = typeof payload.title === "string" ? payload.title.trim() : ""
+  const title = rawTitle || getDefaultNotificationTitle()
 
   const data: NotificationData = {
     url: payload.url || "/",
     ...(rawData ?? {}),
   }
 
+  const rawBody = typeof payload.body === "string" ? payload.body.trim() : ""
+  const body = rawBody || getDefaultNotificationBody()
+
   const options: ExtendedNotificationOptions = {
-    body: payload.body,
+    body,
     icon: payload.icon || DEFAULT_ICON,
     badge: payload.badge || payload.icon || DEFAULT_ICON,
     tag: payload.tag,

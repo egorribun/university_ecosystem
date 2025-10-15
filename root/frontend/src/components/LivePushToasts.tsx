@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type SyntheticEvent } from "react"
 import { Alert, Button, Snackbar, Stack, Typography } from "@mui/material"
 import type { SnackbarCloseReason } from "@mui/material/Snackbar"
+import { useTranslation } from "react-i18next"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -42,6 +43,7 @@ const buildToastId = (toast: ToastPayload) => {
 }
 
 export default function LivePushToasts() {
+  const { t } = useTranslation("notifications")
   const [queue, setQueue] = useState<ActiveToast[]>([])
   const [current, setCurrent] = useState<ActiveToast | null>(null)
   const [open, setOpen] = useState(false)
@@ -100,8 +102,8 @@ export default function LivePushToasts() {
   }, [current])
 
   const severity = resolveSeverity(current)
-  const title = current?.title?.trim()
-  const body = current?.body?.trim()
+  const title = current?.title?.trim() || t("defaultTitle")
+  const body = current?.body?.trim() || t("defaultBody")
 
   return (
     <Snackbar
@@ -119,7 +121,7 @@ export default function LivePushToasts() {
         action={
           current?.url ? (
             <Button color="inherit" size="small" onClick={handleAction}>
-              Открыть
+              {t("toast.open")}
             </Button>
           ) : null
         }
