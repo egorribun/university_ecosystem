@@ -20,7 +20,12 @@ from app.api.deps import get_current_user
 from app.api.utils import save_upload
 from app.core.database import get_db
 from app.deps.cache import etag_matches, format_etag, get_cache
-from app.localization import DEFAULT_LOCALE, SUPPORTED_LOCALES, resolve_locale, translate
+from app.localization import (
+    DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
+    resolve_locale,
+    translate,
+)
 from app.models import models
 from app.schemas import schemas
 from app.services.notifications import notify_about_news
@@ -80,7 +85,9 @@ def _localized_text(locale: str, ru_value: Any, en_value: Any) -> str:
     return str(ru_value or en_value or "")
 
 
-def _serialize_news(record: models.News | schemas.NewsOut, locale: str) -> dict[str, Any]:
+def _serialize_news(
+    record: models.News | schemas.NewsOut, locale: str
+) -> dict[str, Any]:
     model_out = (
         record
         if isinstance(record, schemas.NewsOut)
@@ -88,7 +95,9 @@ def _serialize_news(record: models.News | schemas.NewsOut, locale: str) -> dict[
     )
     data = model_out.model_dump()
     data["title"] = _localized_text(locale, data.get("title"), data.get("title_en"))
-    data["content"] = _localized_text(locale, data.get("content"), data.get("content_en"))
+    data["content"] = _localized_text(
+        locale, data.get("content"), data.get("content_en")
+    )
     return data
 
 

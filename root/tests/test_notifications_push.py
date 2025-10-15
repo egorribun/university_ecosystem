@@ -19,8 +19,8 @@ from app.core.config import settings
 from app.models import models
 from app.models.models import PushSubscription
 from app.routers.notifications import _serialize_subscription
-from app.services import webpush as webpush_module
 from app.services import notifications
+from app.services import webpush as webpush_module
 
 
 @pytest.fixture
@@ -315,15 +315,19 @@ async def test_notify_about_news_uses_locale(
     captures: list[dict[str, Any]] = []
 
     async def fake_create_notifications_for_users(*_args, **kwargs):
-        captures.append({
-            "title": kwargs.get("title"),
-            "body": kwargs.get("body"),
-            "payload": kwargs.get("payload_data", {}),
-        })
+        captures.append(
+            {
+                "title": kwargs.get("title"),
+                "body": kwargs.get("body"),
+                "payload": kwargs.get("payload_data", {}),
+            }
+        )
         return 1
 
     monkeypatch.setattr(
-        notifications, "create_notifications_for_users", fake_create_notifications_for_users
+        notifications,
+        "create_notifications_for_users",
+        fake_create_notifications_for_users,
     )
 
     await notifications.notify_about_news(db_session, news, locale="en")
