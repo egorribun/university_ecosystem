@@ -124,7 +124,7 @@ class ScheduleBase(BaseModel):
     start_time: datetime
     end_time: datetime
     parity: Optional[str] = "both"
-    lesson_type: Optional[str] = translate("schedule.lesson.default_type", locale="ru")
+    lesson_type: Optional[str] = None
 
 
 class ScheduleCreate(ScheduleBase):
@@ -145,6 +145,7 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleOut(OrmModel, ScheduleBase):
     id: int
+    lesson_type_display: Optional[str] = None
 
 
 class NewsCreate(BaseModel):

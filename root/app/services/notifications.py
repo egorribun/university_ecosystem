@@ -13,7 +13,14 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
-from app.localization import localized_text, normalize_locale, resolve_locale, translate
+from app.localization import (
+    SUPPORTED_LOCALES,
+    localized_text,
+    normalize_locale,
+    resolve_locale,
+    translate,
+    translate_lesson_type,
+)
 from app.models.models import (
     Event,
     News,
@@ -34,6 +41,23 @@ def _current_local_time() -> dt.time:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _room_label_prefixes() -> set[str]:
+    prefixes: set[str] = set()
+    for locale_code in SUPPORTED_LOCALES:
+        template = translate(
+            "notifications.schedule.room_label", locale=locale_code, room=""
+        )
+        for variant in (template, template.replace(".", "")):
+            normalized = variant.strip().lower()
+            if normalized:
+                prefixes.add(normalized)
+    prefixes.update({"room", "aud"})
+    return prefixes
+
+
+_ROOM_LABEL_PREFIXES = _room_label_prefixes()
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -104,10 +128,12 @@ def build_schedule_reminder_message(
 ) -> tuple[str, str, str, dict[str, Any]]:
     start_dt = _ensure_aware(getattr(lesson, "start_time", None))
     start_local = start_dt.astimezone()
+    lesson_type_raw = getattr(lesson, "lesson_type", None)
+    lesson_type_display = translate_lesson_type(lesson_type_raw, locale=locale)
     payload_input = {
         "subject": getattr(lesson, "subject", None),
         "group": getattr(getattr(lesson, "group", None), "name", None),
-        "lesson_type": getattr(lesson, "lesson_type", None),
+        "lesson_type": lesson_type_display or lesson_type_raw,
         "teacher": getattr(lesson, "teacher", None),
         "room": getattr(lesson, "room", None),
         "starts_at": start_dt.isoformat(),
@@ -131,13 +157,15 @@ def build_schedule_reminder_message(
             "notifications.schedule.reminder.title", locale=locale
         )
     summary_parts: list[str] = []
-    if getattr(lesson, "lesson_type", None):
-        summary_parts.append(str(lesson.lesson_type))
+    if lesson_type_display:
+        summary_parts.append(lesson_type_display)
+    elif lesson_type_raw:
+        summary_parts.append(str(lesson_type_raw))
     room_value = getattr(lesson, "room", None)
     if room_value:
         room_text = str(room_value)
         normalized = room_text.strip().lower()
-        if normalized.startswith("ауд") or normalized.startswith("aud"):
+        if any(normalized.startswith(prefix) for prefix in _ROOM_LABEL_PREFIXES):
             summary_parts.append(room_text)
         else:
             summary_parts.append(
@@ -171,7 +199,8 @@ def build_schedule_reminder_message(
         "lessonId": getattr(lesson, "id", None),
         "subject": getattr(lesson, "subject", None),
         "groupId": getattr(lesson, "group_id", None),
-        "lessonType": getattr(lesson, "lesson_type", None),
+        "lessonType": lesson_type_display or lesson_type_raw,
+        "lessonTypeRaw": lesson_type_raw,
         "teacher": getattr(lesson, "teacher", None),
         "room": getattr(lesson, "room", None),
         "startText": when_line,

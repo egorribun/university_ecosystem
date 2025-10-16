@@ -9,7 +9,7 @@ from html import unescape
 from textwrap import shorten
 from typing import Any, Mapping
 
-from app.localization import translate
+from app.localization import SUPPORTED_LOCALES, translate
 
 _DEFAULT_ICON = "/maskable-icon-192.png"
 _DEFAULT_BADGE = _DEFAULT_ICON
@@ -18,6 +18,23 @@ _SYSTEM_ICON = "/guu_logo.png"
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _SPACE_RE = re.compile(r"\s+")
+
+
+def _room_label_prefixes() -> set[str]:
+    prefixes: set[str] = set()
+    for locale_code in SUPPORTED_LOCALES:
+        template = translate(
+            "notifications.schedule.room_label", locale=locale_code, room=""
+        )
+        for variant in (template, template.replace(".", "")):
+            normalized = variant.strip().lower()
+            if normalized:
+                prefixes.add(normalized)
+    prefixes.update({"room", "aud"})
+    return prefixes
+
+
+_ROOM_LABEL_PREFIXES = _room_label_prefixes()
 
 
 def _clean_text(value: Any, *, limit: int | None = None) -> str | None:
@@ -39,12 +56,8 @@ def _format_room(value: Any, *, locale: str | None = None) -> str | None:
     room = _clean_text(value)
     if not room:
         return None
-    normalized = room.lower()
-    if (
-        normalized.startswith("ауд")
-        or normalized.startswith("aud")
-        or normalized.startswith("room")
-    ):
+    normalized = room.lower().strip()
+    if any(normalized.startswith(prefix) for prefix in _ROOM_LABEL_PREFIXES):
         return room
     return translate("notifications.schedule.room_label", locale=locale, room=room)
 

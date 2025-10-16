@@ -119,7 +119,7 @@ class Schedule(Base):
     start_time = Column(DateTime(timezone=True), index=True, nullable=False)
     end_time = Column(DateTime(timezone=True), index=True, nullable=False)
     parity = Column(String, default="both", index=True)
-    lesson_type = Column(String, default="Лекция")
+    lesson_type = Column(String, default=None)
 
     __table_args__ = (
         CheckConstraint("end_time > start_time", name="ck_schedule_time_order"),

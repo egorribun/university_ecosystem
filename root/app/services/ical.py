@@ -5,39 +5,16 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable, Sequence
 
-from app.localization import translate, translate_lesson_type
+from app.localization import (
+    resolve_weekday_index,
+    translate,
+    translate_lesson_type,
+)
 from app.models import models
-
-_WEEKDAY_ALIASES: dict[str, int] = {
-    "monday": 0,
-    "mon": 0,
-    "понедельник": 0,
-    "tuesday": 1,
-    "tue": 1,
-    "вторник": 1,
-    "wednesday": 2,
-    "wed": 2,
-    "среда": 2,
-    "thursday": 3,
-    "thu": 3,
-    "четверг": 3,
-    "friday": 4,
-    "fri": 4,
-    "пятница": 4,
-    "saturday": 5,
-    "sat": 5,
-    "суббота": 5,
-    "sunday": 6,
-    "sun": 6,
-    "воскресенье": 6,
-}
 
 
 def _weekday_index(value: str | None) -> int | None:
-    if not value:
-        return None
-    normalized = value.strip().lower()
-    return _WEEKDAY_ALIASES.get(normalized)
+    return resolve_weekday_index(value)
 
 
 def _ensure_time(value: datetime | time | None) -> time | None:
