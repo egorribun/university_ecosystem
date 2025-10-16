@@ -19,14 +19,14 @@ def test_generate_schedule_ics_includes_lessons() -> None:
         start_time=datetime(2024, 1, 1, 9, 0),
         end_time=datetime(2024, 1, 1, 10, 30),
         parity="both",
-        lesson_type="Лекция",
+        lesson_type="lecture",
     )
 
     ics = generate_schedule_ics(group, [lesson], weeks=1, locale="en")
 
     assert "BEGIN:VCALENDAR" in ics
     assert "END:VCALENDAR" in ics
-    expected_type = translate_lesson_type("Лекция", locale="en") or "Лекция"
+    expected_type = translate_lesson_type("lecture", locale="en") or "lecture"
     assert f"SUMMARY:Алгебра ({expected_type})" in ics
     assert "DTSTART:" in ics
     assert "DTEND:" in ics
@@ -58,7 +58,7 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
         start_time=datetime(2024, 1, 1, 9, 0),
         end_time=datetime(2024, 1, 1, 10, 30),
         parity="both",
-        lesson_type="Лекция",
+        lesson_type="practice",
     )
     db_session.add(lesson)
     await db_session.commit()
@@ -71,8 +71,10 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     assert "schedule-" in disposition.lower()
     assert response.headers.get("content-language") == "en"
     assert "Алгебра" in response.text
+    expected_type_en = translate_lesson_type("practice", locale="en")
     expected_en = translate("schedule.ics.description.room", locale="en", room="А-101")
     assert expected_en in response.text
+    assert expected_type_en in response.text
 
     response_ru = await async_client.get(
         f"/schedule/ics?group={group.id}", headers={"Accept-Language": "ru"}
@@ -115,3 +117,42 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
 
     description_line = next(line for line in lines if line.startswith("DESCRIPTION:"))
     assert not _contains_cyrillic(description_line)
+
+
+@pytest.mark.anyio
+async def test_schedule_endpoint_localizes_lesson_type(
+    async_client, db_session
+) -> None:
+    group = models.Group(name="EN-01", course=1, faculty="IT")
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+
+    lesson = models.Schedule(
+        group_id=group.id,
+        subject="Physics",
+        teacher="Dr. Brown",
+        room="Room 101",
+        weekday="monday",
+        start_time=datetime(2024, 3, 4, 9, 0),
+        end_time=datetime(2024, 3, 4, 10, 30),
+        parity="both",
+        lesson_type="lecture",
+    )
+    db_session.add(lesson)
+    await db_session.commit()
+
+    response_en = await async_client.get(f"/schedule/{group.id}")
+    assert response_en.status_code == 200
+    payload_en = response_en.json()
+    assert payload_en[0]["lesson_type"] == "lecture"
+    expected_en = translate_lesson_type("lecture", locale="en")
+    assert payload_en[0]["lesson_type_display"] == expected_en
+
+    response_ru = await async_client.get(
+        f"/schedule/{group.id}", headers={"Accept-Language": "ru"}
+    )
+    assert response_ru.status_code == 200
+    payload_ru = response_ru.json()
+    expected_ru = translate_lesson_type("lecture", locale="ru")
+    assert payload_ru[0]["lesson_type_display"] == expected_ru

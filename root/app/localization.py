@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any, Mapping
 
 SUPPORTED_LOCALES: set[str] = {"en", "ru"}
@@ -375,6 +376,20 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Лекция",
         "en": "Lecture",
     },
+    "schedule.weekday.monday": {"ru": "Понедельник", "en": "Monday"},
+    "schedule.weekday.monday_short": {"ru": "пн", "en": "mon"},
+    "schedule.weekday.tuesday": {"ru": "Вторник", "en": "Tuesday"},
+    "schedule.weekday.tuesday_short": {"ru": "вт", "en": "tue"},
+    "schedule.weekday.wednesday": {"ru": "Среда", "en": "Wednesday"},
+    "schedule.weekday.wednesday_short": {"ru": "ср", "en": "wed"},
+    "schedule.weekday.thursday": {"ru": "Четверг", "en": "Thursday"},
+    "schedule.weekday.thursday_short": {"ru": "чт", "en": "thu"},
+    "schedule.weekday.friday": {"ru": "Пятница", "en": "Friday"},
+    "schedule.weekday.friday_short": {"ru": "пт", "en": "fri"},
+    "schedule.weekday.saturday": {"ru": "Суббота", "en": "Saturday"},
+    "schedule.weekday.saturday_short": {"ru": "сб", "en": "sat"},
+    "schedule.weekday.sunday": {"ru": "Воскресенье", "en": "Sunday"},
+    "schedule.weekday.sunday_short": {"ru": "вс", "en": "sun"},
     "schedule.query.group_id_description": {
         "ru": "Идентификатор группы",
         "en": "Group identifier",
@@ -546,6 +561,33 @@ _LESSON_TYPE_ALIASES: Mapping[str, str] = {
     "consultation": "consultation",
 }
 
+_WEEKDAY_INDEX: Mapping[str, int] = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+_WEEKDAY_STATIC_ALIASES: Mapping[str, tuple[str, ...]] = {
+    "monday": ("monday", "mon"),
+    "tuesday": ("tuesday", "tue"),
+    "wednesday": ("wednesday", "wed"),
+    "thursday": ("thursday", "thu"),
+    "friday": ("friday", "fri"),
+    "saturday": ("saturday", "sat"),
+    "sunday": ("sunday", "sun"),
+}
+
+
+def _normalize_weekday_token(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = "".join(ch for ch in str(value).lower() if ch.isalpha())
+    return normalized or None
+
 
 def translate_lesson_type(
     lesson_type: str | None, *, locale: str | None = None
@@ -568,6 +610,35 @@ def translate_lesson_type(
     return raw_value
 
 
+@lru_cache(maxsize=1)
+def weekday_aliases() -> Mapping[str, int]:
+    aliases: dict[str, int] = {}
+    for canonical, index in _WEEKDAY_INDEX.items():
+        for alias in _WEEKDAY_STATIC_ALIASES.get(canonical, ()):
+            normalized = _normalize_weekday_token(alias)
+            if normalized:
+                aliases.setdefault(normalized, index)
+
+        for key_suffix in ("", "_short"):
+            translation_key = f"schedule.weekday.{canonical}{key_suffix}"
+            entry = _TRANSLATIONS.get(translation_key)
+            if not entry:
+                continue
+            for value in entry.values():
+                normalized = _normalize_weekday_token(value)
+                if normalized:
+                    aliases.setdefault(normalized, index)
+
+    return aliases
+
+
+def resolve_weekday_index(value: str | None) -> int | None:
+    normalized = _normalize_weekday_token(value)
+    if not normalized:
+        return None
+    return weekday_aliases().get(normalized)
+
+
 __all__ = [
     "SUPPORTED_LOCALES",
     "DEFAULT_LOCALE",
@@ -576,4 +647,6 @@ __all__ = [
     "localized_text",
     "translate",
     "translate_lesson_type",
+    "weekday_aliases",
+    "resolve_weekday_index",
 ]

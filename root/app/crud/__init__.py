@@ -533,11 +533,7 @@ async def create_schedule(db: AsyncSession, data: schemas.ScheduleCreate):
         start_time=start_time,
         end_time=end_time,
         parity=getattr(data, "parity", "both"),
-        lesson_type=getattr(
-            data,
-            "lesson_type",
-            translate("schedule.lesson.default_type", locale="ru"),
-        ),
+        lesson_type=getattr(data, "lesson_type", None),
     )
     db.add(record)
     await db.commit()
