@@ -105,7 +105,6 @@ const News = () => {
         const res = await axios.get<NewsItem[]>("/news", {
           headers: {
             ...(etag ? { "If-None-Match": etag } : {}),
-            "Accept-Language": language,
           },
           signal,
           validateStatus: (s) => s === 200 || s === 304,
@@ -212,9 +211,7 @@ const News = () => {
         ...(newsData.content_en.trim() ? { content_en: newsData.content_en } : {}),
       }
 
-      await axios.post("/news", payload, {
-        headers: { "Accept-Language": language },
-      })
+      await axios.post("/news", payload)
       setAddOpen(false)
       setNewsData(initialNews)
       setImageFile(null)

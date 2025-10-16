@@ -48,10 +48,8 @@ type NewsItem = {
   created_at?: string
 }
 
-async function fetchNews(id: string, language: string) {
-  const { data } = await api.get<NewsItem>(`/news/${id}`, {
-    headers: { "Accept-Language": language },
-  })
+async function fetchNews(id: string) {
+  const { data } = await api.get<NewsItem>(`/news/${id}`)
   return data
 }
 
@@ -100,7 +98,7 @@ export default function NewsDetail() {
 
   const query = useQuery({
     queryKey: ["news", id, language],
-    queryFn: () => fetchNews(id, language),
+    queryFn: () => fetchNews(id),
     enabled: !!id,
     staleTime: 60000,
     retry: 1,
@@ -167,9 +165,7 @@ export default function NewsDetail() {
         content_en: editData.content_en,
         image_url: imageUrl,
       }
-      const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload, {
-        headers: { "Accept-Language": language },
-      })
+      const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload)
       queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news"] })
       setSnack(t("news:notifications.updated"))
@@ -186,9 +182,7 @@ export default function NewsDetail() {
     if (!query.data) return
     setDeleting(true)
     try {
-      await api.delete(`/news/${query.data.id}`, {
-        headers: { "Accept-Language": language },
-      })
+      await api.delete(`/news/${query.data.id}`)
       setSnack(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news"] })

@@ -1,4 +1,10 @@
-import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from "axios";
+import axios, {
+  AxiosHeaders,
+  type AxiosInstance,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+} from "axios";
+import i18n from "@/i18n/config";
 
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized";
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized";
@@ -42,6 +48,37 @@ const api: ApiInstance = axios.create({
     "X-Requested-With": "XMLHttpRequest",
   },
 }) as ApiInstance;
+
+const acceptLanguageHeader = "Accept-Language";
+
+const resolveAcceptLanguage = (language?: string) => {
+  if (!language) return "ru";
+  const normalized = language.toLowerCase();
+  if (normalized.startsWith("en")) return "en";
+  if (normalized.startsWith("ru")) return "ru";
+  return "ru";
+};
+
+api.interceptors.request.use((config) => {
+  const currentLanguage = i18n.language || i18n.resolvedLanguage || "ru";
+  const headerValue = resolveAcceptLanguage(currentLanguage);
+
+  if (config.headers instanceof AxiosHeaders) {
+    if (!config.headers.has(acceptLanguageHeader)) {
+      config.headers.set(acceptLanguageHeader, headerValue);
+    }
+    return config;
+  }
+
+  const headers = (config.headers ?? {}) as Record<string, unknown>;
+  const existing = headers[acceptLanguageHeader] ?? headers[acceptLanguageHeader.toLowerCase()];
+
+  if (existing == null) {
+    config.headers = { ...headers, [acceptLanguageHeader]: headerValue };
+  }
+
+  return config;
+});
 
 api.interceptors.response.use(
   (r) => r,

@@ -253,7 +253,7 @@ vi.mock("@/api/client", () => ({
     patch: apiPatchMock,
     delete: apiDeleteMock,
     put: apiPutMock,
-    interceptors: { response: { use: vi.fn() } },
+    interceptors: { response: { use: vi.fn() }, request: { use: vi.fn() } },
   },
   API_UNAUTHORIZED_EVENT: "auth:unauthorized",
   SKIP_UNAUTHORIZED_HEADER: "X-Client-Skip-Unauthorized",

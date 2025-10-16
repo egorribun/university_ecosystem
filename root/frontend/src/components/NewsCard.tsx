@@ -184,9 +184,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         content_en: editData.content_en,
         image_url: imgUrl,
       }
-      await api.patch(`/news/${id}`, payload, {
-        headers: { "Accept-Language": language },
-      })
+      await api.patch(`/news/${id}`, payload)
       setEditData(prev => ({ ...prev, image_url: imgUrl }))
       closeEditDialog()
       onChange && onChange()
@@ -195,14 +193,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     } finally {
       setLoading(false)
     }
-  }, [closeEditDialog, editData, id, language, newImage, onChange])
+  }, [closeEditDialog, editData, id, newImage, onChange])
 
   const handleDelete = useCallback(async () => {
     setLoading(true)
     try {
-      await api.delete(`/news/${id}`, {
-        headers: { "Accept-Language": language },
-      })
+      await api.delete(`/news/${id}`)
       onChange && onChange()
     } catch (e) {
       console.error(e)
@@ -210,7 +206,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       setLoading(false)
       setConfirmDeleteOpen(false)
     }
-  }, [id, language, onChange])
+  }, [id, onChange])
 
   const handleCardClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (editOpen) {
