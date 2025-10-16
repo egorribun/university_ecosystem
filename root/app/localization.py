@@ -614,7 +614,7 @@ def translate_lesson_type(
 def weekday_aliases() -> Mapping[str, int]:
     aliases: dict[str, int] = {}
     for canonical, index in _WEEKDAY_INDEX.items():
-        for alias in _WEEKDAY_STATIC_ALIASES.get(canonical, ()): 
+        for alias in _WEEKDAY_STATIC_ALIASES.get(canonical, ()):
             normalized = _normalize_weekday_token(alias)
             if normalized:
                 aliases.setdefault(normalized, index)

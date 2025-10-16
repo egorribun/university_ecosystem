@@ -120,7 +120,9 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
 
 
 @pytest.mark.anyio
-async def test_schedule_endpoint_localizes_lesson_type(async_client, db_session) -> None:
+async def test_schedule_endpoint_localizes_lesson_type(
+    async_client, db_session
+) -> None:
     group = models.Group(name="EN-01", course=1, faculty="IT")
     db_session.add(group)
     await db_session.commit()
