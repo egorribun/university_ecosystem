@@ -17,32 +17,50 @@
     ],
     "items": {
       "mon": {
-        "backend": "Понедельник",
+        "backend": [
+          "Понедельник",
+          "Monday"
+        ],
         "long": "Monday",
         "short": "Mon"
       },
       "tue": {
-        "backend": "Вторник",
+        "backend": [
+          "Вторник",
+          "Tuesday"
+        ],
         "long": "Tuesday",
         "short": "Tue"
       },
       "wed": {
-        "backend": "Среда",
+        "backend": [
+          "Среда",
+          "Wednesday"
+        ],
         "long": "Wednesday",
         "short": "Wed"
       },
       "thu": {
-        "backend": "Четверг",
+        "backend": [
+          "Четверг",
+          "Thursday"
+        ],
         "long": "Thursday",
         "short": "Thu"
       },
       "fri": {
-        "backend": "Пятница",
+        "backend": [
+          "Пятница",
+          "Friday"
+        ],
         "long": "Friday",
         "short": "Fri"
       },
       "sat": {
-        "backend": "Суббота",
+        "backend": [
+          "Суббота",
+          "Saturday"
+        ],
         "long": "Saturday",
         "short": "Sat"
       }
@@ -68,7 +86,9 @@
         "backend": [
           "ПЗ",
           "Практика",
-          "Practical class"
+          "Practical class",
+          "Practice",
+          "Seminar"
         ],
         "label": "Seminar",
         "color": "var(--badge-prac)"
@@ -77,7 +97,8 @@
         "backend": [
           "ЛЗ",
           "Лабораторная",
-          "Lab work"
+          "Lab work",
+          "Lab"
         ],
         "label": "Lab",
         "color": "var(--badge-lab)"
@@ -85,7 +106,8 @@
       "project": {
         "backend": [
           "Проектная деятельность",
-          "Project work"
+          "Project work",
+          "Project"
         ],
         "label": "Project work",
         "color": "#607d8b"
