@@ -41,8 +41,12 @@ type EventCardProps = {
   id: number
   title: string
   description: string | null
+  title_en?: string | null
+  description_en?: string | null
   event_type?: string | null
+  event_type_en?: string | null
   location: string | null
+  location_en?: string | null
   starts_at: string
   ends_at: string
   created_by: number
@@ -53,8 +57,25 @@ type EventCardProps = {
   my_qr_code?: string | null
   speaker?: string | null
   image_url?: string | null
+  about?: string | null
+  about_en?: string | null
   onChange?: () => void
   maxWidth?: number | string
+}
+
+type EventEditDraft = {
+  title: string
+  title_en: string
+  description: string
+  description_en: string
+  event_type: string
+  event_type_en: string
+  location: string
+  location_en: string
+  starts_at: string
+  ends_at: string
+  speaker: string
+  image_url: string
 }
 
 const normalizeDate = (dt: string) => (dt.length === 16 ? dt + ":00" : dt)
@@ -73,9 +94,13 @@ const qrOpenKey = (eventId: number) => `qr:open:${eventId}`
 const EventCardComponent: FC<EventCardProps> = ({
   id,
   title,
+  title_en,
   description,
+  description_en,
   event_type,
+  event_type_en,
   location,
+  location_en,
   starts_at,
   ends_at,
   participant_count,
@@ -84,13 +109,16 @@ const EventCardComponent: FC<EventCardProps> = ({
   my_qr_code,
   speaker,
   image_url,
+  about,
+  about_en,
   onChange,
   maxWidth
 }) => {
   const { user } = useAuth()
   const navigate = useNavigate()
   const isMobile = useMediaQuery("(max-width: 600px)")
-  const { t } = useTranslation(["events", "common"])
+  const { t, i18n } = useTranslation(["events", "common"])
+  const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
   const [registered, setRegistered] = useState(is_registered)
   const [count, setCount] = useState(participant_count)
@@ -105,15 +133,19 @@ const EventCardComponent: FC<EventCardProps> = ({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const menuId = useMemo(() => `event-card-menu-${id}`, [id])
 
-  const [editData, setEditData] = useState({
-    title,
-    description,
-    event_type: event_type || "",
-    location,
+  const [editData, setEditData] = useState<EventEditDraft>({
+    title: title ?? "",
+    title_en: title_en ?? "",
+    description: description ?? "",
+    description_en: description_en ?? "",
+    event_type: event_type ?? "",
+    event_type_en: event_type_en ?? "",
+    location: location ?? "",
+    location_en: location_en ?? "",
     starts_at,
     ends_at,
-    speaker: speaker || "",
-    image_url: image_url || ""
+    speaker: speaker ?? "",
+    image_url: image_url ?? ""
   })
   const [newImage, setNewImage] = useState<File | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
@@ -121,6 +153,24 @@ const EventCardComponent: FC<EventCardProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const [snack, setSnack] = useState<string>("")
+
+  const getLocalizedEditValue = (
+    field: "title" | "description" | "event_type" | "location"
+  ) => {
+    const key = (language === "en" ? `${field}_en` : field) as keyof EventEditDraft
+    return editData[key]
+  }
+
+  const updateLocalizedEditValue = (
+    field: "title" | "description" | "event_type" | "location",
+    value: string
+  ) => {
+    const key = (language === "en" ? `${field}_en` : field) as keyof EventEditDraft
+    setEditData((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const normalizedEditTitle = editData.title.trim() || editData.title_en.trim()
+  const normalizedEditLocation = editData.location.trim() || editData.location_en.trim()
 
   const eventEnded = useMemo(() => {
     const normalizedEnds = normalizeDate(ends_at)
@@ -221,14 +271,18 @@ const EventCardComponent: FC<EventCardProps> = ({
 
   const openEditDialog = () => {
     setEditData({
-      title,
-      description,
-      event_type: event_type || "",
-      location,
+      title: title ?? "",
+      title_en: title_en ?? "",
+      description: description ?? "",
+      description_en: description_en ?? "",
+      event_type: event_type ?? "",
+      event_type_en: event_type_en ?? "",
+      location: location ?? "",
+      location_en: location_en ?? "",
       starts_at,
       ends_at,
-      speaker: speaker || "",
-      image_url: image_url || ""
+      speaker: speaker ?? "",
+      image_url: image_url ?? ""
     })
     resetImagePick()
     setEditOpen(true)
@@ -356,6 +410,8 @@ const EventCardComponent: FC<EventCardProps> = ({
       }
       const payload = {
         ...editData,
+        title: normalizedEditTitle,
+        location: normalizedEditLocation,
         image_url: imgUrl,
         starts_at: normalizeDate(editData.starts_at),
         ends_at: normalizeDate(editData.ends_at)
@@ -719,29 +775,53 @@ const EventCardComponent: FC<EventCardProps> = ({
         <DialogContent>
           <Stack spacing={2} mt={1}>
             <TextField
-              label={t("events:form.title")}
-              value={editData.title}
-              onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+              label={
+                language === "en"
+                  ? t("events:form.title_en", {
+                      defaultValue: `${t("events:form.title")}${" (English)"}`
+                    })
+                  : t("events:form.title")
+              }
+              value={getLocalizedEditValue("title")}
+              onChange={(e) => updateLocalizedEditValue("title", e.target.value)}
               fullWidth
             />
             <TextField
-              label={t("events:form.description")}
-              value={editData.description}
-              onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+              label={
+                language === "en"
+                  ? t("events:form.description_en", {
+                      defaultValue: `${t("events:form.description")}${" (English)"}`
+                    })
+                  : t("events:form.description")
+              }
+              value={getLocalizedEditValue("description")}
+              onChange={(e) => updateLocalizedEditValue("description", e.target.value)}
               multiline
               rows={2}
               fullWidth
             />
             <TextField
-              label={t("events:form.type")}
-              value={editData.event_type}
-              onChange={(e) => setEditData({ ...editData, event_type: e.target.value })}
+              label={
+                language === "en"
+                  ? t("events:form.type_en", {
+                      defaultValue: `${t("events:form.type")}${" (English)"}`
+                    })
+                  : t("events:form.type")
+              }
+              value={getLocalizedEditValue("event_type")}
+              onChange={(e) => updateLocalizedEditValue("event_type", e.target.value)}
               fullWidth
             />
             <TextField
-              label={t("events:form.location")}
-              value={editData.location}
-              onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+              label={
+                language === "en"
+                  ? t("events:form.location_en", {
+                      defaultValue: `${t("events:form.location")}${" (English)"}`
+                    })
+                  : t("events:form.location")
+              }
+              value={getLocalizedEditValue("location")}
+              onChange={(e) => updateLocalizedEditValue("location", e.target.value)}
               fullWidth
             />
             <TextField
@@ -815,7 +895,13 @@ const EventCardComponent: FC<EventCardProps> = ({
           <Button
             variant="contained"
             onClick={handleEdit}
-            disabled={loading || imageLoading || dateError}
+            disabled={
+              loading ||
+              imageLoading ||
+              dateError ||
+              !normalizedEditTitle ||
+              !normalizedEditLocation
+            }
           >
             {t("common:buttons.save")}
           </Button>
@@ -851,9 +937,13 @@ const EventCardComponent: FC<EventCardProps> = ({
 const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.id === next.id &&
   prev.title === next.title &&
+  prev.title_en === next.title_en &&
   prev.description === next.description &&
+  prev.description_en === next.description_en &&
   prev.event_type === next.event_type &&
+  prev.event_type_en === next.event_type_en &&
   prev.location === next.location &&
+  prev.location_en === next.location_en &&
   prev.starts_at === next.starts_at &&
   prev.ends_at === next.ends_at &&
   prev.participant_count === next.participant_count &&
@@ -862,6 +952,8 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.my_qr_code === next.my_qr_code &&
   prev.speaker === next.speaker &&
   prev.image_url === next.image_url &&
+  prev.about === next.about &&
+  prev.about_en === next.about_en &&
   prev.onChange === next.onChange &&
   prev.files === next.files
 

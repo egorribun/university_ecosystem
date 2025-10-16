@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
-from app.localization import resolve_locale, translate
+from app.localization import localized_text, normalize_locale, resolve_locale, translate
 from app.models.models import (
     Event,
     News,
@@ -559,18 +559,47 @@ async def notify_about_news(
 async def notify_about_event(
     db: AsyncSession, event: Event, *, locale: str | None = None
 ) -> int:
-    summary = _plain_text(
-        getattr(event, "description", None) or getattr(event, "about", None), limit=220
+    normalized_locale = normalize_locale(locale)
+    localized_title = localized_text(
+        normalized_locale,
+        ru=getattr(event, "title", None),
+        en=getattr(event, "title_en", None),
     )
+    if not localized_title:
+        localized_title = (
+            getattr(event, "title", None) or getattr(event, "title_en", None) or ""
+        )
+    localized_description = localized_text(
+        normalized_locale,
+        ru=getattr(event, "description", None),
+        en=getattr(event, "description_en", None),
+    )
+    localized_about = localized_text(
+        normalized_locale,
+        ru=getattr(event, "about", None),
+        en=getattr(event, "about_en", None),
+    )
+    localized_location = localized_text(
+        normalized_locale,
+        ru=getattr(event, "location", None),
+        en=getattr(event, "location_en", None),
+    )
+    localized_event_type = localized_text(
+        normalized_locale,
+        ru=getattr(event, "event_type", None),
+        en=getattr(event, "event_type_en", None),
+    )
+    summary_source = localized_description or localized_about
+    summary = _plain_text(summary_source, limit=220)
     url = f"/events/{event.id}" if getattr(event, "id", None) else "/events"
     start_dt = _ensure_aware(getattr(event, "starts_at", None))
     start_local = start_dt.astimezone()
     template_payload = {
-        "title": getattr(event, "title", None),
+        "title": localized_title,
         "summary": summary,
-        "location": getattr(event, "location", None),
+        "location": localized_location,
         "speaker": getattr(event, "speaker", None),
-        "event_type": getattr(event, "event_type", None),
+        "event_type": localized_event_type,
         "starts_at": start_dt.isoformat(),
         "date": start_local.strftime("%d.%m"),
         "time": start_local.strftime("%H:%M"),
@@ -580,21 +609,21 @@ async def notify_about_event(
     template = render_notification_template(
         "events.new", template_payload, locale=locale
     )
-    if getattr(event, "title", None):
+    if localized_title:
         default_title = translate(
             "notifications.events.title_with_name",
             locale=locale,
-            title=event.title,
+            title=localized_title,
         )
     else:
         default_title = translate("notifications.events.title", locale=locale)
     details = [start_local.strftime("%d.%m · %H:%M")]
-    if getattr(event, "location", None):
-        details.append(str(event.location))
+    if localized_location:
+        details.append(str(localized_location))
     if getattr(event, "speaker", None):
         details.append(str(event.speaker))
-    if getattr(event, "event_type", None):
-        details.append(str(event.event_type))
+    if localized_event_type:
+        details.append(str(localized_event_type))
     default_lines = []
     if summary:
         default_lines.append(summary)
@@ -617,15 +646,15 @@ async def notify_about_event(
         title, body, resolved_url, tag = default_title, default_body, url, default_tag
         payload_data = {}
     payload_data.setdefault("eventId", getattr(event, "id", None))
-    payload_data.setdefault("title", getattr(event, "title", None))
+    payload_data.setdefault("title", localized_title)
     if summary:
         payload_data.setdefault("summary", summary)
-    if getattr(event, "location", None):
-        payload_data.setdefault("location", str(event.location))
+    if localized_location:
+        payload_data.setdefault("location", str(localized_location))
     if getattr(event, "speaker", None):
         payload_data.setdefault("speaker", str(event.speaker))
-    if getattr(event, "event_type", None):
-        payload_data.setdefault("eventType", str(event.event_type))
+    if localized_event_type:
+        payload_data.setdefault("eventType", str(localized_event_type))
     payload_data.setdefault("startsAt", start_dt.isoformat())
     payload_data.setdefault("startText", start_local.strftime("%d.%m · %H:%M"))
     payload_data.setdefault("url", resolved_url)

@@ -67,3 +67,43 @@ async def test_event_model_check_constraint(db_session, user_factory):
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
+
+
+async def test_get_all_events_respects_locale(db_session, user_factory):
+    admin = await user_factory(role="admin")
+    student = await user_factory()
+    starts = datetime.now(timezone.utc)
+    event = models.Event(
+        title="Русское название",
+        title_en="English title",
+        description="Описание",
+        description_en="English description",
+        location="Москва",
+        location_en="Moscow",
+        event_type="лекция",
+        event_type_en="Lecture",
+        about="Русский текст",
+        about_en="English text",
+        starts_at=starts,
+        ends_at=starts + timedelta(hours=2),
+        created_by=admin.id,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    ru_events = await crud.get_all_events(db_session, user_id=student.id, locale="ru")
+    en_events = await crud.get_all_events(db_session, user_id=student.id, locale="en")
+
+    assert ru_events[0].title == "Русское название"
+    assert ru_events[0].title_en == "English title"
+    assert en_events[0].title == "English title"
+    assert en_events[0].title_en == "English title"
+    assert ru_events[0].description == "Описание"
+    assert en_events[0].description == "English description"
+    assert ru_events[0].location == "Москва"
+    assert en_events[0].location == "Moscow"
+    assert ru_events[0].event_type == "лекция"
+    assert en_events[0].event_type == "Lecture"
+    assert ru_events[0].about == "Русский текст"
+    assert en_events[0].about == "English text"

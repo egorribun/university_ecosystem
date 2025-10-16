@@ -42,9 +42,16 @@ const mockEvents = [
   {
     id: 10,
     title: "Хакатон ГУУ",
+    title_en: "GUU Hackathon",
     description: "Командные соревнования по разработке.",
+    description_en: "A collaborative coding challenge.",
     starts_at: "2025-01-05T09:00:00",
     location: "Актовый зал",
+    location_en: "Assembly Hall",
+    event_type: "хакатон",
+    event_type_en: "Hackathon",
+    about: null,
+    about_en: null,
   },
 ];
 
