@@ -1,8 +1,8 @@
 {
   "id": "/?source=pwa",
-  "name": "GUU Ecosystem — digital campus",
+  "name": "GUU Ecosystem — everything in one place",
   "short_name": "GUU Ecosystem",
-  "description": "Class schedule, university news, and the campus map stay available even when you're offline.",
+  "description": "Profile, schedule, news, and the campus map stay available even when you're offline.",
   "lang": "en",
   "dir": "ltr",
   "display": "standalone",
@@ -19,7 +19,7 @@
   "shortcuts": [
     {
       "name": "Schedule",
-      "description": "Jump straight to your class schedule",
+      "description": "Open today's class schedule",
       "url": "/schedule",
       "icons": [
         {
@@ -31,7 +31,7 @@
     },
     {
       "name": "News",
-      "description": "Latest campus updates",
+      "description": "Read the latest campus updates",
       "url": "/news",
       "icons": [
         {
@@ -43,7 +43,7 @@
     },
     {
       "name": "Campus map",
-      "description": "Routes and buildings on the GUU map",
+      "description": "Find buildings and routes on the GUU map",
       "url": "/map",
       "icons": [
         {
