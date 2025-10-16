@@ -248,7 +248,9 @@ class Notification(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     title = Column(String, nullable=False)
+    title_en = Column(String)
     body = Column(Text)
+    body_en = Column(Text)
     type = Column(String, index=True)
     url = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

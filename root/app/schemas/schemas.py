@@ -287,6 +287,8 @@ class NotificationCreate(BaseModel):
     user_id: int
     title: str
     body: Optional[str] = None
+    title_en: Optional[str] = None
+    body_en: Optional[str] = None
     type: Optional[str] = None
     url: Optional[str] = None
 
@@ -295,6 +297,8 @@ class NotificationOut(OrmModel):
     id: int
     title: str
     body: Optional[str] = None
+    title_en: Optional[str] = None
+    body_en: Optional[str] = None
     type: Optional[str] = None
     url: Optional[str] = None
     created_at: datetime

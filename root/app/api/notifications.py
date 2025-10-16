@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.localization import resolve_locale, translate
+from app.crud import sanitize_optional_text
+from app.localization import localized_text, resolve_locale, translate
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import NotificationOut, NotificationsListOut
 from app.services.notifications import (
@@ -35,6 +36,55 @@ def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
         return datetime.fromtimestamp(int(ms_s) / 1000.0, UTC), int(id_s)
     except Exception:
         return None
+
+
+def _localized_notification_field(
+    locale: str | None,
+    ru_value: str | None,
+    en_value: str | None,
+    *,
+    required: bool = False,
+) -> str | None:
+    ru_clean = sanitize_optional_text(ru_value)
+    en_clean = sanitize_optional_text(en_value)
+    value = localized_text(locale, ru=ru_clean, en=en_clean)
+    if value is not None:
+        return value
+    if required:
+        if isinstance(ru_value, str) and ru_value.strip():
+            return ru_value
+        if isinstance(en_value, str) and en_value.strip():
+            return en_value
+        return ru_value or en_value or ""
+    return ru_clean or en_clean
+
+
+def _serialize_notification(
+    record: Notification, locale: str | None
+) -> NotificationOut:
+    created_at = getattr(record, "created_at", None) or datetime.now(UTC)
+    data = {
+        "id": record.id,
+        "title": _localized_notification_field(
+            locale,
+            getattr(record, "title", None),
+            getattr(record, "title_en", None),
+            required=True,
+        ),
+        "body": _localized_notification_field(
+            locale,
+            getattr(record, "body", None),
+            getattr(record, "body_en", None),
+        ),
+        "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
+        "body_en": sanitize_optional_text(getattr(record, "body_en", None)),
+        "type": getattr(record, "type", None),
+        "url": getattr(record, "url", None),
+        "created_at": created_at,
+        "read": getattr(record, "read", False),
+        "read_at": getattr(record, "read_at", None),
+    }
+    return NotificationOut.model_validate(data)
 
 
 @router.get("", response_model=NotificationsListOut)
@@ -85,7 +135,7 @@ async def list_notifications(
     )
 
     return NotificationsListOut(
-        items=[NotificationOut.from_orm(n) for n in items],
+        items=[_serialize_notification(n, locale) for n in items],
         unread_count=int(unread),
         has_more=has_more,
         next_cursor=next_cursor,
