@@ -856,7 +856,7 @@ body.dark .glass {
 }
 .map-page > iframe,
 .map-page .map-iframe,
-.map-page iframe[title="Карта кампуса ГУУ"]{
+.map-page iframe{
   position: absolute;
   inset: 0;
   width: 100%;
