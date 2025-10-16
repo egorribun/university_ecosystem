@@ -1,0 +1,75 @@
+import pytest
+
+from app.auth.security import get_password_hash
+from app.models import models
+
+
+async def _login(async_client, email: str, password: str) -> dict[str, str]:
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.anyio
+async def test_notifications_localization(async_client, db_session, user_factory):
+    password = "Notify123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    primary = models.Notification(
+        user_id=user.id,
+        title="Новое уведомление",
+        body="Русский текст",
+        title_en="New notification",
+        body_en="English body",
+    )
+    fallback = models.Notification(
+        user_id=user.id,
+        title="Без перевода",
+        body="Только русский текст",
+    )
+    db_session.add_all([primary, fallback])
+    await db_session.commit()
+    await db_session.refresh(primary)
+    await db_session.refresh(fallback)
+
+    headers = await _login(async_client, user.email, password)
+
+    response_en = await async_client.get(
+        "/notifications",
+        headers={**headers, "Accept-Language": "en"},
+    )
+    assert response_en.status_code == 200
+    body_en = response_en.json()
+    items_en = {item["id"]: item for item in body_en["items"]}
+
+    assert items_en[primary.id]["title"] == "New notification"
+    assert items_en[primary.id]["body"] == "English body"
+    assert items_en[primary.id]["title_en"] == "New notification"
+    assert items_en[primary.id]["body_en"] == "English body"
+
+    assert items_en[fallback.id]["title"] == "Без перевода"
+    assert items_en[fallback.id]["body"] == "Только русский текст"
+    assert items_en[fallback.id]["title_en"] is None
+    assert items_en[fallback.id]["body_en"] is None
+
+    response_ru = await async_client.get(
+        "/notifications",
+        headers={**headers, "Accept-Language": "ru"},
+    )
+    assert response_ru.status_code == 200
+    body_ru = response_ru.json()
+    items_ru = {item["id"]: item for item in body_ru["items"]}
+
+    assert items_ru[primary.id]["title"] == "Новое уведомление"
+    assert items_ru[primary.id]["body"] == "Русский текст"
+    assert items_ru[fallback.id]["title"] == "Без перевода"
+    assert items_ru[fallback.id]["body"] == "Только русский текст"
+
+    assert body_en["unread_count"] == 2
+    assert body_ru["unread_count"] == 2
