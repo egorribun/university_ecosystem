@@ -103,6 +103,7 @@ Content-Security-Policy:
 - `ENABLE_STRICT_SECURITY_HEADERS=true ENABLE_COOP=true uvicorn app.main:app --host 0.0.0.0 --port 8000` — пример запуска production-инстанса со строгими заголовками (COOP/COEP включайте по необходимости, проксируйте статику через reverse-proxy).
 - `pytest` — прогнать автотесты (включая smoke-тесты заголовков, статики и Alembic).
 - `npm run lhci --prefix root/frontend` — собрать фронтенд, запустить Lighthouse CI с бюджетами (`budget.json`) и сохранить HTML-отчёты в `root/frontend/.lighthouseci`.
+- `npm run i18n:check --prefix root/frontend` — сверить ключи переводов между `src/i18n/locales/en` и `src/i18n/locales/ru`. Тест входит в общий `npm run test --prefix root/frontend`, но эту команду удобно запускать отдельно при изменениях JSON-файлов переводов.
 
 > 💡 Перед пушем прогоните Lighthouse локально: CI падает при регрессе бюджетов, зато отчёты можно посмотреть в `root/frontend/.lighthouseci/*.report.html`.
 
