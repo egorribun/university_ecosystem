@@ -13,6 +13,14 @@ import Profile from "@/pages/Profile"
 import Events from "@/pages/Events"
 import MapContent from "@/pages/MapContent"
 import AdminUsers from "@/pages/AdminUsers"
+import Dashboard from "@/pages/Dashboard"
+import News from "@/pages/News"
+import Login from "@/pages/Login"
+import Register from "@/pages/Register"
+import ForgotPassword from "@/pages/ForgotPassword"
+import ResetPassword from "@/pages/ResetPassword"
+import NotificationsBell from "@/components/NotificationsBell"
+import i18n from "@/i18n/config"
 import type { User } from "@/types/User"
 
 const resizeObserverMock = vi.fn()
@@ -108,6 +116,30 @@ const {
     is_registered: false,
     my_qr_code: null,
   }
+  const newsItems = [
+    {
+      id: 1,
+      title: "Library renovation",
+      content: "Reading halls reopen next week.",
+      created_at: new Date().toISOString(),
+      image_url: null,
+      pinned: false,
+    },
+  ]
+  const notificationsResponse = {
+    items: [
+      {
+        id: 1,
+        title: "System update",
+        body: "New features have been deployed.",
+        created_at: new Date().toISOString(),
+        read: false,
+      },
+    ],
+    unread_count: 1,
+    has_more: false,
+    next_cursor: null,
+  }
   const attendanceSummary = {
     percent: 85,
     present: 17,
@@ -136,6 +168,8 @@ const {
     if (url === "/stats/participation") return Promise.resolve({ data: participationSummary })
     if (url === "/events") return Promise.resolve({ data: [sampleEvent] })
     if (url === "/events/my") return Promise.resolve({ data: [] })
+    if (url === "/news") return Promise.resolve({ data: newsItems })
+    if (url === "/notifications") return Promise.resolve({ data: notificationsResponse })
     if (url === "/groups") return Promise.resolve({ data: scheduleGroups })
     if (url.startsWith("/schedule/")) return Promise.resolve({ data: scheduleLessons })
     if (url === "/users") return Promise.resolve({ data: adminUsers })
@@ -240,7 +274,16 @@ function LanguageToggleHarness({ children }: { children: ReactNode }) {
 
 const clients: QueryClient[] = []
 
-function renderWithProviders(ui: ReactNode, initialPath = "/") {
+type RenderOptions = {
+  initialPath?: string
+  initialLanguage?: "en" | "ru"
+}
+
+function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
+  const { initialPath = "/", initialLanguage = "en" } = options
+  localStorage.setItem("ue:language", initialLanguage)
+  document.documentElement.setAttribute("lang", initialLanguage)
+  void i18n.changeLanguage(initialLanguage)
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: 1_000_000 },
@@ -286,6 +329,7 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear()
   localStorage.setItem("ue:language", "en")
+  document.documentElement.setAttribute("lang", "en")
   fetchCurrentUserMock.mockClear()
   fetchCurrentUserMock.mockImplementation(async () => authState.user)
   apiGetMock.mockClear()
@@ -320,7 +364,7 @@ describe("page translations", () => {
   })
 
   it("switches schedule page translations", async () => {
-    const { user } = renderWithProviders(<Schedule />, "/schedule")
+    const { user } = renderWithProviders(<Schedule />, { initialPath: "/schedule" })
 
     expect(await screen.findByText("My schedule")).toBeInTheDocument()
 
@@ -330,7 +374,7 @@ describe("page translations", () => {
   })
 
   it("switches settings translations including notifications", async () => {
-    const { user } = renderWithProviders(<Settings />, "/settings")
+    const { user } = renderWithProviders(<Settings />, { initialPath: "/settings" })
 
     expect(await screen.findByText("Settings")).toBeInTheDocument()
     expect(screen.getByText("Notifications")).toBeInTheDocument()
@@ -342,7 +386,7 @@ describe("page translations", () => {
   })
 
   it("switches profile translations", async () => {
-    const { user } = renderWithProviders(<Profile />, "/profile")
+    const { user } = renderWithProviders(<Profile />, { initialPath: "/profile" })
 
     expect(await screen.findByLabelText("Profile")).toBeInTheDocument()
 
@@ -352,7 +396,7 @@ describe("page translations", () => {
   })
 
   it("switches events page translations", async () => {
-    const { user } = renderWithProviders(<Events />, "/events")
+    const { user } = renderWithProviders(<Events />, { initialPath: "/events" })
 
     expect(await screen.findByText("Events")).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Upcoming" })).toBeInTheDocument()
@@ -364,7 +408,7 @@ describe("page translations", () => {
   })
 
   it("switches map controls translations", async () => {
-    const { user } = renderWithProviders(<MapContent />, "/map")
+    const { user } = renderWithProviders(<MapContent />, { initialPath: "/map" })
 
     expect(await screen.findByRole("heading", { name: "Campus map" })).toBeInTheDocument()
 
@@ -375,7 +419,7 @@ describe("page translations", () => {
   })
 
   it("switches admin users page translations", async () => {
-    const { user } = renderWithProviders(<AdminUsers />, "/admin/users")
+    const { user } = renderWithProviders(<AdminUsers />, { initialPath: "/admin/users" })
 
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument()
     expect(screen.getByText("Role", { selector: "label" })).toBeInTheDocument()
@@ -384,6 +428,81 @@ describe("page translations", () => {
 
     expect(await screen.findByRole("heading", { name: "Пользователи" })).toBeInTheDocument()
     expect(screen.getByText("Роль", { selector: "label" })).toBeInTheDocument()
+  })
+
+  it("switches dashboard page translations", async () => {
+    const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
+
+    expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
+  })
+
+  it("switches news page translations", async () => {
+    const { user } = renderWithProviders(<News />, { initialPath: "/news" })
+
+    expect(await screen.findByRole("heading", { name: "University news" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Новости университета" })).toBeInTheDocument()
+  })
+
+  it("renders login page in Russian when seeded and toggles to English", async () => {
+    const { user } = renderWithProviders(<Login />, { initialPath: "/login", initialLanguage: "ru" })
+
+    expect(await screen.findByRole("heading", { name: "Вход" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument()
+  })
+
+  it("switches register page translations", async () => {
+    const { user } = renderWithProviders(<Register />, { initialPath: "/register" })
+
+    expect(await screen.findByRole("heading", { name: "Sign up" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Регистрация" })).toBeInTheDocument()
+  })
+
+  it("switches forgot password page translations", async () => {
+    const { user } = renderWithProviders(<ForgotPassword />, { initialPath: "/forgot-password" })
+
+    expect(await screen.findByRole("heading", { name: "Reset password" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Восстановление пароля" })).toBeInTheDocument()
+  })
+
+  it("switches reset password page translations", async () => {
+    const { user } = renderWithProviders(<ResetPassword />, {
+      initialPath: "/reset-password?token=example",
+    })
+
+    expect(await screen.findByRole("heading", { name: "Create a new password" })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByRole("heading", { name: "Новый пароль" })).toBeInTheDocument()
+  })
+
+  it("switches notifications bell translations", async () => {
+    const { user } = renderWithProviders(<NotificationsBell />)
+
+    const openButton = await screen.findByLabelText("Open notifications")
+    await user.click(openButton)
+    expect(await screen.findByText("Notifications")).toBeInTheDocument()
+
+    await user.click(screen.getByTestId("lang-toggle"))
+
+    expect(await screen.findByLabelText("Открыть уведомления")).toBeInTheDocument()
+    expect(await screen.findByText("Уведомления")).toBeInTheDocument()
   })
 })
 
