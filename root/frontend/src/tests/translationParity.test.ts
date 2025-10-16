@@ -13,7 +13,7 @@ const TARGET_LOCALE = path.join(LOCALES_ROOT, 'ru');
  * Перечень путей, которые можно пропускать при сравнении.
  * Указывайте полный путь через точку (например, "events.synonyms").
  */
-const IGNORED_PATH_PREFIXES = [
+const IGNORED_PATH_PREFIXES: string[] = [
   // 'events.synonyms',
 ];
 
@@ -32,7 +32,11 @@ interface JsonObject {
 const readJson = (filePath: string) =>
   JSON.parse(readFileSync(filePath, 'utf-8')) as JsonObject;
 
-const flattenKeys = (value: JsonValue, prefix = '', keys = new Set<string>()) => {
+const flattenKeys = (
+  value: JsonValue,
+  prefix = '',
+  keys: Set<string> = new Set<string>(),
+) => {
   if (Array.isArray(value)) {
     if (prefix && !isIgnored(prefix)) {
       keys.add(prefix);
@@ -86,7 +90,8 @@ const collectLocaleFiles = (localePath: string) => {
 
       const relativePath = path
         .join(relativeDir, entry.name)
-        .replaceAll(path.sep, path.posix.sep);
+        .split(path.sep)
+        .join(path.posix.sep);
       files.set(relativePath, path.join(absoluteDir, entry.name));
     }
   };
