@@ -126,32 +126,27 @@ type LessonTypeConfig = {
 
 type WeekdayConfig = {
   id: string
-  backend: string
+  backend: string[]
   long: string
   short: string
 }
 
 const defaultLessonTypeColor = "#888"
 
-const fallbackLessonTypes: LessonTypeConfig[] = [
-  { id: "lecture", backend: ["Лекция"], label: "Lecture", color: "var(--badge-lec)" },
-  { id: "practice", backend: ["ПЗ"], label: "Practical class", color: "var(--badge-prac)" },
-  { id: "lab", backend: ["ЛЗ"], label: "Lab work", color: "var(--badge-lab)" },
-  {
-    id: "project",
-    backend: ["Проектная деятельность"],
-    label: "Project work",
-    color: "#607d8b"
-  }
-]
+const minimalLessonTypeFallback: LessonTypeConfig = {
+  id: "lesson",
+  backend: ["lesson"],
+  label: "Lesson",
+  color: defaultLessonTypeColor
+}
 
-const fallbackWeekdays: WeekdayConfig[] = [
-  { id: "mon", backend: "Понедельник", long: "Monday", short: "Mon" },
-  { id: "tue", backend: "Вторник", long: "Tuesday", short: "Tue" },
-  { id: "wed", backend: "Среда", long: "Wednesday", short: "Wed" },
-  { id: "thu", backend: "Четверг", long: "Thursday", short: "Thu" },
-  { id: "fri", backend: "Пятница", long: "Friday", short: "Fri" },
-  { id: "sat", backend: "Суббота", long: "Saturday", short: "Sat" }
+const minimalWeekdayFallback: WeekdayConfig[] = [
+  { id: "mon", backend: ["Monday"], long: "Monday", short: "Mon" },
+  { id: "tue", backend: ["Tuesday"], long: "Tuesday", short: "Tue" },
+  { id: "wed", backend: ["Wednesday"], long: "Wednesday", short: "Wed" },
+  { id: "thu", backend: ["Thursday"], long: "Thursday", short: "Thu" },
+  { id: "fri", backend: ["Friday"], long: "Friday", short: "Fri" },
+  { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" }
 ]
 
 const groupsPlaceholder = (previous?: ScheduleGroup[]) => {
@@ -227,24 +222,27 @@ export default function Schedule() {
     const items = rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
       ? (rawItems as Record<string, unknown>)
       : {}
-    const fallbackById = new Map(fallbackWeekdays.map(item => [item.id, item]))
+    const fallbackById = new Map(minimalWeekdayFallback.map(item => [item.id, item]))
     const baseOrder = Array.isArray(rawOrder) && rawOrder.length > 0
       ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : fallbackWeekdays.map(item => item.id)
+      : (Object.keys(items) as string[])
     const configs: WeekdayConfig[] = []
     const seen = new Set<string>()
     const toConfig = (id: string, value?: unknown): WeekdayConfig => {
       const fallback = fallbackById.get(id) ?? {
         id,
-        backend: id,
+        backend: [id],
         long: id,
         short: id.slice(0, 3)
       }
       const entry = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
-      const backend =
-        typeof entry?.backend === "string" && entry.backend.length > 0
-          ? entry.backend
-          : fallback.backend
+      let backend: string[] = []
+      if (Array.isArray(entry?.backend)) {
+        backend = entry.backend.filter((item): item is string => typeof item === "string" && item.length > 0)
+      } else if (typeof entry?.backend === "string" && entry.backend.length > 0) {
+        backend = [entry.backend]
+      }
+      if (backend.length === 0) backend = [...fallback.backend]
       const long =
         typeof entry?.long === "string" && entry.long.length > 0
           ? entry.long
@@ -263,34 +261,61 @@ export default function Schedule() {
       if (seen.has(id)) continue
       configs.push(toConfig(id, value))
     }
-    return configs.length > 0 ? configs : fallbackWeekdays
+    if (configs.length === 0) return [...minimalWeekdayFallback]
+    return configs
   }, [t])
-  const weekdayBackend = useMemo(() => weekdayConfigs.map(config => config.backend), [weekdayConfigs])
+  const weekdayBackend = useMemo(() => weekdayConfigs.map(config => config.backend[0] ?? config.id), [weekdayConfigs])
   const weekdayLabels = useMemo(() => weekdayConfigs.map(config => config.long), [weekdayConfigs])
   const weekdayShort = useMemo(() => weekdayConfigs.map(config => config.short), [weekdayConfigs])
   const weekdayLabelMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const config of weekdayConfigs) {
-      map.set(config.backend, config.long)
       map.set(config.id, config.long)
+      for (const backend of config.backend) {
+        map.set(backend, config.long)
+      }
     }
     return map
   }, [weekdayConfigs])
   const getDayLabel = useCallback((value: string) => weekdayLabelMap.get(value) ?? value, [weekdayLabelMap])
+  const weekdayCanonicalMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const config of weekdayConfigs) {
+      const primary = config.backend[0] ?? config.id
+      map.set(config.id, primary)
+      for (const backend of config.backend) {
+        map.set(backend, primary)
+      }
+    }
+    return map
+  }, [weekdayConfigs])
+  const normalizeLessons = useCallback(
+    (lessons: Lesson[]) => {
+      let changed = false
+      const normalized = lessons.map(lesson => {
+        if (!lesson || typeof lesson.weekday !== "string") return lesson
+        const canonical = weekdayCanonicalMap.get(lesson.weekday)
+        if (!canonical || canonical === lesson.weekday) return lesson
+        changed = true
+        return { ...lesson, weekday: canonical }
+      })
+      return changed ? normalized : lessons
+    },
+    [weekdayCanonicalMap]
+  )
   const lessonTypeConfigs = useMemo(() => {
     const rawItems = t("schedule:lessonTypes.items", { returnObjects: true }) as unknown
     const rawOrder = t("schedule:lessonTypes.order", { returnObjects: true }) as unknown
     const items = rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
       ? (rawItems as Record<string, unknown>)
       : {}
-    const fallbackById = new Map(fallbackLessonTypes.map(item => [item.id, item]))
     const baseOrder = Array.isArray(rawOrder) && rawOrder.length > 0
       ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : fallbackLessonTypes.map(item => item.id)
+      : (Object.keys(items) as string[])
     const configs: LessonTypeConfig[] = []
     const seen = new Set<string>()
     const toConfig = (id: string, value?: unknown): LessonTypeConfig => {
-      const fallback = fallbackById.get(id) ?? {
+      const fallback = {
         id,
         backend: [id],
         label: id,
@@ -322,7 +347,8 @@ export default function Schedule() {
       if (seen.has(id)) continue
       configs.push(toConfig(id, value))
     }
-    return configs.length > 0 ? configs : fallbackLessonTypes
+    if (configs.length === 0) return [minimalLessonTypeFallback]
+    return configs
   }, [t])
   const lessonTypeById = useMemo(() => new Map(lessonTypeConfigs.map(config => [config.id, config])), [lessonTypeConfigs])
   const lessonTypeByBackend = useMemo(() => {
@@ -348,7 +374,7 @@ export default function Schedule() {
     () => lessonTypeConfigs.map(config => ({ value: config.id, label: config.label })),
     [lessonTypeConfigs]
   )
-  const defaultLessonType = lessonTypeOptions[0]?.value ?? fallbackLessonTypes[0]?.id ?? ""
+  const defaultLessonType = lessonTypeOptions[0]?.value ?? minimalLessonTypeFallback.id ?? ""
   const getLessonTypeColor = useCallback(
     (value?: string | null) => {
       if (!value) return defaultLessonTypeColor
@@ -477,19 +503,23 @@ export default function Schedule() {
     networkMode: "online",
     retry: 1,
   })
-  const groupSchedule = scheduleQuery.data ?? []
+  const groupScheduleRaw = scheduleQuery.data ?? []
+  const groupSchedule = useMemo(
+    () => normalizeLessons(groupScheduleRaw),
+    [groupScheduleRaw, normalizeLessons]
+  )
 
   useEffect(() => {
     if (!scheduleQuery.isSuccess) return
     if (activeGroupId == null) return
-    writeToStorage(scheduleStorageKey(activeGroupId), scheduleQuery.data)
-  }, [scheduleQuery.data, scheduleQuery.isSuccess, activeGroupId])
+    writeToStorage(scheduleStorageKey(activeGroupId), groupSchedule)
+  }, [scheduleQuery.isSuccess, activeGroupId, groupSchedule])
 
   const applyScheduleUpdate = (updater: (prev: Lesson[]) => Lesson[]) => {
     if (!scheduleKey || activeGroupId == null) return
     queryClient.setQueryData<Lesson[]>(scheduleKey, prev => {
       const base = Array.isArray(prev) ? [...prev] : []
-      const next = updater(base)
+      const next = normalizeLessons(updater(base))
       writeToStorage(scheduleStorageKey(activeGroupId), next)
       return next
     })
