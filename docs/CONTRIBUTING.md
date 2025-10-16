@@ -1,0 +1,14 @@
+# Contributing guide
+
+## Frontend translation tests
+
+- Run `pnpm --dir root/frontend test` before opening a PR to execute the Vitest
+  suite that now covers translation toggles across dashboard, news, auth, admin,
+  and notifications experiences.
+- Translation coverage lives in `src/tests/pageTranslations.test.tsx`; add a
+  scenario whenever a new page or component surfaces localized copy.
+- The shared `renderWithProviders` helper accepts `initialLanguage` (`"en"` or
+  `"ru"`) so please exercise both language directions when you extend tests or
+  introduce new localized screens.
+- Snapshot updates should reflect the finalized English strings; re-run Vitest
+  with `--update` if assertions flag stale output.
