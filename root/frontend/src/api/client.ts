@@ -63,19 +63,16 @@ api.interceptors.request.use((config) => {
   const currentLanguage = i18n.language || i18n.resolvedLanguage || "ru";
   const headerValue = resolveAcceptLanguage(currentLanguage);
 
-  if (config.headers instanceof AxiosHeaders) {
-    if (!config.headers.has(acceptLanguageHeader)) {
-      config.headers.set(acceptLanguageHeader, headerValue);
-    }
-    return config;
+  const headers = AxiosHeaders.from(config.headers ?? {});
+
+  if (
+    !headers.has(acceptLanguageHeader) &&
+    !headers.has(acceptLanguageHeader.toLowerCase())
+  ) {
+    headers.set(acceptLanguageHeader, headerValue);
   }
 
-  const headers = (config.headers ?? {}) as Record<string, unknown>;
-  const existing = headers[acceptLanguageHeader] ?? headers[acceptLanguageHeader.toLowerCase()];
-
-  if (existing == null) {
-    config.headers = { ...headers, [acceptLanguageHeader]: headerValue };
-  }
+  config.headers = headers;
 
   return config;
 });
