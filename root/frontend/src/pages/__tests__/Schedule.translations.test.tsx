@@ -76,7 +76,7 @@ vi.mock("@/api/client", () => ({
     patch: apiMocks.patch,
     delete: apiMocks.delete,
     put: apiMocks.put,
-    interceptors: { response: { use: vi.fn() } },
+    interceptors: { response: { use: vi.fn() }, request: { use: vi.fn() } },
   },
 }))
 
