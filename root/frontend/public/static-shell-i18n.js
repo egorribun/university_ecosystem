@@ -6,68 +6,74 @@ const translations = {
   ru: {
     meta: {
       title: "Экосистема ГУУ",
-      description: "Экосистема ГУУ — профиль, расписание, новости и события.",
+      description:
+        "Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте.",
       ogTitle: "Экосистема ГУУ",
-      ogDescription: "Личный кабинет: профиль, расписание, новости и события.",
+      ogDescription:
+        "Личный кабинет: профиль, расписание, новости и события кампуса.",
       twitterTitle: "Экосистема ГУУ",
-      twitterDescription: "Личный кабинет: профиль, расписание, новости и события.",
+      twitterDescription:
+        "Личный кабинет: профиль, расписание, новости и события кампуса.",
       ogLocale: "ru_RU",
     },
     offline: {
       pageTitle: "Экосистема ГУУ — офлайн режим",
       title: "Нет подключения к сети",
       description:
-        "Экосистема ГУУ продолжит синхронизировать расписание, новости и карту кампуса, как только появится интернет.",
+        "Экосистема ГУУ автоматически синхронизирует расписание, новости и карту кампуса, как только вы вернётесь в сеть.",
       hints: [
-        "Расписание и новости, просмотренные ранее, останутся доступными офлайн.",
-        "Интерактивная карта загрузится автоматически после восстановления связи.",
+        "Ранее просмотренные расписание и новости остаются доступны офлайн.",
+        "Карта кампуса обновится автоматически после восстановления подключения.",
       ],
       retry: "Повторить попытку",
       footer: "Проверьте подключение или попробуйте открыть приложение позднее.",
     },
     manifest: {
-      name: "Экосистема ГУУ — цифровой кампус",
+      name: "Экосистема ГУУ — всё необходимое в одном месте",
       short_name: "Экосистема ГУУ",
       description:
-        "Расписание пар, новости университета и интерактивная карта кампуса — всё доступно даже офлайн.",
+        "Профиль, расписание, новости и карта кампуса — доступны даже офлайн.",
       shortcuts: [
-        { name: "Расписание", description: "Быстрый переход к расписанию занятий" },
-        { name: "Новости", description: "Свежие новости кампуса" },
-        { name: "Карта кампуса", description: "Маршруты и корпуса на карте ГУУ" },
+        { name: "Расписание", description: "Открыть расписание занятий" },
+        { name: "Новости", description: "Читать свежие новости кампуса" },
+        { name: "Карта кампуса", description: "Найти корпуса и маршруты на карте ГУУ" },
       ],
     },
   },
   en: {
     meta: {
       title: "GUU Ecosystem",
-      description: "GUU Ecosystem — profile, schedule, news, and events.",
+      description:
+        "Everything you need—profile, schedule, news, and campus events—in one place.",
       ogTitle: "GUU Ecosystem",
-      ogDescription: "Dashboard: profile, schedule, news, and events.",
+      ogDescription:
+        "Dashboard: profile, schedule, news, and campus events.",
       twitterTitle: "GUU Ecosystem",
-      twitterDescription: "Dashboard: profile, schedule, news, and events.",
+      twitterDescription:
+        "Dashboard: profile, schedule, news, and campus events.",
       ogLocale: "en_US",
     },
     offline: {
       pageTitle: "GUU Ecosystem — offline mode",
       title: "No network connection",
       description:
-        "GUU Ecosystem will continue syncing your schedule, news, and campus map once you're back online.",
+        "GUU Ecosystem automatically syncs your schedule, news, and campus map as soon as you're back online.",
       hints: [
-        "Previously viewed schedule and news stay available offline.",
-        "The interactive campus map loads automatically when the connection is restored.",
+        "Schedule and news you've already opened stay available offline.",
+        "The campus map refreshes automatically when the connection is restored.",
       ],
       retry: "Try again",
       footer: "Check your connection or open the app again later.",
     },
     manifest: {
-      name: "GUU Ecosystem — digital campus",
+      name: "GUU Ecosystem — everything in one place",
       short_name: "GUU Ecosystem",
       description:
-        "Class schedule, university news, and the campus map stay available even when you're offline.",
+        "Profile, schedule, news, and the campus map stay available even when you're offline.",
       shortcuts: [
-        { name: "Schedule", description: "Jump straight to your class schedule" },
-        { name: "News", description: "Latest campus updates" },
-        { name: "Campus map", description: "Routes and buildings on the GUU map" },
+        { name: "Schedule", description: "Open today's class schedule" },
+        { name: "News", description: "Read the latest campus updates" },
+        { name: "Campus map", description: "Find buildings and routes on the GUU map" },
       ],
     },
   },
