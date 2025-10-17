@@ -1,5 +1,5 @@
-from datetime import UTC, datetime, timedelta
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -51,7 +51,9 @@ def _parse_datetime(value: Any) -> datetime | None:
             except (OverflowError, OSError, ValueError):
                 return None
         else:
-            return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            return (
+                parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            )
 
     return None
 
