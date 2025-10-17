@@ -9,7 +9,9 @@
   "aria": {
     "page": "Профиль",
     "copyEmail": "Скопировать email",
-    "copyTelegram": "Скопировать ник в Telegram"
+    "copyTelegram": "Скопировать ник в Telegram",
+    "openEmail": "Открыть почтовый клиент",
+    "openTelegram": "Открыть Telegram"
   },
   "buttons": {
     "showQr": "Показать QR"
