@@ -9,7 +9,9 @@
   "aria": {
     "page": "Profile",
     "copyEmail": "Copy email",
-    "copyTelegram": "Copy Telegram handle"
+    "copyTelegram": "Copy Telegram handle",
+    "openEmail": "Open email",
+    "openTelegram": "Open Telegram"
   },
   "buttons": {
     "showQr": "Show QR"

@@ -911,7 +911,12 @@ export default function Profile() {
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                           <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
                           <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                            <a href={`mailto:${user!.email}`} style={{ color: "inherit", textDecoration: "none" }} data-testid="profile-email-link" title="Email">
+                            <a
+                              href={`mailto:${user!.email}`}
+                              style={{ color: "inherit", textDecoration: "none" }}
+                              data-testid="profile-email-link"
+                              title={t("profile:aria.openEmail")}
+                            >
                               {user!.email}
                             </a>
                           </Typography>
@@ -937,7 +942,14 @@ export default function Profile() {
                           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                             <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
                             <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                              <a href={telegramHref} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }} data-testid="profile-telegram-link" title="Telegram">
+                              <a
+                                href={telegramHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: "inherit", textDecoration: "none" }}
+                                data-testid="profile-telegram-link"
+                                title={t("profile:aria.openTelegram")}
+                              >
                                 {user!.telegram}
                               </a>
                             </Typography>
