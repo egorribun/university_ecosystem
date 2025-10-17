@@ -681,7 +681,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               <Tooltip title={t("events:card.actions.openQr")} arrow>
                 <SmartImage
                   srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                  alt="QR"
+                  alt={t("events:card.alt.qr")}
                   style={{
                     width: "clamp(52px, 8vw, 76px)",
                     height: "clamp(52px, 8vw, 76px)",
@@ -742,7 +742,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                     <Box
                       component="img"
                       src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                      alt="QR"
+                      alt={t("events:card.alt.qr")}
                       sx={{
                         width: "min(70vw, 70vh, 460px)",
                         maxWidth: "100%",

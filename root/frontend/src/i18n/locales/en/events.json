@@ -51,6 +51,9 @@
     "aria": {
       "actions": "Event actions"
     },
+    "alt": {
+      "qr": "Event QR code"
+    },
     "actions": {
       "register": "Register",
       "unregister": "Cancel registration",
