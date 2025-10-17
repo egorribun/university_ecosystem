@@ -83,7 +83,7 @@ export default function SpotifyConnect() {
 
   return (
     <Card sx={{ mt: 2 }}>
-      <CardHeader title="Spotify" />
+      <CardHeader title={t("settings:integrations.spotify.title")} />
       <CardContent>
         {!spotifyEnabled ? (
           <Button onClick={connect} variant="contained" disabled={actionLoading}>
