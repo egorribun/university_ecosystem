@@ -70,8 +70,8 @@ export default defineConfig(({ mode }) => {
   const proxy = {
     "/api": mk(true),
     "/auth": mk(),
-    "/static": mk(),
-    "/media": mk(),
+    "/static/": mk(),
+    "/media/": mk(),
     "/spotify": mk(),
     "/notifications": mk(),
     "/push": mk(),
