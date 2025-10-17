@@ -81,7 +81,7 @@ def _serialize_notification(
         "type": getattr(record, "type", None),
         "url": getattr(record, "url", None),
         "created_at": created_at,
-        "read": getattr(record, "read", False),
+        "read": bool(getattr(record, "read", False)),
         "read_at": getattr(record, "read_at", None),
     }
     return NotificationOut.model_validate(data)
