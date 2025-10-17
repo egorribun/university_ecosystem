@@ -1,6 +1,6 @@
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 
 from app.auth.security import get_password_hash
 from app.models.models import Notification
@@ -93,7 +93,10 @@ async def test_list_notifications_handles_missing_created_at(
     )
     await db_session.commit()
 
-    response = await async_client.get("/notifications", headers=headers)
+    response = await async_client.get(
+        "/notifications?lang=ru",
+        headers=headers,
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -101,3 +104,76 @@ async def test_list_notifications_handles_missing_created_at(
     first = payload["items"][0]
     assert first["title"] == "Без времени"
     assert first["created_at"], "created_at should be populated even if missing in DB"
+
+
+@pytest.mark.anyio
+async def test_list_notifications_handles_invalid_data(
+    async_client: AsyncClient,
+    user_factory,
+    db_session,
+):
+    password = "DataMismatch123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    headers = await _login(async_client, user.email, password)
+
+    notification = Notification(
+        user_id=user.id,
+        title="Странное уведомление",
+        body="Странное тело",
+        read=True,
+    )
+    db_session.add(notification)
+    await db_session.commit()
+
+    await db_session.execute(
+        text(
+            """
+            UPDATE notifications
+            SET title_en = :title_en,
+                body_en = :body_en,
+                type = :type_value,
+                url = :url_value,
+                created_at = :created_at,
+                read_at = :read_at
+            WHERE id = :id
+            """
+        ),
+        {
+            "title_en": 123,
+            "body_en": b"bytes",
+            "type_value": "{'kind': 'system'}",
+            "url_value": 456,
+            "created_at": "not-a-valid-date",
+            "read_at": " ",
+            "id": notification.id,
+        },
+    )
+    await db_session.commit()
+
+    response = await async_client.get(
+        "/notifications?lang=ru",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"], "Expected at least one notification"
+    first = payload["items"][0]
+
+    assert first["title"] == "Странное уведомление"
+    assert first["body"] == "Странное тело"
+    assert first["title_en"] == "123"
+    assert first["body_en"] == "bytes"
+    assert first["type"] == "{'kind': 'system'}"
+    assert first["url"] == "456"
+    assert first["read"] is True
+    assert first["read_at"] is None
+
+    created_at = first["created_at"]
+    assert created_at
+    # Should be parseable as ISO datetime
+    from datetime import datetime
+
+    datetime.fromisoformat(created_at.replace("Z", "+00:00"))
