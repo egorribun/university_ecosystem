@@ -160,6 +160,22 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Доступ запрещён",
         "en": "Access denied",
     },
+    "errors.files.too_large": {
+        "ru": "Размер файла превышает допустимый предел",
+        "en": "Uploaded file exceeds the allowed size",
+    },
+    "errors.files.unsupported_type": {
+        "ru": "Неподдерживаемый тип файла",
+        "en": "Unsupported media type",
+    },
+    "errors.files.content_type_mismatch": {
+        "ru": "Тип содержимого не соответствует объявленному",
+        "en": "Content type does not match the declared value",
+    },
+    "errors.files.unsupported_extension": {
+        "ru": "Неподдерживаемое расширение файла",
+        "en": "Unsupported file extension",
+    },
     "errors.events.registration_forbidden": {
         "ru": "Регистрация на мероприятия недоступна для вашей роли",
         "en": "Event registration is not available for your role",

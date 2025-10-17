@@ -292,7 +292,7 @@ async def upload_news_image(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    url = await save_upload(file, "news_images", "news")
+    url = await save_upload(file, "news_images", "news", locale=locale)
     return {"url": url}
 
 
