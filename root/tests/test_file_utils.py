@@ -85,6 +85,4 @@ async def test_save_image_reports_localized_size_limit(monkeypatch):
     with pytest.raises(HTTPException) as excinfo:
         await files.save_image(upload, "avatars", "Profile Pic", locale="ru")
 
-    assert excinfo.value.detail == translate(
-        "errors.files.too_large", locale="ru"
-    )
+    assert excinfo.value.detail == translate("errors.files.too_large", locale="ru")

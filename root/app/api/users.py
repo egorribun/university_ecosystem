@@ -268,9 +268,7 @@ async def upload_avatar(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    url = await save_upload(
-        file, "avatars", f"user_{user.id}_avatar", locale=locale
-    )
+    url = await save_upload(file, "avatars", f"user_{user.id}_avatar", locale=locale)
     db_user = await db.get(models.User, user.id)
     db_user.avatar_url = url
     await db.commit()
@@ -287,9 +285,7 @@ async def upload_cover(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    url = await save_upload(
-        file, "covers", f"user_{user.id}_cover", locale=locale
-    )
+    url = await save_upload(file, "covers", f"user_{user.id}_cover", locale=locale)
     db_user = await db.get(models.User, user.id)
     db_user.cover_url = url
     await db.commit()

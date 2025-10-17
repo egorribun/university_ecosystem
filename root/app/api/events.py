@@ -131,9 +131,7 @@ async def upload_event_file(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    url = await save_attachment(
-        file, "event_files", f"event_{id}", locale=locale
-    )
+    url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
     ef = models.EventFile(event_id=id, file_url=url)
     db.add(ef)
     await db.commit()

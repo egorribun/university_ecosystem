@@ -9,10 +9,10 @@ from starlette.datastructures import Headers
 
 from app.api import events
 from app.core.config import settings
+from app.localization import translate
 from app.models import models
 from app.schemas import schemas
 from app.utils import files
-from app.localization import translate
 
 
 async def _create_event(db_session, user: models.User) -> models.Event:
@@ -96,9 +96,7 @@ async def test_upload_event_file_rejects_large_payload(
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
-    assert excinfo.value.detail == translate(
-        "errors.files.too_large", locale="en"
-    )
+    assert excinfo.value.detail == translate("errors.files.too_large", locale="en")
     folder = tmp_path / "event_files"
     assert not folder.exists()
 
