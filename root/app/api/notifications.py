@@ -19,7 +19,11 @@ from app.services.notifications import (
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
-def _ensure_utc(dt: datetime) -> datetime:
+def _ensure_utc(dt: datetime | None) -> datetime:
+    """Normalize datetimes from the database to aware UTC values."""
+
+    if not isinstance(dt, datetime):
+        return datetime.now(UTC)
     return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
