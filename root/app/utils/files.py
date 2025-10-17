@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
+from app.localization import translate
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +37,14 @@ def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
-async def _read_limited(upload: UploadFile, limit: int) -> bytes:
+async def _read_limited(
+    upload: UploadFile, limit: int, *, locale: str | None = None
+) -> bytes:
     data = await upload.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="file too large",
+            detail=translate("errors.files.too_large", locale=locale),
         )
     return data
 
@@ -143,24 +146,26 @@ def _gen_name(prefix: str, ext: str) -> str:
     return f"{safe_prefix}_{token}{ext}"
 
 
-async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
+async def save_image(
+    upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
+) -> str:
     declared_type = (upload.content_type or "").lower()
     if declared_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported media type",
+            detail=translate("errors.files.unsupported_type", locale=locale),
         )
-    data = await _read_limited(upload, MAX_IMAGE_SIZE)
+    data = await _read_limited(upload, MAX_IMAGE_SIZE, locale=locale)
     detected_type = _detect_image_mime(data)
     if detected_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported media type",
+            detail=translate("errors.files.unsupported_type", locale=locale),
         )
     if detected_type != declared_type:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="content type mismatch",
+            detail=translate("errors.files.content_type_mismatch", locale=locale),
         )
     ext = _PREFERRED_EXTENSIONS.get(detected_type) or _ext_from_mime(detected_type)
     name = _gen_name(prefix, ext)
@@ -174,14 +179,16 @@ async def save_image(upload: UploadFile, subdir: str, prefix: str) -> str:
     return f"/static/{sanitized_subdir}/{name}"
 
 
-async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
+async def save_attachment(
+    upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
+) -> str:
     declared_raw = (upload.content_type or "").strip()
     declared_type = _normalize_mime_type(declared_raw)
     allowed_types = settings.event_file_allowed_mime_types_set
     if not declared_type or (allowed_types and declared_type not in allowed_types):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported media type",
+            detail=translate("errors.files.unsupported_type", locale=locale),
         )
 
     original_name = upload.filename or ""
@@ -196,19 +203,19 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
         limit = 0
     if limit <= 0:
         limit = 1
-    data = await _read_limited(upload, limit)
+    data = await _read_limited(upload, limit, locale=locale)
 
     detected_type = detect_mime_type(data) or ""
     if detected_type:
         if allowed_types and detected_type not in allowed_types:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="unsupported media type",
+                detail=translate("errors.files.unsupported_type", locale=locale),
             )
         if declared_type and detected_type != declared_type:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="content type mismatch",
+                detail=translate("errors.files.content_type_mismatch", locale=locale),
             )
 
     def _ext_without_dot_from_mime(mime: str) -> str:
@@ -229,7 +236,7 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
     ):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported file extension",
+            detail=translate("errors.files.unsupported_extension", locale=locale),
         )
 
     candidate_exts: tuple[str, ...] = (
@@ -249,7 +256,7 @@ async def save_attachment(upload: UploadFile, subdir: str, prefix: str) -> str:
     if not chosen_ext_without_dot and allowed_exts:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported file extension",
+            detail=translate("errors.files.unsupported_extension", locale=locale),
         )
 
     if not chosen_ext_without_dot:

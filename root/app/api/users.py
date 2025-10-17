@@ -262,10 +262,15 @@ async def update_me(
 @users_router.post("/me/avatar", response_model=schemas.UserOut)
 async def upload_avatar(
     file: UploadFile = File(...),
+    *,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
+    locale = resolve_locale(request=request, user=user)
+    url = await save_upload(
+        file, "avatars", f"user_{user.id}_avatar", locale=locale
+    )
     db_user = await db.get(models.User, user.id)
     db_user.avatar_url = url
     await db.commit()
@@ -276,10 +281,15 @@ async def upload_avatar(
 @users_router.post("/me/cover", response_model=schemas.UserOut)
 async def upload_cover(
     file: UploadFile = File(...),
+    *,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    url = await save_upload(file, "covers", f"user_{user.id}_cover")
+    locale = resolve_locale(request=request, user=user)
+    url = await save_upload(
+        file, "covers", f"user_{user.id}_cover", locale=locale
+    )
     db_user = await db.get(models.User, user.id)
     db_user.cover_url = url
     await db.commit()
