@@ -10,9 +10,9 @@ from sqlalchemy import text
 from app.api.events import router as events_router
 from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
-from app.api.stats import router as stats_router
 from app.api.schedule import router as schedule_api_router
 from app.api.spotify import router as spotify_router
+from app.api.stats import router as stats_router
 from app.api.users import router as users_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings

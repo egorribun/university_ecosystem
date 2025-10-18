@@ -618,9 +618,7 @@ async def get_attendance_stats(
         models.Event.starts_at < now,
     )
     total_events = await db.scalar(
-        select(func.count())
-        .select_from(models.Event)
-        .where(*base_event_filter)
+        select(func.count()).select_from(models.Event).where(*base_event_filter)
     )
     total_events = int(total_events or 0)
 
@@ -769,8 +767,7 @@ async def get_grade_stats(
             current_entries.append(entry)
 
     previous_rows = await db.execute(
-        select(models.Notification)
-        .where(
+        select(models.Notification).where(
             models.Notification.user_id == user_id,
             models.Notification.type == "grade",
             models.Notification.created_at >= previous_start,
@@ -847,7 +844,14 @@ async def get_participation_stats(
     total_hours = 0.0
     event_types = set()
     recent = []
-    for event_id, registered_at, starts_at, ends_at, title, event_type in current_entries:
+    for (
+        event_id,
+        registered_at,
+        starts_at,
+        ends_at,
+        title,
+        event_type,
+    ) in current_entries:
         if event_id not in unique_events:
             unique_events[event_id] = (starts_at, ends_at)
             if starts_at and ends_at:

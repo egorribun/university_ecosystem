@@ -269,4 +269,7 @@ async def test_participation_stats_summarize_events(
     assert payload["groups"] == 2
     assert payload["trend"] == 1
     assert len(payload["recent"]) == 2
-    assert {item["title"] for item in payload["recent"]} == {"Hackathon", "Volunteer Day"}
+    assert {item["title"] for item in payload["recent"]} == {
+        "Hackathon",
+        "Volunteer Day",
+    }
