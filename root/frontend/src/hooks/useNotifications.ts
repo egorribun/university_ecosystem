@@ -29,7 +29,7 @@ export function useNotifications() {
   const list = useQuery({
     queryKey: ["notifications", "list"],
     queryFn: async () => {
-      const { data } = await api.get<NotificationsResponse>("/notifications")
+      const { data } = await api.get<NotificationsResponse>("notifications")
       const normalized: NormalizedNotificationsResponse = {
         items: Array.isArray(data.items) ? data.items : [],
         unread: typeof data.unread_count === "number" ? data.unread_count : 0,
@@ -43,19 +43,19 @@ export function useNotifications() {
   })
   const markRead = useMutation({
     mutationFn: async (id: number) => {
-      await api.patch(`/notifications/${id}/read`)
+      await api.patch(`notifications/${id}/read`)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
   const markAll = useMutation({
     mutationFn: async () => {
-      await api.post("/notifications/read-all")
+      await api.post("notifications/read-all")
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
   const clearAll = useMutation({
     mutationFn: async () => {
-      await api.delete("/notifications")
+      await api.delete("notifications")
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
