@@ -4,11 +4,23 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app import crud
+from app.auth.security import get_password_hash
 from app.localization import translate
 from app.models import models
 from app.schemas import schemas
 
 pytestmark = pytest.mark.anyio("asyncio")
+
+
+async def _login(async_client, email: str, password: str) -> dict[str, str]:
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 async def test_create_event_guard(db_session, user_factory):
@@ -107,3 +119,39 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     assert en_events[0].event_type == "Lecture"
     assert ru_events[0].about == "Русский текст"
     assert en_events[0].about == "English text"
+
+
+async def test_event_detail_returns_qr_code_after_registration(
+    async_client, db_session, user_factory
+):
+    password = "QrCodePass123!"
+    student = await user_factory(
+        hashed_password=get_password_hash(password), is_active=True
+    )
+    admin = await user_factory(role="admin")
+
+    now = datetime.now(timezone.utc)
+    event = models.Event(
+        title="QR enabled",
+        starts_at=now + timedelta(hours=1),
+        ends_at=now + timedelta(hours=2),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    headers = await _login(async_client, student.email, password)
+
+    attend_response = await async_client.post(
+        "/events/attendance", headers=headers, json={"event_id": event.id}
+    )
+    assert attend_response.status_code == 200
+    qr_code = attend_response.json()["qr_code"]
+    assert qr_code
+
+    detail_response = await async_client.get(f"/events/{event.id}", headers=headers)
+    assert detail_response.status_code == 200
+    payload = detail_response.json()
+    assert payload["my_qr_code"] == qr_code
