@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, text, update
@@ -199,3 +201,24 @@ def test_serialize_notification_accepts_orm_instance():
     assert serialized.type == "system"
     assert serialized.url == "/test"
     assert serialized.read is True
+
+
+def test_serialize_notification_normalizes_id_and_read_flag():
+    payload = {
+        "id": " 105 ",
+        "title": "Строковый идентификатор",
+        "body": "",
+        "type": None,
+        "url": None,
+        "title_en": None,
+        "body_en": None,
+        "created_at": datetime(2024, 5, 1, 12, 30, tzinfo=UTC),
+        "read": "false",
+        "read_at": None,
+    }
+
+    serialized = _serialize_notification(payload, locale="en")
+
+    assert serialized.id == 105
+    assert serialized.read is False
+    assert serialized.created_at.tzinfo is not None

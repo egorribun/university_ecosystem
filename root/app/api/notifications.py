@@ -1,8 +1,10 @@
+import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import ValidationError
 from sqlalchemy import String, and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +18,8 @@ from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -63,6 +67,48 @@ def _ensure_utc(dt: Any) -> datetime:
 
     parsed = _parse_datetime(dt)
     return parsed or datetime.now(UTC)
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Best-effort conversion of various inputs to booleans."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off"}:
+            return False
+    return bool(value)
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    """Coerce arbitrary values to integers, falling back to ``default``."""
+
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        if isinstance(value, float):
+            return int(value)
+        text = str(value).strip()
+    except Exception:  # pragma: no cover - defensive guard
+        return default
+    if not text:
+        return default
+    try:
+        return int(text)
+    except ValueError:
+        try:
+            return int(float(text))
+        except (TypeError, ValueError):
+            return default
 
 
 def _encode_cursor(dt: datetime, nid: int) -> str:
@@ -120,8 +166,9 @@ def _serialize_notification(
     read_at = _parse_datetime(read_at_raw) if read_at_raw else None
     type_raw = getter("type", None)
     url_raw = getter("url", None)
+    identifier = _coerce_int(getter("id"), default=0)
     data = {
-        "id": getter("id"),
+        "id": identifier,
         "title": _localized_notification_field(
             locale,
             getter("title", None),
@@ -138,10 +185,16 @@ def _serialize_notification(
         "type": sanitize_optional_text(type_raw),
         "url": sanitize_optional_text(url_raw),
         "created_at": created_at,
-        "read": bool(getter("read", False)),
+        "read": _coerce_bool(getter("read", False)),
         "read_at": read_at,
     }
-    return NotificationOut.model_validate(data)
+    try:
+        return NotificationOut.model_validate(data)
+    except ValidationError as exc:  # pragma: no cover - defensive guard
+        logger.warning(
+            "Failed to validate notification payload for id=%s: %s", identifier, exc
+        )
+        return NotificationOut.model_construct(**data)
 
 
 @router.get("", response_model=NotificationsListOut)
