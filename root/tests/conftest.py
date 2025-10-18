@@ -37,6 +37,7 @@ os.environ.setdefault("ENVIRONMENT", "testing")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
 os.environ.setdefault("RATE_LIMIT_DEFAULT", "5/minute,10/hour")
 os.environ.setdefault("RATE_LIMIT_SENSITIVE", "4/minute")
+os.environ.setdefault("RATE_LIMIT_STORAGE_BACKEND", "redis")
 os.environ.setdefault("RATE_LIMIT_STORAGE_URI", "redis://test")
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 

@@ -98,22 +98,35 @@ async def _http_response_hardening(request: Request, call_next):
 
 
 rate_limit_url = settings.rate_limit_storage_uri.strip()
+rate_limit_backend = settings.rate_limit_storage_backend.strip().lower()
 rate_limit_defaults = settings.rate_limit_default_list
 default_limit, default_window = parse_rate_limit(
     rate_limit_defaults[0] if rate_limit_defaults else None,
     fallback=(60, 60),
 )
 
-if settings.rate_limit_enabled and rate_limit_url.lower().startswith(
-    ("redis://", "rediss://")
-):
-    app.add_middleware(
-        RateLimitMiddleware,
-        redis_url=rate_limit_url,
-        limit=default_limit,
-        window_seconds=default_window,
-        headers_enabled=settings.rate_limit_headers_enabled,
-    )
+if settings.rate_limit_enabled:
+    normalized_url = rate_limit_url.lower()
+    if rate_limit_backend == "redis" and normalized_url.startswith(
+        ("redis://", "rediss://")
+    ):
+        app.add_middleware(
+            RateLimitMiddleware,
+            redis_url=rate_limit_url,
+            limit=default_limit,
+            window_seconds=default_window,
+            headers_enabled=settings.rate_limit_headers_enabled,
+            storage_backend="redis",
+        )
+    elif rate_limit_backend == "memory" or normalized_url.startswith("memory://"):
+        app.add_middleware(
+            RateLimitMiddleware,
+            redis_url=None,
+            limit=default_limit,
+            window_seconds=default_window,
+            headers_enabled=settings.rate_limit_headers_enabled,
+            storage_backend="memory",
+        )
 
 if ProxyHeadersMiddleware:
     trusted_hosts = settings.trusted_hosts_list
