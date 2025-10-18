@@ -1,8 +1,9 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, delete, desc, func, or_, select, update
+from sqlalchemy import String, and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -19,12 +20,49 @@ from app.services.notifications import (
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
-def _ensure_utc(dt: datetime | None) -> datetime:
+def _parse_datetime(value: Any) -> datetime | None:
+    """Attempt to coerce various inputs into an aware UTC datetime."""
+
+    if isinstance(value, datetime):
+        return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        candidate = text.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except ValueError:
+            try:
+                numeric = float(text)
+            except ValueError:
+                return None
+            if numeric > 1e12:
+                numeric /= 1000.0
+            try:
+                return datetime.fromtimestamp(numeric, UTC)
+            except (OverflowError, OSError, ValueError):
+                return None
+        else:
+            return (
+                parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            )
+
+    return None
+
+
+def _ensure_utc(dt: Any) -> datetime:
     """Normalize datetimes from the database to aware UTC values."""
 
-    if not isinstance(dt, datetime):
-        return datetime.now(UTC)
-    return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
+    parsed = _parse_datetime(dt)
+    return parsed or datetime.now(UTC)
 
 
 def _encode_cursor(dt: datetime, nid: int) -> str:
@@ -64,29 +102,38 @@ def _localized_notification_field(
 
 
 def _serialize_notification(
-    record: Notification, locale: str | None
+    record: Notification | Mapping[str, Any], locale: str | None
 ) -> NotificationOut:
-    created_at = getattr(record, "created_at", None) or datetime.now(UTC)
+    if isinstance(record, Mapping):
+        getter = record.get
+    else:
+        getter = record.__getattribute__  # type: ignore[attr-defined]
+
+    created_at = _ensure_utc(getter("created_at", None))
+    read_at_raw = getter("read_at", None)
+    read_at = _parse_datetime(read_at_raw) if read_at_raw else None
+    type_raw = getter("type", None)
+    url_raw = getter("url", None)
     data = {
-        "id": record.id,
+        "id": getter("id"),
         "title": _localized_notification_field(
             locale,
-            getattr(record, "title", None),
-            getattr(record, "title_en", None),
+            getter("title", None),
+            getter("title_en", None),
             required=True,
         ),
         "body": _localized_notification_field(
             locale,
-            getattr(record, "body", None),
-            getattr(record, "body_en", None),
+            getter("body", None),
+            getter("body_en", None),
         ),
-        "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
-        "body_en": sanitize_optional_text(getattr(record, "body_en", None)),
-        "type": getattr(record, "type", None),
-        "url": getattr(record, "url", None),
+        "title_en": sanitize_optional_text(getter("title_en", None)),
+        "body_en": sanitize_optional_text(getter("body_en", None)),
+        "type": sanitize_optional_text(type_raw),
+        "url": sanitize_optional_text(url_raw),
         "created_at": created_at,
-        "read": bool(getattr(record, "read", False)),
-        "read_at": getattr(record, "read_at", None),
+        "read": bool(getter("read", False)),
+        "read_at": read_at,
     }
     return NotificationOut.model_validate(data)
 
@@ -100,7 +147,9 @@ async def list_notifications(
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    where = [Notification.user_id == user.id]
+    table = Notification.__table__
+    cols = table.c
+    where = [cols.user_id == user.id]
     if cursor:
         parsed = _decode_cursor(cursor)
         if not parsed:
@@ -112,18 +161,29 @@ async def list_notifications(
         c_dt = _ensure_utc(c_dt)
         where.append(
             or_(
-                Notification.created_at < c_dt,
-                and_(Notification.created_at == c_dt, Notification.id < c_id),
+                cols.created_at < c_dt,
+                and_(cols.created_at == c_dt, cols.id < c_id),
             )
         )
 
     q_items = (
-        select(Notification)
+        select(
+            cols.id,
+            cols.title,
+            cols.title_en,
+            cols.body,
+            cols.body_en,
+            cols.type,
+            cols.url,
+            cols.created_at.cast(String).label("created_at"),
+            cols.read,
+            cols.read_at.cast(String).label("read_at"),
+        )
         .where(and_(*where))
-        .order_by(desc(Notification.created_at), desc(Notification.id))
+        .order_by(desc(cols.created_at), desc(cols.id))
         .limit(limit + 1)
     )
-    rows = (await db.execute(q_items)).scalars().all()
+    rows = (await db.execute(q_items)).mappings().all()
     items = rows[:limit]
     has_more = len(rows) > limit
 
@@ -132,11 +192,12 @@ async def list_notifications(
     )
     unread = (await db.execute(q_unread)).scalar_one() or 0
 
-    next_cursor = (
-        _encode_cursor(_ensure_utc(items[-1].created_at), items[-1].id)
-        if items and has_more
-        else None
-    )
+    next_cursor = None
+    if items and has_more:
+        last = items[-1]
+        last_created = _ensure_utc(last["created_at"])
+        last_id = last["id"]
+        next_cursor = _encode_cursor(last_created, last_id)
 
     return NotificationsListOut(
         items=[_serialize_notification(n, locale) for n in items],

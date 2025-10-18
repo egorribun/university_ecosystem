@@ -28,12 +28,21 @@ _EVENT_TIME_ORDER_KEY = "validation.events.end_after_start"
 _EVENT_TIME_PAIR_KEY = "validation.events.times_required"
 
 
-def sanitize_optional_text(value: str | None) -> str | None:
+def sanitize_optional_text(value: Any) -> str | None:
+    """Normalize optional text values to strings."""
+
     if value is None:
         return None
-    if isinstance(value, str) and not value.strip():
-        return None
-    return value
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            decoded = value.decode("utf-8")
+        except Exception:
+            decoded = value.decode("utf-8", "ignore")
+        return decoded if decoded.strip() else None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    text = str(value)
+    return text if text.strip() else None
 
 
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
