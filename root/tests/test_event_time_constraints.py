@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.security import get_password_hash
 from app import crud
+from app.auth.security import get_password_hash
 from app.localization import translate
 from app.models import models
 from app.schemas import schemas
