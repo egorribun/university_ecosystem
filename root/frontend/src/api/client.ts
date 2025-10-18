@@ -3,38 +3,44 @@ import axios, {
   type AxiosInstance,
   type AxiosRequestConfig,
   type AxiosResponse,
-} from "axios";
-import i18n from "@/i18n/config";
+} from "axios"
+import i18n from "@/i18n/config"
 
-export const API_UNAUTHORIZED_EVENT = "auth:unauthorized";
-export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized";
+export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
+export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 
-const devBase = "/api";
-const prodBase = import.meta.env.VITE_BACKEND_ORIGIN || "/api";
+const devBase = "/api"
+const prodBase = import.meta.env.VITE_BACKEND_ORIGIN || "/api"
 
 export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
   signal?: AbortSignal
-};
+}
 
 type ApiInstance = Omit<AxiosInstance, "get" | "delete" | "post" | "patch" | "put"> & {
-  get<T = unknown, R = AxiosResponse<T>, D = unknown>(url: string, config?: ApiRequestConfig<D>): Promise<R>;
-  delete<T = unknown, R = AxiosResponse<T>, D = unknown>(url: string, config?: ApiRequestConfig<D>): Promise<R>;
+  get<T = unknown, R = AxiosResponse<T>, D = unknown>(
+    url: string,
+    config?: ApiRequestConfig<D>
+  ): Promise<R>
+  delete<T = unknown, R = AxiosResponse<T>, D = unknown>(
+    url: string,
+    config?: ApiRequestConfig<D>
+  ): Promise<R>
   post<T = unknown, R = AxiosResponse<T>, D = unknown>(
     url: string,
     data?: D,
     config?: ApiRequestConfig<D>
-  ): Promise<R>;
+  ): Promise<R>
   patch<T = unknown, R = AxiosResponse<T>, D = unknown>(
     url: string,
     data?: D,
     config?: ApiRequestConfig<D>
-  ): Promise<R>;
+  ): Promise<R>
   put<T = unknown, R = AxiosResponse<T>, D = unknown>(
     url: string,
     data?: D,
     config?: ApiRequestConfig<D>
-  ): Promise<R>;
-};
+  ): Promise<R>
+}
 
 const api: ApiInstance = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
@@ -47,51 +53,48 @@ const api: ApiInstance = axios.create({
     "Content-Type": "application/json",
     "X-Requested-With": "XMLHttpRequest",
   },
-}) as ApiInstance;
+}) as ApiInstance
 
-const acceptLanguageHeader = "Accept-Language";
+const acceptLanguageHeader = "Accept-Language"
 
 const resolveAcceptLanguage = (language?: string) => {
-  if (!language) return "ru";
-  const normalized = language.toLowerCase();
-  if (normalized.startsWith("en")) return "en";
-  if (normalized.startsWith("ru")) return "ru";
-  return "ru";
-};
+  if (!language) return "ru"
+  const normalized = language.toLowerCase()
+  if (normalized.startsWith("en")) return "en"
+  if (normalized.startsWith("ru")) return "ru"
+  return "ru"
+}
 
 api.interceptors.request.use((config) => {
-  const currentLanguage = i18n.language || i18n.resolvedLanguage || "ru";
-  const headerValue = resolveAcceptLanguage(currentLanguage);
+  const currentLanguage = i18n.language || i18n.resolvedLanguage || "ru"
+  const headerValue = resolveAcceptLanguage(currentLanguage)
 
-  const headers = AxiosHeaders.from(config.headers ?? {});
+  const headers = AxiosHeaders.from(config.headers ?? {})
 
-  if (
-    !headers.has(acceptLanguageHeader) &&
-    !headers.has(acceptLanguageHeader.toLowerCase())
-  ) {
-    headers.set(acceptLanguageHeader, headerValue);
+  if (!headers.has(acceptLanguageHeader) && !headers.has(acceptLanguageHeader.toLowerCase())) {
+    headers.set(acceptLanguageHeader, headerValue)
   }
 
-  config.headers = headers;
+  config.headers = headers
 
-  return config;
-});
+  return config
+})
 
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
-      const headers = (err.config?.headers ?? {}) as Record<string, unknown>;
+      const headers = (err.config?.headers ?? {}) as Record<string, unknown>
       if (headers[SKIP_UNAUTHORIZED_HEADER]) {
-        delete headers[SKIP_UNAUTHORIZED_HEADER];
-        return Promise.reject(err);
+        delete headers[SKIP_UNAUTHORIZED_HEADER]
+        return Promise.reject(err)
       }
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT));
+        window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT))
       }
     }
-    return Promise.reject(err);
+    return Promise.reject(err)
   }
-);
+)
 
-export default api;
+export default api

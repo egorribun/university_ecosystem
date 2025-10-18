@@ -29,10 +29,10 @@ describe("ErrorBoundary", () => {
     expect((eventCall?.[0] as CustomEvent<unknown>).type).toBe(APP_ERROR_EVENT)
 
     expect(
-      screen.getByRole("heading", { name: i18n.t("system:errorBoundary.title") }),
+      screen.getByRole("heading", { name: i18n.t("system:errorBoundary.title") })
     ).toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: i18n.t("system:errorBoundary.reload") }),
+      screen.getByRole("button", { name: i18n.t("system:errorBoundary.reload") })
     ).toBeInTheDocument()
 
     consoleSpy.mockRestore()

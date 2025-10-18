@@ -83,7 +83,7 @@ export default function NewsDetail() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
-  const [heroPos, setHeroPos] = useState<'50% 18%' | '50% 38%' | '50% 50%' | string>('50% 38%')
+  const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
 
   const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
     const img = e.currentTarget
@@ -91,9 +91,9 @@ export default function NewsDetail() {
     const h = img.naturalHeight || 0
     if (!w || !h) return
     const r = w / h
-    if (r < 0.9) setHeroPos('50% 18%')
-    else if (r > 2) setHeroPos('50% 50%')
-    else setHeroPos('50% 38%')
+    if (r < 0.9) setHeroPos("50% 18%")
+    else if (r > 2) setHeroPos("50% 50%")
+    else setHeroPos("50% 38%")
   }
 
   const query = useQuery({
@@ -204,7 +204,7 @@ export default function NewsDetail() {
 
   const rawImageUrl = useMemo(
     () => (editOpen ? editData.image_url : query.data?.image_url) || "",
-    [editData.image_url, editOpen, query.data?.image_url],
+    [editData.image_url, editOpen, query.data?.image_url]
   )
 
   const imageUrl = useMemo(() => {
@@ -213,7 +213,7 @@ export default function NewsDetail() {
   }, [previewUrl, rawImageUrl])
 
   useEffect(() => {
-    setHeroPos('50% 38%')
+    setHeroPos("50% 38%")
   }, [imageUrl])
 
   const displayTitle = useMemo(() => {
@@ -230,14 +230,8 @@ export default function NewsDetail() {
     return localized || english
   }, [language, query.data?.content, query.data?.content_en])
   const createdAt = query.data?.created_at
-  const createdAtIso = useMemo(
-    () => (createdAt ? dayjs(createdAt).toISOString() : ""),
-    [createdAt],
-  )
-  const createdAtLabel = useMemo(
-    () => (createdAt ? getMoscowDate(createdAt) : ""),
-    [createdAt],
-  )
+  const createdAtIso = useMemo(() => (createdAt ? dayjs(createdAt).toISOString() : ""), [createdAt])
+  const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
   if (query.isLoading)
     return (
@@ -338,12 +332,11 @@ export default function NewsDetail() {
             )}
           </Box>
 
-            {createdAt && (
-              <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
-                {t("news:meta.published")} {" "}
-                <time dateTime={createdAtIso}>{createdAtLabel}</time>
-              </Typography>
-            )}
+          {createdAt && (
+            <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
+              {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
+            </Typography>
+          )}
 
           <Box
             sx={{
@@ -357,13 +350,13 @@ export default function NewsDetail() {
               bgcolor: "rgba(0,0,0,0.04)",
             }}
           >
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={
-                  displayTitle
-                    ? t("news:alt.hero", { title: displayTitle })
-                    : t("news:alt.heroFallback")
-                }
+            <SmartImage
+              srcRaw={imageUrl}
+              alt={
+                displayTitle
+                  ? t("news:alt.hero", { title: displayTitle })
+                  : t("news:alt.heroFallback")
+              }
               onLoad={handleHeroLoad}
               style={{
                 position: "absolute",
@@ -388,105 +381,105 @@ export default function NewsDetail() {
           </Typography>
         </Stack>
 
-          <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
-            <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} mt={1}>
-                <TextField
-                  label={t("news:form.title")}
-                  value={editData.title}
-                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                  fullWidth
+        <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
+          <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} mt={1}>
+              <TextField
+                label={t("news:form.title")}
+                value={editData.title}
+                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                fullWidth
+                disabled={saving}
+              />
+              <TextField
+                label={t("news:form.text")}
+                value={editData.content}
+                onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+                multiline
+                rows={4}
+                fullWidth
+                disabled={saving}
+              />
+              <TextField
+                label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+                value={editData.title_en}
+                onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+                fullWidth
+                disabled={saving}
+              />
+              <TextField
+                label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+                value={editData.content_en}
+                onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+                multiline
+                rows={4}
+                fullWidth
+                disabled={saving}
+              />
+              <Box display="flex" gap={2} alignItems="center" mt={1}>
+                <Button
+                  component="label"
+                  variant="outlined"
+                  startIcon={<PhotoCamera />}
+                  sx={{ minWidth: 140 }}
                   disabled={saving}
-                />
-                <TextField
-                  label={t("news:form.text")}
-                  value={editData.content}
-                  onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-                  multiline
-                  rows={4}
-                  fullWidth
-                  disabled={saving}
-                />
-                <TextField
-                  label={t("news:form.title_en", { defaultValue: "Title (English)" })}
-                  value={editData.title_en}
-                  onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-                  fullWidth
-                  disabled={saving}
-                />
-                <TextField
-                  label={t("news:form.content_en", { defaultValue: "News text (English)" })}
-                  value={editData.content_en}
-                  onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-                  multiline
-                  rows={4}
-                  fullWidth
-                  disabled={saving}
-                />
-                <Box display="flex" gap={2} alignItems="center" mt={1}>
-                  <Button
-                    component="label"
-                    variant="outlined"
-                    startIcon={<PhotoCamera />}
-                    sx={{ minWidth: 140 }}
-                    disabled={saving}
-                  >
-                    {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      ref={imageInputRef}
+                >
+                  {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    ref={imageInputRef}
                     onChange={handleImageChange}
                   />
                 </Button>
 
                 {imageUrl && (
-                    <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
-                      <SmartImage
-                        srcRaw={imageUrl}
-                        alt={t("news:alt.preview")}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              </Stack>
-            </DialogContent>
-            <DialogActions>
-              <Button variant="contained" onClick={handleSave} disabled={saving}>
-                <SaveIcon sx={{ mr: 1 }} /> {t("common:buttons.save")}
-              </Button>
-              <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
-                <CloseIcon sx={{ mr: 1 }} /> {t("common:buttons.cancel")}
-              </Button>
-            </DialogActions>
-          </Dialog>
+                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
+                    <SmartImage
+                      srcRaw={imageUrl}
+                      alt={t("news:alt.preview")}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="contained" onClick={handleSave} disabled={saving}>
+              <SaveIcon sx={{ mr: 1 }} /> {t("common:buttons.save")}
+            </Button>
+            <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
+              <CloseIcon sx={{ mr: 1 }} /> {t("common:buttons.cancel")}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-          <Dialog
-            open={confirmDeleteOpen}
-            onClose={() => setConfirmDeleteOpen(false)}
-            fullScreen={isMobile}
-          >
-            <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
-            <DialogContent>
-              <Typography>{t("news:dialogs.delete.description")}</Typography>
-            </DialogContent>
-            <DialogActions>
-              <Button
-                variant="outlined"
-                color="secondary"
-                onClick={() => setConfirmDeleteOpen(false)}
-                disabled={deleting}
-              >
-                {t("common:buttons.cancel")}
-              </Button>
-              <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
-                <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
-              </Button>
-            </DialogActions>
-          </Dialog>
+        <Dialog
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          fullScreen={isMobile}
+        >
+          <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
+          <DialogContent>
+            <Typography>{t("news:dialogs.delete.description")}</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleting}
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
+              <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Snackbar
           open={!!snack}

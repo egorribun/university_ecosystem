@@ -63,7 +63,7 @@ function MapSkeleton() {
             placeItems: "center",
             background: `linear-gradient(120deg, ${alpha(theme.palette.background.paper, 0.92)}, ${alpha(
               theme.palette.background.paper,
-              0.84,
+              0.84
             )})`,
           }}
         >
@@ -72,7 +72,11 @@ function MapSkeleton() {
 
         <Box className="map-controls-shield" />
 
-        <Stack spacing={1} className="map-controls-glass safe-bottom" sx={{ pointerEvents: "none" }}>
+        <Stack
+          spacing={1}
+          className="map-controls-glass safe-bottom"
+          sx={{ pointerEvents: "none" }}
+        >
           <Stack direction="row" spacing={1} sx={{ pointerEvents: "auto" }}>
             <Box className="glass glass--panel" sx={{ px: 1.5, py: 1 }}>
               <Skeleton variant="rounded" width={isMobile ? 148 : 220} height={32} />

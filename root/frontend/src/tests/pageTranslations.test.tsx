@@ -89,8 +89,22 @@ const {
     },
   ]
   const adminUsers = [
-    { id: 1, full_name: "Alice Admin", email: "alice@example.com", role: "admin", group_id: null, avatar_url: null },
-    { id: 2, full_name: "Bob Student", email: "bob@example.com", role: "student", group_id: 1, avatar_url: null },
+    {
+      id: 1,
+      full_name: "Alice Admin",
+      email: "alice@example.com",
+      role: "admin",
+      group_id: null,
+      avatar_url: null,
+    },
+    {
+      id: 2,
+      full_name: "Bob Student",
+      email: "bob@example.com",
+      role: "student",
+      group_id: 1,
+      avatar_url: null,
+    },
   ]
   const sampleEvent = {
     id: 1,
@@ -174,7 +188,9 @@ const {
     if (url.startsWith("/schedule/")) return Promise.resolve({ data: scheduleLessons })
     if (url === "/users") return Promise.resolve({ data: adminUsers })
     if (url === "/spotify/auth-url")
-      return Promise.resolve({ data: { url: "https://accounts.spotify.com/authorize?client_id=1" } })
+      return Promise.resolve({
+        data: { url: "https://accounts.spotify.com/authorize?client_id=1" },
+      })
     return Promise.resolve({ data: [] })
   })
 
@@ -185,7 +201,15 @@ const {
 
   const fetchCurrentUserMock = vi.fn(async () => baseUser)
 
-  return { baseUser, apiGetMock, apiPostMock, apiPatchMock, apiDeleteMock, apiPutMock, fetchCurrentUserMock }
+  return {
+    baseUser,
+    apiGetMock,
+    apiPostMock,
+    apiPatchMock,
+    apiDeleteMock,
+    apiPutMock,
+    fetchCurrentUserMock,
+  }
 })
 
 const authState = {
@@ -230,7 +254,9 @@ vi.mock("@/hooks/usePushPreferences", () => ({
 }))
 
 vi.mock("@/components/Layout", () => ({
-  default: ({ children }: { children: ReactNode }) => <div data-testid="layout-root">{children}</div>,
+  default: ({ children }: { children: ReactNode }) => (
+    <div data-testid="layout-root">{children}</div>
+  ),
 }))
 
 vi.mock("@/components/PageFadeIn", () => ({
@@ -264,7 +290,11 @@ function LanguageToggleHarness({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <button type="button" data-testid="lang-toggle" onClick={() => setLanguage(language === "ru" ? "en" : "ru")}>
+      <button
+        type="button"
+        data-testid="lang-toggle"
+        onClick={() => setLanguage(language === "ru" ? "en" : "ru")}
+      >
         toggle
       </button>
       {children}
@@ -299,7 +329,7 @@ function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
           <LanguageToggleHarness>{ui}</LanguageToggleHarness>
         </MemoryRouter>
       </LanguageProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
 
   return { user, client, ...result }
@@ -451,7 +481,10 @@ describe("page translations", () => {
   })
 
   it("renders login page in Russian when seeded and toggles to English", async () => {
-    const { user } = renderWithProviders(<Login />, { initialPath: "/login", initialLanguage: "ru" })
+    const { user } = renderWithProviders(<Login />, {
+      initialPath: "/login",
+      initialLanguage: "ru",
+    })
 
     expect(await screen.findByRole("heading", { name: "Вход" })).toBeInTheDocument()
 
@@ -477,7 +510,9 @@ describe("page translations", () => {
 
     await user.click(screen.getByTestId("lang-toggle"))
 
-    expect(await screen.findByRole("heading", { name: "Восстановление пароля" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Восстановление пароля" })
+    ).toBeInTheDocument()
   })
 
   it("switches reset password page translations", async () => {
@@ -485,7 +520,9 @@ describe("page translations", () => {
       initialPath: "/reset-password?token=example",
     })
 
-    expect(await screen.findByRole("heading", { name: "Create a new password" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Create a new password" })
+    ).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
 
@@ -505,4 +542,3 @@ describe("page translations", () => {
     expect(await screen.findByText("Уведомления")).toBeInTheDocument()
   })
 })
-

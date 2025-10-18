@@ -1,18 +1,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ChangeEvent, ReactElement, ReactNode } from "react"
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 import i18n from "../../i18n/config"
 
-const tNotifications = (key: string, options?: Record<string, unknown>) => i18n.t(`notifications:${key}`, options)
+const tNotifications = (key: string, options?: Record<string, unknown>) =>
+  i18n.t(`notifications:${key}`, options)
 
 const AUTH_USER_ID = 123
 
@@ -61,9 +55,8 @@ vi.mock("@/push/subscribe", async () => {
 })
 
 vi.mock("@/contexts/AuthContext", async () => {
-  const actual = await vi.importActual<typeof import("@/contexts/AuthContext")>(
-    "@/contexts/AuthContext",
-  )
+  const actual =
+    await vi.importActual<typeof import("@/contexts/AuthContext")>("@/contexts/AuthContext")
   return {
     ...actual,
     useAuth: () => authState,
@@ -220,7 +213,7 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: tNotifications('messages.enabled'), sev: 'success' }),
+      expect.objectContaining({ text: tNotifications("messages.enabled"), sev: "success" })
     )
     expect(result.current.topicState).toMatchObject({
       news: true,
@@ -251,7 +244,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(deleteSubscriptionMock).toHaveBeenCalledWith(subscription.endpoint)
     expect(setPushConsentMock).toHaveBeenCalledWith(false)
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: tNotifications('messages.disabled'), sev: 'success' }),
+      expect.objectContaining({ text: tNotifications("messages.disabled"), sev: "success" })
     )
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(false))
   })
@@ -281,7 +274,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(updateArgs.topics).toEqual(["schedule", "news"])
     expect(setPersistedTopicsMock).toHaveBeenCalledWith(
       ["schedule", "news"],
-      expect.objectContaining({ userId: AUTH_USER_ID }),
+      expect.objectContaining({ userId: AUTH_USER_ID })
     )
     expect(result.current.topicState.system).toBe(false)
   })
@@ -300,7 +293,7 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(setPersistedTopicsMock).toHaveBeenCalledWith(
       ["schedule", "events", "system"],
-      expect.objectContaining({ userId: AUTH_USER_ID }),
+      expect.objectContaining({ userId: AUTH_USER_ID })
     )
     expect(result.current.topicState.news).toBe(false)
   })
@@ -319,9 +312,9 @@ describe("usePushPreferences notifications flow", () => {
     expect(ensurePushSubscriptionMock).toHaveBeenCalled()
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: tNotifications('messages.enableInSettings'),
-        sev: 'info',
-      }),
+        text: tNotifications("messages.enableInSettings"),
+        sev: "info",
+      })
     )
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("denied")
@@ -340,9 +333,9 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: tNotifications('messages.confirmPermission'),
-        sev: 'info',
-      }),
+        text: tNotifications("messages.confirmPermission"),
+        sev: "info",
+      })
     )
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("default")
@@ -361,9 +354,9 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: tNotifications('messages.subscriptionFailed'),
-        sev: 'error',
-      }),
+        text: tNotifications("messages.subscriptionFailed"),
+        sev: "error",
+      })
     )
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("granted")

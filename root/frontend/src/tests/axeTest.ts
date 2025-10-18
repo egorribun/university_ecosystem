@@ -1,6 +1,6 @@
-import { render } from "@testing-library/react";
-import { configureAxe } from "jest-axe";
-import type { ReactElement } from "react";
+import { render } from "@testing-library/react"
+import { configureAxe } from "jest-axe"
+import type { ReactElement } from "react"
 
 const axe = configureAxe({
   rules: {
@@ -8,32 +8,26 @@ const axe = configureAxe({
     "html-has-lang": { enabled: false },
     "landmark-one-main": { enabled: false },
   },
-});
+})
 
-type RenderConfig = Parameters<typeof render>[1];
-type RenderWrapper = RenderConfig extends { wrapper?: infer W } ? W : never;
+type RenderConfig = Parameters<typeof render>[1]
+type RenderWrapper = RenderConfig extends { wrapper?: infer W } ? W : never
 
-type AxeRunOptions = Parameters<typeof axe>[1];
+type AxeRunOptions = Parameters<typeof axe>[1]
 
 type RenderWithAxeOptions = {
-  axeOptions?: AxeRunOptions;
-  wrapper?: RenderWrapper;
-};
-
-export async function checkA11y(
-  container: HTMLElement,
-  options?: AxeRunOptions,
-) {
-  const results = await axe(container, options);
-  expect(results).toHaveNoViolations();
-  return results;
+  axeOptions?: AxeRunOptions
+  wrapper?: RenderWrapper
 }
 
-export async function renderWithA11y(
-  ui: ReactElement,
-  options: RenderWithAxeOptions = {},
-) {
-  const renderResult = render(ui, { wrapper: options.wrapper });
-  await checkA11y(renderResult.container, options.axeOptions);
-  return renderResult;
+export async function checkA11y(container: HTMLElement, options?: AxeRunOptions) {
+  const results = await axe(container, options)
+  expect(results).toHaveNoViolations()
+  return results
+}
+
+export async function renderWithA11y(ui: ReactElement, options: RenderWithAxeOptions = {}) {
+  const renderResult = render(ui, { wrapper: options.wrapper })
+  await checkA11y(renderResult.container, options.axeOptions)
+  return renderResult
 }

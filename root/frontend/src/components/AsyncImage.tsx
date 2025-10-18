@@ -62,7 +62,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
       sx,
       ...rest
     },
-    ref,
+    ref
   ) => {
     const [status, setStatus] = useState<Status>(src ? "loading" : "idle")
 
@@ -124,7 +124,10 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
         )}
 
         {hasImage && (
-          <Fade in={status === "loaded" || status === "loading"} timeout={{ enter: 300, exit: 200 }}>
+          <Fade
+            in={status === "loaded" || status === "loading"}
+            timeout={{ enter: 300, exit: 200 }}
+          >
             <Box
               component="img"
               ref={ref}
@@ -151,14 +154,16 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           />
         )}
 
-        {((shouldShowFallback && fallback) || status === "error" || (!hasImage && !fallbackSrc)) && (
+        {((shouldShowFallback && fallback) ||
+          status === "error" ||
+          (!hasImage && !fallbackSrc)) && (
           <Box sx={fallbackStyles} data-testid="async-image-fallback">
             {fallback ?? <InsertPhotoOutlinedIcon fontSize="large" />}
           </Box>
         )}
       </Box>
     )
-  },
+  }
 )
 
 AsyncImage.displayName = "AsyncImage"

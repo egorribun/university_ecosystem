@@ -41,9 +41,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
         <h1 style={{ fontSize: "clamp(1.5rem, 4vw, 2.5rem)", marginBottom: "0.5rem" }}>
           {t("system:errorBoundary.title")}
         </h1>
-        <p style={{ opacity: 0.8, lineHeight: 1.6 }}>
-          {t("system:errorBoundary.description")}
-        </p>
+        <p style={{ opacity: 0.8, lineHeight: 1.6 }}>{t("system:errorBoundary.description")}</p>
       </div>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center" }}>
         <button

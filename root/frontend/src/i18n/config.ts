@@ -65,21 +65,19 @@ export const resources = {
 
 const fallbackLng = "en"
 
-void i18n
-  .use(initReactI18next)
-  .init({
-    resources,
-    defaultNS,
-    fallbackLng,
-    supportedLngs: ["en", "ru"],
-    lng: "ru",
-    interpolation: {
-      escapeValue: false,
-    },
-    react: {
-      useSuspense: false,
-    },
-    returnNull: false,
-  })
+void i18n.use(initReactI18next).init({
+  resources,
+  defaultNS,
+  fallbackLng,
+  supportedLngs: ["en", "ru"],
+  lng: "ru",
+  interpolation: {
+    escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+  },
+  returnNull: false,
+})
 
 export default i18n

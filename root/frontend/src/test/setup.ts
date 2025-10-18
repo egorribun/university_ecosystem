@@ -1,10 +1,10 @@
-import { afterEach, beforeAll } from "vitest";
-import { cleanup } from "@testing-library/react";
-import "@testing-library/jest-dom/vitest";
+import { afterEach, beforeAll } from "vitest"
+import { cleanup } from "@testing-library/react"
+import "@testing-library/jest-dom/vitest"
 
 afterEach(() => {
-  cleanup();
-});
+  cleanup()
+})
 
 beforeAll(() => {
   if (!("scrollTo" in window)) {
@@ -12,7 +12,7 @@ beforeAll(() => {
       value: () => {},
       configurable: true,
       writable: true,
-    });
+    })
   }
 
   if (typeof window.scrollTo !== "function") {
@@ -20,7 +20,7 @@ beforeAll(() => {
       value: () => {},
       configurable: true,
       writable: true,
-    });
+    })
   }
 
   if (!("matchMedia" in window)) {
@@ -36,33 +36,33 @@ beforeAll(() => {
         dispatchEvent: () => false,
       }),
       configurable: true,
-    });
+    })
   }
 
   if (typeof window.requestAnimationFrame !== "function") {
     window.requestAnimationFrame = (cb: FrameRequestCallback) =>
-      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+      setTimeout(() => cb(Date.now()), 0) as unknown as number
   }
 
   if (typeof window.cancelAnimationFrame !== "function") {
     window.cancelAnimationFrame = (id: number) => {
-      clearTimeout(id);
-    };
+      clearTimeout(id)
+    }
   }
 
   if (!("scrollTo" in Element.prototype)) {
     Object.defineProperty(Element.prototype, "scrollTo", {
       value: function scrollTo(this: Element, options?: ScrollToOptions | number, y?: number) {
         if (typeof options === "object" && options !== null) {
-          (this as unknown as { scrollTop: number }).scrollTop = options.top ?? 0;
+          ;(this as unknown as { scrollTop: number }).scrollTop = options.top ?? 0
         } else if (typeof options === "number") {
-          (this as unknown as { scrollTop: number }).scrollTop = options;
+          ;(this as unknown as { scrollTop: number }).scrollTop = options
           if (typeof y === "number") {
-            (this as unknown as { scrollLeft: number }).scrollLeft = y;
+            ;(this as unknown as { scrollLeft: number }).scrollLeft = y
           }
         }
       },
       configurable: true,
-    });
+    })
   }
-});
+})

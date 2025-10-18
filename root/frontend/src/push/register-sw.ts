@@ -31,13 +31,10 @@ export async function registerServiceWorker(path = "/sw.js") {
 
   try {
     const scriptUrl = createTrustedScriptURL(path)
-    const registration = await navigator.serviceWorker.register(
-      scriptUrl as unknown as string,
-      {
-        scope: "/",
-        updateViaCache: "none",
-      },
-    )
+    const registration = await navigator.serviceWorker.register(scriptUrl as unknown as string, {
+      scope: "/",
+      updateViaCache: "none",
+    })
 
     await navigator.serviceWorker.ready
 

@@ -77,7 +77,12 @@ export default function SpotifyConnect() {
   if (!user) return null
 
   const loadingIndicator = useMemo(
-    () => (actionLoading ? <CircularProgress size={22} color="inherit" /> : t("settings:integrations.spotify.connect")),
+    () =>
+      actionLoading ? (
+        <CircularProgress size={22} color="inherit" />
+      ) : (
+        t("settings:integrations.spotify.connect")
+      ),
     [actionLoading, t]
   )
 
@@ -94,12 +99,26 @@ export default function SpotifyConnect() {
             <Stack direction="row" spacing={1} alignItems="center">
               <Chip
                 size="small"
-                label={user.spotify_display_name || t("settings:integrations.spotify.status.connectedFallback")}
+                label={
+                  user.spotify_display_name ||
+                  t("settings:integrations.spotify.status.connectedFallback")
+                }
               />
-              <Button onClick={refresh} size="small" variant="outlined" disabled={actionLoading || refreshing}>
+              <Button
+                onClick={refresh}
+                size="small"
+                variant="outlined"
+                disabled={actionLoading || refreshing}
+              >
                 {actionLoading || refreshing ? "..." : t("common:buttons.refresh")}
               </Button>
-              <Button onClick={disconnect} size="small" variant="outlined" color="error" disabled={actionLoading}>
+              <Button
+                onClick={disconnect}
+                size="small"
+                variant="outlined"
+                color="error"
+                disabled={actionLoading}
+              >
                 {t("settings:integrations.spotify.disconnect")}
               </Button>
             </Stack>
@@ -107,7 +126,9 @@ export default function SpotifyConnect() {
               <Box>
                 <Typography fontWeight={700}>{now.track_name || "—"}</Typography>
                 <Typography>{(now.artists || []).join(", ")}</Typography>
-                {!!now.album_name && <Typography color="text.secondary">{now.album_name}</Typography>}
+                {!!now.album_name && (
+                  <Typography color="text.secondary">{now.album_name}</Typography>
+                )}
                 {!!now.track_url && (
                   <a href={now.track_url} target="_blank" rel="noreferrer">
                     {now.track_url}

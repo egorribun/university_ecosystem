@@ -13,11 +13,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
-import {
-  hasPushConsent,
-  softSyncPushSubscription,
-  unsubscribePush,
-} from "@/push/subscribe"
+import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { User } from "@/types/User"
@@ -106,10 +102,7 @@ const migrateProfileCache = () => {
         localStorage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
       }
       localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      localStorage.setItem(
-        PROFILE_CACHE_VERSION_KEY,
-        String(PROFILE_CACHE_SCHEMA_VERSION)
-      )
+      localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
     }
   } catch {
     /* ignore */
@@ -210,10 +203,7 @@ const persistUserToCache = (value: User | null) => {
         signature: signSnapshot(payload),
       }
       localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
-      localStorage.setItem(
-        PROFILE_CACHE_VERSION_KEY,
-        String(PROFILE_CACHE_SCHEMA_VERSION)
-      )
+      localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
     } else {
       localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
       localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
@@ -251,9 +241,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     (value: SetUserArg) => {
       setUserState((prev: UserState) => {
         const next =
-          typeof value === "function"
-            ? (value as (prev: UserState) => UserState)(prev)
-            : value
+          typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
         persistUserToCache(normalized)
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
@@ -294,7 +282,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
     setInitializing(true)
-
     ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
@@ -351,8 +338,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window === "undefined") return
     const onUnauthorized = () => handleUnauthorized()
     window.addEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
-    return () =>
-      window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
+    return () => window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized as EventListener)
   }, [handleUnauthorized])
 
   useEffect(() => {
@@ -371,8 +357,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
     }
     window.addEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
-    return () =>
-      window.removeEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
+    return () => window.removeEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
   }, [queryClient, setUser])
 
   const login = useCallback(

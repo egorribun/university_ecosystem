@@ -10,7 +10,7 @@ import {
   Tooltip,
   Snackbar,
   Alert,
-  useMediaQuery
+  useMediaQuery,
 } from "@mui/material"
 import { alpha, useTheme } from "@mui/material/styles"
 import OpenInNewIcon from "@mui/icons-material/OpenInNew"
@@ -40,19 +40,21 @@ export default function MapContent() {
   const loadSeq = useRef(0)
   const loadTimer = useRef<number | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const toggleBaseColor = theme.palette.mode === "dark"
-    ? alpha(theme.palette.common.white, 0.88)
-    : alpha(theme.palette.text.primary, 0.88)
+  const toggleBaseColor =
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.common.white, 0.88)
+      : alpha(theme.palette.text.primary, 0.88)
   const toggleSelectedColor = theme.palette.common.white
-  const toggleSelectedBg = theme.palette.mode === "dark"
-    ? alpha(theme.palette.primary.light, 0.45)
-    : alpha(theme.palette.primary.main, 0.24)
-  const toggleHoverColor = theme.palette.mode === "dark"
-    ? theme.palette.common.white
-    : theme.palette.primary.main
-  const inactiveIconColor = theme.palette.mode === "dark"
-    ? alpha(theme.palette.common.white, 0.88)
-    : alpha(theme.palette.text.primary, 0.88)
+  const toggleSelectedBg =
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.45)
+      : alpha(theme.palette.primary.main, 0.24)
+  const toggleHoverColor =
+    theme.palette.mode === "dark" ? theme.palette.common.white : theme.palette.primary.main
+  const inactiveIconColor =
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.common.white, 0.88)
+      : alpha(theme.palette.text.primary, 0.88)
 
   useEffect(() => {
     const qs = new URLSearchParams(location.search)
@@ -86,7 +88,7 @@ export default function MapContent() {
   const forceReload = () => {
     setIframeLoaded(false)
     setLoadError(false)
-    setFrameKey(k => k + 1)
+    setFrameKey((k) => k + 1)
     loadSeq.current += 1
     if (loadTimer.current) window.clearTimeout(loadTimer.current)
     const seqNow = loadSeq.current
@@ -123,11 +125,19 @@ export default function MapContent() {
 
   const openInYandex = () => {
     if (layer === "map" && !traffic) {
-      window.open(`https://yandex.ru/maps/?um=constructor:${MAP_ID}&source=constructor`, "_blank", "noopener,noreferrer")
+      window.open(
+        `https://yandex.ru/maps/?um=constructor:${MAP_ID}&source=constructor`,
+        "_blank",
+        "noopener,noreferrer"
+      )
       return
     }
     const ll = `${CAMPUS.lon.toFixed(6)},${CAMPUS.lat.toFixed(6)}`
-    window.open(`https://yandex.ru/maps/?ll=${ll}&z=${Z_DEFAULT}&l=${lParam.replace(/%2C/g, ",")}`, "_blank", "noopener,noreferrer")
+    window.open(
+      `https://yandex.ru/maps/?ll=${ll}&z=${Z_DEFAULT}&l=${lParam.replace(/%2C/g, ",")}`,
+      "_blank",
+      "noopener,noreferrer"
+    )
   }
 
   const reset = () => {
@@ -151,7 +161,11 @@ export default function MapContent() {
           p: 0,
         }}
       >
-        <Box ref={containerRef} className="map-page" sx={{ background: theme.palette.mode === "dark" ? "#0b0d12" : "#f6f7fb" }}>
+        <Box
+          ref={containerRef}
+          className="map-page"
+          sx={{ background: theme.palette.mode === "dark" ? "#0b0d12" : "#f6f7fb" }}
+        >
           <Box className="glass glass--panel glass--sheen map-head">
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Stack direction="row" alignItems="center" spacing={1.5}>
@@ -214,23 +228,32 @@ export default function MapContent() {
                 zIndex: 40,
                 display: "grid",
                 placeItems: "center",
-                background: `linear-gradient(120deg, ${alpha(theme.palette.background.paper, 0.9)}, ${alpha(theme.palette.background.paper, 0.82)})`
+                background: `linear-gradient(120deg, ${alpha(theme.palette.background.paper, 0.9)}, ${alpha(theme.palette.background.paper, 0.82)})`,
               }}
             >
               {!loadError ? (
-                <Box sx={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: "50%",
-                  border: `5px solid ${alpha(theme.palette.text.primary, .18)}`,
-                  borderTopColor: theme.palette.primary.main,
-                  animation: "spin 900ms linear infinite",
-                  "@keyframes spin": { to: { transform: "rotate(360deg)" } }
-                }} />
+                <Box
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: "50%",
+                    border: `5px solid ${alpha(theme.palette.text.primary, 0.18)}`,
+                    borderTopColor: theme.palette.primary.main,
+                    animation: "spin 900ms linear infinite",
+                    "@keyframes spin": { to: { transform: "rotate(360deg)" } },
+                  }}
+                />
               ) : (
                 <Stack spacing={2} alignItems="center">
                   <Typography>{t("map.loadError")}</Typography>
-                  <IconButton color="primary" onClick={() => { setLoadError(false); setIframeLoaded(false); setFrameKey(k => k + 1) }}>
+                  <IconButton
+                    color="primary"
+                    onClick={() => {
+                      setLoadError(false)
+                      setIframeLoaded(false)
+                      setFrameKey((k) => k + 1)
+                    }}
+                  >
                     <RestartAltIcon />
                   </IconButton>
                 </Stack>
@@ -240,13 +263,19 @@ export default function MapContent() {
 
           <Box className="map-controls-shield" />
 
-          <Stack spacing={1} className="map-controls-glass safe-bottom" sx={{ pointerEvents: "none" }}>
+          <Stack
+            spacing={1}
+            className="map-controls-glass safe-bottom"
+            sx={{ pointerEvents: "none" }}
+          >
             <Stack direction="row" spacing={1} sx={{ pointerEvents: "auto" }}>
               <Box className="glass glass--panel">
                 <ToggleButtonGroup
                   exclusive
                   value={layer}
-                  onChange={(_, v: LayerMode | null) => { if (v) setLayer(v) }}
+                  onChange={(_, v: LayerMode | null) => {
+                    if (v) setLayer(v)
+                  }}
                   sx={{
                     "& .MuiToggleButtonGroup-grouped": { border: 0, px: 1.5, m: 0 },
                     "& .MuiToggleButton-root": {
@@ -256,21 +285,21 @@ export default function MapContent() {
                       transition: "color 160ms ease",
                       "& .MuiSvgIcon-root": {
                         color: "inherit",
-                        transition: "color 160ms ease"
+                        transition: "color 160ms ease",
                       },
                       "&:hover": {
                         color: toggleHoverColor,
-                        "& .MuiSvgIcon-root": { color: "inherit" }
-                      }
+                        "& .MuiSvgIcon-root": { color: "inherit" },
+                      },
                     },
                     "& .MuiToggleButton-root.Mui-selected": {
                       bgcolor: toggleSelectedBg,
                       color: toggleSelectedColor,
                       "&:hover": {
-                        bgcolor: toggleSelectedBg
-                      }
+                        bgcolor: toggleSelectedBg,
+                      },
                     },
-                    "& .MuiToggleButton-root.Mui-selected .MuiSvgIcon-root": { color: "inherit" }
+                    "& .MuiToggleButton-root.Mui-selected .MuiSvgIcon-root": { color: "inherit" },
                   }}
                 >
                   <ToggleButton value="map" disableRipple aria-label={t("map.layerAria.map")}>
@@ -291,19 +320,22 @@ export default function MapContent() {
                   </ToggleButton>
                 </ToggleButtonGroup>
               </Box>
-              <Tooltip title={(traffic ? t("map.traffic.hide") : t("map.traffic.show")) ?? undefined} {...tooltipCfg}>
+              <Tooltip
+                title={(traffic ? t("map.traffic.hide") : t("map.traffic.show")) ?? undefined}
+                {...tooltipCfg}
+              >
                 <IconButton
                   aria-pressed={traffic}
                   aria-label={t("map.traffic.label")}
-                  onClick={() => setTraffic(v => !v)}
+                  onClick={() => setTraffic((v) => !v)}
                   className="glass glass--btn"
                   sx={{
                     touchAction: "manipulation",
                     color: traffic ? theme.palette.error.light : inactiveIconColor,
                     transition: "color 160ms ease",
                     "&:hover": {
-                      color: traffic ? theme.palette.error.main : toggleHoverColor
-                    }
+                      color: traffic ? theme.palette.error.main : toggleHoverColor,
+                    },
                   }}
                 >
                   <TrafficIcon sx={{ color: "inherit" }} />

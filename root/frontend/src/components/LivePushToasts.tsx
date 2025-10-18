@@ -24,7 +24,12 @@ type ServiceWorkerMessage = {
 }
 
 const DEFAULT_SEVERITY: SnackbarSeverity = "info"
-const VALID_SEVERITIES: readonly SnackbarSeverity[] = ["success", "info", "warning", "error"] as const
+const VALID_SEVERITIES: readonly SnackbarSeverity[] = [
+  "success",
+  "info",
+  "warning",
+  "error",
+] as const
 
 const resolveSeverity = (toast: ActiveToast | null): SnackbarSeverity => {
   if (!toast?.data || typeof toast.data !== "object") return DEFAULT_SEVERITY
@@ -84,7 +89,7 @@ export default function LivePushToasts() {
       setOpen(false)
       setCurrent(null)
     },
-    [],
+    []
   )
 
   const handleAction = useCallback(() => {
@@ -92,7 +97,11 @@ export default function LivePushToasts() {
     try {
       const resolved = new URL(current.url, window.location.href)
       const sameOrigin = resolved.origin === window.location.origin
-      window.open(resolved.href, sameOrigin ? "_self" : "_blank", sameOrigin ? undefined : "noopener,noreferrer")
+      window.open(
+        resolved.href,
+        sameOrigin ? "_self" : "_blank",
+        sameOrigin ? undefined : "noopener,noreferrer"
+      )
     } catch (error) {
       console.error("Failed to open toast link", error)
       window.open(current.url, "_blank", "noopener,noreferrer")

@@ -6,8 +6,7 @@ export type NotificationData = {
   reportUrl?: string
   reportPayload?: unknown
   // Allow arbitrary additional payload data from the server.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export type NotificationActionPayload = {
@@ -56,7 +55,7 @@ export type ExtendedNotificationOptions = NotificationOptions & {
 }
 
 export function parsePushEventData(
-  data: { json: () => unknown; text: () => string } | null | undefined,
+  data: { json: () => unknown; text: () => string } | null | undefined
 ): PushPayload {
   if (!data) {
     return {}
