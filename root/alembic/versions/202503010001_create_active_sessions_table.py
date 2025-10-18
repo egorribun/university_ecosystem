@@ -3,6 +3,7 @@
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -39,9 +40,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_active_sessions_revoked_at", "active_sessions", ["revoked_at"], unique=False
     )
-    op.create_index(
-        "ix_active_sessions_jti", "active_sessions", ["jti"], unique=True
-    )
+    op.create_index("ix_active_sessions_jti", "active_sessions", ["jti"], unique=True)
 
 
 def downgrade() -> None:

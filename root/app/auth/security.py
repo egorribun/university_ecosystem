@@ -123,7 +123,9 @@ async def create_access_token(
         try:
             user_id = int(sub)
         except (TypeError, ValueError):  # pragma: no cover - defensive guard
-            raise ValueError("sub must be an integer when persisting sessions") from None
+            raise ValueError(
+                "sub must be an integer when persisting sessions"
+            ) from None
         session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
         db.add(session)
         await db.commit()
