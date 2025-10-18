@@ -11,12 +11,12 @@ from sqlalchemy import (
     delete,
     desc,
     func,
+    inspect,
     literal,
     or_,
     select,
     update,
 )
-from sqlalchemy import inspect
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -227,12 +227,8 @@ async def _fetch_notification_rows(
         if not _is_missing_column_error(exc):
             raise
     except ValueError:
-        return await _fetch_notification_rows_fallback(
-            db, user_id, limit, cursor_info
-        )
-    return await _fetch_notification_rows_fallback(
-        db, user_id, limit, cursor_info
-    )
+        return await _fetch_notification_rows_fallback(db, user_id, limit, cursor_info)
+    return await _fetch_notification_rows_fallback(db, user_id, limit, cursor_info)
 
 
 async def _fetch_notification_rows_fallback(
@@ -383,9 +379,7 @@ async def list_notifications(
         except SQLAlchemyError as exc:  # pragma: no cover - defensive fallback
             if not _is_missing_column_error(exc):
                 raise
-            unread = sum(
-                1 for row in rows if not _coerce_bool(row.get("read", False))
-            )
+            unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
     else:
         count_stmt = select(func.count(Notification.id)).where(
             Notification.user_id == user.id
@@ -393,9 +387,7 @@ async def list_notifications(
         try:
             unread = (await db.execute(count_stmt)).scalar_one() or 0
         except SQLAlchemyError:  # pragma: no cover - defensive fallback
-            unread = sum(
-                1 for row in rows if not _coerce_bool(row.get("read", False))
-            )
+            unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
 
     next_cursor = None
     if items and has_more:
