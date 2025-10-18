@@ -298,8 +298,14 @@ async def create_user(
     data: schemas.UserCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
 ):
-    locale = resolve_locale(request=request)
+    locale = resolve_locale(request=request, user=user)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
     if data.role in ["teacher", "admin"]:
         if not data.invite_code:
             raise HTTPException(
