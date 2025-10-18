@@ -1,8 +1,18 @@
 import { FC, memo, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
-  Box, Typography, IconButton, Menu, MenuItem,
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Stack, Button, useMediaQuery
+  Box,
+  Typography,
+  IconButton,
+  Menu,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Stack,
+  Button,
+  useMediaQuery,
 } from "@mui/material"
 import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
@@ -50,7 +60,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   content_en,
   created_at,
   image_url,
-  onChange
+  onChange,
 }) => {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -91,11 +101,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     return content || english
   }, [language, content, content_en])
 
-  const sanitizedPreview = useMemo(
-    () => sanitizeNewsText(localizedContent),
-    [localizedContent],
+  const sanitizedPreview = useMemo(() => sanitizeNewsText(localizedContent), [localizedContent])
+  const createdAtIso = useMemo(
+    () => (created_at ? dayjs(created_at).toISOString() : ""),
+    [created_at]
   )
-  const createdAtIso = useMemo(() => (created_at ? dayjs(created_at).toISOString() : ""), [created_at])
   const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
   const cardImageUrl = useMemo(() => image_url || "", [image_url])
 
@@ -151,7 +161,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const editImageUrl = useMemo(
     () => previewUrl || editData.image_url || "",
-    [editData.image_url, previewUrl],
+    [editData.image_url, previewUrl]
   )
 
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,7 +180,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           data.append("file", newImage)
           // единый эндпоинт загрузки
           const res = await api.post<{ url: string }>(`/news/upload_image`, data, {
-            headers: { "Content-Type": "multipart/form-data" }
+            headers: { "Content-Type": "multipart/form-data" },
           })
           imgUrl = res.data.url
         } finally {
@@ -185,7 +195,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         image_url: imgUrl,
       }
       await api.patch(`/news/${id}`, payload)
-      setEditData(prev => ({ ...prev, image_url: imgUrl }))
+      setEditData((prev) => ({ ...prev, image_url: imgUrl }))
       closeEditDialog()
       onChange && onChange()
     } catch (e) {
@@ -208,21 +218,25 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [id, onChange])
 
-  const handleCardClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (editOpen) {
-      e.stopPropagation()
-      e.preventDefault()
-      return
-    }
-    const el = e.target as HTMLElement
-    if (
-      el.closest("button") ||
-      el.closest("input") ||
-      el.closest(".MuiInputBase-root") ||
-      el.closest('[role="menu"]')
-    ) return
-    navigate(`/news/${id}`)
-  }, [editOpen, id, navigate])
+  const handleCardClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (editOpen) {
+        e.stopPropagation()
+        e.preventDefault()
+        return
+      }
+      const el = e.target as HTMLElement
+      if (
+        el.closest("button") ||
+        el.closest("input") ||
+        el.closest(".MuiInputBase-root") ||
+        el.closest('[role="menu"]')
+      )
+        return
+      navigate(`/news/${id}`)
+    },
+    [editOpen, id, navigate]
+  )
 
   const hoveringDisabled = editOpen || Boolean(menuAnchor)
 
@@ -246,8 +260,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         ...cardHoverSx({ disabled: hoveringDisabled }),
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
-          outlineOffset: "2px"
-        }
+          outlineOffset: "2px",
+        },
       }}
       role="button"
       tabIndex={0}
@@ -274,9 +288,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               right: 10,
               zIndex: 2,
               bgcolor: "rgba(255,255,255,0.82)",
-              "&:hover": { bgcolor: "#fff" }
+              "&:hover": { bgcolor: "#fff" },
             }}
-            onClick={e => {
+            onClick={(e) => {
               e.stopPropagation()
               setMenuAnchor(e.currentTarget)
             }}
@@ -289,16 +303,31 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             id={menuId}
             anchorEl={menuAnchor}
             open={Boolean(menuAnchor)}
-            onClose={e => { if (e) (e as any).stopPropagation?.(); setMenuAnchor(null) }}
+            onClose={(e) => {
+              if (e) (e as any).stopPropagation?.()
+              setMenuAnchor(null)
+            }}
             anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
             transformOrigin={{ vertical: "top", horizontal: "right" }}
             MenuListProps={{ "aria-labelledby": menuId }}
           >
-            <MenuItem onClick={e => { e.stopPropagation(); openEditDialog(); setMenuAnchor(null) }}>
+            <MenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                openEditDialog()
+                setMenuAnchor(null)
+              }}
+            >
               <EditIcon fontSize="small" sx={{ mr: 1 }} />
               {t("common:buttons.edit")}
             </MenuItem>
-            <MenuItem onClick={e => { e.stopPropagation(); setConfirmDeleteOpen(true); setMenuAnchor(null) }}>
+            <MenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                setConfirmDeleteOpen(true)
+                setMenuAnchor(null)
+              }}
+            >
               <DeleteIcon fontSize="small" sx={{ mr: 1 }} color="error" />
               <span style={{ color: "#d32f2f" }}>{t("common:buttons.delete")}</span>
             </MenuItem>
@@ -356,29 +385,41 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         />
       </Box>
 
-      <Box sx={{
-        p: { xs: 2, sm: 3 },
-        flex: 1,
-        display: "flex",
-        flexDirection: "column"
-      }}>
-        <Typography fontWeight={700} variant="h6" mb={1} sx={{
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          fontSize: "clamp(1.07rem, 3vw, 1.18rem)"
-        }}>
+      <Box
+        sx={{
+          p: { xs: 2, sm: 3 },
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Typography
+          fontWeight={700}
+          variant="h6"
+          mb={1}
+          sx={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: "clamp(1.07rem, 3vw, 1.18rem)",
+          }}
+        >
           {localizedTitle}
         </Typography>
 
-        <Typography mb={2} variant="body2" color="text.secondary" sx={{
-          minHeight: { xs: 44, sm: 64 },
-          overflow: "hidden",
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          fontSize: "clamp(0.99rem, 2vw, 1.06rem)"
-        }}>
+        <Typography
+          mb={2}
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            minHeight: { xs: 44, sm: 64 },
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            fontSize: "clamp(0.99rem, 2vw, 1.06rem)",
+          }}
+        >
           {sanitizedPreview}
         </Typography>
 
@@ -398,8 +439,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           sx: {
             borderRadius: { xs: 0, sm: 3 },
             width: { xs: "100vw", sm: 420 },
-            maxWidth: { xs: "100vw", sm: 450 }
-          }
+            maxWidth: { xs: "100vw", sm: 450 },
+          },
         }}
       >
         <DialogTitle sx={{ fontWeight: 700, fontSize: "1.2rem" }}>
@@ -410,14 +451,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             <TextField
               label={t("news:form.title")}
               value={editData.title}
-              onChange={e => setEditData({ ...editData, title: e.target.value })}
+              onChange={(e) => setEditData({ ...editData, title: e.target.value })}
               fullWidth
               sx={{ fontSize: "1rem" }}
             />
             <TextField
               label={t("news:form.text")}
               value={editData.content}
-              onChange={e => setEditData({ ...editData, content: e.target.value })}
+              onChange={(e) => setEditData({ ...editData, content: e.target.value })}
               multiline
               rows={4}
               fullWidth
@@ -426,14 +467,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             <TextField
               label={t("news:form.title_en", { defaultValue: "Title (English)" })}
               value={editData.title_en}
-              onChange={e => setEditData({ ...editData, title_en: e.target.value })}
+              onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
               fullWidth
               sx={{ fontSize: "1rem" }}
             />
             <TextField
               label={t("news:form.content_en", { defaultValue: "News text (English)" })}
               value={editData.content_en}
-              onChange={e => setEditData({ ...editData, content_en: e.target.value })}
+              onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
               multiline
               rows={4}
               fullWidth
@@ -449,9 +490,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                   minWidth: 120,
                   fontWeight: 600,
                   fontSize: "1rem",
-                  borderRadius: 2
+                  borderRadius: 2,
                 }}
-                onClick={e => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               >
                 {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
                 <input
@@ -460,7 +501,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                   hidden
                   ref={imageInputRef}
                   onChange={handleImageChange}
-                  onClick={e => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
                 />
               </Button>
               {editImageUrl && (
@@ -518,12 +559,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           >
             {t("common:buttons.cancel")}
           </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDelete}
-            disabled={loading}
-          >
+          <Button variant="contained" color="error" onClick={handleDelete} disabled={loading}>
             <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
           </Button>
         </DialogActions>

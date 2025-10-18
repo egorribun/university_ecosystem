@@ -19,16 +19,8 @@ import { useTranslation } from "react-i18next"
 
 export default function NotificationsBell() {
   const { t } = useTranslation(["system"])
-  const {
-    data,
-    unreadCount,
-    isLoading,
-    markRead,
-    markAll,
-    clearAll,
-    isMarkingAll,
-    isClearing,
-  } = useNotifications()
+  const { data, unreadCount, isLoading, markRead, markAll, clearAll, isMarkingAll, isClearing } =
+    useNotifications()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const open = Boolean(anchor)
   const hasNotifications = data.length > 0

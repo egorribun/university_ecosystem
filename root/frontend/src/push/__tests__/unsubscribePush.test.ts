@@ -56,7 +56,7 @@ describe("unsubscribePush", () => {
     localStorage.setItem(CONSENT_KEY, "granted")
     localStorage.setItem(LAST_SYNC_KEY, "123")
     localStorage.setItem(SUB_KEY, "{}")
-    localStorage.setItem(TOPICS_KEY, "[\"news\"]")
+    localStorage.setItem(TOPICS_KEY, '["news"]')
 
     const neverReady = new Promise<ServiceWorkerRegistration>(() => {})
     const getRegistration = vi.fn().mockResolvedValue(undefined)

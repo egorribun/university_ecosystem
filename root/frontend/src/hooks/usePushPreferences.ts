@@ -55,7 +55,10 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     if (stored === undefined) {
       return { ...DEFAULT_NOTIFICATION_TOPICS }
     }
-    const initial: Record<NotificationTopicKey, boolean> = {} as Record<NotificationTopicKey, boolean>
+    const initial: Record<NotificationTopicKey, boolean> = {} as Record<
+      NotificationTopicKey,
+      boolean
+    >
     for (const key of NOTIFICATION_TOPIC_KEYS) {
       initial[key] = false
     }
@@ -68,10 +71,12 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     return initial
   })
   const [pushSupported, setPushSupported] = useState(() => isPushSupported())
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
-    if (typeof window === "undefined" || typeof Notification === "undefined") return "default"
-    return Notification.permission
-  })
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    () => {
+      if (typeof window === "undefined" || typeof Notification === "undefined") return "default"
+      return Notification.permission
+    }
+  )
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushInitializing, setPushInitializing] = useState(true)
@@ -79,16 +84,19 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const queryClient = useQueryClient()
   const topicLabels = useMemo(
     () =>
-      NOTIFICATION_TOPIC_KEYS.reduce((acc, key) => {
-        acc[key] = t(`notifications:topics.${key}`)
-        return acc
-      }, {} as Record<NotificationTopicKey, string>),
-    [t],
+      NOTIFICATION_TOPIC_KEYS.reduce(
+        (acc, key) => {
+          acc[key] = t(`notifications:topics.${key}`)
+          return acc
+        },
+        {} as Record<NotificationTopicKey, string>
+      ),
+    [t]
   )
 
   const invalidatePushQueries = useCallback(() => {
     queryClient.invalidateQueries({
-      predicate: query => {
+      predicate: (query) => {
         const key = query.queryKey
         if (!Array.isArray(key)) return false
         if (
@@ -97,7 +105,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         ) {
           return true
         }
-        return key.some(value => value === "notifications" || value === "users")
+        return key.some((value) => value === "notifications" || value === "users")
       },
     })
   }, [queryClient])
@@ -106,10 +114,13 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     (toast: NotificationToast) => {
       onNotify?.(toast)
     },
-    [onNotify],
+    [onNotify]
   )
 
-  const selectedTopics = useMemo(() => topicKeys.filter(key => topicState[key]), [topicKeys, topicState])
+  const selectedTopics = useMemo(
+    () => topicKeys.filter((key) => topicState[key]),
+    [topicKeys, topicState]
+  )
 
   const notificationsEnabled = !!pushSubscription
 
@@ -121,7 +132,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const selectedTopicsDescription = useMemo(() => {
     if (!selectedTopics.length) return t("notifications:messages.noTopics")
     return selectedTopics
-      .map(key => topicLabels[key])
+      .map((key) => topicLabels[key])
       .filter(Boolean)
       .join(", ")
   }, [selectedTopics, t, topicLabels])
@@ -129,7 +140,10 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const applyServerTopics = useCallback(
     (topics?: string[] | null) => {
       if (topics == null) return
-      const next: Record<NotificationTopicKey, boolean> = {} as Record<NotificationTopicKey, boolean>
+      const next: Record<NotificationTopicKey, boolean> = {} as Record<
+        NotificationTopicKey,
+        boolean
+      >
       for (const key of topicKeys) {
         next[key] = false
       }
@@ -142,7 +156,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       }
       setTopicState(next)
     },
-    [topicKeys],
+    [topicKeys]
   )
 
   const enableNotifications = useCallback(async () => {
@@ -255,62 +269,64 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   }, [invalidatePushQueries, notify, t])
 
   const handleTopicToggle = useCallback(
-    (key: NotificationTopicKey) =>
-      async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-        const previousState = topicState
-        const nextState = { ...topicState, [key]: checked }
-        setTopicState(nextState)
-        setPersistedTopics(topicKeys.filter(topic => nextState[topic]), { userId: activeUserId })
-        if (!notificationsEnabled || pushBusy) return
-        if (!isPushSupported()) {
+    (key: NotificationTopicKey) => async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      const previousState = topicState
+      const nextState = { ...topicState, [key]: checked }
+      setTopicState(nextState)
+      setPersistedTopics(
+        topicKeys.filter((topic) => nextState[topic]),
+        { userId: activeUserId }
+      )
+      if (!notificationsEnabled || pushBusy) return
+      if (!isPushSupported()) {
+        setTopicState(previousState)
+        return
+      }
+      setPushBusy(true)
+      const topicsToSend = topicKeys.filter((topic) => nextState[topic])
+      try {
+        const registration = await resolveServiceWorkerRegistration()
+        if (!registration) {
+          setTopicState(previousState)
+          notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
+          return
+        }
+        const sub = await ensurePushSubscription({
+          registration,
+          topics: topicsToSend,
+          requestPermission: false,
+        })
+        if (!sub) {
+          setPushSubscription(null)
+          setPushConsent(false)
+          notify({
+            text: t("notifications:messages.subscriptionPermissionHint"),
+            sev: "warning",
+          })
           setTopicState(previousState)
           return
         }
-        setPushBusy(true)
-        const topicsToSend = topicKeys.filter(topic => nextState[topic])
-        try {
-          const registration = await resolveServiceWorkerRegistration()
-          if (!registration) {
-            setTopicState(previousState)
-            notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
-            return
-          }
-          const sub = await ensurePushSubscription({
-            registration,
-            topics: topicsToSend,
-            requestPermission: false,
+        const persisted = getPersistedTopics({ userId: activeUserId }) ?? topicsToSend
+        applyServerTopics(persisted)
+        setPushSubscription(sub)
+        invalidatePushQueries()
+        const label = topicLabels[key]
+        if (label) {
+          notify({
+            text: checked
+              ? t("notifications:messages.topicEnabled", { label })
+              : t("notifications:messages.topicDisabled", { label }),
+            sev: "success",
           })
-          if (!sub) {
-            setPushSubscription(null)
-            setPushConsent(false)
-            notify({
-              text: t("notifications:messages.subscriptionPermissionHint"),
-              sev: "warning",
-            })
-            setTopicState(previousState)
-            return
-          }
-          const persisted = getPersistedTopics({ userId: activeUserId }) ?? topicsToSend
-          applyServerTopics(persisted)
-          setPushSubscription(sub)
-          invalidatePushQueries()
-          const label = topicLabels[key]
-          if (label) {
-            notify({
-              text: checked
-                ? t("notifications:messages.topicEnabled", { label })
-                : t("notifications:messages.topicDisabled", { label }),
-              sev: "success",
-            })
-          }
-        } catch (error) {
-          console.error("Failed to update topics", error)
-          setTopicState(previousState)
-          notify({ text: t("notifications:messages.updateFailed"), sev: "error" })
-        } finally {
-          setPushBusy(false)
         }
-      },
+      } catch (error) {
+        console.error("Failed to update topics", error)
+        setTopicState(previousState)
+        notify({ text: t("notifications:messages.updateFailed"), sev: "error" })
+      } finally {
+        setPushBusy(false)
+      }
+    },
     [
       activeUserId,
       applyServerTopics,
@@ -322,7 +338,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       notify,
       t,
       topicLabels,
-    ],
+    ]
   )
 
   useEffect(() => {
@@ -343,8 +359,8 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     syncPermission()
 
     if (typeof navigator !== "undefined" && (navigator as any).permissions?.query) {
-      ;(navigator as any)
-        .permissions.query({ name: "notifications" as PermissionName })
+      ;(navigator as any).permissions
+        .query({ name: "notifications" as PermissionName })
         .then((status: PermissionStatus) => {
           if (cancelled) return
           const handler = () => {
@@ -362,7 +378,9 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
               } catch {}
             }
           } else {
-            const statusWithOnChange = status as PermissionStatus & { onchange?: (() => void) | null }
+            const statusWithOnChange = status as PermissionStatus & {
+              onchange?: (() => void) | null
+            }
             statusWithOnChange.onchange = handler
             removeListener = () => {
               if (statusWithOnChange.onchange === handler) {

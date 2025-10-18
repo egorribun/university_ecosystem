@@ -14,7 +14,7 @@ const setActiveUser = (id: string | number | null) => {
 
   localStorage.setItem(
     PROFILE_CACHE_KEY,
-    JSON.stringify({ data: { id }, savedAt: new Date().toISOString() }),
+    JSON.stringify({ data: { id }, savedAt: new Date().toISOString() })
   )
 }
 

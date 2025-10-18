@@ -13,7 +13,15 @@ import {
 } from "react"
 import axios from "../api/client"
 import {
-  Box, Typography, Button, Dialog, DialogTitle, DialogContent, Stack, TextField, useMediaQuery
+  Box,
+  Typography,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Stack,
+  TextField,
+  useMediaQuery,
 } from "@mui/material"
 import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
@@ -43,7 +51,8 @@ const isNewsItem = (value: unknown): value is NewsItem => {
   )
 }
 
-const toNewsList = (value: unknown): NewsItem[] => (Array.isArray(value) ? value.filter(isNewsItem) : [])
+const toNewsList = (value: unknown): NewsItem[] =>
+  Array.isArray(value) ? value.filter(isNewsItem) : []
 
 type NewsFormState = {
   title: string
@@ -133,14 +142,20 @@ const News = () => {
           }
         }
       } catch {
-        if (signal?.aborted) return
+        if (signal?.aborted) {
+          return
+        }
         if (!cached) startTransition(() => setNewsList([]))
       } finally {
-        if (signal?.aborted) return
-        if (shouldShowLoader) setLoading(false)
+        if (!signal?.aborted && shouldShowLoader) {
+          setLoading(false)
+        }
+      }
+      if (signal?.aborted) {
+        return
       }
     },
-    [cacheKey, etagKey, language, legacyCacheKey, legacyEtagKey],
+    [cacheKey, etagKey, language, legacyCacheKey, legacyEtagKey]
   )
 
   useEffect(() => {
@@ -164,12 +179,18 @@ const News = () => {
     let cancelled = false
     const chunk = 16
     const ric = (cb: () => void) => {
-      if (typeof (window as any).requestIdleCallback === "function") (window as any).requestIdleCallback(() => { if (!cancelled) cb() })
-      else setTimeout(() => { if (!cancelled) cb() }, 0)
+      if (typeof (window as any).requestIdleCallback === "function")
+        (window as any).requestIdleCallback(() => {
+          if (!cancelled) cb()
+        })
+      else
+        setTimeout(() => {
+          if (!cancelled) cb()
+        }, 0)
     }
     const step = () => {
       startTransition(() => {
-        setVisibleCount(v => {
+        setVisibleCount((v) => {
           const next = Math.min(v + chunk, deferredList.length)
           if (next < deferredList.length) ric(step)
           return next
@@ -177,17 +198,22 @@ const News = () => {
       })
     }
     ric(step)
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [visibleCount, deferredList.length])
 
-  const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-      if (imagePreview) URL.revokeObjectURL(imagePreview)
-      setImagePreview(URL.createObjectURL(file))
-    }
-  }, [imagePreview])
+  const handleImageChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (file) {
+        setImageFile(file)
+        if (imagePreview) URL.revokeObjectURL(imagePreview)
+        setImagePreview(URL.createObjectURL(file))
+      }
+    },
+    [imagePreview]
+  )
 
   const handleAddNews = useCallback(async () => {
     if (adding) return
@@ -239,7 +265,7 @@ const News = () => {
 
   const visibleList = useMemo(
     () => (visibleCount > 0 ? deferredList.slice(0, visibleCount) : deferredList),
-    [deferredList, visibleCount],
+    [deferredList, visibleCount]
   )
 
   return (
@@ -249,16 +275,16 @@ const News = () => {
           sx={{
             width: "100vw",
             minHeight: "100vh",
-          pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-          pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-          py: { xs: 0, sm: 0, md: 0, lg: 0 },
-          boxSizing: "border-box",
-          overflowX: "hidden",
-        }}
+            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
+            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
+            py: { xs: 0, sm: 0, md: 0, lg: 0 },
+            boxSizing: "border-box",
+            overflowX: "hidden",
+          }}
         >
           <Stack
             data-fade
-            style={{ '--fade-delay': '80ms' } as CSSProperties }
+            style={{ "--fade-delay": "80ms" } as CSSProperties}
             direction="row"
             alignItems="center"
             gap={2}
@@ -276,197 +302,186 @@ const News = () => {
             </Typography>
           </Stack>
 
-        {user?.role === "admin" && (
-          <Box
-            data-fade
-            style={{ '--fade-delay': '140ms' } as CSSProperties }
-            sx={{ display: "flex", justifyContent: "flex-start", mb: 2 }}>
-            <Button
-              variant="contained"
-              sx={{
-                fontWeight: 700,
-                fontSize: "clamp(1rem, 2.1vw, 1.15rem)",
-                px: { xs: 2.3, sm: 3 },
-                py: 1.2,
-                borderRadius: 3,
-                letterSpacing: "0.02em",
-              }}
-              onClick={() => setAddOpen(true)}
-              disabled={adding}
+          {user?.role === "admin" && (
+            <Box
+              data-fade
+              style={{ "--fade-delay": "140ms" } as CSSProperties}
+              sx={{ display: "flex", justifyContent: "flex-start", mb: 2 }}
             >
-              {t("news:actions.add")}
-            </Button>
-          </Box>
-        )}
-
-          <Box
-            data-fade
-          style={{ '--fade-delay': '200ms' } as CSSProperties }
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: { xs: 2, sm: 3 },
-          }}
-        >
-          {Array.isArray(visibleList) &&
-            visibleList.map((news) => (
-              <Box key={news.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                <NewsCard
-                  {...news}
-                  image_url={news.image_url ?? undefined}
-                  onChange={() => {
-                    void fetchNews()
-                  }}
-                />
-              </Box>
-            ))}
-
-          {Array.isArray(newsList) && newsList.length === 0 && !loading && (
-            <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
-              <Typography fontSize={24} className="events-empty-text">
-                {t("news:states.empty")}
-              </Typography>
+              <Button
+                variant="contained"
+                sx={{
+                  fontWeight: 700,
+                  fontSize: "clamp(1rem, 2.1vw, 1.15rem)",
+                  px: { xs: 2.3, sm: 3 },
+                  py: 1.2,
+                  borderRadius: 3,
+                  letterSpacing: "0.02em",
+                }}
+                onClick={() => setAddOpen(true)}
+                disabled={adding}
+              >
+                {t("news:actions.add")}
+              </Button>
             </Box>
           )}
-        </Box>
 
-        <Dialog
-          open={addOpen}
-          onClose={handleCloseDialog}
-          fullScreen={isMobile}
-          PaperProps={{
-            sx: {
-              borderRadius: { xs: 0, sm: 4 },
-              width: { xs: "100vw", sm: 400 },
-              maxWidth: { xs: "100vw", sm: 440 },
-            },
-          }}
-        >
-          <DialogTitle sx={{ fontWeight: 700, fontSize: "1.3rem" }}>
-            {t("news:dialogs.create.title")}
-          </DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
-              <TextField
-                label={t("news:form.title")}
-                value={newsData.title}
-                onChange={(e) =>
-                  setNewsData({ ...newsData, title: e.target.value })
-                }
-                fullWidth
-                inputProps={{ maxLength: 100 }}
-                sx={{ fontSize: "1rem" }}
-                disabled={adding}
-              />
-              <TextField
-                label={t("news:form.content")}
-                value={newsData.content}
-                onChange={(e) =>
-                  setNewsData({ ...newsData, content: e.target.value })
-                }
-                multiline
-                minRows={5}
-                fullWidth
-                inputProps={{ maxLength: 3000 }}
-                sx={{ fontSize: "1rem" }}
-                disabled={adding}
-              />
-              <TextField
-                label={t("news:form.title_en", { defaultValue: "Title (English)" })}
-                value={newsData.title_en}
-                onChange={(e) =>
-                  setNewsData({ ...newsData, title_en: e.target.value })
-                }
-                fullWidth
-                inputProps={{ maxLength: 100 }}
-                sx={{ fontSize: "1rem" }}
-                disabled={adding}
-              />
-              <TextField
-                label={t("news:form.content_en", { defaultValue: "News text (English)" })}
-                value={newsData.content_en}
-                onChange={(e) =>
-                  setNewsData({ ...newsData, content_en: e.target.value })
-                }
-                multiline
-                minRows={5}
-                fullWidth
-                inputProps={{ maxLength: 3000 }}
-                sx={{ fontSize: "1rem" }}
-                disabled={adding}
-              />
-
-              <Box display="flex" alignItems="center" gap={2}>
-                <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<PhotoCamera />}
-                  sx={{
-                    minWidth: 120,
-                    fontWeight: 600,
-                    fontSize: "1rem",
-                    borderRadius: 2,
-                  }}
-                  disabled={adding}
-                >
-                  {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    ref={imageInputRef}
-                    onChange={handleImageChange}
-                  />
-                </Button>
-
-                {imagePreview && (
-                  <SmartImage
-                    srcRaw={imagePreview}
-                    alt={t("news:alt.newCover")}
-                    style={{
-                      width: 100,
-                      height: 60,
-                      objectFit: "cover",
-                      borderRadius: 8,
-                      border: "1px solid #eee",
-                      display: "block",
+          <Box
+            data-fade
+            style={{ "--fade-delay": "200ms" } as CSSProperties}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: { xs: 2, sm: 3 },
+            }}
+          >
+            {Array.isArray(visibleList) &&
+              visibleList.map((news) => (
+                <Box key={news.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
+                  <NewsCard
+                    {...news}
+                    image_url={news.image_url ?? undefined}
+                    onChange={() => {
+                      void fetchNews()
                     }}
                   />
-                )}
-              </Box>
+                </Box>
+              ))}
 
-              <Stack direction="row" gap={2} mt={2}>
-                <Button
-                  variant="contained"
-                  onClick={handleAddNews}
-                  disabled={
-                    !newsData.title.trim() ||
-                    !newsData.content.trim() ||
-                    adding
-                  }
-                  sx={{
-                    fontWeight: 700,
-                    borderRadius: 2.2,
-                    px: 3,
-                    fontSize: "1.02rem",
-                  }}
-                >
-                  {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="secondary"
-                  onClick={handleCloseDialog}
+            {Array.isArray(newsList) && newsList.length === 0 && !loading && (
+              <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
+                <Typography fontSize={24} className="events-empty-text">
+                  {t("news:states.empty")}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+
+          <Dialog
+            open={addOpen}
+            onClose={handleCloseDialog}
+            fullScreen={isMobile}
+            PaperProps={{
+              sx: {
+                borderRadius: { xs: 0, sm: 4 },
+                width: { xs: "100vw", sm: 400 },
+                maxWidth: { xs: "100vw", sm: 440 },
+              },
+            }}
+          >
+            <DialogTitle sx={{ fontWeight: 700, fontSize: "1.3rem" }}>
+              {t("news:dialogs.create.title")}
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
+                <TextField
+                  label={t("news:form.title")}
+                  value={newsData.title}
+                  onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
+                  fullWidth
+                  inputProps={{ maxLength: 100 }}
+                  sx={{ fontSize: "1rem" }}
                   disabled={adding}
-                  sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
-                >
-                  {t("common:buttons.cancel")}
-                </Button>
+                />
+                <TextField
+                  label={t("news:form.content")}
+                  value={newsData.content}
+                  onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
+                  multiline
+                  minRows={5}
+                  fullWidth
+                  inputProps={{ maxLength: 3000 }}
+                  sx={{ fontSize: "1rem" }}
+                  disabled={adding}
+                />
+                <TextField
+                  label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+                  value={newsData.title_en}
+                  onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
+                  fullWidth
+                  inputProps={{ maxLength: 100 }}
+                  sx={{ fontSize: "1rem" }}
+                  disabled={adding}
+                />
+                <TextField
+                  label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+                  value={newsData.content_en}
+                  onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
+                  multiline
+                  minRows={5}
+                  fullWidth
+                  inputProps={{ maxLength: 3000 }}
+                  sx={{ fontSize: "1rem" }}
+                  disabled={adding}
+                />
+
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={<PhotoCamera />}
+                    sx={{
+                      minWidth: 120,
+                      fontWeight: 600,
+                      fontSize: "1rem",
+                      borderRadius: 2,
+                    }}
+                    disabled={adding}
+                  >
+                    {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      ref={imageInputRef}
+                      onChange={handleImageChange}
+                    />
+                  </Button>
+
+                  {imagePreview && (
+                    <SmartImage
+                      srcRaw={imagePreview}
+                      alt={t("news:alt.newCover")}
+                      style={{
+                        width: 100,
+                        height: 60,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        border: "1px solid #eee",
+                        display: "block",
+                      }}
+                    />
+                  )}
+                </Box>
+
+                <Stack direction="row" gap={2} mt={2}>
+                  <Button
+                    variant="contained"
+                    onClick={handleAddNews}
+                    disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
+                    sx={{
+                      fontWeight: 700,
+                      borderRadius: 2.2,
+                      px: 3,
+                      fontSize: "1.02rem",
+                    }}
+                  >
+                    {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={handleCloseDialog}
+                    disabled={adding}
+                    sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
+                  >
+                    {t("common:buttons.cancel")}
+                  </Button>
+                </Stack>
               </Stack>
-            </Stack>
-          </DialogContent>
-        </Dialog>
-      </Box>
+            </DialogContent>
+          </Dialog>
+        </Box>
       </PageFadeIn>
     </Layout>
   )

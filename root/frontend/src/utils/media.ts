@@ -4,7 +4,7 @@ const hasProtocol = (value: string) => /^(?:https?:)?\/\//i.test(value)
 
 export function resolveMediaUrl(
   raw?: string,
-  origin = import.meta.env.VITE_BACKEND_ORIGIN,
+  origin = import.meta.env.VITE_BACKEND_ORIGIN
 ): string {
   if (!raw) return ""
   const trimmed = String(raw).trim()
@@ -15,7 +15,8 @@ export function resolveMediaUrl(
   }
 
   const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
-  const needsPrefix = withLeadingSlash.startsWith("/static/") || withLeadingSlash.startsWith("/media/")
+  const needsPrefix =
+    withLeadingSlash.startsWith("/static/") || withLeadingSlash.startsWith("/media/")
 
   if (!needsPrefix) {
     return trimmed

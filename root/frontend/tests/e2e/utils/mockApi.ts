@@ -1,23 +1,23 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test"
 
 type NewsLogEntry = {
-  header: string | undefined;
-  status: number;
-};
+  header: string | undefined
+  status: number
+}
 
 type MockState = {
-  loggedIn: boolean;
-  newsVersion: string;
-  offline: boolean;
-  newsLog: NewsLogEntry[];
-};
+  loggedIn: boolean
+  newsVersion: string
+  offline: boolean
+  newsLog: NewsLogEntry[]
+}
 
 const mockUser = {
   id: 1,
   full_name: "Иван Иванов",
   role: "student",
   group_id: "iu-21",
-};
+}
 
 const mockNews = [
   {
@@ -36,7 +36,7 @@ const mockNews = [
     content_en: "The library has extended its opening hours.",
     created_at: "2025-01-03T12:30:00Z",
   },
-];
+]
 
 const mockEvents = [
   {
@@ -53,7 +53,7 @@ const mockEvents = [
     about: null,
     about_en: null,
   },
-];
+]
 
 const mockSchedule = [
   {
@@ -67,12 +67,12 @@ const mockSchedule = [
     end_time: "10:30",
     parity: "both" as const,
   },
-];
+]
 
 const mockGroups = [
   { id: 1, name: "ИУ-21", course: 1, faculty: "ИТ" },
   { id: 2, name: "БИ-22", course: 2, faculty: "Бизнес" },
-];
+]
 
 export async function useMockApi(page: Page) {
   const state: MockState = {
@@ -80,72 +80,74 @@ export async function useMockApi(page: Page) {
     newsVersion: '"news-v1"',
     offline: false,
     newsLog: [],
-  };
+  }
 
   await page.addInitScript(() => {
     try {
       if (window.name !== "__mock_api_initialized__") {
-        window.localStorage.clear();
-        window.sessionStorage.clear();
-        window.name = "__mock_api_initialized__";
+        window.localStorage.clear()
+        window.sessionStorage.clear()
+        window.name = "__mock_api_initialized__"
       }
     } catch {}
-  });
+  })
 
   page.on("console", (msg) => {
-    const location = msg.location();
-    console.log(`[console:${msg.type()}] ${msg.text()}${location?.url ? ` (${location.url})` : ""}`);
-  });
+    const location = msg.location()
+    console.log(`[console:${msg.type()}] ${msg.text()}${location?.url ? ` (${location.url})` : ""}`)
+  })
 
   page.on("pageerror", (error) => {
-    console.log(`[pageerror] ${error.message}\n${error.stack ?? ""}`);
-  });
+    console.log(`[pageerror] ${error.message}\n${error.stack ?? ""}`)
+  })
 
   page.on("requestfailed", (request) => {
-    console.log(`[requestfailed] ${request.url()} :: ${request.failure()?.errorText ?? "unknown"}`);
-  });
+    console.log(`[requestfailed] ${request.url()} :: ${request.failure()?.errorText ?? "unknown"}`)
+  })
 
   page.on("response", (response) => {
-    const type = response.request().resourceType();
-    const contentType = response.headers()["content-type"] ?? "";
+    const type = response.request().resourceType()
+    const contentType = response.headers()["content-type"] ?? ""
     if (type === "script" && contentType.includes("text/html")) {
-      console.log(`[response] unexpected HTML for script: ${response.url()} status=${response.status()}`);
+      console.log(
+        `[response] unexpected HTML for script: ${response.url()} status=${response.status()}`
+      )
     }
-  });
+  })
 
   await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-    const pathname = url.pathname.replace(/^\/+/u, "");
-    const method = route.request().method().toUpperCase();
+    const url = new URL(route.request().url())
+    const pathname = url.pathname.replace(/^\/+/u, "")
+    const method = route.request().method().toUpperCase()
 
     if (!pathname.startsWith("api/")) {
-      await route.continue();
-      return;
+      await route.continue()
+      return
     }
 
     if (pathname === "api/auth/login") {
-      const postData = route.request().postData() ?? "";
-      const params = new URLSearchParams(postData);
-      const username = params.get("username");
-      const password = params.get("password");
+      const postData = route.request().postData() ?? ""
+      const params = new URLSearchParams(postData)
+      const username = params.get("username")
+      const password = params.get("password")
 
       if (username === "student@example.com" && password === "Password123") {
-        state.loggedIn = true;
-        console.log("[mock] login success");
+        state.loggedIn = true
+        console.log("[mock] login success")
         await route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({ access_token: "mock-token" }),
-        });
-        return;
+        })
+        return
       }
 
       await route.fulfill({
         status: 401,
         contentType: "application/json",
         body: JSON.stringify({ detail: "Unauthorized" }),
-      });
-      return;
+      })
+      return
     }
 
     if (method === "OPTIONS") {
@@ -157,27 +159,27 @@ export async function useMockApi(page: Page) {
           "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
           "access-control-allow-headers": "*",
         },
-      });
-      return;
+      })
+      return
     }
 
     if (pathname === "api/users/me") {
-      const auth = route.request().headers()["authorization"];
-      console.log(`[mock] /users/me -> loggedIn=${state.loggedIn} auth=${auth ?? "none"}`);
+      const auth = route.request().headers()["authorization"]
+      console.log(`[mock] /users/me -> loggedIn=${state.loggedIn} auth=${auth ?? "none"}`)
       if (state.loggedIn || auth?.includes("mock-token")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(mockUser),
-        });
+        })
       } else {
         await route.fulfill({
           status: 401,
           contentType: "application/json",
           body: JSON.stringify({ detail: "Unauthorized" }),
-        });
+        })
       }
-      return;
+      return
     }
 
     if (pathname.startsWith("api/events")) {
@@ -185,8 +187,8 @@ export async function useMockApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(mockEvents),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname.startsWith("api/schedule/ics")) {
@@ -199,17 +201,17 @@ export async function useMockApi(page: Page) {
         "DTEND:20240101T103000",
         "END:VEVENT",
         "END:VCALENDAR",
-      ].join("\r\n");
+      ].join("\r\n")
 
       await route.fulfill({
         status: 200,
         contentType: "text/calendar",
         headers: {
-          "content-disposition": "attachment; filename=\"schedule-iu-21.ics\"",
+          "content-disposition": 'attachment; filename="schedule-iu-21.ics"',
         },
         body,
-      });
-      return;
+      })
+      return
     }
 
     if (pathname.startsWith("api/schedule")) {
@@ -217,8 +219,8 @@ export async function useMockApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(mockSchedule),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname === "api/groups") {
@@ -226,71 +228,69 @@ export async function useMockApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(mockGroups),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname.startsWith("api/news")) {
-      const headers = route.request().headers();
-      const ifNoneMatch = headers["if-none-match"];
-      const acceptLanguage = headers["accept-language"]?.toLowerCase() ?? "";
-      const locale = acceptLanguage.startsWith("en") ? "en" : "ru";
+      const headers = route.request().headers()
+      const ifNoneMatch = headers["if-none-match"]
+      const acceptLanguage = headers["accept-language"]?.toLowerCase() ?? ""
+      const locale = acceptLanguage.startsWith("en") ? "en" : "ru"
 
-      const localize = (item: typeof mockNews[number]) => ({
+      const localize = (item: (typeof mockNews)[number]) => ({
         ...item,
-        title:
-          locale === "en" && item.title_en ? item.title_en : item.title,
-        content:
-          locale === "en" && item.content_en ? item.content_en : item.content,
-      });
+        title: locale === "en" && item.title_en ? item.title_en : item.title,
+        content: locale === "en" && item.content_en ? item.content_en : item.content,
+      })
 
-      const detailMatch = pathname.match(/^api\/news\/(\d+)$/);
+      const detailMatch = pathname.match(/^api\/news\/(\d+)$/)
       if (detailMatch) {
-        const id = Number.parseInt(detailMatch[1], 10);
-        const entry = mockNews.find((item) => item.id === id);
+        const id = Number.parseInt(detailMatch[1], 10)
+        const entry = mockNews.find((item) => item.id === id)
         if (!entry) {
           await route.fulfill({
             status: 404,
             contentType: "application/json",
             body: JSON.stringify({ detail: "Not found" }),
-          });
-          return;
+          })
+          return
         }
         await route.fulfill({
           status: 200,
           headers: { "content-type": "application/json" },
           body: JSON.stringify(localize(entry)),
-        });
-        return;
+        })
+        return
       }
 
       if (state.offline) {
-        state.newsLog.push({ header: ifNoneMatch, status: 503 });
+        state.newsLog.push({ header: ifNoneMatch, status: 503 })
         await route.fulfill({
           status: 503,
           contentType: "application/json",
           body: JSON.stringify({ detail: "offline" }),
-        });
-        return;
+        })
+        return
       }
 
       if (ifNoneMatch && ifNoneMatch === state.newsVersion) {
-        state.newsLog.push({ header: ifNoneMatch, status: 304 });
+        state.newsLog.push({ header: ifNoneMatch, status: 304 })
         await route.fulfill({
           status: 304,
           headers: { etag: state.newsVersion },
-        });
-        return;
+        })
+        return
       }
 
-      state.newsLog.push({ header: ifNoneMatch, status: 200 });
-      const localizedNews = mockNews.map(localize);
+      state.newsLog.push({ header: ifNoneMatch, status: 200 })
+      const localizedNews = mockNews.map(localize)
       await route.fulfill({
         status: 200,
         headers: { etag: state.newsVersion, "content-type": "application/json" },
         body: JSON.stringify(localizedNews),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname === "api/stats/attendance") {
@@ -311,8 +311,8 @@ export async function useMockApi(page: Page) {
             },
           ],
         }),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname === "api/stats/grades") {
@@ -332,8 +332,8 @@ export async function useMockApi(page: Page) {
             },
           ],
         }),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname === "api/stats/participation") {
@@ -353,8 +353,8 @@ export async function useMockApi(page: Page) {
             },
           ],
         }),
-      });
-      return;
+      })
+      return
     }
 
     if (pathname === "api/notifications") {
@@ -362,42 +362,45 @@ export async function useMockApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ items: [], unread_count: 0, has_more: false, next_cursor: null }),
-      });
-      return;
+      })
+      return
     }
 
-    if (/^api\/notifications\/\d+\/read$/.test(pathname) || pathname === "api/notifications/read-all") {
+    if (
+      /^api\/notifications\/\d+\/read$/.test(pathname) ||
+      pathname === "api/notifications/read-all"
+    ) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true }),
-      });
-      return;
+      })
+      return
     }
 
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({}),
-    });
-  });
+    })
+  })
 
   return {
     state,
     goOffline(value: boolean) {
-      state.offline = value;
+      state.offline = value
     },
     async login(currentPage: Page) {
-      await currentPage.goto("/login", { waitUntil: "domcontentloaded" });
-      await currentPage.waitForURL(/\/login$/);
-      await currentPage.waitForSelector('input[name="username"]', { state: "visible" });
-      const emailField = currentPage.locator('input[name="username"]');
-      await emailField.fill("student@example.com");
-      await currentPage.locator('input[name="password"]').fill("Password123");
-      await currentPage.getByRole("button", { name: "Войти" }).click();
-      await expect(currentPage).toHaveURL(/\/dashboard$/);
+      await currentPage.goto("/login", { waitUntil: "domcontentloaded" })
+      await currentPage.waitForURL(/\/login$/)
+      await currentPage.waitForSelector('input[name="username"]', { state: "visible" })
+      const emailField = currentPage.locator('input[name="username"]')
+      await emailField.fill("student@example.com")
+      await currentPage.locator('input[name="password"]').fill("Password123")
+      await currentPage.getByRole("button", { name: "Войти" }).click()
+      await expect(currentPage).toHaveURL(/\/dashboard$/)
     },
-  };
+  }
 }
 
-export type { MockState };
+export type { MockState }

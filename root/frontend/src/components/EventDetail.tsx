@@ -1,48 +1,58 @@
-import { useParams, useNavigate } from 'react-router-dom'
-import type React from 'react'
-import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from 'react'
-import api from '../api/client'
+import { useParams, useNavigate } from "react-router-dom"
+import type React from "react"
+import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from "react"
+import api from "../api/client"
 import {
-  Box, Typography, Paper, CircularProgress, Stack, Chip, Button, Divider,
-  IconButton, TextField, useMediaQuery, Snackbar
-} from '@mui/material'
-import PeopleAltIcon from '@mui/icons-material/PeopleAlt'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import DeleteIcon from '@mui/icons-material/Delete'
-import EditIcon from '@mui/icons-material/Edit'
-import SaveIcon from '@mui/icons-material/Save'
-import CloseIcon from '@mui/icons-material/Close'
-import { useAuth } from '../contexts/AuthContext'
-import Layout from '../components/Layout'
-import { resolveMediaUrl } from '@/utils/media'
-import SmartImage from '@/components/SmartImage'
-import type { Event } from '@/types/Event'
-import { useTranslation } from 'react-i18next'
+  Box,
+  Typography,
+  Paper,
+  CircularProgress,
+  Stack,
+  Chip,
+  Button,
+  Divider,
+  IconButton,
+  TextField,
+  useMediaQuery,
+  Snackbar,
+} from "@mui/material"
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
+import ArrowBackIcon from "@mui/icons-material/ArrowBack"
+import DeleteIcon from "@mui/icons-material/Delete"
+import EditIcon from "@mui/icons-material/Edit"
+import SaveIcon from "@mui/icons-material/Save"
+import CloseIcon from "@mui/icons-material/Close"
+import { useAuth } from "../contexts/AuthContext"
+import Layout from "../components/Layout"
+import { resolveMediaUrl } from "@/utils/media"
+import SmartImage from "@/components/SmartImage"
+import type { Event } from "@/types/Event"
+import { useTranslation } from "react-i18next"
 import {
   applyOptimisticFileAction,
   isUploadErrorState,
   type FileOptimisticAction,
   type OptimisticEventFile,
-  type UploadState
-} from './EventDetail.helpers'
-import dayjs from 'dayjs'
-import utc from 'dayjs/plugin/utc'
-import timezone from 'dayjs/plugin/timezone'
+  type UploadState,
+} from "./EventDetail.helpers"
+import dayjs from "dayjs"
+import utc from "dayjs/plugin/utc"
+import timezone from "dayjs/plugin/timezone"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const formatLocalDateTime = (s?: string) => {
-  if (!s) return '—'
-  const norm = s.replace(' ', 'T')
-  const withSec = norm.length === 16 ? norm + ':00' : norm
+  if (!s) return "—"
+  const norm = s.replace(" ", "T")
+  const withSec = norm.length === 16 ? norm + ":00" : norm
   const d = dayjs(withSec)
-  return d.isValid() ? d.format('DD.MM.YYYY HH:mm') : '—'
+  return d.isValid() ? d.format("DD.MM.YYYY HH:mm") : "—"
 }
 const formatDateSafe = (v?: string) => formatLocalDateTime(v)
 
 const isCanceledRequestError = (err: unknown): boolean => {
-  if (typeof err !== 'object' || err === null) {
+  if (typeof err !== "object" || err === null) {
     return false
   }
 
@@ -50,16 +60,19 @@ const isCanceledRequestError = (err: unknown): boolean => {
   const name = record.name
   const code = record.code
 
-  return (typeof name === 'string' && name === 'CanceledError') || (typeof code === 'string' && code === 'ERR_CANCELED')
+  return (
+    (typeof name === "string" && name === "CanceledError") ||
+    (typeof code === "string" && code === "ERR_CANCELED")
+  )
 }
 
 const EventDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isMobile = useMediaQuery('(max-width: 900px)')
-  const { t, i18n } = useTranslation(['events', 'common'])
-  const language = i18n.language?.startsWith('en') ? 'en' : 'ru'
+  const isMobile = useMediaQuery("(max-width: 900px)")
+  const { t, i18n } = useTranslation(["events", "common"])
+  const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
   const [event, setEvent] = useState<Event | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,99 +84,108 @@ const EventDetail = () => {
     applyOptimisticFileAction
   )
 
-  const [uploadState, uploadAction, uploadPending] = useActionState<UploadState, FormData>(async (_prev, input) => {
-    if (input.get('__upload_reset__') === '1') {
-      return { status: 'idle' }
-    }
-
-    const file = input.get('file')
-    if (!(file instanceof File) || file.size === 0) {
-      return { status: 'error', error: t('events:detail.upload.errors.noFile') }
-    }
-
-    if (!event) {
-      return { status: 'error', error: t('events:detail.messages.notFound') }
-    }
-
-    const optimisticId = `pending-${Date.now()}`
-    mutateFiles({
-      type: 'add',
-      file: {
-        id: optimisticId,
-        event_id: event.id,
-        description: file.name,
-        file_url: '',
-        pending: true
+  const [uploadState, uploadAction, uploadPending] = useActionState<UploadState, FormData>(
+    async (_prev, input) => {
+      if (input.get("__upload_reset__") === "1") {
+        return { status: "idle" }
       }
-    })
 
-    try {
-      const data = new FormData()
-      data.append('file', file)
-      await api.post(`/events/${id}/upload_file`, data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const file = input.get("file")
+      if (!(file instanceof File) || file.size === 0) {
+        return { status: "error", error: t("events:detail.upload.errors.noFile") }
+      }
+
+      if (!event) {
+        return { status: "error", error: t("events:detail.messages.notFound") }
+      }
+
+      const optimisticId = `pending-${Date.now()}`
+      mutateFiles({
+        type: "add",
+        file: {
+          id: optimisticId,
+          event_id: event.id,
+          description: file.name,
+          file_url: "",
+          pending: true,
+        },
       })
-      mutateFiles({ type: 'remove', id: optimisticId })
-      setSnack(t('events:detail.messages.fileAdded'))
-      setSelectedFile(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      await refreshEvent().catch(() => {})
-      return { status: 'success' }
-    } catch (err) {
-      mutateFiles({ type: 'remove', id: optimisticId })
-      setSnack(t('events:detail.messages.fileAddFailed'))
-      return { status: 'error', error: t('events:detail.upload.errors.failed') }
-    }
-  }, { status: 'idle' })
+
+      try {
+        const data = new FormData()
+        data.append("file", file)
+        await api.post(`/events/${id}/upload_file`, data, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        mutateFiles({ type: "remove", id: optimisticId })
+        setSnack(t("events:detail.messages.fileAdded"))
+        setSelectedFile(null)
+        if (fileInputRef.current) fileInputRef.current.value = ""
+        await refreshEvent().catch(() => {})
+        return { status: "success" }
+      } catch (err) {
+        mutateFiles({ type: "remove", id: optimisticId })
+        setSnack(t("events:detail.messages.fileAddFailed"))
+        return { status: "error", error: t("events:detail.upload.errors.failed") }
+      }
+    },
+    { status: "idle" }
+  )
 
   const [editingAbout, setEditingAbout] = useState(false)
-  const [aboutDraft, setAboutDraft] = useState('')
+  const [aboutDraft, setAboutDraft] = useState("")
   const [savingAbout, setSavingAbout] = useState(false)
 
-  const [snack, setSnack] = useState('')
-  const [heroPos, setHeroPos] = useState<'50% 18%' | '50% 38%' | '50% 50%' | string>('50% 38%')
-  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = e => {
+  const [snack, setSnack] = useState("")
+  const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
+  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
     const img = e.currentTarget
     const w = img.naturalWidth || 0
     const h = img.naturalHeight || 0
     if (!w || !h) return
     const r = w / h
-    if (r < 0.9) setHeroPos('50% 18%')
-    else if (r > 2) setHeroPos('50% 50%')
-    else setHeroPos('50% 38%')
+    if (r < 0.9) setHeroPos("50% 18%")
+    else if (r > 2) setHeroPos("50% 50%")
+    else setHeroPos("50% 38%")
   }
   const aboutSectionRef = useRef<HTMLHeadingElement | null>(null)
 
-  const imageUrl = event?.image_url || ''
+  const imageUrl = event?.image_url || ""
 
   useEffect(() => {
-    setHeroPos('50% 38%')
+    setHeroPos("50% 38%")
   }, [imageUrl])
 
-  const fetchEvent = useCallback(async (signal?: AbortSignal) => {
-    const res = await api.get<Event>(`/events/${id}`, signal ? { signal } : undefined)
-    return res.data
-  }, [id])
+  const fetchEvent = useCallback(
+    async (signal?: AbortSignal) => {
+      const res = await api.get<Event>(`/events/${id}`, signal ? { signal } : undefined)
+      return res.data
+    },
+    [id]
+  )
 
-  const refreshEvent = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true)
-    try {
-      const data = await fetchEvent(signal)
-      if (!signal?.aborted) {
-        setEvent(data)
+  const refreshEvent = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true)
+      try {
+        const data = await fetchEvent(signal)
+        if (!signal?.aborted) {
+          setEvent(data)
+        }
+        return data
+      } catch (err) {
+        if (!isCanceledRequestError(err) && !signal?.aborted) {
+          setSnack(t("events:detail.messages.loadFailed"))
+        }
+        throw err
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false)
+        }
       }
-      return data
-    } catch (err) {
-      if (!isCanceledRequestError(err) && !signal?.aborted) {
-        setSnack(t('events:detail.messages.loadFailed'))
-      }
-      throw err
-    } finally {
-      if (!signal?.aborted) {
-        setLoading(false)
-      }
-    }
-  }, [fetchEvent])
+    },
+    [fetchEvent]
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -176,26 +198,26 @@ const EventDetail = () => {
     setSelectedFile(nextFile)
     if (isUploadErrorState(uploadState) && !uploadPending) {
       const marker = new FormData()
-      marker.append('__upload_reset__', '1')
+      marker.append("__upload_reset__", "1")
       uploadAction(marker)
     }
   }
 
   const handleDeleteFile = async (fileId: number) => {
-    mutateFiles({ type: 'remove', id: fileId })
+    mutateFiles({ type: "remove", id: fileId })
     try {
       await api.delete(`/events/file/${fileId}`)
-      setSnack(t('events:detail.messages.fileDeleted'))
+      setSnack(t("events:detail.messages.fileDeleted"))
     } catch {
-      setSnack(t('events:detail.messages.fileDeleteFailed'))
+      setSnack(t("events:detail.messages.fileDeleteFailed"))
     } finally {
       await refreshEvent().catch(() => {})
     }
   }
 
   const getAboutBaseline = useCallback(() => {
-    if (!event) return ''
-    return language === 'en' ? event.about_en ?? '' : event.about ?? ''
+    if (!event) return ""
+    return language === "en" ? (event.about_en ?? "") : (event.about ?? "")
   }, [event, language])
 
   const aboutBaseline = getAboutBaseline()
@@ -211,20 +233,20 @@ const EventDetail = () => {
 
   const handleSaveAbout = async () => {
     if (!event) {
-      setSnack(t('events:detail.messages.aboutUpdateFailed'))
+      setSnack(t("events:detail.messages.aboutUpdateFailed"))
       return
     }
 
     setSavingAbout(true)
     try {
-      const payloadKey = language === 'en' ? 'about_en' : 'about'
+      const payloadKey = language === "en" ? "about_en" : "about"
       await api.patch(`/events/${event.id}`, { [payloadKey]: aboutDraft.trim() })
       setEditingAbout(false)
-      setSnack(t('events:detail.messages.aboutUpdated'))
+      setSnack(t("events:detail.messages.aboutUpdated"))
       await refreshEvent().catch(() => {})
       setTimeout(() => aboutSectionRef.current?.focus?.(), 0)
     } catch {
-      setSnack(t('events:detail.messages.aboutUpdateFailed'))
+      setSnack(t("events:detail.messages.aboutUpdateFailed"))
     } finally {
       setSavingAbout(false)
     }
@@ -236,9 +258,12 @@ const EventDetail = () => {
   }
 
   const handleBack = () => {
-    const canGoBack = (window.history?.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0)
+    const canGoBack =
+      window.history?.state &&
+      typeof window.history.state.idx === "number" &&
+      window.history.state.idx > 0
     if (canGoBack) navigate(-1)
-    else navigate('/events')
+    else navigate("/events")
   }
 
   if (loading) {
@@ -255,7 +280,7 @@ const EventDetail = () => {
     return (
       <Layout>
         <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
-          <Typography>{t('events:detail.messages.notFound')}</Typography>
+          <Typography>{t("events:detail.messages.notFound")}</Typography>
         </Box>
       </Layout>
     )
@@ -267,32 +292,32 @@ const EventDetail = () => {
       startIcon={<ArrowBackIcon />}
       sx={{
         mb: 3,
-        alignSelf: 'flex-start',
+        alignSelf: "flex-start",
         fontWeight: 700,
         borderRadius: 2.5,
-        background: 'linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)',
-        color: '#fff',
-        fontSize: 'clamp(0.98rem, 2.1vw, 1.17rem)',
-        letterSpacing: '0.02em',
+        background: "linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)",
+        color: "#fff",
+        fontSize: "clamp(0.98rem, 2.1vw, 1.17rem)",
+        letterSpacing: "0.02em",
         px: { xs: 1.6, sm: 2.3, md: 2.9, lg: 3.5 },
         py: { xs: 0.9, sm: 1.12, md: 1.2, lg: 1.28 },
-        width: { xs: '100%', sm: 'auto' },
+        width: { xs: "100%", sm: "auto" },
         minWidth: { xs: 0, sm: 0 },
-        boxShadow: '0 2px 18px #1976d238, 0 1.5px 8px #0001',
-        transition: 'transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s',
-        '&:hover': {
-          background: 'linear-gradient(100deg, #1976d2 20%, #449aff 100%)',
-          color: '#eaf6ff',
-          transform: 'scale(1.06)',
-          boxShadow: '0 6px 28px #1d5fff40, 0 2.5px 10px #0002'
+        boxShadow: "0 2px 18px #1976d238, 0 1.5px 8px #0001",
+        transition: "transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s",
+        "&:hover": {
+          background: "linear-gradient(100deg, #1976d2 20%, #449aff 100%)",
+          color: "#eaf6ff",
+          transform: "scale(1.06)",
+          boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002",
         },
-        '&:active': { transform: 'scale(0.98)' },
-        position: { xs: 'static', md: 'sticky' },
+        "&:active": { transform: "scale(0.98)" },
+        position: { xs: "static", md: "sticky" },
         top: { md: 12 },
-        zIndex: 99
+        zIndex: 99,
       }}
     >
-      {t('common:buttons.back')}
+      {t("common:buttons.back")}
     </Button>
   )
 
@@ -302,83 +327,93 @@ const EventDetail = () => {
         <Paper
           elevation={0}
           sx={{
-            width: '100vw',
-            minHeight: 'calc(100vh - 56px)',
-            bgcolor: 'background.paper',
+            width: "100vw",
+            minHeight: "calc(100vh - 56px)",
+            bgcolor: "background.paper",
             borderRadius: 0,
-            boxShadow: 'none',
+            boxShadow: "none",
             pl: { xs: 2, sm: 4, md: 5, lg: 8 },
             pr: { xs: 4, sm: 6, md: 7, lg: 10 },
             py: { xs: 2, md: 2 },
-            position: 'relative'
+            position: "relative",
           }}
         >
           {BackButton}
           <Stack spacing={3} mt={0}>
-            <Typography variant="h5" fontWeight={900}>{event.title}</Typography>
+            <Typography variant="h5" fontWeight={900}>
+              {event.title}
+            </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               {event.event_type && (
-                <Chip label={event.event_type} color="primary" sx={{ fontWeight: 600, fontSize: 15 }} />
+                <Chip
+                  label={event.event_type}
+                  color="primary"
+                  sx={{ fontWeight: 600, fontSize: 15 }}
+                />
               )}
               <Chip
-                icon={<PeopleAltIcon sx={{ color: '#1976d2' }} />}
-                label={t('events:card.participants', { count: event.participant_count || 0 })}
+                icon={<PeopleAltIcon sx={{ color: "#1976d2" }} />}
+                label={t("events:card.participants", { count: event.participant_count || 0 })}
                 sx={{ fontWeight: 500, fontSize: 14 }}
               />
             </Stack>
-            <Typography variant="body1" fontWeight={600}>{event.description}</Typography>
+            <Typography variant="body1" fontWeight={600}>
+              {event.description}
+            </Typography>
             <Box>
               <Typography variant="subtitle1" fontWeight={600}>
-                {t('events:detail.fields.location')}: <b>{event.location}</b>
+                {t("events:detail.fields.location")}: <b>{event.location}</b>
               </Typography>
               <Typography variant="subtitle1">
-                {t('events:detail.fields.date')}: <b>{formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}</b>
+                {t("events:detail.fields.date")}:{" "}
+                <b>
+                  {formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}
+                </b>
               </Typography>
               {event.speaker && (
                 <Typography variant="subtitle1">
-                  {t('events:detail.fields.speaker')}: <b>{event.speaker}</b>
+                  {t("events:detail.fields.speaker")}: <b>{event.speaker}</b>
                 </Typography>
               )}
             </Box>
             <Box
               sx={{
-                width: '100%',
-                aspectRatio: { xs: '16 / 9', md: '21 / 9' },
-                position: 'relative',
+                width: "100%",
+                aspectRatio: { xs: "16 / 9", md: "21 / 9" },
+                position: "relative",
                 borderRadius: 3,
-                border: '1px solid #282c34',
+                border: "1px solid #282c34",
                 boxShadow: 2,
-                overflow: 'hidden',
-                bgcolor: 'rgba(0,0,0,0.04)'
+                overflow: "hidden",
+                bgcolor: "rgba(0,0,0,0.04)",
               }}
             >
               <SmartImage
                 srcRaw={imageUrl}
-                alt={t('events:alt.image')}
+                alt={t("events:alt.image")}
                 onLoad={handleHeroLoad}
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  display: 'block',
-                  objectFit: 'cover',
-                  objectPosition: heroPos
+                  width: "100%",
+                  height: "100%",
+                  display: "block",
+                  objectFit: "cover",
+                  objectPosition: heroPos,
                 }}
               />
             </Box>
             <Box>
               <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                <Typography
-                  ref={aboutSectionRef}
-                  tabIndex={-1}
-                  variant="h6"
-                  fontWeight={700}
-                >
-                  {t('events:detail.sections.about.title')}
+                <Typography ref={aboutSectionRef} tabIndex={-1} variant="h6" fontWeight={700}>
+                  {t("events:detail.sections.about.title")}
                 </Typography>
-                {(user?.role === 'admin' || user?.role === 'teacher') && !editingAbout && (
-                  <IconButton aria-label={t('events:detail.sections.about.editAria')} size="small" onClick={handleEditAbout}>
+                {(user?.role === "admin" || user?.role === "teacher") && !editingAbout && (
+                  <IconButton
+                    aria-label={t("events:detail.sections.about.editAria")}
+                    size="small"
+                    onClick={handleEditAbout}
+                  >
                     <EditIcon fontSize="small" />
                   </IconButton>
                 )}
@@ -387,16 +422,16 @@ const EventDetail = () => {
                 <Stack spacing={1}>
                   <TextField
                     label={
-                      language === 'en'
-                        ? t('events:detail.sections.about.fieldLabel_en', {
-                            defaultValue: `${t('events:detail.sections.about.fieldLabel')} (English)`
+                      language === "en"
+                        ? t("events:detail.sections.about.fieldLabel_en", {
+                            defaultValue: `${t("events:detail.sections.about.fieldLabel")} (English)`,
                           })
-                        : t('events:detail.sections.about.fieldLabel')
+                        : t("events:detail.sections.about.fieldLabel")
                     }
                     multiline
                     minRows={3}
                     value={aboutDraft}
-                    onChange={e => setAboutDraft(e.target.value)}
+                    onChange={(e) => setAboutDraft(e.target.value)}
                     fullWidth
                     disabled={savingAbout}
                   />
@@ -408,10 +443,18 @@ const EventDetail = () => {
                       onClick={handleSaveAbout}
                       disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
                     >
-                      {savingAbout ? t('events:detail.sections.about.savePending') : t('common:buttons.save')}
+                      {savingAbout
+                        ? t("events:detail.sections.about.savePending")
+                        : t("common:buttons.save")}
                     </Button>
-                    <Button variant="outlined" size="small" startIcon={<CloseIcon />} onClick={handleCancelAbout} disabled={savingAbout}>
-                      {t('common:buttons.cancel')}
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<CloseIcon />}
+                      onClick={handleCancelAbout}
+                      disabled={savingAbout}
+                    >
+                      {t("common:buttons.cancel")}
                     </Button>
                   </Stack>
                 </Stack>
@@ -419,19 +462,19 @@ const EventDetail = () => {
                 <Typography
                   variant="body2"
                   fontSize={16}
-                  sx={{ whiteSpace: 'pre-line', color: event?.about ? 'inherit' : 'text.disabled' }}
+                  sx={{ whiteSpace: "pre-line", color: event?.about ? "inherit" : "text.disabled" }}
                 >
-                  {event?.about || t('events:detail.sections.about.empty')}
+                  {event?.about || t("events:detail.sections.about.empty")}
                 </Typography>
               )}
             </Box>
 
-            {user && (user.role === 'admin' || user.role === 'teacher') && (
+            {user && (user.role === "admin" || user.role === "teacher") && (
               <Box>
                 <form action={uploadAction}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Button variant="contained" component="label" disabled={uploadPending}>
-                      {t('events:detail.sections.files.pickFile')}
+                      {t("events:detail.sections.files.pickFile")}
                       <input
                         type="file"
                         name="file"
@@ -442,8 +485,14 @@ const EventDetail = () => {
                         disabled={uploadPending}
                       />
                     </Button>
-                    <Button variant="outlined" type="submit" disabled={!selectedFile || uploadPending}>
-                      {uploadPending ? t('events:detail.upload.submit.pending') : t('events:detail.upload.submit.label')}
+                    <Button
+                      variant="outlined"
+                      type="submit"
+                      disabled={!selectedFile || uploadPending}
+                    >
+                      {uploadPending
+                        ? t("events:detail.upload.submit.pending")
+                        : t("events:detail.upload.submit.label")}
                     </Button>
                     {selectedFile && (
                       <Typography
@@ -451,9 +500,9 @@ const EventDetail = () => {
                         sx={{
                           ml: 1,
                           maxWidth: 110,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
                         }}
                         title={selectedFile.name}
                       >
@@ -472,38 +521,47 @@ const EventDetail = () => {
 
             {optimisticFiles.length > 0 ? (
               <Box>
-                <Typography variant="subtitle1" fontWeight={600}>{t('events:detail.sections.files.title')}</Typography>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {t("events:detail.sections.files.title")}
+                </Typography>
                 <Stack spacing={1}>
-                  {optimisticFiles.map(f => {
-                    const isPendingFile = f.pending === true || typeof f.id !== 'number'
-                    const fallbackName = f.file_url.split('/').pop() || f.file_url
+                  {optimisticFiles.map((f) => {
+                    const isPendingFile = f.pending === true || typeof f.id !== "number"
+                    const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
                       <Box key={f.id} display="flex" alignItems="center">
                         {isPendingFile ? (
                           <Typography color="text.secondary" sx={{ flex: 1 }}>
-                            {f.description || t('events:detail.sections.files.pending')}
+                            {f.description || t("events:detail.sections.files.pending")}
                           </Typography>
                         ) : (
                           <a
-                            href={resolveMediaUrl(f.file_url) || '#'}
+                            href={resolveMediaUrl(f.file_url) || "#"}
                             target="_blank"
                             rel="noopener noreferrer"
                             download
                             title={fileLabel}
-                            aria-label={t('events:detail.sections.files.downloadAria', { label: fileLabel })}
-                            style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
+                            aria-label={t("events:detail.sections.files.downloadAria", {
+                              label: fileLabel,
+                            })}
+                            style={{
+                              color: "#1976d2",
+                              fontWeight: 500,
+                              textDecoration: "underline",
+                              flex: 1,
+                            }}
                           >
                             {fileLabel}
                           </a>
                         )}
-                        {(user?.role === 'admin' || user?.role === 'teacher') && (
+                        {(user?.role === "admin" || user?.role === "teacher") && (
                           <IconButton
-                            aria-label={t('events:detail.sections.files.deleteAria')}
+                            aria-label={t("events:detail.sections.files.deleteAria")}
                             color="error"
                             disabled={isPendingFile}
                             onClick={async () => {
-                              if (typeof f.id === 'number') {
+                              if (typeof f.id === "number") {
                                 await handleDeleteFile(f.id)
                               }
                             }}
@@ -519,11 +577,18 @@ const EventDetail = () => {
                 </Stack>
               </Box>
             ) : (
-              <Typography variant="body2" color="text.secondary">{t('events:detail.sections.files.empty')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("events:detail.sections.files.empty")}
+              </Typography>
             )}
           </Stack>
 
-          <Snackbar open={!!snack} autoHideDuration={2500} onClose={() => setSnack('')} message={snack} />
+          <Snackbar
+            open={!!snack}
+            autoHideDuration={2500}
+            onClose={() => setSnack("")}
+            message={snack}
+          />
         </Paper>
       </Layout>
     )
@@ -534,16 +599,16 @@ const EventDetail = () => {
       <Paper
         elevation={0}
         sx={{
-          width: '100vw',
-          minHeight: 'calc(100vh - 56px)',
-          bgcolor: 'background.paper',
+          width: "100vw",
+          minHeight: "calc(100vh - 56px)",
+          bgcolor: "background.paper",
           borderRadius: 0,
-          boxShadow: 'none',
+          boxShadow: "none",
           pl: { xs: 2, sm: 4, md: 5, lg: 8 },
           pr: { xs: 8, sm: 6, md: 7, lg: 10 },
           py: { xs: 2, sm: 2, md: 2, lg: 2 },
-          display: 'flex',
-          flexDirection: 'column'
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         {BackButton}
@@ -552,44 +617,43 @@ const EventDetail = () => {
             {imageUrl && (
               <Box
                 sx={{
-                  width: '100%',
-                  aspectRatio: { xs: '16 / 9', md: '21 / 9' },
-                  position: 'relative',
+                  width: "100%",
+                  aspectRatio: { xs: "16 / 9", md: "21 / 9" },
+                  position: "relative",
                   borderRadius: 5,
-                  border: '1px solid #282c34',
+                  border: "1px solid #282c34",
                   boxShadow: 3,
-                  overflow: 'hidden',
-                  bgcolor: 'rgba(0,0,0,0.04)'
+                  overflow: "hidden",
+                  bgcolor: "rgba(0,0,0,0.04)",
                 }}
               >
                 <SmartImage
                   srcRaw={imageUrl}
-                  alt={t('events:alt.image')}
+                  alt={t("events:alt.image")}
                   onLoad={handleHeroLoad}
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     inset: 0,
-                    width: '100%',
-                    height: '100%',
-                    display: 'block',
-                    objectFit: 'cover',
-                    objectPosition: heroPos
+                    width: "100%",
+                    height: "100%",
+                    display: "block",
+                    objectFit: "cover",
+                    objectPosition: heroPos,
                   }}
                 />
               </Box>
             )}
             <Divider />
             <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-              <Typography
-                ref={aboutSectionRef}
-                tabIndex={-1}
-                variant="h5"
-                fontWeight={700}
-              >
-                {t('events:detail.sections.about.title')}
+              <Typography ref={aboutSectionRef} tabIndex={-1} variant="h5" fontWeight={700}>
+                {t("events:detail.sections.about.title")}
               </Typography>
-              {(user?.role === 'admin' || user?.role === 'teacher') && !editingAbout && (
-                <IconButton aria-label={t('events:detail.sections.about.editAria')} size="small" onClick={handleEditAbout}>
+              {(user?.role === "admin" || user?.role === "teacher") && !editingAbout && (
+                <IconButton
+                  aria-label={t("events:detail.sections.about.editAria")}
+                  size="small"
+                  onClick={handleEditAbout}
+                >
                   <EditIcon fontSize="small" />
                 </IconButton>
               )}
@@ -598,16 +662,16 @@ const EventDetail = () => {
               <Stack spacing={1}>
                 <TextField
                   label={
-                    language === 'en'
-                      ? t('events:detail.sections.about.fieldLabel_en', {
-                          defaultValue: `${t('events:detail.sections.about.fieldLabel')} (English)`
+                    language === "en"
+                      ? t("events:detail.sections.about.fieldLabel_en", {
+                          defaultValue: `${t("events:detail.sections.about.fieldLabel")} (English)`,
                         })
-                      : t('events:detail.sections.about.fieldLabel')
+                      : t("events:detail.sections.about.fieldLabel")
                   }
                   multiline
                   minRows={3}
                   value={aboutDraft}
-                  onChange={e => setAboutDraft(e.target.value)}
+                  onChange={(e) => setAboutDraft(e.target.value)}
                   fullWidth
                   disabled={savingAbout}
                 />
@@ -619,10 +683,18 @@ const EventDetail = () => {
                     onClick={handleSaveAbout}
                     disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
                   >
-                    {savingAbout ? t('events:detail.sections.about.savePending') : t('common:buttons.save')}
+                    {savingAbout
+                      ? t("events:detail.sections.about.savePending")
+                      : t("common:buttons.save")}
                   </Button>
-                  <Button variant="outlined" size="small" startIcon={<CloseIcon />} onClick={handleCancelAbout} disabled={savingAbout}>
-                    {t('common:buttons.cancel')}
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<CloseIcon />}
+                    onClick={handleCancelAbout}
+                    disabled={savingAbout}
+                  >
+                    {t("common:buttons.cancel")}
                   </Button>
                 </Stack>
               </Stack>
@@ -630,48 +702,62 @@ const EventDetail = () => {
               <Typography
                 variant="body1"
                 fontSize={18}
-                sx={{ whiteSpace: 'pre-line', color: event?.about ? 'inherit' : 'text.disabled' }}
+                sx={{ whiteSpace: "pre-line", color: event?.about ? "inherit" : "text.disabled" }}
               >
-                {event?.about || t('events:detail.sections.about.empty')}
+                {event?.about || t("events:detail.sections.about.empty")}
               </Typography>
             )}
           </Stack>
 
           <Stack spacing={2} flex={1} minWidth={0}>
-            <Typography variant="h3" fontWeight={900}>{event.title}</Typography>
+            <Typography variant="h3" fontWeight={900}>
+              {event.title}
+            </Typography>
             <Stack direction="row" spacing={2} alignItems="center">
               {event.event_type && (
-                <Chip label={event.event_type} color="primary" sx={{ fontWeight: 600, fontSize: 17 }} />
+                <Chip
+                  label={event.event_type}
+                  color="primary"
+                  sx={{ fontWeight: 600, fontSize: 17 }}
+                />
               )}
               <Chip
-                icon={<PeopleAltIcon sx={{ color: '#1976d2' }} />}
-                label={t('events:card.participants', { count: event.participant_count || 0 })}
+                icon={<PeopleAltIcon sx={{ color: "#1976d2" }} />}
+                label={t("events:card.participants", { count: event.participant_count || 0 })}
                 sx={{ fontWeight: 500, fontSize: 16 }}
               />
             </Stack>
             <Divider />
-            <Typography variant="body1" fontSize={20} fontWeight={600} sx={{ whiteSpace: 'pre-line' }}>
+            <Typography
+              variant="body1"
+              fontSize={20}
+              fontWeight={600}
+              sx={{ whiteSpace: "pre-line" }}
+            >
               {event.description}
             </Typography>
             <Divider />
             <Typography variant="subtitle1" fontWeight={600}>
-              {t('events:detail.fields.location')}: <b>{event.location}</b>
+              {t("events:detail.fields.location")}: <b>{event.location}</b>
             </Typography>
             <Typography variant="subtitle1">
-              {t('events:detail.fields.date')}: <b>{formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}</b>
+              {t("events:detail.fields.date")}:{" "}
+              <b>
+                {formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}
+              </b>
             </Typography>
             {event.speaker && (
               <Typography variant="subtitle1">
-                {t('events:detail.fields.speaker')}: <b>{event.speaker}</b>
+                {t("events:detail.fields.speaker")}: <b>{event.speaker}</b>
               </Typography>
             )}
 
-            {user && (user.role === 'admin' || user.role === 'teacher') && (
+            {user && (user.role === "admin" || user.role === "teacher") && (
               <Box mt={2}>
                 <form action={uploadAction}>
                   <Stack direction="row" spacing={2} alignItems="center">
                     <Button variant="contained" component="label" disabled={uploadPending}>
-                      {t('events:detail.sections.files.pickFile')}
+                      {t("events:detail.sections.files.pickFile")}
                       <input
                         type="file"
                         name="file"
@@ -682,8 +768,14 @@ const EventDetail = () => {
                         disabled={uploadPending}
                       />
                     </Button>
-                    <Button variant="outlined" type="submit" disabled={!selectedFile || uploadPending}>
-                      {uploadPending ? t('events:detail.upload.submit.pending') : t('events:detail.upload.submit.label')}
+                    <Button
+                      variant="outlined"
+                      type="submit"
+                      disabled={!selectedFile || uploadPending}
+                    >
+                      {uploadPending
+                        ? t("events:detail.upload.submit.pending")
+                        : t("events:detail.upload.submit.label")}
                     </Button>
                     {selectedFile && (
                       <Typography
@@ -691,9 +783,9 @@ const EventDetail = () => {
                         sx={{
                           ml: 2,
                           maxWidth: 150,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
                         }}
                         title={selectedFile.name}
                       >
@@ -713,38 +805,47 @@ const EventDetail = () => {
             {optimisticFiles.length > 0 ? (
               <Box>
                 <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle1" fontWeight={600}>{t('events:detail.sections.files.title')}</Typography>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {t("events:detail.sections.files.title")}
+                </Typography>
                 <Stack spacing={1}>
-                  {optimisticFiles.map(f => {
-                    const isPendingFile = f.pending === true || typeof f.id !== 'number'
-                    const fallbackName = f.file_url.split('/').pop() || f.file_url
+                  {optimisticFiles.map((f) => {
+                    const isPendingFile = f.pending === true || typeof f.id !== "number"
+                    const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
                       <Box key={f.id} display="flex" alignItems="center">
                         {isPendingFile ? (
                           <Typography color="text.secondary" sx={{ flex: 1 }}>
-                            {f.description || t('events:detail.sections.files.pending')}
+                            {f.description || t("events:detail.sections.files.pending")}
                           </Typography>
                         ) : (
                           <a
-                            href={resolveMediaUrl(f.file_url) || '#'}
+                            href={resolveMediaUrl(f.file_url) || "#"}
                             target="_blank"
                             rel="noopener noreferrer"
                             download
                             title={fileLabel}
-                            aria-label={t('events:detail.sections.files.downloadAria', { label: fileLabel })}
-                            style={{ color: '#1976d2', fontWeight: 500, textDecoration: 'underline', flex: 1 }}
+                            aria-label={t("events:detail.sections.files.downloadAria", {
+                              label: fileLabel,
+                            })}
+                            style={{
+                              color: "#1976d2",
+                              fontWeight: 500,
+                              textDecoration: "underline",
+                              flex: 1,
+                            }}
                           >
                             {fileLabel}
                           </a>
                         )}
-                        {(user?.role === 'admin' || user?.role === 'teacher') && (
+                        {(user?.role === "admin" || user?.role === "teacher") && (
                           <IconButton
-                            aria-label={t('events:detail.sections.files.deleteAria')}
+                            aria-label={t("events:detail.sections.files.deleteAria")}
                             color="error"
                             disabled={isPendingFile}
                             onClick={async () => {
-                              if (typeof f.id === 'number') {
+                              if (typeof f.id === "number") {
                                 await handleDeleteFile(f.id)
                               }
                             }}
@@ -760,12 +861,19 @@ const EventDetail = () => {
                 </Stack>
               </Box>
             ) : (
-              <Typography variant="body2" color="text.secondary">{t('events:detail.sections.files.empty')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("events:detail.sections.files.empty")}
+              </Typography>
             )}
           </Stack>
         </Stack>
 
-        <Snackbar open={!!snack} autoHideDuration={2500} onClose={() => setSnack('')} message={snack} />
+        <Snackbar
+          open={!!snack}
+          autoHideDuration={2500}
+          onClose={() => setSnack("")}
+          message={snack}
+        />
       </Paper>
     </Layout>
   )

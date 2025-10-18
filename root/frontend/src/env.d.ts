@@ -2,9 +2,9 @@
 /// <reference types="vite-plugin-pwa/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_BACKEND_ORIGIN?: string;
+  readonly VITE_BACKEND_ORIGIN?: string
 }
 
 interface ImportMeta {
-  readonly env: ImportMetaEnv;
+  readonly env: ImportMetaEnv
 }

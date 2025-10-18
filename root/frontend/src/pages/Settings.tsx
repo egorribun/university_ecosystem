@@ -1,22 +1,14 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-  useMemo,
-  ChangeEvent,
-  FocusEvent,
-} from "react";
-import { isAxiosError } from "axios";
-import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext";
-import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext";
-import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { usePushPreferences } from "@/hooks/usePushPreferences";
-import { nowPlayingQueryKey } from "@/hooks/useNowPlaying";
-import api from "../api/client";
-import type { User } from "@/types/User";
-import { useTranslation } from "react-i18next";
+import { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react"
+import { isAxiosError } from "axios"
+import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
+import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
+import { useNavigate } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
+import { usePushPreferences } from "@/hooks/usePushPreferences"
+import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
+import api from "../api/client"
+import type { User } from "@/types/User"
+import { useTranslation } from "react-i18next"
 import {
   Box,
   Paper,
@@ -42,53 +34,49 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  CircularProgress
-} from "@mui/material";
-import { useColorScheme, styled, alpha, darken, lighten } from "@mui/material/styles";
-import SettingsIcon from "@mui/icons-material/Settings";
-import DarkModeIcon from "@mui/icons-material/DarkMode";
-import LightModeIcon from "@mui/icons-material/LightMode";
-import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows";
-import LogoutIcon from "@mui/icons-material/Logout";
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import ImageIcon from "@mui/icons-material/Image";
-import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
-const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL;
-import spotifyLogo from "@/assets/spotify_icon.png";
-import { addVersionParam, resolveMediaUrl } from "@/utils/media";
-import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify";
+  CircularProgress,
+} from "@mui/material"
+import { useColorScheme, styled, alpha, darken, lighten } from "@mui/material/styles"
+import SettingsIcon from "@mui/icons-material/Settings"
+import DarkModeIcon from "@mui/icons-material/DarkMode"
+import LightModeIcon from "@mui/icons-material/LightMode"
+import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows"
+import LogoutIcon from "@mui/icons-material/Logout"
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera"
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline"
+import ImageIcon from "@mui/icons-material/Image"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
+import spotifyLogo from "@/assets/spotify_icon.png"
+import { addVersionParam, resolveMediaUrl } from "@/utils/media"
+import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 
-type ThemeMode = "system" | "light" | "dark";
+type ThemeMode = "system" | "light" | "dark"
 
-const DEFAULT_DND_START = "22:00";
-const DEFAULT_DND_END = "07:00";
+const DEFAULT_DND_START = "22:00"
+const DEFAULT_DND_END = "07:00"
 
 const toInputTime = (value: unknown): string => {
-  if (!value) return "";
-  const str = String(value);
-  const match = str.match(/^(\d{2}:\d{2})/);
-  return match ? match[1] : "";
-};
+  if (!value) return ""
+  const str = String(value)
+  const match = str.match(/^(\d{2}:\d{2})/)
+  return match ? match[1] : ""
+}
 
 const toServerTime = (value: string | null): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
-  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
-  return trimmed;
-};
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed
+  return trimmed
+}
 
 const ModernSwitch = styled("span")(({ theme }) => {
-  const on = theme.palette.primary.main;
-  const trackBg = theme.palette.mode === "dark"
-    ? alpha("#fff", 0.12)
-    : alpha("#000", 0.08);
-  const trackBorder = theme.palette.mode === "dark"
-    ? alpha("#fff", 0.24)
-    : alpha("#000", 0.12);
-  const ring = alpha(on, 0.35);
+  const on = theme.palette.primary.main
+  const trackBg = theme.palette.mode === "dark" ? alpha("#fff", 0.12) : alpha("#000", 0.08)
+  const trackBorder = theme.palette.mode === "dark" ? alpha("#fff", 0.24) : alpha("#000", 0.12)
+  const ring = alpha(on, 0.35)
 
   return {
     position: "relative",
@@ -142,9 +130,7 @@ const ModernSwitch = styled("span")(({ theme }) => {
           : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
     },
     "&.ms-hover .ms-track": {
-      background: theme.palette.mode === "dark"
-        ? alpha("#fff", 0.16)
-        : alpha("#000", 0.1),
+      background: theme.palette.mode === "dark" ? alpha("#fff", 0.16) : alpha("#000", 0.1),
     },
     "&.ms-focus .ms-ring": {
       boxShadow: `0 0 0 3px ${ring}`,
@@ -165,8 +151,8 @@ const ModernSwitch = styled("span")(({ theme }) => {
       cursor: "not-allowed",
       opacity: 0.6,
     },
-  };
-});
+  }
+})
 
 function SwitchControl({
   checked,
@@ -175,14 +161,14 @@ function SwitchControl({
   inputId,
   "aria-label": ariaLabel,
 }: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (e: ChangeEvent<HTMLInputElement>, checked: boolean) => void;
-  inputId?: string;
-  "aria-label"?: string;
+  checked: boolean
+  disabled?: boolean
+  onChange: (e: ChangeEvent<HTMLInputElement>, checked: boolean) => void
+  inputId?: string
+  "aria-label"?: string
 }) {
-  const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
+  const [hover, setHover] = useState(false)
+  const [focus, setFocus] = useState(false)
   return (
     <ModernSwitch
       className={[
@@ -210,20 +196,23 @@ function SwitchControl({
         onBlur={() => setFocus(false)}
       />
     </ModernSwitch>
-  );
+  )
 }
 
 export default function Settings() {
-  const navigate = useNavigate();
-  const { user, setUser, logout } = useAuth();
-  const queryClient = useQueryClient();
-  const [tab, setTab] = useState(0);
-  const [snack, setSnack] = useState<{ text: string; sev?: "success" | "info" | "warning" | "error" } | null>(null);
-  const { language, setLanguage, available: availableLanguages } = useLanguage();
-  const { t } = useTranslation(["settings", "common", "notifications", "profile"]);
+  const navigate = useNavigate()
+  const { user, setUser, logout } = useAuth()
+  const queryClient = useQueryClient()
+  const [tab, setTab] = useState(0)
+  const [snack, setSnack] = useState<{
+    text: string
+    sev?: "success" | "info" | "warning" | "error"
+  } | null>(null)
+  const { language, setLanguage, available: availableLanguages } = useLanguage()
+  const { t } = useTranslation(["settings", "common", "notifications", "profile"])
 
-  const { mode: storedMode, setMode } = useColorScheme();
-  const theme = (storedMode ?? "system") as ThemeMode;
+  const { mode: storedMode, setMode } = useColorScheme()
+  const theme = (storedMode ?? "system") as ThemeMode
 
   const timeFieldSx = useMemo(
     () => ({
@@ -263,7 +252,7 @@ export default function Settings() {
       },
     }),
     []
-  );
+  )
 
   const {
     pushSupported,
@@ -274,69 +263,72 @@ export default function Settings() {
     permissionText,
     enableNotifications,
     disableNotifications,
-  } = usePushPreferences({ onNotify: setSnack });
+  } = usePushPreferences({ onNotify: setSnack })
 
-  const [dndEnabled, setDndEnabled] = useState(false);
-  const [dndStart, setDndStart] = useState("");
-  const [dndEnd, setDndEnd] = useState("");
-  const [dndSaving, setDndSaving] = useState(false);
+  const [dndEnabled, setDndEnabled] = useState(false)
+  const [dndStart, setDndStart] = useState("")
+  const [dndEnd, setDndEnd] = useState("")
+  const [dndSaving, setDndSaving] = useState(false)
 
-  const [avatarVersion, setAvatarVersion] = useState(Date.now());
-  const [coverVersion, setCoverVersion] = useState(Date.now());
+  const [avatarVersion, setAvatarVersion] = useState(Date.now())
+  const [coverVersion, setCoverVersion] = useState(Date.now())
 
   const syncDndFromUser = useCallback((value: User | null) => {
-    const enabled = Boolean(value?.dnd_enabled);
-    const start = toInputTime(value?.dnd_start);
-    const end = toInputTime(value?.dnd_end);
-    setDndEnabled(enabled);
-    setDndStart(start || (enabled ? DEFAULT_DND_START : ""));
-    setDndEnd(end || (enabled ? DEFAULT_DND_END : ""));
-  }, []);
+    const enabled = Boolean(value?.dnd_enabled)
+    const start = toInputTime(value?.dnd_start)
+    const end = toInputTime(value?.dnd_end)
+    setDndEnabled(enabled)
+    setDndStart(start || (enabled ? DEFAULT_DND_START : ""))
+    setDndEnd(end || (enabled ? DEFAULT_DND_END : ""))
+  }, [])
 
   const persistDnd = useCallback(
     async (nextEnabled: boolean, nextStart: string | null, nextEnd: string | null) => {
-      if (dndSaving) return;
-      const normalizedStart = nextStart ? nextStart.trim() : null;
-      const normalizedEnd = nextEnd ? nextEnd.trim() : null;
-      const prevEnabled = Boolean(user?.dnd_enabled);
-      const prevStart = toInputTime(user?.dnd_start);
-      const prevEnd = toInputTime(user?.dnd_end);
+      if (dndSaving) return
+      const normalizedStart = nextStart ? nextStart.trim() : null
+      const normalizedEnd = nextEnd ? nextEnd.trim() : null
+      const prevEnabled = Boolean(user?.dnd_enabled)
+      const prevStart = toInputTime(user?.dnd_start)
+      const prevEnd = toInputTime(user?.dnd_end)
       if (
         nextEnabled === prevEnabled &&
         (!nextEnabled ||
-          (normalizedStart && normalizedEnd && normalizedStart === prevStart && normalizedEnd === prevEnd))
+          (normalizedStart &&
+            normalizedEnd &&
+            normalizedStart === prevStart &&
+            normalizedEnd === prevEnd))
       ) {
-        return;
+        return
       }
       if (nextEnabled && (!normalizedStart || !normalizedEnd)) {
-        setSnack({ text: t("settings:dnd.validation.missingRange"), sev: "warning" });
-        syncDndFromUser(user);
-        return;
+        setSnack({ text: t("settings:dnd.validation.missingRange"), sev: "warning" })
+        syncDndFromUser(user)
+        return
       }
-      setDndSaving(true);
+      setDndSaving(true)
       try {
-        const payload: Record<string, unknown> = { dnd_enabled: nextEnabled };
+        const payload: Record<string, unknown> = { dnd_enabled: nextEnabled }
         if (nextEnabled) {
-          payload.dnd_start = toServerTime(normalizedStart);
-          payload.dnd_end = toServerTime(normalizedEnd);
+          payload.dnd_start = toServerTime(normalizedStart)
+          payload.dnd_end = toServerTime(normalizedEnd)
         } else {
-          payload.dnd_start = null;
-          payload.dnd_end = null;
+          payload.dnd_start = null
+          payload.dnd_end = null
         }
-        const res = await api.put<User>("/users/me", payload);
-        setUser(res.data);
-        syncDndFromUser(res.data);
-        const wasEnabled = prevEnabled;
-        let message: string;
-        if (nextEnabled && !wasEnabled) message = t("settings:dnd.snackbar.enabled");
-        else if (!nextEnabled && wasEnabled) message = t("settings:dnd.snackbar.disabled");
-        else message = t("settings:dnd.snackbar.updated");
-        setSnack({ text: message, sev: "success" });
+        const res = await api.put<User>("/users/me", payload)
+        setUser(res.data)
+        syncDndFromUser(res.data)
+        const wasEnabled = prevEnabled
+        let message: string
+        if (nextEnabled && !wasEnabled) message = t("settings:dnd.snackbar.enabled")
+        else if (!nextEnabled && wasEnabled) message = t("settings:dnd.snackbar.disabled")
+        else message = t("settings:dnd.snackbar.updated")
+        setSnack({ text: message, sev: "success" })
       } catch (error: unknown) {
-        let message = t("settings:dnd.snackbar.updateFailed");
+        let message = t("settings:dnd.snackbar.updateFailed")
         if (isAxiosError(error)) {
-          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
-          if (typeof detail === "string") message = detail;
+          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+          if (typeof detail === "string") message = detail
           else if (Array.isArray(detail)) {
             const collected = detail
               .map((item: unknown) =>
@@ -345,118 +337,120 @@ export default function Settings() {
                   : ""
               )
               .filter(Boolean)
-              .join("; ");
-            if (collected) message = collected;
+              .join("; ")
+            if (collected) message = collected
           }
         }
-        setSnack({ text: message, sev: "error" });
-        syncDndFromUser(user);
+        setSnack({ text: message, sev: "error" })
+        syncDndFromUser(user)
       } finally {
-        setDndSaving(false);
+        setDndSaving(false)
       }
     },
     [dndSaving, setUser, setSnack, syncDndFromUser, t, user]
-  );
+  )
 
   const handleDndToggle = useCallback(
     (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (dndSaving) return;
-      const nextStart = checked ? dndStart || DEFAULT_DND_START : dndStart;
-      const nextEnd = checked ? dndEnd || DEFAULT_DND_END : dndEnd;
+      if (dndSaving) return
+      const nextStart = checked ? dndStart || DEFAULT_DND_START : dndStart
+      const nextEnd = checked ? dndEnd || DEFAULT_DND_END : dndEnd
       if (checked) {
-        setDndStart(nextStart);
-        setDndEnd(nextEnd);
+        setDndStart(nextStart)
+        setDndEnd(nextEnd)
       }
-      setDndEnabled(checked);
-      void persistDnd(checked, checked ? nextStart : null, checked ? nextEnd : null);
+      setDndEnabled(checked)
+      void persistDnd(checked, checked ? nextStart : null, checked ? nextEnd : null)
     },
     [dndSaving, dndEnd, dndStart, persistDnd]
-  );
+  )
 
   const handleDndStartChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setDndStart(event.target.value);
-  }, []);
+    setDndStart(event.target.value)
+  }, [])
 
   const handleDndStartBlur = useCallback(
     (event: FocusEvent<HTMLInputElement>) => {
-      if (!dndEnabled || dndSaving) return;
-      const value = (event.currentTarget.value || "").trim();
-      setDndStart(value);
-      void persistDnd(true, value || null, dndEnd || null);
+      if (!dndEnabled || dndSaving) return
+      const value = (event.currentTarget.value || "").trim()
+      setDndStart(value)
+      void persistDnd(true, value || null, dndEnd || null)
     },
     [dndEnabled, dndEnd, dndSaving, persistDnd]
-  );
+  )
 
   const handleDndEndChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setDndEnd(event.target.value);
-  }, []);
+    setDndEnd(event.target.value)
+  }, [])
 
   const handleDndEndBlur = useCallback(
     (event: FocusEvent<HTMLInputElement>) => {
-      if (!dndEnabled || dndSaving) return;
-      const value = (event.currentTarget.value || "").trim();
-      setDndEnd(value);
-      void persistDnd(true, dndStart || null, value || null);
+      if (!dndEnabled || dndSaving) return
+      const value = (event.currentTarget.value || "").trim()
+      setDndEnd(value)
+      void persistDnd(true, dndStart || null, value || null)
     },
     [dndEnabled, dndSaving, dndStart, persistDnd]
-  );
+  )
 
   useEffect(() => {
-    syncDndFromUser(user);
-  }, [syncDndFromUser, user]);
+    syncDndFromUser(user)
+  }, [syncDndFromUser, user])
 
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    const s = sp.get("spotify");
+    const sp = new URLSearchParams(window.location.search)
+    const s = sp.get("spotify")
     if (s) {
-      if (s === "connected") setSnack({ text: t("settings:integrations.spotify.snackbar.connected"), sev: "success" });
-      if (s === "error") setSnack({ text: t("settings:integrations.spotify.snackbar.connectFailed"), sev: "error" });
-      sp.delete("spotify");
-      const next = window.location.pathname + (sp.toString() ? "?" + sp : "");
-      window.history.replaceState({}, "", next);
+      if (s === "connected")
+        setSnack({ text: t("settings:integrations.spotify.snackbar.connected"), sev: "success" })
+      if (s === "error")
+        setSnack({ text: t("settings:integrations.spotify.snackbar.connectFailed"), sev: "error" })
+      sp.delete("spotify")
+      const next = window.location.pathname + (sp.toString() ? "?" + sp : "")
+      window.history.replaceState({}, "", next)
     }
-  }, [setSnack, t]);
+  }, [setSnack, t])
 
   const handleThemeChange = useCallback(
     (_: ChangeEvent<HTMLInputElement>, value: string) => {
-      setMode(value as ThemeMode);
+      setMode(value as ThemeMode)
     },
     [setMode]
-  );
+  )
 
   const handleNotificationsToggle = useCallback(
     (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (pushBusy || pushInitializing) return;
-      if (checked) void enableNotifications();
-      else void disableNotifications();
+      if (pushBusy || pushInitializing) return
+      if (checked) void enableNotifications()
+      else void disableNotifications()
     },
     [disableNotifications, enableNotifications, pushBusy, pushInitializing]
-  );
+  )
 
-  const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected);
-  const spotifyName = user?.spotify_display_name ?? "";
+  const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
+  const spotifyName = user?.spotify_display_name ?? ""
 
   const connectSpotify = async () => {
     try {
-      const { data } = await api.get<{ url?: string }>("/spotify/auth-url");
-      const safeUrl = sanitizeSpotifyAuthorizeUrl(data?.url);
-      if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL");
-      window.location.assign(safeUrl);
+      const { data } = await api.get<{ url?: string }>("/spotify/auth-url")
+      const safeUrl = sanitizeSpotifyAuthorizeUrl(data?.url)
+      if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL")
+      window.location.assign(safeUrl)
     } catch (error) {
-      setSnack({ text: t("settings:integrations.spotify.snackbar.openFailed"), sev: "error" });
+      setSnack({ text: t("settings:integrations.spotify.snackbar.openFailed"), sev: "error" })
     }
-  };
+  }
 
   const disconnectSpotify = async () => {
     try {
-      await api.post("/spotify/disconnect");
+      await api.post("/spotify/disconnect")
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
         queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
-      ]);
+      ])
       try {
-        const profile = await fetchCurrentUser();
-        setUser(profile);
+        const profile = await fetchCurrentUser()
+        setUser(profile)
       } catch {
         setUser((prev) =>
           prev
@@ -466,125 +460,140 @@ export default function Settings() {
                 spotify_is_connected: false,
                 spotify_display_name: null,
               }
-            : prev,
-        );
+            : prev
+        )
       }
-      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnected"), sev: "success" });
+      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnected"), sev: "success" })
     } catch {
-      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnectFailed"), sev: "error" });
+      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnectFailed"), sev: "error" })
     }
-  };
+  }
 
-  const isImage = (f: File) => /^image\/(png|jpe?g|webp|gif|avif)$/i.test(f.type);
-  const withinSize = (f: File, maxMB = 12) => f.size / (1024 * 1024) <= maxMB;
+  const isImage = (f: File) => /^image\/(png|jpe?g|webp|gif|avif)$/i.test(f.type)
+  const withinSize = (f: File, maxMB = 12) => f.size / (1024 * 1024) <= maxMB
 
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const [avatarBusy, setAvatarBusy] = useState(false);
-  const [coverBusy, setCoverBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const coverInputRef = useRef<HTMLInputElement | null>(null)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [coverBusy, setCoverBusy] = useState(false)
 
-  const avatarUrl = user?.avatar_url ?? undefined;
-  const coverUrl = user?.cover_url ?? undefined;
+  const avatarUrl = user?.avatar_url ?? undefined
+  const coverUrl = user?.cover_url ?? undefined
 
   const avatarSrc = useMemo(() => {
-    const resolved = resolveMediaUrl(avatarUrl);
-    return resolved ? addVersionParam(resolved, avatarVersion) : DEFAULT_AVATAR;
-  }, [avatarUrl, avatarVersion]);
+    const resolved = resolveMediaUrl(avatarUrl)
+    return resolved ? addVersionParam(resolved, avatarVersion) : DEFAULT_AVATAR
+  }, [avatarUrl, avatarVersion])
 
   const coverSrc = useMemo(() => {
-    const resolved = resolveMediaUrl(coverUrl);
-    return resolved ? addVersionParam(resolved, coverVersion) : "";
-  }, [coverUrl, coverVersion]);
+    const resolved = resolveMediaUrl(coverUrl)
+    return resolved ? addVersionParam(resolved, coverVersion) : ""
+  }, [coverUrl, coverVersion])
 
   const handleAvatarError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = event.currentTarget;
-    img.onerror = null;
-    img.src = DEFAULT_AVATAR;
-  }, []);
+    const img = event.currentTarget
+    img.onerror = null
+    img.src = DEFAULT_AVATAR
+  }, [])
 
-  const triggerAvatarPick = () => avatarInputRef.current?.click();
-  const triggerCoverPick = () => coverInputRef.current?.click();
+  const triggerAvatarPick = () => avatarInputRef.current?.click()
+  const triggerCoverPick = () => coverInputRef.current?.click()
 
   const refreshMe = useCallback(async () => {
     const fresh = await queryClient.fetchQuery<User>({
       queryKey: currentUserQueryKey,
       queryFn: fetchCurrentUser,
       staleTime: 0,
-    });
-    setUser(fresh);
-    return fresh;
-  }, [queryClient, setUser]);
+    })
+    setUser(fresh)
+    return fresh
+  }, [queryClient, setUser])
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
-      const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
-      if (typeof detail === "string") return detail;
+      const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+      if (typeof detail === "string") return detail
       if (Array.isArray(detail)) {
         const combined = detail
           .map((item) =>
-            item && typeof item === "object" && "msg" in item ? String((item as { msg?: unknown }).msg) : ""
+            item && typeof item === "object" && "msg" in item
+              ? String((item as { msg?: unknown }).msg)
+              : ""
           )
           .filter(Boolean)
-          .join("; ");
-        if (combined) return combined;
+          .join("; ")
+        if (combined) return combined
       }
     }
-    return fallback;
-  }, []);
+    return fallback
+  }, [])
 
   const uploadAvatar = async (file: File) => {
-    if (!isImage(file)) return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" });
-    if (!withinSize(file)) return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" });
+    if (!isImage(file))
+      return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" })
+    if (!withinSize(file))
+      return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" })
     try {
-      setAvatarBusy(true);
-      const fd = new FormData();
-      fd.append("file", file);
-      await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      await refreshMe();
-      setAvatarVersion(Date.now());
-      setSnack({ text: t("settings:media.avatar.updated"), sev: "success" });
+      setAvatarBusy(true)
+      const fd = new FormData()
+      fd.append("file", file)
+      await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } })
+      await refreshMe()
+      setAvatarVersion(Date.now())
+      setSnack({ text: t("settings:media.avatar.updated"), sev: "success" })
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, t("settings:media.avatar.uploadFailed")), sev: "error" });
+      setSnack({
+        text: resolveDetailMessage(error, t("settings:media.avatar.uploadFailed")),
+        sev: "error",
+      })
     } finally {
-      setAvatarBusy(false);
-      if (avatarInputRef.current) avatarInputRef.current.value = "";
+      setAvatarBusy(false)
+      if (avatarInputRef.current) avatarInputRef.current.value = ""
     }
-  };
+  }
 
   const removeAvatar = async () => {
     try {
-      setAvatarBusy(true);
-      await api.delete("/users/me/avatar");
-      await refreshMe();
-      setAvatarVersion(Date.now());
-      setSnack({ text: t("settings:media.avatar.deleted"), sev: "success" });
+      setAvatarBusy(true)
+      await api.delete("/users/me/avatar")
+      await refreshMe()
+      setAvatarVersion(Date.now())
+      setSnack({ text: t("settings:media.avatar.deleted"), sev: "success" })
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, t("settings:media.avatar.deleteFailed")), sev: "error" });
+      setSnack({
+        text: resolveDetailMessage(error, t("settings:media.avatar.deleteFailed")),
+        sev: "error",
+      })
     } finally {
-      setAvatarBusy(false);
+      setAvatarBusy(false)
     }
-  };
+  }
 
   const uploadCover = async (file: File) => {
-    if (!isImage(file)) return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" });
-    if (!withinSize(file)) return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" });
+    if (!isImage(file))
+      return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" })
+    if (!withinSize(file))
+      return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" })
     try {
-      setCoverBusy(true);
-      const fd = new FormData();
-      fd.append("file", file);
-      await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      await refreshMe();
-      setCoverVersion(Date.now());
-      setSnack({ text: t("settings:media.cover.updated"), sev: "success" });
+      setCoverBusy(true)
+      const fd = new FormData()
+      fd.append("file", file)
+      await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } })
+      await refreshMe()
+      setCoverVersion(Date.now())
+      setSnack({ text: t("settings:media.cover.updated"), sev: "success" })
     } catch (error) {
-      setSnack({ text: resolveDetailMessage(error, t("settings:media.cover.uploadFailed")), sev: "error" });
+      setSnack({
+        text: resolveDetailMessage(error, t("settings:media.cover.uploadFailed")),
+        sev: "error",
+      })
     } finally {
-      setCoverBusy(false);
-      if (coverInputRef.current) coverInputRef.current.value = "";
+      setCoverBusy(false)
+      if (coverInputRef.current) coverInputRef.current.value = ""
     }
-  };
+  }
 
-  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false)
 
   return (
     <Box maxWidth="100vw" mx={0} mt={0} width="100vw" minHeight="100svh" px={0}>
@@ -596,7 +605,7 @@ export default function Settings() {
           width: "100%",
           minHeight: "100svh",
           color: "var(--page-text)",
-          bgcolor: "var(--card-bg)"
+          bgcolor: "var(--card-bg)",
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: { xs: 1.5, md: 2 } }}>
@@ -606,7 +615,11 @@ export default function Settings() {
           </Typography>
         </Stack>
 
-        <Paper variant="outlined" className="glass--segmented" sx={{ mb: 3, bgcolor: "var(--card-bg)" }}>
+        <Paper
+          variant="outlined"
+          className="glass--segmented"
+          sx={{ mb: 3, bgcolor: "var(--card-bg)" }}
+        >
           <Tabs
             value={tab}
             onChange={(_, v) => setTab(v)}
@@ -617,9 +630,9 @@ export default function Settings() {
                 color: "var(--page-text)",
                 textTransform: "none",
                 fontWeight: 700,
-                minHeight: 42
+                minHeight: 42,
               },
-              "& .Mui-selected": { color: "var(--link-color)" }
+              "& .Mui-selected": { color: "var(--link-color)" },
             }}
           >
             <Tab label={t("settings:tabs.general")} />
@@ -639,8 +652,14 @@ export default function Settings() {
                   value="system"
                   control={<Radio />}
                   label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
-                      <DesktopWindowsIcon /> <span>{t("settings:appearance.theme.options.system")}</span>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1}
+                      sx={{ color: "var(--page-text)" }}
+                    >
+                      <DesktopWindowsIcon />{" "}
+                      <span>{t("settings:appearance.theme.options.system")}</span>
                     </Stack>
                   }
                   sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
@@ -649,7 +668,12 @@ export default function Settings() {
                   value="light"
                   control={<Radio />}
                   label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1}
+                      sx={{ color: "var(--page-text)" }}
+                    >
                       <LightModeIcon /> <span>{t("settings:appearance.theme.options.light")}</span>
                     </Stack>
                   }
@@ -659,7 +683,12 @@ export default function Settings() {
                   value="dark"
                   control={<Radio />}
                   label={
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ color: "var(--page-text)" }}>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1}
+                      sx={{ color: "var(--page-text)" }}
+                    >
                       <DarkModeIcon /> <span>{t("settings:appearance.theme.options.dark")}</span>
                     </Stack>
                   }
@@ -678,7 +707,7 @@ export default function Settings() {
                 onChange={(_, value) => setLanguage(value as SupportedLanguage)}
                 aria-label={t("settings:language.aria")}
               >
-                {availableLanguages.map(code => (
+                {availableLanguages.map((code) => (
                   <FormControlLabel
                     key={code}
                     value={code}
@@ -713,12 +742,18 @@ export default function Settings() {
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                         {t("settings:notifications.blocked.hint")}
                       </Typography>
-                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.2}
+                        alignItems={{ sm: "center" }}
+                      >
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy}
-                          startIcon={pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
+                          startIcon={
+                            pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                          }
                         >
                           {t("settings:notifications.cta.checkPermission")}
                         </Button>
@@ -732,12 +767,20 @@ export default function Settings() {
                       <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                         {t("settings:notifications.cta.prompt")}
                       </Typography>
-                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.2}
+                        alignItems={{ sm: "center" }}
+                      >
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy || pushInitializing}
-                          startIcon={pushBusy || pushInitializing ? <CircularProgress size={18} color="inherit" /> : undefined}
+                          startIcon={
+                            pushBusy || pushInitializing ? (
+                              <CircularProgress size={18} color="inherit" />
+                            ) : undefined
+                          }
                         >
                           {t("settings:notifications.cta.allow")}
                         </Button>
@@ -753,7 +796,7 @@ export default function Settings() {
                           minHeight: 44,
                           alignItems: "center",
                           columnGap: 1.25,
-                          m: 0
+                          m: 0,
                         }}
                         control={
                           <SwitchControl
@@ -775,7 +818,7 @@ export default function Settings() {
                           minHeight: 44,
                           alignItems: "center",
                           columnGap: 1.25,
-                          m: 0
+                          m: 0,
                         }}
                         control={
                           <SwitchControl
@@ -792,7 +835,11 @@ export default function Settings() {
                         }
                       />
 
-                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.5}
+                        alignItems={{ sm: "center" }}
+                      >
                         <TextField
                           type="time"
                           label={t("settings:dnd.start")}
@@ -831,10 +878,23 @@ export default function Settings() {
                 divider
                 secondaryAction={
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="text" startIcon={<PhotoCameraIcon />} onClick={triggerAvatarPick} disabled={avatarBusy}>
+                    <Button
+                      size="small"
+                      variant="text"
+                      startIcon={<PhotoCameraIcon />}
+                      onClick={triggerAvatarPick}
+                      disabled={avatarBusy}
+                    >
                       {t("settings:media.avatar.change")}
                     </Button>
-                    <Button size="small" variant="text" color="error" startIcon={<DeleteOutlineIcon />} onClick={removeAvatar} disabled={avatarBusy}>
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="error"
+                      startIcon={<DeleteOutlineIcon />}
+                      onClick={removeAvatar}
+                      disabled={avatarBusy}
+                    >
                       {t("settings:media.avatar.delete")}
                     </Button>
                   </Stack>
@@ -845,7 +905,12 @@ export default function Settings() {
                     src={avatarSrc}
                     alt={user?.full_name || "avatar"}
                     sx={{ width: 48, height: 48 }}
-                    imgProps={{ onError: handleAvatarError, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
+                    imgProps={{
+                      onError: handleAvatarError,
+                      loading: "lazy",
+                      decoding: "async",
+                      referrerPolicy: "no-referrer",
+                    }}
                   />
                 </ListItemAvatar>
                 <ListItemText
@@ -858,8 +923,8 @@ export default function Settings() {
                   accept="image/*"
                   hidden
                   onChange={(e) => {
-                    const f = e.currentTarget.files?.[0];
-                    if (f) uploadAvatar(f);
+                    const f = e.currentTarget.files?.[0]
+                    if (f) uploadAvatar(f)
                   }}
                 />
               </ListItem>
@@ -867,7 +932,13 @@ export default function Settings() {
               <ListItem
                 divider
                 secondaryAction={
-                  <Button size="small" variant="text" startIcon={<ImageIcon />} onClick={triggerCoverPick} disabled={coverBusy}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    startIcon={<ImageIcon />}
+                    onClick={triggerCoverPick}
+                    disabled={coverBusy}
+                  >
                     {t("settings:media.cover.change")}
                   </Button>
                 }
@@ -880,7 +951,9 @@ export default function Settings() {
                       height: 52,
                       borderRadius: 1.5,
                       border: "1px solid var(--glass-border)",
-                      background: coverSrc ? `url(${coverSrc}) center/cover no-repeat` : "var(--card-bg)"
+                      background: coverSrc
+                        ? `url(${coverSrc}) center/cover no-repeat`
+                        : "var(--card-bg)",
                     }}
                   />
                 </ListItemAvatar>
@@ -894,8 +967,8 @@ export default function Settings() {
                   accept="image/*"
                   hidden
                   onChange={(e) => {
-                    const f = e.currentTarget.files?.[0];
-                    if (f) uploadCover(f);
+                    const f = e.currentTarget.files?.[0]
+                    if (f) uploadCover(f)
                   }}
                 />
               </ListItem>
@@ -903,7 +976,11 @@ export default function Settings() {
               <ListItem
                 divider
                 secondaryAction={
-                  <Button size="small" variant="text" onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
+                  >
                     {t("common:buttons.edit")}
                   </Button>
                 }
@@ -924,8 +1001,8 @@ export default function Settings() {
                     color="error"
                     startIcon={<LogoutIcon />}
                     onClick={async () => {
-                      setConfirmLogout(false);
-                      await logout();
+                      setConfirmLogout(false)
+                      await logout()
                     }}
                     sx={{ px: 0 }}
                   >
@@ -966,14 +1043,25 @@ export default function Settings() {
                   color={spotifyConnected ? "success" : "default"}
                   variant="outlined"
                 />
-                {spotifyConnected && !!spotifyName && <Chip size="small" variant="outlined" label={spotifyName} />}
+                {spotifyConnected && !!spotifyName && (
+                  <Chip size="small" variant="outlined" label={spotifyName} />
+                )}
               </Stack>
               {!spotifyConnected ? (
-                <Button variant="contained" onClick={connectSpotify} sx={{ alignSelf: "lex-start" }}>
+                <Button
+                  variant="contained"
+                  onClick={connectSpotify}
+                  sx={{ alignSelf: "lex-start" }}
+                >
                   {t("settings:integrations.spotify.connect")}
                 </Button>
               ) : (
-                <Button variant="outlined" color="error" onClick={disconnectSpotify} sx={{ alignSelf: "flex-start" }}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={disconnectSpotify}
+                  sx={{ alignSelf: "flex-start" }}
+                >
                   {t("settings:integrations.spotify.disconnect")}
                 </Button>
               )}
@@ -992,8 +1080,8 @@ export default function Settings() {
           <Button
             color="error"
             onClick={async () => {
-              setConfirmLogout(false);
-              await logout();
+              setConfirmLogout(false)
+              await logout()
             }}
           >
             {t("settings:account.logout.confirm")}
@@ -1001,11 +1089,21 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={!!snack} autoHideDuration={2600} onClose={() => setSnack(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
-        <Alert onClose={() => setSnack(null)} severity={snack?.sev || "info"} variant="filled" sx={{ width: "100%" }}>
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={2600}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnack(null)}
+          severity={snack?.sev || "info"}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
           {snack?.text}
         </Alert>
       </Snackbar>
     </Box>
-  );
+  )
 }

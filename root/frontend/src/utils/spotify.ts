@@ -1,9 +1,7 @@
 const ALLOWED_SPOTIFY_HOSTS = new Set(["accounts.spotify.com"])
 const AUTH_PATH_PREFIX = "/authorize"
 
-export const sanitizeSpotifyAuthorizeUrl = (
-  raw: string | null | undefined,
-): string | null => {
+export const sanitizeSpotifyAuthorizeUrl = (raw: string | null | undefined): string | null => {
   if (!raw) return null
   try {
     const url = new URL(raw)

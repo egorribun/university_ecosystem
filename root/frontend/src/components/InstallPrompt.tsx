@@ -192,7 +192,7 @@ export default function InstallPrompt() {
       if (checked) void enableNotifications()
       else void disableNotifications()
     },
-    [disableNotifications, enableNotifications, pushBusy, pushInitializing],
+    [disableNotifications, enableNotifications, pushBusy, pushInitializing]
   )
 
   const handleClose = useCallback(() => {
@@ -223,7 +223,10 @@ export default function InstallPrompt() {
     <>
       <Slide
         direction="up"
-        in={visible && (Boolean(deferredPrompt) || (pushSupported && notificationPermission !== "granted"))}
+        in={
+          visible &&
+          (Boolean(deferredPrompt) || (pushSupported && notificationPermission !== "granted"))
+        }
         mountOnEnter
         unmountOnExit
       >
@@ -253,7 +256,11 @@ export default function InstallPrompt() {
                   ? t("system:installPrompt.installTitle", { appName })
                   : t("system:installPrompt.title", { appName })}
               </Typography>
-              <IconButton aria-label={t("system:installPrompt.closeOffer")} onClick={handleClose} size="small">
+              <IconButton
+                aria-label={t("system:installPrompt.closeOffer")}
+                onClick={handleClose}
+                size="small"
+              >
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Stack>
@@ -286,7 +293,10 @@ export default function InstallPrompt() {
               <>
                 <Divider sx={{ width: "100%" }} />
                 <Stack spacing={1.2} sx={{ width: "100%" }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ fontWeight: 700, color: "var(--page-text)" }}
+                  >
                     {t("system:installPrompt.notificationsTitle")}
                   </Typography>
                   {!pushSupported ? (
@@ -304,7 +314,11 @@ export default function InstallPrompt() {
                             i18nKey="system:installPrompt.safariGuide"
                             components={{
                               link: (
-                                <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener" />
+                                <Link
+                                  href={safariGuideUrl}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                />
                               ),
                             }}
                           />
@@ -348,7 +362,11 @@ export default function InstallPrompt() {
                             i18nKey="system:installPrompt.safariGuide"
                             components={{
                               link: (
-                                <Link href={safariGuideUrl} target="_blank" rel="noreferrer noopener" />
+                                <Link
+                                  href={safariGuideUrl}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                />
                               ),
                             }}
                           />
@@ -368,8 +386,17 @@ export default function InstallPrompt() {
                               />
                             }
                             label={
-                              <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "var(--page-text)" }}>
-                                {notificationsEnabled ? <NotificationsActiveIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                sx={{ color: "var(--page-text)" }}
+                              >
+                                {notificationsEnabled ? (
+                                  <NotificationsActiveIcon fontSize="small" />
+                                ) : (
+                                  <NotificationsOffIcon fontSize="small" />
+                                )}
                                 <span>{t("system:installPrompt.toggleLabel")}</span>
                               </Stack>
                             }
@@ -386,26 +413,28 @@ export default function InstallPrompt() {
                         sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
                       >
                         <FormGroup>
-                          {topicKeys.map(key => (
+                          {topicKeys.map((key) => (
                             <FormControlLabel
                               key={key}
                               control={
                                 <Switch
-                                  // Keys originate from a predefined list
-                                  // eslint-disable-next-line security/detect-object-injection
                                   checked={topicState[key]}
                                   onChange={handleTopicToggle(key)}
                                   disabled={!notificationsEnabled || pushBusy || pushInitializing}
                                 />
                               }
                               label={
-                                <span style={{ color: "var(--page-text)" }}>{t(`notifications:topics.${key}`)}</span>
+                                <span style={{ color: "var(--page-text)" }}>
+                                  {t(`notifications:topics.${key}`)}
+                                </span>
                               }
                             />
                           ))}
                         </FormGroup>
                         <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          {t("system:installPrompt.activeTopics", { topics: selectedTopicsDescription })}
+                          {t("system:installPrompt.activeTopics", {
+                            topics: selectedTopicsDescription,
+                          })}
                         </FormHelperText>
                       </FormControl>
                     </Stack>

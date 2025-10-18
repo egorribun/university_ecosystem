@@ -1,4 +1,4 @@
-import { extendTheme, responsiveFontSizes } from "@mui/material/styles";
+import { extendTheme, responsiveFontSizes } from "@mui/material/styles"
 
 const spacingScale = {
   "2xs": "0.25rem",
@@ -8,7 +8,7 @@ const spacingScale = {
   lg: "1.5rem",
   xl: "2rem",
   "2xl": "3rem",
-} as const;
+} as const
 
 const radiusScale = {
   xs: "0.35rem",
@@ -17,19 +17,20 @@ const radiusScale = {
   lg: "1rem",
   xl: "1.75rem",
   pill: "999px",
-} as const;
+} as const
 
 const zIndexTokens = {
   navbar: 2600,
   overlay: 2500,
   floating: 2800,
   toast: 3400,
-} as const;
+} as const
 
 const focusRing = {
-  light: "0 0 0 1px rgba(255, 255, 255, 0.92), 0 0 0 4px rgba(var(--mui-palette-primary-mainChannel) / 0.35)",
+  light:
+    "0 0 0 1px rgba(255, 255, 255, 0.92), 0 0 0 4px rgba(var(--mui-palette-primary-mainChannel) / 0.35)",
   dark: "0 0 0 1px rgba(11, 15, 21, 0.92), 0 0 0 4px rgba(var(--mui-palette-primary-mainChannel) / 0.5)",
-} as const;
+} as const
 
 const baseTheme = extendTheme({
   cssVarPrefix: "ue",
@@ -232,10 +233,10 @@ const baseTheme = extendTheme({
         ":root[data-mui-color-scheme='dark']": {
           "--ue-focus-ring": focusRing.dark,
         },
-        "html": {
+        html: {
           scrollBehavior: "smooth",
         },
-        "body": {
+        body: {
           fontFamily: "var(--font-ui)",
           WebkitFontSmoothing: "antialiased",
           MozOsxFontSmoothing: "grayscale",
@@ -246,7 +247,7 @@ const baseTheme = extendTheme({
           outline: "none",
         },
         "@media (prefers-reduced-motion: reduce)": {
-          "html": {
+          html: {
             scrollBehavior: "auto",
           },
           "*, *::before, *::after": {
@@ -378,15 +379,15 @@ const baseTheme = extendTheme({
       },
     },
   },
-});
+})
 
-baseTheme.vars.focusRing = focusRing;
-baseTheme.vars.radiusScale = radiusScale;
-baseTheme.vars.spacingScale = spacingScale;
-baseTheme.vars.zIndexTokens = zIndexTokens;
+baseTheme.vars.focusRing = focusRing
+baseTheme.vars.radiusScale = radiusScale
+baseTheme.vars.spacingScale = spacingScale
+baseTheme.vars.zIndexTokens = zIndexTokens
 
-const theme = responsiveFontSizes(baseTheme);
+const theme = responsiveFontSizes(baseTheme)
 
-export default theme;
+export default theme
 
-export type AppTheme = typeof theme;
+export type AppTheme = typeof theme

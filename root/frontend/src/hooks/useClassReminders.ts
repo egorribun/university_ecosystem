@@ -24,7 +24,10 @@ function openUrl(u: string) {
   } catch {}
 }
 
-export function useClassReminders(items: RemindItem[] | undefined, opts?: { defaultMinutesBefore?: number }) {
+export function useClassReminders(
+  items: RemindItem[] | undefined,
+  opts?: { defaultMinutesBefore?: number }
+) {
   const { t } = useTranslation("notifications")
   const timers = useRef<Timer[]>([])
   const defMins = Math.max(0, opts?.defaultMinutesBefore ?? 10)
@@ -46,7 +49,7 @@ export function useClassReminders(items: RemindItem[] | undefined, opts?: { defa
     clearAll()
     if (!items || !items.length) return
 
-    items.forEach(ev => {
+    items.forEach((ev) => {
       const mins = typeof ev.minutesBefore === "number" ? Math.max(0, ev.minutesBefore) : defMins
       const at = new Date(ev.when).getTime() - mins * 60000
       if (!Number.isFinite(at) || at <= Date.now()) return
