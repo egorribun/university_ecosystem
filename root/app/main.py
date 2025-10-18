@@ -107,7 +107,9 @@ default_limit, default_window = parse_rate_limit(
 
 if settings.rate_limit_enabled:
     normalized_url = rate_limit_url.lower()
-    if rate_limit_backend == "redis" and normalized_url.startswith(("redis://", "rediss://")):
+    if rate_limit_backend == "redis" and normalized_url.startswith(
+        ("redis://", "rediss://")
+    ):
         app.add_middleware(
             RateLimitMiddleware,
             redis_url=rate_limit_url,

@@ -226,6 +226,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return f"ip:{client.host}"
         return "ip:unknown"
 
+
 async def _get_shared_client(redis_url: str) -> Redis:
     client = _shared_clients.get(redis_url)
     if client is not None:
