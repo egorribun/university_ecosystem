@@ -1,7 +1,9 @@
+import httpx
 import pytest
-from fastapi import status
+from fastapi import FastAPI, status
 
 from app.auth.security import get_password_hash
+from app.core.rate_limit import RateLimitMiddleware
 from app.localization import translate
 
 
@@ -62,3 +64,33 @@ async def test_sensitive_forgot_password_rate_limit(async_client, user_factory):
 
     blocked = await async_client.post("/password/forgot", json=payload)
     assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.anyio
+async def test_rate_limit_memory_backend_blocks_requests():
+    app = FastAPI()
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        redis_url="memory://",
+        limit=2,
+        window_seconds=60,
+    )
+
+    @app.get("/ping")
+    async def _ping():  # pragma: no cover - minimal endpoint definition
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        first = await client.get("/ping")
+        second = await client.get("/ping")
+        third = await client.get("/ping")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert third.headers.get("Retry-After") is not None

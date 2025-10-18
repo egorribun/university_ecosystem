@@ -154,25 +154,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self,
         app,
         *,
-        redis_url: str,
+        redis_url: str | None = None,
         limit: int = 60,
         window_seconds: int = 60,
         enabled: bool = True,
         headers_enabled: bool = True,
+        storage_backend: str = "redis",
     ) -> None:
         super().__init__(app)
-        self._redis_url = redis_url.strip()
+        backend = (storage_backend or "redis").strip().lower()
+        if backend not in {"memory", "redis"}:
+            raise ValueError("storage_backend must be either 'memory' or 'redis'")
+        self._storage_backend = backend
+        self._redis_url = (redis_url or "").strip() if backend == "redis" else ""
         self._limit = max(int(limit), 0)
-        self._window_ms = max(int(window_seconds * 1000), 0)
-        self._enabled = (
-            enabled
-            and bool(self._redis_url)
-            and self._limit > 0
-            and self._window_ms > 0
-        )
+        self._window_seconds = max(int(window_seconds), 0)
+        self._enabled = enabled and self._limit > 0 and self._window_seconds > 0
+        if self._storage_backend == "redis":
+            self._enabled = self._enabled and bool(self._redis_url)
         self._headers_enabled = headers_enabled
-        self._client: Redis | None = None
-        self._client_lock = asyncio.Lock()
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         if not self._enabled:
@@ -180,12 +180,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         identifier = self._build_identifier(request)
         try:
-            allowed, remaining, retry_after = await self._check_limit(identifier)
+            info = await self._check_limit(identifier)
         except (RedisError, OSError):
             return await call_next(request)
 
-        if not allowed:
-            retry_after_seconds = max(0, math.ceil(retry_after / 1000))
+        if not info.allowed:
+            retry_after_seconds = max(0, info.retry_after)
             headers = {"Retry-After": str(retry_after_seconds)}
             if self._headers_enabled:
                 headers["X-RateLimit-Limit"] = str(self._limit)
@@ -199,63 +199,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         if self._headers_enabled:
             response.headers.setdefault("X-RateLimit-Limit", str(self._limit))
-            response.headers.setdefault("X-RateLimit-Remaining", str(max(0, remaining)))
+            response.headers.setdefault(
+                "X-RateLimit-Remaining", str(max(0, info.remaining))
+            )
         return response
 
-    async def _check_limit(self, identifier: str) -> tuple[bool, int, int]:
-        client = await self._get_client()
-        now_ms = int(time.time() * 1000)
-        member = f"{now_ms}:{uuid.uuid4().hex}"
-        key = self._redis_key(identifier)
-        try:
-            result = await client.eval(
-                _RATE_LIMIT_SCRIPT,
-                1,
-                key,
-                now_ms,
-                self._window_ms,
-                self._limit,
-                member,
-            )
-        except RedisError as exc:
-            if "unknown command" not in str(exc).lower():
-                raise
-            return await self._check_limit_fallback(client, key, now_ms, member)
-        allowed = bool(int(result[0]))
-        remaining = int(result[1])
-        retry_after = int(result[2])
-        return allowed, remaining, retry_after
-
-    async def _check_limit_fallback(
-        self,
-        client: Redis,
-        key: str,
-        now_ms: int,
-        member: str,
-    ) -> tuple[bool, int, int]:
-        cutoff = now_ms - self._window_ms
-        await client.zremrangebyscore(key, 0, cutoff)
-        count = await client.zcard(key)
-        if count >= self._limit:
-            oldest = await client.zrange(key, 0, 0, withscores=True)
-            retry_after = 0
-            if oldest:
-                retry_after = self._window_ms - (now_ms - int(float(oldest[0][1])))
-                if retry_after < 0:
-                    retry_after = 0
-            return False, 0, int(retry_after)
-        await client.zadd(key, mapping={member: now_ms})
-        await client.pexpire(key, self._window_ms)
-        remaining = max(0, self._limit - (count + 1))
-        return True, remaining, 0
-
-    async def _get_client(self) -> Redis:
-        if self._client is not None:
-            return self._client
-        async with self._client_lock:
-            if self._client is None:
-                self._client = _redis_factory(self._redis_url)
-        return self._client
+    async def _check_limit(self, identifier: str) -> RateLimitInfo:
+        redis_url = self._redis_url if self._storage_backend == "redis" else None
+        info = await check_rate_limit(
+            identifier=identifier,
+            namespace="",
+            limit=self._limit,
+            window_seconds=self._window_seconds,
+            redis_url=redis_url,
+        )
+        return info
 
     def _build_identifier(self, request: Request) -> str:
         auth_header = request.headers.get("authorization")
@@ -267,10 +225,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if client and client.host:
             return f"ip:{client.host}"
         return "ip:unknown"
-
-    def _redis_key(self, identifier: str) -> str:
-        return f"rate-limit:{identifier}"
-
 
 async def _get_shared_client(redis_url: str) -> Redis:
     client = _shared_clients.get(redis_url)

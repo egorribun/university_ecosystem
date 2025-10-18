@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_default: str | list[str] = "100/minute"
     rate_limit_sensitive: str = "5/minute"
+    rate_limit_storage_backend: str = "memory"
     rate_limit_storage_uri: str = "memory://"
     rate_limit_headers_enabled: bool = True
     security_csp: str = ""
@@ -159,6 +160,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 "COEP_VALUE must be either 'require-corp' or 'credentialless'"
             )
+        return normalized
+
+    @field_validator("rate_limit_storage_backend")
+    @classmethod
+    def _validate_rate_limit_storage_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"memory", "redis"}:
+            raise ValueError("RATE_LIMIT_STORAGE_BACKEND must be 'memory' or 'redis'")
         return normalized
 
     model_config = SettingsConfigDict(
