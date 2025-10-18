@@ -16,13 +16,11 @@ export const cardHoverSx = ({
   activeTransform = "scale(0.997)",
   extraTransitions = [],
 }: CardHoverOptions = {}): SxProps<Theme> => {
-  const transitions = [
-    "transform 0.25s ease",
-    "box-shadow 0.25s ease",
-    ...extraTransitions,
-  ].filter((transition): transition is string => Boolean(transition?.trim?.() ?? transition))
+  const transitions = ["transform 0.25s ease", "box-shadow 0.25s ease", ...extraTransitions].filter(
+    (transition): transition is string => Boolean(transition?.trim?.() ?? transition)
+  )
   const reducedTransitions = transitions.filter(
-    transition => !transition.toLowerCase().startsWith("transform"),
+    (transition) => !transition.toLowerCase().startsWith("transform")
   )
 
   const base: SxProps<Theme> = {
@@ -30,7 +28,7 @@ export const cardHoverSx = ({
     willChange: "transform",
     "@media (prefers-reduced-motion: reduce)": {
       transition: reducedTransitions.join(", ") || "box-shadow 0.25s ease",
-    }
+    },
   }
 
   if (disabled) {
@@ -55,6 +53,6 @@ export const cardHoverSx = ({
   return {
     ...base,
     ...(Object.keys(hoverStyles).length > 0 ? { "&:hover": hoverStyles } : {}),
-    ...(activeStyles ? { "&:active": activeStyles } : {})
+    ...(activeStyles ? { "&:active": activeStyles } : {}),
   }
 }

@@ -9,7 +9,7 @@ import {
   useDeferredValue,
   startTransition,
   useCallback,
-  type CSSProperties
+  type CSSProperties,
 } from "react"
 import api from "../api/client"
 import {
@@ -36,7 +36,7 @@ import {
   DialogTitle,
   DialogContent,
   Chip,
-  LinearProgress
+  LinearProgress,
 } from "@mui/material"
 import DeleteIcon from "@mui/icons-material/Delete"
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
@@ -137,7 +137,7 @@ const minimalLessonTypeFallback: LessonTypeConfig = {
   id: "lesson",
   backend: ["lesson"],
   label: "Lesson",
-  color: defaultLessonTypeColor
+  color: defaultLessonTypeColor,
 }
 
 const minimalWeekdayFallback: WeekdayConfig[] = [
@@ -146,7 +146,7 @@ const minimalWeekdayFallback: WeekdayConfig[] = [
   { id: "wed", backend: ["Wednesday"], long: "Wednesday", short: "Wed" },
   { id: "thu", backend: ["Thursday"], long: "Thursday", short: "Thu" },
   { id: "fri", backend: ["Friday"], long: "Friday", short: "Fri" },
-  { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" }
+  { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" },
 ]
 
 const groupsPlaceholder = (previous?: ScheduleGroup[]) => {
@@ -162,13 +162,15 @@ const schedulePlaceholder = (groupId: number | null, previous?: Lesson[]) => {
 
 function getTimeStr(lesson: Lesson) {
   if (!lesson?.start_time) return ""
-  if (lesson.start_time.length >= 16 && lesson.start_time[10] === "T") return lesson.start_time.slice(11, 16)
+  if (lesson.start_time.length >= 16 && lesson.start_time[10] === "T")
+    return lesson.start_time.slice(11, 16)
   return lesson.start_time.slice(0, 5)
 }
 
 function getEndTimeStr(lesson: Lesson) {
   if (!lesson?.end_time) return ""
-  if (lesson.end_time.length >= 16 && lesson.end_time[10] === "T") return lesson.end_time.slice(11, 16)
+  if (lesson.end_time.length >= 16 && lesson.end_time[10] === "T")
+    return lesson.end_time.slice(11, 16)
   return lesson.end_time.slice(0, 5)
 }
 
@@ -181,14 +183,15 @@ function parseMinutes(s?: string | null) {
 }
 
 function buildTable(schedule: Lesson[], weekdayOrder: readonly string[]) {
-  const lessonsByDay = weekdayOrder.map(day =>
+  const lessonsByDay = weekdayOrder.map((day) =>
     schedule
-      .filter(l => l.weekday === day)
+      .filter((l) => l.weekday === day)
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   )
-  const maxLessons = Math.max(...lessonsByDay.map(arr => arr.length), 0)
+  const maxLessons = Math.max(...lessonsByDay.map((arr) => arr.length), 0)
   const rows: (Lesson | null)[][] = []
-  for (let i = 0; i < maxLessons; ++i) rows.push(weekdayOrder.map((_, d) => lessonsByDay[d][i] || null))
+  for (let i = 0; i < maxLessons; ++i)
+    rows.push(weekdayOrder.map((_, d) => lessonsByDay[d][i] || null))
   return rows
 }
 
@@ -219,13 +222,15 @@ export default function Schedule() {
   const weekdayConfigs = useMemo(() => {
     const rawItems = t("schedule:weekdays.items", { returnObjects: true }) as unknown
     const rawOrder = t("schedule:weekdays.order", { returnObjects: true }) as unknown
-    const items = rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
-      ? (rawItems as Record<string, unknown>)
-      : {}
-    const fallbackById = new Map(minimalWeekdayFallback.map(item => [item.id, item]))
-    const baseOrder = Array.isArray(rawOrder) && rawOrder.length > 0
-      ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : (Object.keys(items) as string[])
+    const items =
+      rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
+        ? (rawItems as Record<string, unknown>)
+        : {}
+    const fallbackById = new Map(minimalWeekdayFallback.map((item) => [item.id, item]))
+    const baseOrder =
+      Array.isArray(rawOrder) && rawOrder.length > 0
+        ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
+        : (Object.keys(items) as string[])
     const configs: WeekdayConfig[] = []
     const seen = new Set<string>()
     const toConfig = (id: string, value?: unknown): WeekdayConfig => {
@@ -233,24 +238,25 @@ export default function Schedule() {
         id,
         backend: [id],
         long: id,
-        short: id.slice(0, 3)
+        short: id.slice(0, 3),
       }
-      const entry = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+      const entry =
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : undefined
       let backend: string[] = []
       if (Array.isArray(entry?.backend)) {
-        backend = entry.backend.filter((item): item is string => typeof item === "string" && item.length > 0)
+        backend = entry.backend.filter(
+          (item): item is string => typeof item === "string" && item.length > 0
+        )
       } else if (typeof entry?.backend === "string" && entry.backend.length > 0) {
         backend = [entry.backend]
       }
       if (backend.length === 0) backend = [...fallback.backend]
       const long =
-        typeof entry?.long === "string" && entry.long.length > 0
-          ? entry.long
-          : fallback.long
+        typeof entry?.long === "string" && entry.long.length > 0 ? entry.long : fallback.long
       const short =
-        typeof entry?.short === "string" && entry.short.length > 0
-          ? entry.short
-          : fallback.short
+        typeof entry?.short === "string" && entry.short.length > 0 ? entry.short : fallback.short
       return { id, backend, long, short }
     }
     for (const id of baseOrder) {
@@ -264,9 +270,12 @@ export default function Schedule() {
     if (configs.length === 0) return [...minimalWeekdayFallback]
     return configs
   }, [t])
-  const weekdayBackend = useMemo(() => weekdayConfigs.map(config => config.backend[0] ?? config.id), [weekdayConfigs])
-  const weekdayLabels = useMemo(() => weekdayConfigs.map(config => config.long), [weekdayConfigs])
-  const weekdayShort = useMemo(() => weekdayConfigs.map(config => config.short), [weekdayConfigs])
+  const weekdayBackend = useMemo(
+    () => weekdayConfigs.map((config) => config.backend[0] ?? config.id),
+    [weekdayConfigs]
+  )
+  const weekdayLabels = useMemo(() => weekdayConfigs.map((config) => config.long), [weekdayConfigs])
+  const weekdayShort = useMemo(() => weekdayConfigs.map((config) => config.short), [weekdayConfigs])
   const weekdayLabelMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const config of weekdayConfigs) {
@@ -277,7 +286,10 @@ export default function Schedule() {
     }
     return map
   }, [weekdayConfigs])
-  const getDayLabel = useCallback((value: string) => weekdayLabelMap.get(value) ?? value, [weekdayLabelMap])
+  const getDayLabel = useCallback(
+    (value: string) => weekdayLabelMap.get(value) ?? value,
+    [weekdayLabelMap]
+  )
   const weekdayCanonicalMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const config of weekdayConfigs) {
@@ -292,7 +304,7 @@ export default function Schedule() {
   const normalizeLessons = useCallback(
     (lessons: Lesson[]) => {
       let changed = false
-      const normalized = lessons.map(lesson => {
+      const normalized = lessons.map((lesson) => {
         if (!lesson || typeof lesson.weekday !== "string") return lesson
         const canonical = weekdayCanonicalMap.get(lesson.weekday)
         if (!canonical || canonical === lesson.weekday) return lesson
@@ -306,12 +318,14 @@ export default function Schedule() {
   const lessonTypeConfigs = useMemo(() => {
     const rawItems = t("schedule:lessonTypes.items", { returnObjects: true }) as unknown
     const rawOrder = t("schedule:lessonTypes.order", { returnObjects: true }) as unknown
-    const items = rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
-      ? (rawItems as Record<string, unknown>)
-      : {}
-    const baseOrder = Array.isArray(rawOrder) && rawOrder.length > 0
-      ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : (Object.keys(items) as string[])
+    const items =
+      rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
+        ? (rawItems as Record<string, unknown>)
+        : {}
+    const baseOrder =
+      Array.isArray(rawOrder) && rawOrder.length > 0
+        ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
+        : (Object.keys(items) as string[])
     const configs: LessonTypeConfig[] = []
     const seen = new Set<string>()
     const toConfig = (id: string, value?: unknown): LessonTypeConfig => {
@@ -319,24 +333,25 @@ export default function Schedule() {
         id,
         backend: [id],
         label: id,
-        color: defaultLessonTypeColor
+        color: defaultLessonTypeColor,
       }
-      const entry = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+      const entry =
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : undefined
       let backend: string[] = []
       if (Array.isArray(entry?.backend)) {
-        backend = entry.backend.filter((item): item is string => typeof item === "string" && item.length > 0)
+        backend = entry.backend.filter(
+          (item): item is string => typeof item === "string" && item.length > 0
+        )
       } else if (typeof entry?.backend === "string" && entry.backend.length > 0) {
         backend = [entry.backend]
       }
       if (backend.length === 0) backend = [...fallback.backend]
       const label =
-        typeof entry?.label === "string" && entry.label.length > 0
-          ? entry.label
-          : fallback.label
+        typeof entry?.label === "string" && entry.label.length > 0 ? entry.label : fallback.label
       const color =
-        typeof entry?.color === "string" && entry.color.length > 0
-          ? entry.color
-          : fallback.color
+        typeof entry?.color === "string" && entry.color.length > 0 ? entry.color : fallback.color
       return { id, backend, label, color }
     }
     for (const id of baseOrder) {
@@ -350,7 +365,10 @@ export default function Schedule() {
     if (configs.length === 0) return [minimalLessonTypeFallback]
     return configs
   }, [t])
-  const lessonTypeById = useMemo(() => new Map(lessonTypeConfigs.map(config => [config.id, config])), [lessonTypeConfigs])
+  const lessonTypeById = useMemo(
+    () => new Map(lessonTypeConfigs.map((config) => [config.id, config])),
+    [lessonTypeConfigs]
+  )
   const lessonTypeByBackend = useMemo(() => {
     const map = new Map<string, LessonTypeConfig>()
     for (const config of lessonTypeConfigs) {
@@ -371,7 +389,7 @@ export default function Schedule() {
     return map
   }, [lessonTypeConfigs])
   const lessonTypeOptions = useMemo(
-    () => lessonTypeConfigs.map(config => ({ value: config.id, label: config.label })),
+    () => lessonTypeConfigs.map((config) => ({ value: config.id, label: config.label })),
     [lessonTypeConfigs]
   )
   const defaultLessonType = lessonTypeOptions[0]?.value ?? minimalLessonTypeFallback.id ?? ""
@@ -430,21 +448,25 @@ export default function Schedule() {
     lessonType: defaultLessonType,
     startTime: "",
     endTime: "",
-    parity: "both"
+    parity: "both",
   })
   useEffect(() => {
     if (!defaultLessonType) return
-    setAddFields(prev => {
-      if (lessonTypeOptions.some(option => option.value === prev.lessonType)) return prev
+    setAddFields((prev) => {
+      if (lessonTypeOptions.some((option) => option.value === prev.lessonType)) return prev
       return { ...prev, lessonType: defaultLessonType }
     })
   }, [lessonTypeOptions, defaultLessonType])
   const editingLessonTypeOptions = useMemo(() => {
     if (!editLesson?.lesson_type) return lessonTypeOptions
-    if (lessonTypeOptions.some(option => option.value === editLesson.lesson_type)) return lessonTypeOptions
+    if (lessonTypeOptions.some((option) => option.value === editLesson.lesson_type))
+      return lessonTypeOptions
     return [
       ...lessonTypeOptions,
-      { value: editLesson.lesson_type, label: lessonTypeLabels.get(editLesson.lesson_type) ?? editLesson.lesson_type }
+      {
+        value: editLesson.lesson_type,
+        label: lessonTypeLabels.get(editLesson.lesson_type) ?? editLesson.lesson_type,
+      },
     ]
   }, [editLesson?.lesson_type, lessonTypeLabels, lessonTypeOptions])
   const addDayLabel = addDay ? getDayLabel(addDay) : ""
@@ -489,15 +511,22 @@ export default function Schedule() {
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
 
-  const scheduleQuery = useQuery<Lesson[], Error, Lesson[], ActiveScheduleQueryKey | InactiveScheduleQueryKey>({
-    queryKey: (scheduleKey ?? ["schedule", "group", "none"]) as ActiveScheduleQueryKey | InactiveScheduleQueryKey,
+  const scheduleQuery = useQuery<
+    Lesson[],
+    Error,
+    Lesson[],
+    ActiveScheduleQueryKey | InactiveScheduleQueryKey
+  >({
+    queryKey: (scheduleKey ?? ["schedule", "group", "none"]) as
+      | ActiveScheduleQueryKey
+      | InactiveScheduleQueryKey,
     queryFn: async () => {
       if (activeGroupId == null) return []
       const res = await api.get(`/schedule/${activeGroupId}`)
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: activeGroupId != null,
-    placeholderData: previous => schedulePlaceholder(activeGroupId, previous),
+    placeholderData: (previous) => schedulePlaceholder(activeGroupId, previous),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
@@ -517,7 +546,7 @@ export default function Schedule() {
 
   const applyScheduleUpdate = (updater: (prev: Lesson[]) => Lesson[]) => {
     if (!scheduleKey || activeGroupId == null) return
-    queryClient.setQueryData<Lesson[]>(scheduleKey, prev => {
+    queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
       const base = Array.isArray(prev) ? [...prev] : []
       const next = normalizeLessons(updater(base))
       writeToStorage(scheduleStorageKey(activeGroupId), next)
@@ -528,19 +557,19 @@ export default function Schedule() {
   useEffect(() => {
     if (!user) return
     if (user.role === "student" && user.group_id) {
-      setSelectedGroup(prev => (prev ?? user.group_id))
+      setSelectedGroup((prev) => prev ?? user.group_id)
     }
   }, [user])
 
   useEffect(() => {
     if (!user) return
     if ((user.role === "teacher" || user.role === "admin") && groups.length > 0) {
-      setSelectedGroup(prev => (prev ?? groups[0]?.id ?? null))
+      setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
     }
   }, [user, groups])
 
   const filteredSchedule = useMemo(
-    () => groupSchedule.filter(l => l.parity === "both" || l.parity === currentParity),
+    () => groupSchedule.filter((l) => l.parity === "both" || l.parity === currentParity),
     [groupSchedule, currentParity]
   )
 
@@ -549,26 +578,28 @@ export default function Schedule() {
     const today = weekdayBackend.at(todayIdx)
     if (!today) return []
     return filteredSchedule
-      .filter(l => l.weekday === today)
+      .filter((l) => l.weekday === today)
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   }, [filteredSchedule, hasToday, todayIdx])
 
   const currentLesson = useMemo(() => {
     if (!hasToday) return null
-    return todayLessons.find(l => {
-      const s = parseMinutes(l.start_time) ?? -1
-      const e = parseMinutes(l.end_time) ?? -1
-      return minutesNow >= s && minutesNow < e
-    }) || null
+    return (
+      todayLessons.find((l) => {
+        const s = parseMinutes(l.start_time) ?? -1
+        const e = parseMinutes(l.end_time) ?? -1
+        return minutesNow >= s && minutesNow < e
+      }) || null
+    )
   }, [todayLessons, minutesNow, hasToday])
 
   const nextLesson = useMemo(() => {
     if (!hasToday) return null
     if (currentLesson) {
       const endM = parseMinutes(currentLesson.end_time) ?? 0
-      return todayLessons.find(l => (parseMinutes(l.start_time) ?? 0) > endM) || null
+      return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
     }
-    return todayLessons.find(l => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
+    return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
   }, [todayLessons, currentLesson, minutesNow, hasToday])
 
   const [timeLeftText, setTimeLeftText] = useState<string>("")
@@ -579,17 +610,13 @@ export default function Schedule() {
         const left = Math.max(0, end - (dayjs().hour() * 60 + dayjs().minute()))
         const h = Math.floor(left / 60)
         const m = left % 60
-        setTimeLeftText(
-          t("schedule:timeLeft.current", { duration: formatDuration(h, m) })
-        )
+        setTimeLeftText(t("schedule:timeLeft.current", { duration: formatDuration(h, m) }))
       } else if (nextLesson) {
         const start = parseMinutes(nextLesson.start_time) ?? 0
         const left = Math.max(0, start - (dayjs().hour() * 60 + dayjs().minute()))
         const h = Math.floor(left / 60)
         const m = left % 60
-        setTimeLeftText(
-          t("schedule:timeLeft.next", { duration: formatDuration(h, m) })
-        )
+        setTimeLeftText(t("schedule:timeLeft.next", { duration: formatDuration(h, m) }))
       } else {
         setTimeLeftText("")
       }
@@ -616,7 +643,7 @@ export default function Schedule() {
   const tableRows = useDeferredValue(tableRowsBase)
   const [rowLimit, setRowLimit] = useState(0)
   useEffect(() => {
-    setRowLimit(prev => {
+    setRowLimit((prev) => {
       const start = Math.min(12, tableRows.length)
       return start
     })
@@ -627,7 +654,7 @@ export default function Schedule() {
     const step = () => {
       if (cancelled) return
       startTransition(() => {
-        setRowLimit(prev => {
+        setRowLimit((prev) => {
           const next = Math.min(prev + chunk, tableRows.length)
           return next
         })
@@ -641,7 +668,9 @@ export default function Schedule() {
       if ("requestIdleCallback" in window) (window as any).requestIdleCallback(step)
       else setTimeout(step, 0)
     }
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [tableRows, rowLimit])
 
   useEffect(() => {
@@ -658,16 +687,16 @@ export default function Schedule() {
     const formatter = new Intl.DateTimeFormat(locale, {
       weekday: "long",
       day: "2-digit",
-      month: "short"
+      month: "short",
     })
     const parts = formatter.formatToParts(new Date())
-    const dayPart = parts.find(part => part.type === "day")?.value ?? ""
-    const monthPart = parts.find(part => part.type === "month")?.value ?? ""
-    const weekdayPart = parts.find(part => part.type === "weekday")?.value ?? ""
+    const dayPart = parts.find((part) => part.type === "day")?.value ?? ""
+    const monthPart = parts.find((part) => part.type === "month")?.value ?? ""
+    const weekdayPart = parts.find((part) => part.type === "weekday")?.value ?? ""
     const datePart = [dayPart, monthPart].filter(Boolean).join(" ")
     return `${datePart}${weekdayPart ? `, ${weekdayPart}` : ""}`
   }, [locale])
-  const activeGroupName = groups.find(g => g.id === selectedGroup)?.name || ""
+  const activeGroupName = groups.find((g) => g.id === selectedGroup)?.name || ""
 
   const conflictedIds = useMemo(() => {
     const byDay = new Map<string, Lesson[]>()
@@ -681,11 +710,16 @@ export default function Schedule() {
       arr.sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
       for (let i = 0; i < arr.length; i++) {
         for (let j = i + 1; j < arr.length; j++) {
-          const s1 = parseMinutes(arr[i].start_time), e1 = parseMinutes(arr[i].end_time)
-          const s2 = parseMinutes(arr[j].start_time), e2 = parseMinutes(arr[j].end_time)
+          const s1 = parseMinutes(arr[i].start_time),
+            e1 = parseMinutes(arr[i].end_time)
+          const s2 = parseMinutes(arr[j].start_time),
+            e2 = parseMinutes(arr[j].end_time)
           if (s1 == null || e1 == null || s2 == null || e2 == null) continue
           const overlap = Math.max(s1, s2) < Math.min(e1, e2)
-          if (overlap) { set.add(arr[i].id); set.add(arr[j].id) }
+          if (overlap) {
+            set.add(arr[i].id)
+            set.add(arr[j].id)
+          }
         }
       }
     }
@@ -702,14 +736,14 @@ export default function Schedule() {
     lineHeight: 1,
     fontSize: "clamp(.78rem, .7rem + .35vw, .98rem)",
     userSelect: "none",
-    whiteSpace: "nowrap"
+    whiteSpace: "nowrap",
   } as const
 
   const badgeGhost = {
     ...badgeBase,
     background: "var(--btn-bg)",
     color: "var(--nav-text)",
-    border: "1px solid var(--btn-border)"
+    border: "1px solid var(--btn-border)",
   } as const
 
   const headerCardSx = {
@@ -717,7 +751,7 @@ export default function Schedule() {
     p: 2,
     background: "var(--card-bg)",
     boxShadow: "0 12px 36px #00000012, 0 4px 14px #0000000a",
-    border: "1px solid var(--btn-border)"
+    border: "1px solid var(--btn-border)",
   }
 
   const headerActions = (
@@ -753,7 +787,7 @@ export default function Schedule() {
           left: "50%",
           transform: "translateX(-50%)",
           pointerEvents: "none",
-          zIndex: 3
+          zIndex: 3,
         }}
       >
         <Chip size="small" label={t("schedule:break", { minutes: gap })} className="chip-break" />
@@ -768,7 +802,7 @@ export default function Schedule() {
     isConflict,
     onDelete,
     onOpen,
-    hasBreakBefore
+    hasBreakBefore,
   }: {
     lesson: Lesson
     isConflict: boolean
@@ -791,17 +825,36 @@ export default function Schedule() {
         position: "relative",
         cursor: "pointer",
         mt: hasBreakBefore ? 2.5 : 0,
-        "&:hover": { transform: "translateY(-1px)", boxShadow: "0 10px 28px #0000001f, 0 2px 10px #0003" }
+        "&:hover": {
+          transform: "translateY(-1px)",
+          boxShadow: "0 10px 28px #0000001f, 0 2px 10px #0003",
+        },
       }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
-      <Box sx={{ position: "absolute", left: -1, top: -1, bottom: -1, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
+      <Box
+        sx={{
+          position: "absolute",
+          left: -1,
+          top: -1,
+          bottom: -1,
+          width: 6,
+          borderTopLeftRadius: 8,
+          borderBottomLeftRadius: 8,
+          background: getLessonTypeColor(lesson.lesson_type),
+        }}
+      />
       <Stack spacing={0.6}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Chip
             size="small"
             label={lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
-            sx={{ height: 22, fontWeight: 700, color: "#fff", background: getLessonTypeColor(lesson.lesson_type) }}
+            sx={{
+              height: 22,
+              fontWeight: 700,
+              color: "#fff",
+              background: getLessonTypeColor(lesson.lesson_type),
+            }}
           />
           <Chip
             size="small"
@@ -819,30 +872,63 @@ export default function Schedule() {
             display: "-webkit-box",
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
-            overflow: "hidden"
+            overflow: "hidden",
           }}
         >
           {lesson.subject}
         </Typography>
         <Stack direction="row" gap={1} flexWrap="wrap">
-          <Chip size="small" variant="outlined" icon={<SchoolIcon sx={{ fontSize: 16 }} />} label={lesson.teacher} sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }} />
-          <Chip size="small" variant="outlined" icon={<RoomIcon sx={{ fontSize: 16 }} />} label={lesson.room} sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }} />
+          <Chip
+            size="small"
+            variant="outlined"
+            icon={<SchoolIcon sx={{ fontSize: 16 }} />}
+            label={lesson.teacher}
+            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+          />
+          <Chip
+            size="small"
+            variant="outlined"
+            icon={<RoomIcon sx={{ fontSize: 16 }} />}
+            label={lesson.room}
+            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+          />
         </Stack>
       </Stack>
       <Tooltip title={t("schedule:lesson.details")}>
-        <InfoOutlinedIcon sx={{ position: "absolute", right: 8, bottom: 8, fontSize: 18, color: "var(--secondary-text)" }} />
+        <InfoOutlinedIcon
+          sx={{
+            position: "absolute",
+            right: 8,
+            bottom: 8,
+            fontSize: 18,
+            color: "var(--secondary-text)",
+          }}
+        />
       </Tooltip>
       {(user?.role === "admin" || user?.role === "teacher") && (
         <IconButton
           aria-label={t("schedule:aria.deleteLesson")}
           size="small"
           sx={{ position: "absolute", top: 6, right: 6, bgcolor: "var(--card-bg)", zIndex: 2 }}
-          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
         >
           <DeleteIcon fontSize="small" color="error" />
         </IconButton>
       )}
-      {isConflict && <Box sx={{ position: "absolute", inset: 0, borderRadius: 2, boxShadow: "0 0 0 3px #ef535033 inset", pointerEvents: "none" }} />}
+      {isConflict && (
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            borderRadius: 2,
+            boxShadow: "0 0 0 3px #ef535033 inset",
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </Box>
   )
 
@@ -864,52 +950,77 @@ export default function Schedule() {
           overflowX: "auto",
           scrollBehavior: "smooth",
           contentVisibility: "auto",
-          containIntrinsicSize: "600px"
+          containIntrinsicSize: "600px",
         }}
       >
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell align="center" sx={{ fontWeight: 700, width: 45, background: "var(--table-header-bg)", zIndex: 10, position: "sticky", left: 0, color: "var(--page-text)", fontSize: "clamp(0.98rem,1.7vw,1.13rem)" }}>№</TableCell>
+              <TableCell
+                align="center"
+                sx={{
+                  fontWeight: 700,
+                  width: 45,
+                  background: "var(--table-header-bg)",
+                  zIndex: 10,
+                  position: "sticky",
+                  left: 0,
+                  color: "var(--page-text)",
+                  fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
+                }}
+              >
+                №
+              </TableCell>
               {weekdayBackend.map((day, idx) => {
                 const label = weekdayLabels[idx] ?? day
                 return (
-                <TableCell
-                  align="center"
-                  key={day}
-                  ref={(el: HTMLTableCellElement | null) => {
-                    headRefs.current[idx] = el
-                  }}
-                  sx={{
-                    fontWeight: 700,
-                    background: hasToday && idx === todayIdx ? "var(--table-row-today)" : "var(--table-header-bg)",
-                    fontSize: "clamp(0.97rem, 1.4vw, 1.11rem)",
-                    zIndex: 5,
-                    color: "var(--page-text)",
-                    position: "relative",
-                    borderLeft: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
-                    borderRight: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined
-                  }}
-                >
-                  <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
-                    {label}
-                    {(user?.role === "admin" || user?.role === "teacher") && (
-                      <IconButton
-                        size="small"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setAddDay(day)
-                          setAddDialogOpen(true)
-                        }}
-                        sx={{ ml: 1, border: "1px solid var(--btn-border)", bgcolor: "var(--card-bg)", "&:hover": { bgcolor: "var(--option-bg)" }, height: 26, width: 26 }}
-                        aria-label={t("schedule:aria.addLesson", { day: label })}
-                      >
-                        <AddIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Box>
-                </TableCell>
-              )})}
+                  <TableCell
+                    align="center"
+                    key={day}
+                    ref={(el: HTMLTableCellElement | null) => {
+                      headRefs.current[idx] = el
+                    }}
+                    sx={{
+                      fontWeight: 700,
+                      background:
+                        hasToday && idx === todayIdx
+                          ? "var(--table-row-today)"
+                          : "var(--table-header-bg)",
+                      fontSize: "clamp(0.97rem, 1.4vw, 1.11rem)",
+                      zIndex: 5,
+                      color: "var(--page-text)",
+                      position: "relative",
+                      borderLeft: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
+                      borderRight: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
+                      {label}
+                      {(user?.role === "admin" || user?.role === "teacher") && (
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setAddDay(day)
+                            setAddDialogOpen(true)
+                          }}
+                          sx={{
+                            ml: 1,
+                            border: "1px solid var(--btn-border)",
+                            bgcolor: "var(--card-bg)",
+                            "&:hover": { bgcolor: "var(--option-bg)" },
+                            height: 26,
+                            width: 26,
+                          }}
+                          aria-label={t("schedule:aria.addLesson", { day: label })}
+                        >
+                          <AddIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                  </TableCell>
+                )
+              })}
             </TableRow>
           </TableHead>
           <TableBody sx={{ contentVisibility: "auto" }}>
@@ -922,7 +1033,17 @@ export default function Schedule() {
             ) : (
               visibleRows.map((row, rowIdx) => (
                 <TableRow key={rowIdx} sx={{ "&:hover": { background: "var(--table-row-hover)" } }}>
-                  <TableCell align="center" sx={{ fontWeight: 700, background: "var(--table-header-bg)", position: "sticky", left: 0, color: "var(--page-text)", fontSize: "clamp(0.98rem,1.7vw,1.13rem)" }}>
+                  <TableCell
+                    align="center"
+                    sx={{
+                      fontWeight: 700,
+                      background: "var(--table-header-bg)",
+                      position: "sticky",
+                      left: 0,
+                      color: "var(--page-text)",
+                      fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
+                    }}
+                  >
                     {rowIdx + 1}
                   </TableCell>
                   {row.map((lesson, colIdx) => {
@@ -933,10 +1054,17 @@ export default function Schedule() {
                           key={`empty-${rowIdx}-${colIdx}`}
                           sx={{
                             background: colIsToday ? "var(--table-row-today)" : "transparent",
-                            p: 1.2
+                            p: 1.2,
                           }}
                         >
-                          <Box sx={{ minHeight: lessonCardHeight, borderRadius: 2, border: "1px dashed var(--glass-border)", bgcolor: "transparent" }} />
+                          <Box
+                            sx={{
+                              minHeight: lessonCardHeight,
+                              borderRadius: 2,
+                              border: "1px dashed var(--glass-border)",
+                              bgcolor: "transparent",
+                            }}
+                          />
                         </TableCell>
                       )
                     }
@@ -958,7 +1086,7 @@ export default function Schedule() {
                           color: "var(--page-text)",
                           background: colIsToday ? "var(--table-row-today)" : "transparent",
                           overflow: "visible",
-                          p: 1.2
+                          p: 1.2,
                         }}
                       >
                         {renderBreakChip(rowIdx, colIdx)}
@@ -966,7 +1094,10 @@ export default function Schedule() {
                           lesson={lesson}
                           isConflict={isConflict}
                           hasBreakBefore={hasBreakBefore}
-                          onOpen={() => { setDialogLesson(lesson); setOpenDialog(true) }}
+                          onOpen={() => {
+                            setDialogLesson(lesson)
+                            setOpenDialog(true)
+                          }}
                           onDelete={() => handleDeleteLesson(lesson.id)}
                         />
                       </TableCell>
@@ -990,7 +1121,9 @@ export default function Schedule() {
           className="chip-day"
           color={hasToday && i === todayIdx ? "primary" : "default"}
           label={weekdayShort[i] ?? getDayLabel(day)}
-          onClick={() => dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          onClick={() =>
+            dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
           sx={{ flex: "0 0 auto" }}
         />
       ))}
@@ -1003,7 +1136,7 @@ export default function Schedule() {
       {weekdayBackend.map((day, dayIdx) => {
         const label = weekdayLabels[dayIdx] ?? day
         const lessons = filteredSchedule
-          .filter(l => l.weekday === day)
+          .filter((l) => l.weekday === day)
           .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
         return (
           <Paper
@@ -1016,24 +1149,34 @@ export default function Schedule() {
               borderRadius: 3,
               p: 2,
               mb: 1,
-              bgcolor: hasToday && dayIdx === todayIdx ? "var(--table-row-today)" : "var(--card-bg)",
+              bgcolor:
+                hasToday && dayIdx === todayIdx ? "var(--table-row-today)" : "var(--card-bg)",
               border: "1px solid var(--btn-border)",
               boxShadow: "0 10px 30px #00000014, 0 3px 12px #0000000a",
               contentVisibility: "auto",
-              containIntrinsicSize: "400px"
+              containIntrinsicSize: "400px",
             }}
           >
             <Box display="flex" alignItems="center" mb={1} gap={1}>
-              <Typography fontWeight={800} fontSize="1.12rem">{label}</Typography>
+              <Typography fontWeight={800} fontSize="1.12rem">
+                {label}
+              </Typography>
               {(user?.role === "admin" || user?.role === "teacher") && (
                 <IconButton
                   size="small"
-                  onClick={e => {
+                  onClick={(e) => {
                     e.stopPropagation()
                     setAddDay(day)
                     setAddDialogOpen(true)
                   }}
-                  sx={{ ml: 0.5, border: "1px solid var(--btn-border)", bgcolor: "var(--card-bg)", "&:hover": { bgcolor: "var(--option-bg)" }, height: 26, width: 26 }}
+                  sx={{
+                    ml: 0.5,
+                    border: "1px solid var(--btn-border)",
+                    bgcolor: "var(--card-bg)",
+                    "&:hover": { bgcolor: "var(--option-bg)" },
+                    height: 26,
+                    width: 26,
+                  }}
                   aria-label={t("schedule:aria.addLesson", { day: label })}
                 >
                   <AddIcon fontSize="small" />
@@ -1041,7 +1184,9 @@ export default function Schedule() {
               )}
             </Box>
             {lessons.length === 0 ? (
-              <Typography sx={{ color: "var(--secondary-text)" }}>{t("schedule:mobile.noLessons")}</Typography>
+              <Typography sx={{ color: "var(--secondary-text)" }}>
+                {t("schedule:mobile.noLessons")}
+              </Typography>
             ) : (
               <Stack spacing={1}>
                 {lessons.map((lesson, idx) => {
@@ -1058,7 +1203,10 @@ export default function Schedule() {
                         />
                       )}
                       <Box
-                        onClick={() => { setDialogLesson(lesson); setOpenDialog(true) }}
+                        onClick={() => {
+                          setDialogLesson(lesson)
+                          setOpenDialog(true)
+                        }}
                         sx={{
                           p: 1.3,
                           borderRadius: 2,
@@ -1067,26 +1215,83 @@ export default function Schedule() {
                           border: "1px solid var(--btn-border)",
                           cursor: "pointer",
                           transition: "transform .2s, box-shadow .2s",
-                          "&:hover": { background: "var(--option-hover-bg)", transform: "translateY(-1px)", boxShadow: "0 8px 26px #2175ee20, 0 1.5px 8px #0002" },
-                          position: "relative"
+                          "&:hover": {
+                            background: "var(--option-hover-bg)",
+                            transform: "translateY(-1px)",
+                            boxShadow: "0 8px 26px #2175ee20, 0 1.5px 8px #0002",
+                          },
+                          position: "relative",
                         }}
                       >
-                        <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, background: getLessonTypeColor(lesson.lesson_type) }} />
-                        <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" sx={{ pl: 1 }}>
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: 6,
+                            borderTopLeftRadius: 8,
+                            borderBottomLeftRadius: 8,
+                            background: getLessonTypeColor(lesson.lesson_type),
+                          }}
+                        />
+                        <Stack
+                          direction="row"
+                          gap={1}
+                          alignItems="center"
+                          flexWrap="wrap"
+                          sx={{ pl: 1 }}
+                        >
                           <Chip
                             size="small"
-                            label={lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
+                            label={
+                              lessonTypeLabels.get(lesson.lesson_type ?? "") ??
+                              lesson.lesson_type ??
+                              ""
+                            }
                             className="chip-type"
-                            sx={{ background: getLessonTypeColor(lesson.lesson_type), color: "#fff", height: 24, fontWeight: 700 }}
+                            sx={{
+                              background: getLessonTypeColor(lesson.lesson_type),
+                              color: "#fff",
+                              height: 24,
+                              fontWeight: 700,
+                            }}
                           />
-                          <Chip size="small" className="chip-time" icon={<AccessTimeIcon sx={{ fontSize: 16 }} />} label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`} />
+                          <Chip
+                            size="small"
+                            className="chip-time"
+                            icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
+                            label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+                          />
                         </Stack>
-                        <Typography fontWeight={700} fontSize="1.02rem" sx={{ color: "var(--page-text)", pl: 1, mt: 0.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                        <Typography
+                          fontWeight={700}
+                          fontSize="1.02rem"
+                          sx={{
+                            color: "var(--page-text)",
+                            pl: 1,
+                            mt: 0.5,
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                        >
                           {lesson.subject}
                         </Typography>
                         <Stack direction="row" gap={1} flexWrap="wrap" sx={{ pl: 1, mt: 0.4 }}>
-                          <Chip size="small" variant="outlined" icon={<SchoolIcon sx={{ fontSize: 16 }} />} label={lesson.teacher} />
-                          <Chip size="small" variant="outlined" icon={<RoomIcon sx={{ fontSize: 16 }} />} label={lesson.room} />
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            icon={<SchoolIcon sx={{ fontSize: 16 }} />}
+                            label={lesson.teacher}
+                          />
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            icon={<RoomIcon sx={{ fontSize: 16 }} />}
+                            label={lesson.room}
+                          />
                         </Stack>
                       </Box>
                     </Box>
@@ -1122,328 +1327,444 @@ export default function Schedule() {
           .MuiPaper-root { box-shadow: none !important; }
         }
       `}</style>
-      <Box sx={{ width: "100vw", minHeight: "100vh", bgcolor: "var(--page-bg)", color: "var(--page-text)", py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 } }}>
-        <Box sx={{ ...mainAlignSx, ml: { xs: 2, sm: 4, md: 5, lg: 8 }, mr: { xs: 2, sm: 4, md: 5, lg: 8 }, maxWidth: 980, mb: 2, mt: 0 }}>
-          <Stack data-fade style={{ '--fade-delay': '80ms' } as CSSProperties } direction="row" alignItems="center" flexWrap="wrap" gap={1.3} mb={2.2} mt={0.5}>
-            <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
-            <Typography variant="h4" fontWeight={700} color="primary.main" sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}>
-              {user?.role === "student"
-                ? t("schedule:title.student")
-                : t("schedule:title.default")}
-            </Typography>
-            <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>{todayLabel}</Box>
-            {activeGroupName && (
-              <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>
-                {t("schedule:header.groupName", { name: activeGroupName })}
-              </Box>
-            )}
-          </Stack>
-
-          <Stack data-fade style={{ '--fade-delay': '140ms' } as CSSProperties } direction="row" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
-            {headerActions}
-          </Stack>
-
-          <Box data-fade style={{ '--fade-delay': '200ms' } as CSSProperties } className="no-print" sx={{ ...headerCardSx, mb: 2 }}>
-            {currentLesson ? (
-              <Box>
-                <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                  <Chip size="small" className="chip-clock" label={t("schedule:chips.current") } />
-                  <Chip size="small" className="chip-time" label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`} />
-                  <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
-                  {!!timeLeftText && <Chip size="small" className="chip-left" label={timeLeftText} />}
-                </Stack>
-                <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
-                  <Chip size="small" variant="outlined" icon={<SchoolIcon sx={{ fontSize: 16 }} />} label={currentLesson.teacher} />
-                  <Chip size="small" variant="outlined" icon={<RoomIcon sx={{ fontSize: 16 }} />} label={currentLesson.room} />
-                </Stack>
-                <LinearProgress
-                  value={currentProgress}
-                  variant="determinate"
-                  className="lesson-progress"
-                  sx={{
-                    mt: 1.5,
-                    height: 8,
-                    borderRadius: 999,
-                    backgroundColor: "var(--progress-track)",
-                    "& .MuiLinearProgress-bar": {
-                      backgroundColor: "var(--progress-bar)",
-                      transition: "transform 0.4s linear"
-                    }
-                  }}
-                  aria-label={t("schedule:aria.currentProgress")}
-                />
-              </Box>
-            ) : nextLesson ? (
-              <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
-                <Chip size="small" className="chip-time" label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`} />
-                <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
-                {!!timeLeftText && <Chip size="small" className="chip-left" label={timeLeftText} />}
-              </Stack>
-            ) : (
-              <Typography sx={{ color: "var(--secondary-text)" }}>
-                {t("schedule:summary.noMoreToday")}
+        <Box
+          sx={{
+            width: "100vw",
+            minHeight: "100vh",
+            bgcolor: "var(--page-bg)",
+            color: "var(--page-text)",
+            py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 },
+          }}
+        >
+          <Box
+            sx={{
+              ...mainAlignSx,
+              ml: { xs: 2, sm: 4, md: 5, lg: 8 },
+              mr: { xs: 2, sm: 4, md: 5, lg: 8 },
+              maxWidth: 980,
+              mb: 2,
+              mt: 0,
+            }}
+          >
+            <Stack
+              data-fade
+              style={{ "--fade-delay": "80ms" } as CSSProperties}
+              direction="row"
+              alignItems="center"
+              flexWrap="wrap"
+              gap={1.3}
+              mb={2.2}
+              mt={0.5}
+            >
+              <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
+              <Typography
+                variant="h4"
+                fontWeight={700}
+                color="primary.main"
+                sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
+              >
+                {user?.role === "student"
+                  ? t("schedule:title.student")
+                  : t("schedule:title.default")}
               </Typography>
+              <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>{todayLabel}</Box>
+              {activeGroupName && (
+                <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>
+                  {t("schedule:header.groupName", { name: activeGroupName })}
+                </Box>
+              )}
+            </Stack>
+
+            <Stack
+              data-fade
+              style={{ "--fade-delay": "140ms" } as CSSProperties}
+              direction="row"
+              alignItems="center"
+              flexWrap="wrap"
+              gap={1}
+              mb={2}
+            >
+              {headerActions}
+            </Stack>
+
+            <Box
+              data-fade
+              style={{ "--fade-delay": "200ms" } as CSSProperties}
+              className="no-print"
+              sx={{ ...headerCardSx, mb: 2 }}
+            >
+              {currentLesson ? (
+                <Box>
+                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                    <Chip size="small" className="chip-clock" label={t("schedule:chips.current")} />
+                    <Chip
+                      size="small"
+                      className="chip-time"
+                      label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                    />
+                    <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
+                    {!!timeLeftText && (
+                      <Chip size="small" className="chip-left" label={timeLeftText} />
+                    )}
+                  </Stack>
+                  <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      icon={<SchoolIcon sx={{ fontSize: 16 }} />}
+                      label={currentLesson.teacher}
+                    />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      icon={<RoomIcon sx={{ fontSize: 16 }} />}
+                      label={currentLesson.room}
+                    />
+                  </Stack>
+                  <LinearProgress
+                    value={currentProgress}
+                    variant="determinate"
+                    className="lesson-progress"
+                    sx={{
+                      mt: 1.5,
+                      height: 8,
+                      borderRadius: 999,
+                      backgroundColor: "var(--progress-track)",
+                      "& .MuiLinearProgress-bar": {
+                        backgroundColor: "var(--progress-bar)",
+                        transition: "transform 0.4s linear",
+                      },
+                    }}
+                    aria-label={t("schedule:aria.currentProgress")}
+                  />
+                </Box>
+              ) : nextLesson ? (
+                <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                  <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
+                  <Chip
+                    size="small"
+                    className="chip-time"
+                    label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
+                  />
+                  <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
+                  {!!timeLeftText && (
+                    <Chip size="small" className="chip-left" label={timeLeftText} />
+                  )}
+                </Stack>
+              ) : (
+                <Typography sx={{ color: "var(--secondary-text)" }}>
+                  {t("schedule:summary.noMoreToday")}
+                </Typography>
+              )}
+            </Box>
+
+            {(user?.role === "teacher" || user?.role === "admin") && (
+              <FormControl
+                data-fade
+                style={{ "--fade-delay": "240ms" } as CSSProperties}
+                fullWidth
+                sx={{ mb: 2, maxWidth: 340 }}
+              >
+                <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
+                <Select
+                  value={selectedGroup ?? ""}
+                  label={t("schedule:form.groupLabel")}
+                  onChange={(e) => setSelectedGroup(Number(e.target.value))}
+                >
+                  {groups.map((g) => (
+                    <MenuItem value={g.id} key={g.id}>
+                      {g.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             )}
           </Box>
 
-          {(user?.role === "teacher" || user?.role === "admin") && (
-            <FormControl data-fade style={{ '--fade-delay': '240ms' } as CSSProperties } fullWidth sx={{ mb: 2, maxWidth: 340 }}>
-              <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
-              <Select
-                value={selectedGroup ?? ""}
-                label={t("schedule:form.groupLabel")}
-                onChange={e => setSelectedGroup(Number(e.target.value))}
-              >
-                {groups.map(g => (
-                  <MenuItem value={g.id} key={g.id}>{g.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-        </Box>
+          <Box
+            data-fade
+            style={{ "--fade-delay": "280ms" } as CSSProperties}
+            sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}
+          >
+            {isMobile ? renderMobileCards() : renderTable()}
+          </Box>
 
-        <Box data-fade style={{ '--fade-delay': '280ms' } as CSSProperties } sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}>
-          {isMobile ? renderMobileCards() : renderTable()}
-        </Box>
-
-        <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-          <DialogTitle>{dialogLesson?.subject || t("schedule:dialog.detailsFallback")}</DialogTitle>
-          <DialogContent>
-            {dialogLesson && (
-              <Box>
-                <Box mb={1}>
-                  <b>{t("schedule:dialog.typeLabel")}:</b>{" "}
-                  <span style={{ color: "#fff", background: getLessonTypeColor(dialogLesson.lesson_type), borderRadius: 5, padding: "2px 8px" }}>
-                    {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ?? dialogLesson.lesson_type ?? ""}
-                  </span>
-                </Box>
+          <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
+            <DialogTitle>
+              {dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
+            </DialogTitle>
+            <DialogContent>
+              {dialogLesson && (
                 <Box>
-                  <b>{t("schedule:dialog.timeLabel")}:</b> {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}
-                </Box>
-                <Box>
-                  <b>{t("schedule:dialog.teacherLabel")}:</b> {dialogLesson.teacher}
-                </Box>
-                <Box>
-                  <b>{t("schedule:dialog.roomLabel")}:</b> {dialogLesson.room}
-                </Box>
-                <Stack direction="row" gap={1.2} mt={2}>
-                  {(user?.role === "admin" || user?.role === "teacher") && (
-                    <Button
-                      variant="outlined"
-                      onClick={() => {
-                        if (!dialogLesson) return
-                        setEditing(true)
-                        setEditLesson({
-                          ...dialogLesson,
-                          lesson_type: resolveLessonTypeId(dialogLesson.lesson_type)
-                        })
+                  <Box mb={1}>
+                    <b>{t("schedule:dialog.typeLabel")}:</b>{" "}
+                    <span
+                      style={{
+                        color: "#fff",
+                        background: getLessonTypeColor(dialogLesson.lesson_type),
+                        borderRadius: 5,
+                        padding: "2px 8px",
                       }}
                     >
-                      {t("schedule:buttons.edit")}
+                      {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ??
+                        dialogLesson.lesson_type ??
+                        ""}
+                    </span>
+                  </Box>
+                  <Box>
+                    <b>{t("schedule:dialog.timeLabel")}:</b> {getTimeStr(dialogLesson)}–
+                    {getEndTimeStr(dialogLesson)}
+                  </Box>
+                  <Box>
+                    <b>{t("schedule:dialog.teacherLabel")}:</b> {dialogLesson.teacher}
+                  </Box>
+                  <Box>
+                    <b>{t("schedule:dialog.roomLabel")}:</b> {dialogLesson.room}
+                  </Box>
+                  <Stack direction="row" gap={1.2} mt={2}>
+                    {(user?.role === "admin" || user?.role === "teacher") && (
+                      <Button
+                        variant="outlined"
+                        onClick={() => {
+                          if (!dialogLesson) return
+                          setEditing(true)
+                          setEditLesson({
+                            ...dialogLesson,
+                            lesson_type: resolveLessonTypeId(dialogLesson.lesson_type),
+                          })
+                        }}
+                      >
+                        {t("schedule:buttons.edit")}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => setOpenDialog(false)}
+                    >
+                      {t("schedule:buttons.close")}
                     </Button>
-                  )}
-                  <Button variant="outlined" color="secondary" onClick={() => setOpenDialog(false)}>
-                    {t("schedule:buttons.close")}
-                  </Button>
-                </Stack>
-              </Box>
-            )}
-          </DialogContent>
-        </Dialog>
+                  </Stack>
+                </Box>
+              )}
+            </DialogContent>
+          </Dialog>
 
-        <Dialog open={editing} onClose={() => setEditing(false)}>
-          <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
-          <DialogContent>
-            {editLesson && (
-              <Stack spacing={2} mt={1}>
+          <Dialog open={editing} onClose={() => setEditing(false)}>
+            <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
+            <DialogContent>
+              {editLesson && (
+                <Stack spacing={2} mt={1}>
+                  <TextField
+                    label={t("schedule:form.subject")}
+                    value={editLesson.subject}
+                    onChange={(e) => setEditLesson({ ...editLesson, subject: e.target.value })}
+                  />
+                  <TextField
+                    label={t("schedule:form.teacher")}
+                    value={editLesson.teacher}
+                    onChange={(e) => setEditLesson({ ...editLesson, teacher: e.target.value })}
+                  />
+                  <TextField
+                    label={t("schedule:form.room")}
+                    value={editLesson.room}
+                    onChange={(e) => setEditLesson({ ...editLesson, room: e.target.value })}
+                  />
+                  <TextField
+                    select
+                    label={t("schedule:form.lessonType")}
+                    value={editLesson.lesson_type}
+                    onChange={(e) => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
+                  >
+                    {editingLessonTypeOptions.map((option) => (
+                      <MenuItem value={option.value} key={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    select
+                    label={t("schedule:form.day")}
+                    value={editLesson.weekday}
+                    onChange={(e) => setEditLesson({ ...editLesson, weekday: e.target.value })}
+                  >
+                    {weekdayBackend.map((day) => (
+                      <MenuItem key={day} value={day}>
+                        {getDayLabel(day)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    type="time"
+                    label={t("schedule:form.startTime")}
+                    value={getTimeStr(editLesson)}
+                    onChange={(e) =>
+                      setEditLesson({
+                        ...editLesson,
+                        start_time: `${editLesson.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00`,
+                      })
+                    }
+                  />
+                  <TextField
+                    type="time"
+                    label={t("schedule:form.endTime")}
+                    value={getEndTimeStr(editLesson)}
+                    onChange={(e) =>
+                      setEditLesson({
+                        ...editLesson,
+                        end_time: `${editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00`,
+                      })
+                    }
+                  />
+                  <TextField
+                    select
+                    label={t("schedule:form.week")}
+                    value={editLesson.parity}
+                    onChange={(e) =>
+                      setEditLesson((prev) =>
+                        prev ? { ...prev, parity: e.target.value as LessonParity } : prev
+                      )
+                    }
+                  >
+                    <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
+                    <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
+                    <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
+                  </TextField>
+                  <Box display="flex" gap={2} mt={2}>
+                    <Button
+                      variant="contained"
+                      onClick={async () => {
+                        if (!editLesson) return
+                        const optimisticId = editLesson.id
+                        const backup = groupSchedule.map((l) => ({ ...l }))
+                        const backendLessonType = toBackendLessonType(editLesson.lesson_type)
+                        const updatedLesson: Lesson = {
+                          ...editLesson,
+                          lesson_type: backendLessonType,
+                        }
+                        applyScheduleUpdate((prev) =>
+                          prev.map((l) => (l.id === optimisticId ? updatedLesson : l))
+                        )
+                        try {
+                          await api.patch(`/schedule/${optimisticId}`, {
+                            subject: editLesson.subject,
+                            teacher: editLesson.teacher,
+                            room: editLesson.room,
+                            lesson_type: backendLessonType,
+                            weekday: editLesson.weekday,
+                            start_time: editLesson.start_time,
+                            end_time: editLesson.end_time,
+                            parity: editLesson.parity,
+                          })
+                          setSnack(t("schedule:snackbar.updated"))
+                          setEditing(false)
+                          setOpenDialog(false)
+                          await scheduleQuery.refetch().catch(() => {})
+                        } catch {
+                          setSnack(t("schedule:snackbar.updateError"))
+                          applyScheduleUpdate(() => backup)
+                        }
+                      }}
+                    >
+                      {t("common:buttons.save")}
+                    </Button>
+                    <Button variant="outlined" color="secondary" onClick={() => setEditing(false)}>
+                      {t("common:buttons.cancel")}
+                    </Button>
+                  </Box>
+                </Stack>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)}>
+            <DialogTitle>
+              {`${t("schedule:dialog.addTitle")}${addDayLabel ? ` (${addDayLabel})` : ""}`}
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={1} sx={{ minWidth: { xs: "auto", sm: 340 } }}>
                 <TextField
                   label={t("schedule:form.subject")}
-                  value={editLesson.subject}
-                  onChange={e => setEditLesson({ ...editLesson, subject: e.target.value })}
+                  value={addFields.subject}
+                  onChange={(e) => setAddFields({ ...addFields, subject: e.target.value })}
+                  fullWidth
                 />
                 <TextField
                   label={t("schedule:form.teacher")}
-                  value={editLesson.teacher}
-                  onChange={e => setEditLesson({ ...editLesson, teacher: e.target.value })}
+                  value={addFields.teacher}
+                  onChange={(e) => setAddFields({ ...addFields, teacher: e.target.value })}
+                  fullWidth
                 />
                 <TextField
                   label={t("schedule:form.room")}
-                  value={editLesson.room}
-                  onChange={e => setEditLesson({ ...editLesson, room: e.target.value })}
+                  value={addFields.room}
+                  onChange={(e) => setAddFields({ ...addFields, room: e.target.value })}
+                  fullWidth
                 />
                 <TextField
                   select
                   label={t("schedule:form.lessonType")}
-                  value={editLesson.lesson_type}
-                  onChange={e => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
+                  value={addFields.lessonType}
+                  onChange={(e) => setAddFields({ ...addFields, lessonType: e.target.value })}
+                  fullWidth
                 >
-                  {editingLessonTypeOptions.map(option => (
+                  {lessonTypeOptions.map((option) => (
                     <MenuItem value={option.value} key={option.value}>
                       {option.label}
                     </MenuItem>
                   ))}
                 </TextField>
                 <TextField
-                  select
-                  label={t("schedule:form.day")}
-                  value={editLesson.weekday}
-                  onChange={e => setEditLesson({ ...editLesson, weekday: e.target.value })}
-                >
-                  {weekdayBackend.map(day => (
-                    <MenuItem key={day} value={day}>
-                      {getDayLabel(day)}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
                   type="time"
                   label={t("schedule:form.startTime")}
-                  value={getTimeStr(editLesson)}
-                  onChange={e => setEditLesson({ ...editLesson, start_time: `${editLesson.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00` })}
+                  value={addFields.startTime}
+                  onChange={(e) => setAddFields({ ...addFields, startTime: e.target.value })}
+                  fullWidth
                 />
                 <TextField
                   type="time"
                   label={t("schedule:form.endTime")}
-                  value={getEndTimeStr(editLesson)}
-                  onChange={e => setEditLesson({ ...editLesson, end_time: `${editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00` })}
+                  value={addFields.endTime}
+                  onChange={(e) => setAddFields({ ...addFields, endTime: e.target.value })}
+                  fullWidth
                 />
                 <TextField
                   select
                   label={t("schedule:form.week")}
-                  value={editLesson.parity}
-                  onChange={e =>
-                    setEditLesson(prev => (prev ? { ...prev, parity: e.target.value as LessonParity } : prev))
+                  value={addFields.parity}
+                  onChange={(e) =>
+                    setAddFields((prev) => ({ ...prev, parity: e.target.value as LessonParity }))
                   }
+                  fullWidth
                 >
                   <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
                   <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
                   <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
                 </TextField>
                 <Box display="flex" gap={2} mt={2}>
-                  <Button
-                    variant="contained"
-                    onClick={async () => {
-                      if (!editLesson) return
-                      const optimisticId = editLesson.id
-                      const backup = groupSchedule.map(l => ({ ...l }))
-                      const backendLessonType = toBackendLessonType(editLesson.lesson_type)
-                      const updatedLesson: Lesson = { ...editLesson, lesson_type: backendLessonType }
-                      applyScheduleUpdate(prev => prev.map(l => (l.id === optimisticId ? updatedLesson : l)))
-                      try {
-                        await api.patch(`/schedule/${optimisticId}`, {
-                          subject: editLesson.subject,
-                          teacher: editLesson.teacher,
-                          room: editLesson.room,
-                          lesson_type: backendLessonType,
-                          weekday: editLesson.weekday,
-                          start_time: editLesson.start_time,
-                          end_time: editLesson.end_time,
-                          parity: editLesson.parity
-                        })
-                        setSnack(t("schedule:snackbar.updated"))
-                        setEditing(false)
-                        setOpenDialog(false)
-                        await scheduleQuery.refetch().catch(() => {})
-                      } catch {
-                        setSnack(t("schedule:snackbar.updateError"))
-                        applyScheduleUpdate(() => backup)
-                      }
-                    }}
-                  >
-                    {t("common:buttons.save")}
+                  <Button variant="contained" onClick={handleAddLesson}>
+                    {t("schedule:buttons.add")}
                   </Button>
-                  <Button variant="outlined" color="secondary" onClick={() => setEditing(false)}>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => setAddDialogOpen(false)}
+                  >
                     {t("common:buttons.cancel")}
                   </Button>
                 </Box>
               </Stack>
-            )}
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
 
-        <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)}>
-          <DialogTitle>
-            {`${t("schedule:dialog.addTitle")}${addDayLabel ? ` (${addDayLabel})` : ""}`}
-          </DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={1} sx={{ minWidth: { xs: "auto", sm: 340 } }}>
-              <TextField
-                label={t("schedule:form.subject")}
-                value={addFields.subject}
-                onChange={e => setAddFields({ ...addFields, subject: e.target.value })}
-                fullWidth
-              />
-              <TextField
-                label={t("schedule:form.teacher")}
-                value={addFields.teacher}
-                onChange={e => setAddFields({ ...addFields, teacher: e.target.value })}
-                fullWidth
-              />
-              <TextField
-                label={t("schedule:form.room")}
-                value={addFields.room}
-                onChange={e => setAddFields({ ...addFields, room: e.target.value })}
-                fullWidth
-              />
-              <TextField
-                select
-                label={t("schedule:form.lessonType")}
-                value={addFields.lessonType}
-                onChange={e => setAddFields({ ...addFields, lessonType: e.target.value })}
-                fullWidth
-              >
-                {lessonTypeOptions.map(option => (
-                  <MenuItem value={option.value} key={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                type="time"
-                label={t("schedule:form.startTime")}
-                value={addFields.startTime}
-                onChange={e => setAddFields({ ...addFields, startTime: e.target.value })}
-                fullWidth
-              />
-              <TextField
-                type="time"
-                label={t("schedule:form.endTime")}
-                value={addFields.endTime}
-                onChange={e => setAddFields({ ...addFields, endTime: e.target.value })}
-                fullWidth
-              />
-              <TextField
-                select
-                label={t("schedule:form.week")}
-                value={addFields.parity}
-                onChange={e => setAddFields(prev => ({ ...prev, parity: e.target.value as LessonParity }))}
-                fullWidth
-              >
-                <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
-                <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
-                <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
-              </TextField>
-              <Box display="flex" gap={2} mt={2}>
-                <Button variant="contained" onClick={handleAddLesson}>
-                  {t("schedule:buttons.add")}
-                </Button>
-                <Button variant="outlined" color="secondary" onClick={() => setAddDialogOpen(false)}>
-                  {t("common:buttons.cancel")}
-                </Button>
-              </Box>
-            </Stack>
-          </DialogContent>
-        </Dialog>
-
-        <Snackbar
-          open={!!snack}
-          autoHideDuration={2200}
-          onClose={() => setSnack("")}
-          message={snack}
-          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        />
-      </Box>
+          <Snackbar
+            open={!!snack}
+            autoHideDuration={2200}
+            onClose={() => setSnack("")}
+            message={snack}
+            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          />
+        </Box>
       </PageFadeIn>
     </Layout>
   )
@@ -1465,9 +1786,9 @@ export default function Schedule() {
       weekday: addDay,
       start_time: dayjs().format("YYYY-MM-DDT") + startTime + ":00",
       end_time: dayjs().format("YYYY-MM-DDT") + endTime + ":00",
-      parity
+      parity,
     }
-    applyScheduleUpdate(prev => [...prev, optimistic])
+    applyScheduleUpdate((prev) => [...prev, optimistic])
     try {
       await api.post("/schedule", {
         group_id: selectedGroup,
@@ -1478,21 +1799,29 @@ export default function Schedule() {
         weekday: addDay,
         start_time: optimistic.start_time,
         end_time: optimistic.end_time,
-        parity
+        parity,
       })
       setSnack(t("schedule:snackbar.added"))
-      setAddFields({ subject: "", teacher: "", room: "", lessonType: defaultLessonType, startTime: "", endTime: "", parity: "both" })
+      setAddFields({
+        subject: "",
+        teacher: "",
+        room: "",
+        lessonType: defaultLessonType,
+        startTime: "",
+        endTime: "",
+        parity: "both",
+      })
       setAddDialogOpen(false)
       await scheduleQuery.refetch().catch(() => {})
     } catch {
       setSnack(t("schedule:snackbar.addError"))
-      applyScheduleUpdate(prev => prev.filter(l => l.id !== optimistic.id))
+      applyScheduleUpdate((prev) => prev.filter((l) => l.id !== optimistic.id))
     }
   }
 
   async function handleDeleteLesson(id: number) {
-    const backup = groupSchedule.map(l => ({ ...l }))
-    applyScheduleUpdate(prev => prev.filter(l => l.id !== id))
+    const backup = groupSchedule.map((l) => ({ ...l }))
+    applyScheduleUpdate((prev) => prev.filter((l) => l.id !== id))
     try {
       await api.delete(`/schedule/${id}`)
       await scheduleQuery.refetch().catch(() => {})
@@ -1503,4 +1832,3 @@ export default function Schedule() {
     }
   }
 }
-

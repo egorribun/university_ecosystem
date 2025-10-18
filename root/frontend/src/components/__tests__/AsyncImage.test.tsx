@@ -28,7 +28,7 @@ describe("AsyncImage", () => {
 
   it("forces reload when version changes", () => {
     const { rerender } = render(
-      <AsyncImage src={src} version={1} alt="version" sx={{ width: 120, height: 120 }} />,
+      <AsyncImage src={src} version={1} alt="version" sx={{ width: 120, height: 120 }} />
     )
 
     const image = screen.getByTestId("async-image-img") as HTMLImageElement

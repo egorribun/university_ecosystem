@@ -54,14 +54,14 @@ describe("resolveMediaUrl", () => {
     setEnv("DEV", false)
     const { resolveMediaUrl } = await import("@/utils/media")
     expect(() => resolveMediaUrl("/media/avatar.png")).toThrowError(
-      /VITE_BACKEND_ORIGIN is not set/,
+      /VITE_BACKEND_ORIGIN is not set/
     )
   })
 
   it("allows overriding origin explicitly", async () => {
     const { resolveMediaUrl } = await import("@/utils/media")
     expect(resolveMediaUrl("/media/avatar.png", "https://override.example")).toBe(
-      "https://override.example/media/avatar.png",
+      "https://override.example/media/avatar.png"
     )
   })
 
@@ -79,14 +79,14 @@ describe("addVersionParam", () => {
   it("appends version parameter", async () => {
     const { addVersionParam } = await import("@/utils/media")
     expect(addVersionParam("https://example.com/image.png", 123)).toBe(
-      "https://example.com/image.png?_v=123",
+      "https://example.com/image.png?_v=123"
     )
   })
 
   it("updates existing parameter", async () => {
     const { addVersionParam } = await import("@/utils/media")
     expect(addVersionParam("https://example.com/image.png?_v=1", 2)).toBe(
-      "https://example.com/image.png?_v=2",
+      "https://example.com/image.png?_v=2"
     )
   })
 
@@ -97,8 +97,6 @@ describe("addVersionParam", () => {
 
   it("returns original URL when version is not provided", async () => {
     const { addVersionParam } = await import("@/utils/media")
-    expect(addVersionParam("https://example.com/image.png")).toBe(
-      "https://example.com/image.png",
-    )
+    expect(addVersionParam("https://example.com/image.png")).toBe("https://example.com/image.png")
   })
 })

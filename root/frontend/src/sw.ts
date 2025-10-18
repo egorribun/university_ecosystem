@@ -1,6 +1,10 @@
 /// <reference lib="webworker" />
 
-import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching"
+import {
+  cleanupOutdatedCaches,
+  precacheAndRoute,
+  createHandlerBoundToURL,
+} from "workbox-precaching"
 import { clientsClaim } from "workbox-core"
 import { registerRoute, NavigationRoute } from "workbox-routing"
 import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from "workbox-strategies"
@@ -421,34 +425,36 @@ self.addEventListener("sync", (event) => {
 const navigationHandler = createHandlerBoundToURL(OFFLINE_URL)
 
 registerRoute(
-  new NavigationRoute(async (options) => {
-    const { event, request, url } = options
-    const fetchEvent = event as FetchEvent
+  new NavigationRoute(
+    async (options) => {
+      const { event, request, url } = options
+      const fetchEvent = event as FetchEvent
 
-    if (!/^\/[^_].*/.test(url.pathname)) {
-      return fetch(request)
-    }
-
-    try {
-      const preload = "preloadResponse" in fetchEvent ? await fetchEvent.preloadResponse : undefined
-      if (preload) {
-        return preload
+      if (!/^\/[^_].*/.test(url.pathname)) {
+        return fetch(request)
       }
 
-      return await fetch(request)
-    } catch (error) {
-      return navigationHandler(options)
-    }
-  }, { allowlist: [/^\/[^_].*/] })
+      try {
+        const preload =
+          "preloadResponse" in fetchEvent ? await fetchEvent.preloadResponse : undefined
+        if (preload) {
+          return preload
+        }
+
+        return await fetch(request)
+      } catch (error) {
+        return navigationHandler(options)
+      }
+    },
+    { allowlist: [/^\/[^_].*/] }
+  )
 )
 
 registerRoute(
   ({ url }) => /\/api\/(news|schedule)/.test(url.pathname),
   new StaleWhileRevalidate({
     cacheName: API_CACHE,
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 }),
-    ],
+    plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 })],
   })
 )
 
@@ -456,19 +462,15 @@ registerRoute(
   ({ url }) => url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
   new NetworkFirst({
     cacheName: BACKEND_STATIC_CACHE,
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 }),
-    ],
-  }),
+    plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 })],
+  })
 )
 
 registerRoute(
   ({ request }) => request.destination === "image",
   new CacheFirst({
     cacheName: IMG_CACHE,
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 }),
-    ],
+    plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 })],
   })
 )
 

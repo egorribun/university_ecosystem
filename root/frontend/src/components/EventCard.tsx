@@ -14,9 +14,21 @@ import { isAxiosError } from "axios"
 import api from "../api/client"
 import type { Event } from "@/types/Event"
 import {
-  Typography, Button, Box, Stack, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton, Menu, MenuItem, useMediaQuery, Tooltip, Snackbar
+  Typography,
+  Button,
+  Box,
+  Stack,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Menu,
+  MenuItem,
+  useMediaQuery,
+  Tooltip,
+  Snackbar,
 } from "@mui/material"
 import type { DialogProps } from "@mui/material/Dialog"
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
@@ -112,7 +124,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   about,
   about_en,
   onChange,
-  maxWidth
+  maxWidth,
 }) => {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -145,7 +157,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     starts_at,
     ends_at,
     speaker: speaker ?? "",
-    image_url: image_url ?? ""
+    image_url: image_url ?? "",
   })
   const [newImage, setNewImage] = useState<File | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
@@ -154,9 +166,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
   const [snack, setSnack] = useState<string>("")
 
-  const getLocalizedEditValue = (
-    field: "title" | "description" | "event_type" | "location"
-  ) => {
+  const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
     const key = (language === "en" ? `${field}_en` : field) as keyof EventEditDraft
     return editData[key]
   }
@@ -282,7 +292,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       starts_at,
       ends_at,
       speaker: speaker ?? "",
-      image_url: image_url ?? ""
+      image_url: image_url ?? "",
     })
     resetImagePick()
     setEditOpen(true)
@@ -295,7 +305,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
   const cardImageUrl = useMemo(
     () => (previewUrl ? previewUrl : editData.image_url || undefined),
-    [editData.image_url, previewUrl],
+    [editData.image_url, previewUrl]
   )
   const [cardImageReady, setCardImageReady] = useState(() => !cardImageUrl)
 
@@ -308,7 +318,8 @@ const EventCardComponent: FC<EventCardProps> = ({
   const dateError =
     Boolean(editData.starts_at) &&
     Boolean(editData.ends_at) &&
-    new Date(normalizeDate(editData.ends_at)).getTime() < new Date(normalizeDate(editData.starts_at)).getTime()
+    new Date(normalizeDate(editData.ends_at)).getTime() <
+      new Date(normalizeDate(editData.starts_at)).getTime()
 
   const handleRegister = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -320,11 +331,15 @@ const EventCardComponent: FC<EventCardProps> = ({
       setQr(code)
       setCount((c) => c + 1)
       setSnack(t("events:card.messages.registerSuccess"))
-      try { localStorage.setItem(qrKey(id, user), code) } catch {}
+      try {
+        localStorage.setItem(qrKey(id, user), code)
+      } catch {}
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
-        (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK" || !error.response ||
+        (error.code === "ECONNABORTED" ||
+          error.code === "ERR_NETWORK" ||
+          !error.response ||
           (typeof error.response?.status === "number" && error.response.status >= 500))
 
       if (shouldResync) {
@@ -354,11 +369,15 @@ const EventCardComponent: FC<EventCardProps> = ({
       setQr(undefined)
       setCount((c) => Math.max(0, c - 1))
       setSnack(t("events:card.messages.unregisterSuccess"))
-      try { localStorage.removeItem(qrKey(id, user)) } catch {}
+      try {
+        localStorage.removeItem(qrKey(id, user))
+      } catch {}
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
-        (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK" || !error.response ||
+        (error.code === "ECONNABORTED" ||
+          error.code === "ERR_NETWORK" ||
+          !error.response ||
           (typeof error.response?.status === "number" && error.response.status >= 500))
 
       if (shouldResync) {
@@ -383,7 +402,9 @@ const EventCardComponent: FC<EventCardProps> = ({
     setLoading(true)
     try {
       await api.delete(`/events/${id}`)
-      try { localStorage.removeItem(qrKey(id, user)) } catch {}
+      try {
+        localStorage.removeItem(qrKey(id, user))
+      } catch {}
       setSnack(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
@@ -403,7 +424,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         const data = new FormData()
         data.append("file", newImage)
         const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data, {
-          headers: { "Content-Type": "multipart/form-data" }
+          headers: { "Content-Type": "multipart/form-data" },
         })
         imgUrl = uploadRes.data.url
         setImageLoading(false)
@@ -414,7 +435,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         location: normalizedEditLocation,
         image_url: imgUrl,
         starts_at: normalizeDate(editData.starts_at),
-        ends_at: normalizeDate(editData.ends_at)
+        ends_at: normalizeDate(editData.ends_at),
       }
       await api.patch(`/events/${id}`, payload)
       setEditData((prev) => ({ ...prev, image_url: imgUrl }))
@@ -475,10 +496,10 @@ const EventCardComponent: FC<EventCardProps> = ({
         }),
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
-          outlineOffset: "2px"
+          outlineOffset: "2px",
         },
         pointerEvents: qrOpen ? "none" : "auto",
-        filter: qrOpen ? "grayscale(0.12) opacity(0.92)" : "none"
+        filter: qrOpen ? "grayscale(0.12) opacity(0.92)" : "none",
       }}
       role="button"
       tabIndex={0}
@@ -503,7 +524,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               right: 10,
               zIndex: 2,
               bgcolor: "rgba(255,255,255,0.82)",
-              "&:hover": { bgcolor: "#fff" }
+              "&:hover": { bgcolor: "#fff" },
             }}
             onClick={(e) => {
               e.stopPropagation()
@@ -642,7 +663,13 @@ const EventCardComponent: FC<EventCardProps> = ({
 
       <Typography
         fontSize={16}
-        sx={{ mb: 2, display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+        sx={{
+          mb: 2,
+          display: "-webkit-box",
+          WebkitLineClamp: 5,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
       >
         {description}
       </Typography>
@@ -652,17 +679,21 @@ const EventCardComponent: FC<EventCardProps> = ({
         <Typography fontSize={15}>{t("events:card.participants", { count })}</Typography>
       </Box>
 
-      {is_active && !eventEnded && !registered && user?.role !== "admin" && user?.role !== "teacher" && (
-        <Button
-          variant="contained"
-          color="primary"
-          sx={{ fontWeight: 700, borderRadius: 2.2, mt: 1 }}
-          onClick={(e) => handleRegister(e)}
-          disabled={loading}
-        >
-          {t("events:card.actions.register")}
-        </Button>
-      )}
+      {is_active &&
+        !eventEnded &&
+        !registered &&
+        user?.role !== "admin" &&
+        user?.role !== "teacher" && (
+          <Button
+            variant="contained"
+            color="primary"
+            sx={{ fontWeight: 700, borderRadius: 2.2, mt: 1 }}
+            onClick={(e) => handleRegister(e)}
+            disabled={loading}
+          >
+            {t("events:card.actions.register")}
+          </Button>
+        )}
 
       {is_active && !eventEnded && registered && (
         <Box display="flex" alignItems="center" gap={2} mt={2}>
@@ -702,20 +733,23 @@ const EventCardComponent: FC<EventCardProps> = ({
                 keepMounted
                 disableScrollLock
                 transitionDuration={{ enter: 0, exit: 0 }}
-                onClose={((event, reason) => {
-                  if (reason === "backdropClick") {
-                    if (
-                      event &&
-                      typeof event === "object" &&
-                      "stopPropagation" in event &&
-                      typeof (event as { stopPropagation?: () => void }).stopPropagation === "function"
-                    ) {
-                      (event as { stopPropagation?: () => void }).stopPropagation?.()
+                onClose={
+                  ((event, reason) => {
+                    if (reason === "backdropClick") {
+                      if (
+                        event &&
+                        typeof event === "object" &&
+                        "stopPropagation" in event &&
+                        typeof (event as { stopPropagation?: () => void }).stopPropagation ===
+                          "function"
+                      ) {
+                        ;(event as { stopPropagation?: () => void }).stopPropagation?.()
+                      }
+                      setSkipNextClick(true)
                     }
-                    setSkipNextClick(true)
-                  }
-                  setQrOpen(false)
-                }) as DialogProps["onClose"]}
+                    setQrOpen(false)
+                  }) as DialogProps["onClose"]
+                }
                 PaperProps={{
                   onClick: (event: ReactMouseEvent<HTMLDivElement>) => event.stopPropagation(),
                   sx: {
@@ -724,7 +758,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                     maxWidth: "min(92vw, 92vh)",
                     width: "fit-content",
                     mx: { xs: 2, sm: "auto" },
-                  }
+                  },
                 }}
                 BackdropProps={{ sx: { backdropFilter: "blur(2px)" } }}
               >
@@ -778,7 +812,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               label={
                 language === "en"
                   ? t("events:form.title_en", {
-                      defaultValue: `${t("events:form.title")}${" (English)"}`
+                      defaultValue: `${t("events:form.title")}${" (English)"}`,
                     })
                   : t("events:form.title")
               }
@@ -790,7 +824,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               label={
                 language === "en"
                   ? t("events:form.description_en", {
-                      defaultValue: `${t("events:form.description")}${" (English)"}`
+                      defaultValue: `${t("events:form.description")}${" (English)"}`,
                     })
                   : t("events:form.description")
               }
@@ -804,7 +838,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               label={
                 language === "en"
                   ? t("events:form.type_en", {
-                      defaultValue: `${t("events:form.type")}${" (English)"}`
+                      defaultValue: `${t("events:form.type")}${" (English)"}`,
                     })
                   : t("events:form.type")
               }
@@ -816,7 +850,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               label={
                 language === "en"
                   ? t("events:form.location_en", {
-                      defaultValue: `${t("events:form.location")}${" (English)"}`
+                      defaultValue: `${t("events:form.location")}${" (English)"}`,
                     })
                   : t("events:form.location")
               }
@@ -889,7 +923,12 @@ const EventCardComponent: FC<EventCardProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button variant="outlined" color="secondary" onClick={closeEditDialog} startIcon={<CloseIcon />}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={closeEditDialog}
+            startIcon={<CloseIcon />}
+          >
             {t("common:buttons.cancel")}
           </Button>
           <Button

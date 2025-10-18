@@ -15,6 +15,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Apply Create active sessions table."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    if "active_sessions" in inspector.get_table_names():
+        return
+
     op.create_table(
         "active_sessions",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -45,6 +51,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Revert Create active sessions table."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    if "active_sessions" not in inspector.get_table_names():
+        return
+
     op.drop_index("ix_active_sessions_jti", table_name="active_sessions")
     op.drop_index("ix_active_sessions_revoked_at", table_name="active_sessions")
     op.drop_index("ix_active_sessions_expires_at", table_name="active_sessions")

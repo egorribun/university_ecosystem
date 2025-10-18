@@ -1,26 +1,26 @@
 /// <reference types="vitest" />
-import '@testing-library/jest-dom';
-import { TextEncoder, TextDecoder } from 'node:util';
-import { webcrypto } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
-import { toHaveNoViolations } from 'jest-axe';
-import { server } from './tests/mocks/server';
-import i18n from './i18n/config';
+import "@testing-library/jest-dom"
+import { TextEncoder, TextDecoder } from "node:util"
+import { webcrypto } from "node:crypto"
+import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
+import { toHaveNoViolations } from "jest-axe"
+import { server } from "./tests/mocks/server"
+import i18n from "./i18n/config"
 
-expect.extend(toHaveNoViolations);
+expect.extend(toHaveNoViolations)
 
 beforeAll(async () => {
-  await i18n.changeLanguage('en');
-  document.documentElement.lang = 'en';
-  server.listen({ onUnhandledRequest: 'error' });
-});
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder;
-if (!(globalThis as any).TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any;
-if (!(globalThis as any).crypto) (globalThis as any).crypto = webcrypto;
-if (!('matchMedia' in window)) {
-  Object.defineProperty(window, 'matchMedia', {
+  await i18n.changeLanguage("en")
+  document.documentElement.lang = "en"
+  server.listen({ onUnhandledRequest: "error" })
+})
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
+if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder
+if (!(globalThis as any).TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
+if (!(globalThis as any).crypto) (globalThis as any).crypto = webcrypto
+if (!("matchMedia" in window)) {
+  Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: (query: string) => ({
       matches: false,
@@ -32,13 +32,13 @@ if (!('matchMedia' in window)) {
       removeEventListener: () => {},
       dispatchEvent: () => false,
     }),
-  });
+  })
 }
-type ScrollToFunction = (options?: ScrollToOptions | number, y?: number) => void;
-const windowWithScroll = window as typeof window & { scrollTo?: ScrollToFunction };
+type ScrollToFunction = (options?: ScrollToOptions | number, y?: number) => void
+const windowWithScroll = window as typeof window & { scrollTo?: ScrollToFunction }
 if (!windowWithScroll.scrollTo) {
-  windowWithScroll.scrollTo = () => undefined;
+  windowWithScroll.scrollTo = () => undefined
 }
-vi.mock('qrcode.react', () => ({
-QRCodeSVG: () => null,
-}));
+vi.mock("qrcode.react", () => ({
+  QRCodeSVG: () => null,
+}))

@@ -1,11 +1,11 @@
-import { NavLink, useLocation } from "react-router-dom";
-import { useLayoutEffect, useMemo } from "react";
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import ArticleIcon from "@mui/icons-material/Article";
-import EventNoteIcon from "@mui/icons-material/EventNote";
-import TodayIcon from "@mui/icons-material/Today";
-import PersonIcon from "@mui/icons-material/Person";
-import { useTranslation } from "react-i18next";
+import { NavLink, useLocation } from "react-router-dom"
+import { useLayoutEffect, useMemo } from "react"
+import DashboardIcon from "@mui/icons-material/Dashboard"
+import ArticleIcon from "@mui/icons-material/Article"
+import EventNoteIcon from "@mui/icons-material/EventNote"
+import TodayIcon from "@mui/icons-material/Today"
+import PersonIcon from "@mui/icons-material/Person"
+import { useTranslation } from "react-i18next"
 
 function getScrollRoot(): HTMLElement {
   const cands: (Element | null | Document | HTMLElement)[] = [
@@ -16,60 +16,60 @@ function getScrollRoot(): HTMLElement {
     document.querySelector("#root"),
     (document as any).scrollingElement,
     document.documentElement,
-    document.body
-  ];
+    document.body,
+  ]
   for (const el of cands) {
-    if (!el) continue;
-    const e = el as HTMLElement;
-    const oy = getComputedStyle(e).overflowY;
-    const scrollable = (oy === "auto" || oy === "scroll") && e.scrollHeight > e.clientHeight;
-    if (scrollable) return e;
+    if (!el) continue
+    const e = el as HTMLElement
+    const oy = getComputedStyle(e).overflowY
+    const scrollable = (oy === "auto" || oy === "scroll") && e.scrollHeight > e.clientHeight
+    if (scrollable) return e
   }
-  return (document.scrollingElement || document.documentElement) as HTMLElement;
+  return (document.scrollingElement || document.documentElement) as HTMLElement
 }
 
 function smoothToTop(target: HTMLElement) {
   try {
-    (target as any).scrollTo({ top: 0, behavior: "smooth" });
+    ;(target as any).scrollTo({ top: 0, behavior: "smooth" })
   } catch {
-    const start = target.scrollTop;
-    const duration = 420;
-    let t0 = 0;
+    const start = target.scrollTop
+    const duration = 420
+    let t0 = 0
     const step = (ts: number) => {
-      if (!t0) t0 = ts;
-      const p = Math.min(1, (ts - t0) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      target.scrollTop = Math.round(start * (1 - eased));
-      if (p < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+      if (!t0) t0 = ts
+      const p = Math.min(1, (ts - t0) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      target.scrollTop = Math.round(start * (1 - eased))
+      if (p < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
   }
 }
 
 function markIfFromBottom() {
-  const el = getScrollRoot();
-  const threshold = 24;
-  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold;
-  if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1");
+  const el = getScrollRoot()
+  const threshold = 24
+  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold
+  if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1")
 }
 
 function samePath(a: string, b: string) {
-  const na = a.replace(/\/+$/, "") || "/";
-  const nb = b.replace(/\/+$/, "") || "/";
-  return na === nb;
+  const na = a.replace(/\/+$/, "") || "/"
+  const nb = b.replace(/\/+$/, "") || "/"
+  return na === nb
 }
 
 export default function MobileBottomNav() {
-  const { pathname } = useLocation();
-  const { t } = useTranslation(["navigation"]);
+  const { pathname } = useLocation()
+  const { t } = useTranslation(["navigation"])
 
   useLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
-      sessionStorage.removeItem("__scrollTopNext");
-      const el = getScrollRoot();
-      requestAnimationFrame(() => requestAnimationFrame(() => smoothToTop(el)));
+      sessionStorage.removeItem("__scrollTopNext")
+      const el = getScrollRoot()
+      requestAnimationFrame(() => requestAnimationFrame(() => smoothToTop(el)))
     }
-  }, [pathname]);
+  }, [pathname])
 
   const items = useMemo(
     () => [
@@ -77,18 +77,22 @@ export default function MobileBottomNav() {
       { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon /> },
       { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon /> },
       { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon /> },
-      { to: "/profile", label: t("navigation:menu.profile"), icon: <PersonIcon /> }
+      { to: "/profile", label: t("navigation:menu.profile"), icon: <PersonIcon /> },
     ],
     [t]
-  );
+  )
 
-  const hideOn = ["/login", "/register", "/forgot-password", "/reset-password"];
-  const hidden = hideOn.some((p) => pathname.startsWith(p));
-  if (hidden) return null;
+  const hideOn = ["/login", "/register", "/forgot-password", "/reset-password"]
+  const hidden = hideOn.some((p) => pathname.startsWith(p))
+  if (hidden) return null
 
   return (
     <>
-      <nav className="bottom-nav glass" role="navigation" aria-label={t("navigation:aria.mainNavigation")}>
+      <nav
+        className="bottom-nav glass"
+        role="navigation"
+        aria-label={t("navigation:aria.mainNavigation")}
+      >
         {items.map((it) => (
           <NavLink
             key={it.to}
@@ -96,16 +100,16 @@ export default function MobileBottomNav() {
             onPointerDown={markIfFromBottom}
             onClick={(e) => {
               if (samePath(pathname, it.to)) {
-                e.preventDefault();
-                const el = getScrollRoot();
-                requestAnimationFrame(() => smoothToTop(el));
+                e.preventDefault()
+                const el = getScrollRoot()
+                requestAnimationFrame(() => smoothToTop(el))
               }
             }}
             onKeyDown={(e) => {
               if ((e.key === "Enter" || e.key === " ") && samePath(pathname, it.to)) {
-                e.preventDefault();
-                const el = getScrollRoot();
-                requestAnimationFrame(() => smoothToTop(el));
+                e.preventDefault()
+                const el = getScrollRoot()
+                requestAnimationFrame(() => smoothToTop(el))
               }
             }}
             className={({ isActive }) => "bottom-nav__item" + (isActive ? " active" : "")}
@@ -118,5 +122,5 @@ export default function MobileBottomNav() {
       </nav>
       <div className="bottom-nav-spacer" aria-hidden="true" />
     </>
-  );
+  )
 }

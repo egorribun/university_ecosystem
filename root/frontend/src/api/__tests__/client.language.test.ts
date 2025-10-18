@@ -63,9 +63,9 @@ describe("API language interceptor", () => {
         observedLanguages.push(request.headers.get("accept-language") ?? "")
         return HttpResponse.json(
           { detail: english ? "Invalid credentials" : "Неверные данные для входа" },
-          { status: 401 },
+          { status: 401 }
         )
-      }),
+      })
     )
 
     const newsResponse = await api.get<NewsPayload[]>("/news")
@@ -77,11 +77,9 @@ describe("API language interceptor", () => {
     const notificationsResponse = await api.get<NotificationPayload[]>("/notifications")
     expect(notificationsResponse.data[0].message).toBe("New grade posted in Calculus.")
 
-    const loginResponse = await api.post<{ detail: string }>(
-      "/auth/login",
-      new URLSearchParams(),
-      { validateStatus: () => true },
-    )
+    const loginResponse = await api.post<{ detail: string }>("/auth/login", new URLSearchParams(), {
+      validateStatus: () => true,
+    })
     expect(loginResponse.status).toBe(401)
     expect(loginResponse.data.detail).toBe("Invalid credentials")
 
@@ -97,8 +95,8 @@ describe("API language interceptor", () => {
             title: request.headers.get("accept-language") ?? "",
             content: "",
           },
-        ]),
-      ),
+        ])
+      )
     )
 
     await i18n.changeLanguage("en")

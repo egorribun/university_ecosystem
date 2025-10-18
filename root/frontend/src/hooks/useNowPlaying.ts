@@ -122,7 +122,8 @@ export const fetchNowPlaying = async () => {
         const header = error.response.headers?.["retry-after"]
         const raw = Array.isArray(header) ? header[0] : header
         const parsed = raw != null ? Number.parseFloat(String(raw)) : NaN
-        const waitMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : RATE_LIMIT_FALLBACK_MS
+        const waitMs =
+          Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : RATE_LIMIT_FALLBACK_MS
         scheduleRateLimit(waitMs + RATE_LIMIT_BUFFER_MS)
       }
     }

@@ -48,7 +48,9 @@ function readActiveUserId(): string | null {
     if (!rawProfile) return null
     const parsed = JSON.parse(rawProfile)
     const data =
-      parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data?: unknown }).data : parsed
+      parsed && typeof parsed === "object" && "data" in parsed
+        ? (parsed as { data?: unknown }).data
+        : parsed
     if (!data || typeof data !== "object") return null
     const id = (data as Record<string, unknown>).id as MaybeUserId
     return normalizeUserId(id)
@@ -59,7 +61,7 @@ function readActiveUserId(): string | null {
 
 function parseTopicsPayload(
   raw: string | null,
-  options?: { userId?: MaybeUserId },
+  options?: { userId?: MaybeUserId }
 ): string[] | undefined {
   if (!raw) return undefined
   const userId = normalizeUserId(options?.userId) ?? readActiveUserId()
@@ -88,7 +90,9 @@ function parseTopicsPayload(
     }
 
     const shared =
-      "shared" in payload && payload.shared !== undefined ? payload.shared : (payload as { topics?: unknown }).topics
+      "shared" in payload && payload.shared !== undefined
+        ? payload.shared
+        : (payload as { topics?: unknown }).topics
     const sharedTopics = normalizeTopics(shared)
     if (sharedTopics !== undefined) {
       return sharedTopics
@@ -100,7 +104,10 @@ function parseTopicsPayload(
   }
 }
 
-export function parseStoredTopics(raw: string | null, options?: { userId?: MaybeUserId }): NormalizedTopics {
+export function parseStoredTopics(
+  raw: string | null,
+  options?: { userId?: MaybeUserId }
+): NormalizedTopics {
   return parseTopicsPayload(raw, options)
 }
 
@@ -111,7 +118,7 @@ export function getPersistedTopics(options?: { userId?: MaybeUserId }): string[]
 function buildTopicsPayload(
   nextTopics: string[] | null | undefined,
   existingRaw: string | null,
-  userId: string | null,
+  userId: string | null
 ): string | null {
   if (nextTopics == null) {
     if (!userId) {
@@ -177,7 +184,7 @@ function buildTopicsPayload(
       const sharedTopics = normalizeTopics(
         "shared" in payload && payload.shared !== undefined
           ? payload.shared
-          : (payload as { topics?: unknown }).topics,
+          : (payload as { topics?: unknown }).topics
       )
 
       const perUserEntries: Record<string, string[]> = {}
@@ -239,7 +246,7 @@ function buildTopicsPayload(
           const sharedTopics = normalizeTopics(
             "shared" in parsed && parsed.shared !== undefined
               ? parsed.shared
-              : (parsed as { topics?: unknown }).topics,
+              : (parsed as { topics?: unknown }).topics
           )
           if (sharedTopics !== undefined) {
             payload.shared = sharedTopics
@@ -293,7 +300,7 @@ function buildTopicsPayload(
 
 export function setPersistedTopics(
   topics: string[] | null | undefined,
-  options?: { userId?: MaybeUserId },
+  options?: { userId?: MaybeUserId }
 ): void {
   const normalizedUserId = normalizeUserId(options?.userId)
   const userId = normalizedUserId ?? readActiveUserId()
@@ -307,7 +314,7 @@ export function setPersistedTopics(
 }
 
 function sleep(ms: number) {
-  return new Promise<void>(resolve => setTimeout(resolve, ms))
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
 function getStoredValue(key: string): string | null {
@@ -332,14 +339,13 @@ function removeStoredValue(key: string) {
 
 async function persistSubscriptionWithBackoff(
   payload: Parameters<typeof saveSubscription>[0],
-  topics?: string[],
+  topics?: string[]
 ): Promise<Awaited<ReturnType<typeof saveSubscription>> | null> {
   let attempt = 0
   // Add jitter to reduce the probability of thundering herd
   const jitter = () => Math.random() * PERSIST_BASE_DELAY_MS
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (;;) {
     try {
       const response = await saveSubscription(payload, topics)
       const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
@@ -380,7 +386,7 @@ export function setPushConsent(consented: boolean): void {
 }
 
 export async function resolveServiceWorkerRegistration(
-  registration?: ServiceWorkerRegistration,
+  registration?: ServiceWorkerRegistration
 ): Promise<ServiceWorkerRegistration | null> {
   if (registration) return registration
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
@@ -396,13 +402,13 @@ export async function resolveServiceWorkerRegistration(
 
   try {
     const readyPromise = navigator.serviceWorker.ready
-      .then(reg => reg)
-      .catch(error => {
+      .then((reg) => reg)
+      .catch((error) => {
         console.warn("Service worker ready promise rejected", error)
         return null
       })
 
-    const timeout = new Promise<ServiceWorkerRegistration | null>(resolve => {
+    const timeout = new Promise<ServiceWorkerRegistration | null>((resolve) => {
       setTimeout(() => resolve(null), SERVICE_WORKER_READY_TIMEOUT_MS)
     })
 
@@ -473,7 +479,7 @@ type EnsurePushSubscriptionOptions = {
 }
 
 export async function ensurePushSubscription(
-  options?: EnsurePushSubscriptionOptions,
+  options?: EnsurePushSubscriptionOptions
 ): Promise<PushSubscription | null> {
   if (
     !("serviceWorker" in navigator) ||
@@ -594,7 +600,9 @@ type UnsubscribePushOptions = {
   preserveTopics?: boolean
 }
 
-function clearPushLocals(options?: Pick<UnsubscribePushOptions, "preserveConsent" | "preserveTopics">) {
+function clearPushLocals(
+  options?: Pick<UnsubscribePushOptions, "preserveConsent" | "preserveTopics">
+) {
   if (!options?.preserveConsent) {
     try {
       localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
@@ -613,9 +621,7 @@ export async function unsubscribePush(options?: UnsubscribePushOptions) {
     return false
   }
 
-  const registration = await resolveServiceWorkerRegistration(
-    options?.registration,
-  )
+  const registration = await resolveServiceWorkerRegistration(options?.registration)
 
   if (!registration) {
     clearPushLocals(options)

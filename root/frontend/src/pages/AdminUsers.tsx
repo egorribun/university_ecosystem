@@ -2,8 +2,23 @@ import { useCallback, useEffect, useState } from "react"
 import api from "../api/client"
 import Layout from "../components/Layout"
 import {
-  Box, Typography, Avatar, Select, MenuItem, TextField, InputLabel, FormControl,
-  IconButton, Paper, Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Stack,
+  Box,
+  Typography,
+  Avatar,
+  Select,
+  MenuItem,
+  TextField,
+  InputLabel,
+  FormControl,
+  IconButton,
+  Paper,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TableContainer,
+  Stack,
   type SelectChangeEvent,
 } from "@mui/material"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -49,7 +64,7 @@ export default function AdminUsers() {
   const roleOptions: Record<UserRole, string> = {
     student: t("users.roles.student"),
     teacher: t("users.roles.teacher"),
-    admin: t("users.roles.admin")
+    admin: t("users.roles.admin"),
   }
 
   const fetchUsers = useCallback(async () => {
@@ -87,16 +102,16 @@ export default function AdminUsers() {
   }
 
   const handleFilterChange = (field: keyof UserFilters) => (value: string) => {
-    setFilters(prev => ({ ...prev, [field]: value }))
+    setFilters((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleRoleChange = (event: SelectChangeEvent<string>) => {
     const value = event.target.value as UserFilters["role"]
-    setFilters(prev => ({ ...prev, role: value }))
+    setFilters((prev) => ({ ...prev, role: value }))
   }
 
   const handleGroupFilterChange = (event: SelectChangeEvent<string>) => {
-    setFilters(prev => ({ ...prev, group_id: event.target.value }))
+    setFilters((prev) => ({ ...prev, group_id: event.target.value }))
   }
 
   const handleGroupSelectChange = (userId: number) => (event: SelectChangeEvent<string>) => {
@@ -111,7 +126,7 @@ export default function AdminUsers() {
           minHeight: "100vh",
           bgcolor: "var(--page-bg)",
           color: "var(--page-text)",
-          py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 }
+          py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 },
         }}
       >
         <Box
@@ -119,7 +134,7 @@ export default function AdminUsers() {
             ml: { xs: 2, sm: 4, md: 5, lg: 8 },
             mr: { xs: 2, sm: 4, md: 5, lg: 8 },
             maxWidth: 1200,
-            mx: "auto"
+            mx: "auto",
           }}
         >
           <Typography
@@ -132,7 +147,7 @@ export default function AdminUsers() {
               fontSize: "clamp(0.8rem, 5vw, 2.7rem)",
               whiteSpace: "nowrap",
               overflow: "hidden",
-              textOverflow: "ellipsis"
+              textOverflow: "ellipsis",
             }}
           >
             {t("users.title")}
@@ -141,14 +156,14 @@ export default function AdminUsers() {
             <TextField
               label={t("users.filters.fullName")}
               value={filters.full_name}
-              onChange={e => handleFilterChange("full_name")(e.target.value)}
+              onChange={(e) => handleFilterChange("full_name")(e.target.value)}
               sx={{ minWidth: 220 }}
             />
             <FormControl sx={{ minWidth: 150 }}>
               <InputLabel>{t("users.filters.group")}</InputLabel>
               <Select value={filters.group_id} onChange={handleGroupFilterChange}>
                 <MenuItem value="">{t("users.filters.all")}</MenuItem>
-                {groups.map(g => (
+                {groups.map((g) => (
                   <MenuItem value={String(g.id)} key={g.id}>
                     {g.name}
                   </MenuItem>
@@ -168,7 +183,7 @@ export default function AdminUsers() {
 
           {isMobile ? (
             <Stack spacing={2}>
-              {users.map(user => (
+              {users.map((user) => (
                 <Paper
                   key={user.id}
                   elevation={3}
@@ -178,10 +193,13 @@ export default function AdminUsers() {
                     display: "flex",
                     alignItems: "center",
                     gap: 2,
-                    position: "relative"
+                    position: "relative",
                   }}
                 >
-                  <Avatar src={getAvatar(user.avatar_url, user.id)} sx={{ width: 44, height: 44 }} />
+                  <Avatar
+                    src={getAvatar(user.avatar_url, user.id)}
+                    sx={{ width: 44, height: 44 }}
+                  />
                   <Box flex={1}>
                     <Typography fontWeight={600} fontSize={17} noWrap>
                       {user.full_name}
@@ -190,7 +208,16 @@ export default function AdminUsers() {
                       {user.email}
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center" mt={0.4}>
-                      <Typography fontSize={14} sx={{ bgcolor: "#e3f1fd", color: "#1565c0", borderRadius: 1, px: 1.2, py: 0.2 }}>
+                      <Typography
+                        fontSize={14}
+                        sx={{
+                          bgcolor: "#e3f1fd",
+                          color: "#1565c0",
+                          borderRadius: 1,
+                          px: 1.2,
+                          py: 0.2,
+                        }}
+                      >
                         {roleOptions[user.role]}
                       </Typography>
                       {user.role !== "teacher" && user.role !== "admin" && (
@@ -201,7 +228,7 @@ export default function AdminUsers() {
                             sx={{ fontSize: 14, height: 28 }}
                           >
                             <MenuItem value="">-</MenuItem>
-                            {groups.map(g => (
+                            {groups.map((g) => (
                               <MenuItem value={String(g.id)} key={g.id}>
                                 {g.name}
                               </MenuItem>
@@ -212,7 +239,11 @@ export default function AdminUsers() {
                     </Stack>
                   </Box>
                   {user.id !== (userContext?.id ?? null) && (
-                    <IconButton color="error" onClick={() => handleDelete(user.id)} sx={{ position: "absolute", top: 8, right: 8 }}>
+                    <IconButton
+                      color="error"
+                      onClick={() => handleDelete(user.id)}
+                      sx={{ position: "absolute", top: 8, right: 8 }}
+                    >
                       <DeleteIcon />
                     </IconButton>
                   )}
@@ -230,22 +261,34 @@ export default function AdminUsers() {
                 overflowX: "auto",
                 width: "100%",
                 minWidth: 0,
-                mt: 1
+                mt: 1,
               }}
             >
               <Table stickyHeader sx={{ minWidth: 700, width: "100%" }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.avatar")}</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.fullName")}</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.email")}</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.role")}</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.group")}</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>{t("users.table.actions")}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>
+                      {t("users.table.avatar")}
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>
+                      {t("users.table.fullName")}
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>
+                      {t("users.table.email")}
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>
+                      {t("users.table.role")}
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>
+                      {t("users.table.group")}
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>
+                      {t("users.table.actions")}
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {users.map(user => (
+                  {users.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell align="center">
                         <Avatar src={getAvatar(user.avatar_url, user.id)} />
@@ -261,7 +304,7 @@ export default function AdminUsers() {
                             sx={{ minWidth: 65 }}
                           >
                             <MenuItem value="">-</MenuItem>
-                            {groups.map(g => (
+                            {groups.map((g) => (
                               <MenuItem value={String(g.id)} key={g.id}>
                                 {g.name}
                               </MenuItem>
