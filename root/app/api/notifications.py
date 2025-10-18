@@ -5,7 +5,19 @@ from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import ValidationError
-from sqlalchemy import String, and_, delete, desc, func, or_, select, update
+from sqlalchemy import (
+    String,
+    and_,
+    delete,
+    desc,
+    func,
+    literal,
+    or_,
+    select,
+    update,
+)
+from sqlalchemy import inspect
+from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -22,6 +34,18 @@ from app.services.notifications import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+_MISSING_COLUMN_MARKERS = (
+    "no such column",
+    "unknown column",
+    "does not exist",
+    "undefined column",
+)
+
+
+def _is_missing_column_error(exc: SQLAlchemyError) -> bool:
+    message = str(getattr(exc, "orig", exc)).lower()
+    return any(marker in message for marker in _MISSING_COLUMN_MARKERS)
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -147,6 +171,130 @@ def _localized_notification_field(
     return ru_clean or en_clean
 
 
+async def _existing_notification_columns(db: AsyncSession) -> set[str]:
+    def _sync_get_columns(sync_session) -> set[str]:
+        bind = sync_session.bind
+        if bind is None:  # pragma: no cover - defensive guard
+            return set()
+        inspector = inspect(bind)
+        try:
+            columns = inspector.get_columns(Notification.__tablename__)
+        except NoSuchTableError:
+            return set()
+        return {column["name"] for column in columns}
+
+    return await db.run_sync(_sync_get_columns)
+
+
+async def _fetch_notification_rows(
+    db: AsyncSession,
+    user_id: int,
+    limit: int,
+    cursor_info: Optional[Tuple[datetime, int]],
+) -> tuple[list[Mapping[str, Any]], Optional[set[str]]]:
+    table = Notification.__table__
+    cols = table.c
+    where = [cols.user_id == user_id]
+    if cursor_info:
+        cursor_dt, cursor_id = cursor_info
+        where.append(
+            or_(
+                cols.created_at < cursor_dt,
+                and_(cols.created_at == cursor_dt, cols.id < cursor_id),
+            )
+        )
+    stmt = (
+        select(
+            cols.id,
+            cols.title,
+            cols.title_en,
+            cols.body,
+            cols.body_en,
+            cols.type,
+            cols.url,
+            cols.created_at.cast(String).label("created_at"),
+            cols.read,
+            cols.read_at.cast(String).label("read_at"),
+        )
+        .where(and_(*where))
+        .order_by(desc(cols.created_at), desc(cols.id))
+        .limit(limit + 1)
+    )
+    try:
+        rows = (await db.execute(stmt)).mappings().all()
+        return rows, None
+    except SQLAlchemyError as exc:
+        if not _is_missing_column_error(exc):
+            raise
+    except ValueError:
+        return await _fetch_notification_rows_fallback(
+            db, user_id, limit, cursor_info
+        )
+    return await _fetch_notification_rows_fallback(
+        db, user_id, limit, cursor_info
+    )
+
+
+async def _fetch_notification_rows_fallback(
+    db: AsyncSession,
+    user_id: int,
+    limit: int,
+    cursor_info: Optional[Tuple[datetime, int]],
+) -> tuple[list[Mapping[str, Any]], set[str]]:
+    available = await _existing_notification_columns(db)
+    if not available or "id" not in available or "user_id" not in available:
+        return [], available
+
+    table = Notification.__table__
+    cols = table.c
+
+    def column(name: str, *, default: Any = None):
+        if name in available:
+            column_obj = cols[name]
+            if name in {"created_at", "read_at"}:
+                return column_obj.cast(String).label(name)
+            return column_obj
+        return literal(default).label(name)
+
+    where = [cols.user_id == user_id]
+    if cursor_info:
+        cursor_dt, cursor_id = cursor_info
+        if "created_at" in available:
+            where.append(
+                or_(
+                    cols.created_at < cursor_dt,
+                    and_(cols.created_at == cursor_dt, cols.id < cursor_id),
+                )
+            )
+        else:
+            where.append(cols.id < cursor_id)
+
+    order_by_clauses = []
+    if "created_at" in available:
+        order_by_clauses.append(desc(cols.created_at))
+    order_by_clauses.append(desc(cols.id))
+
+    stmt = (
+        select(
+            column("id"),
+            column("title"),
+            column("title_en"),
+            column("body"),
+            column("body_en"),
+            column("type"),
+            column("url"),
+            column("created_at"),
+            column("read", default=False),
+            column("read_at"),
+        )
+        .where(and_(*where))
+        .order_by(*order_by_clauses)
+        .limit(limit + 1)
+    )
+    rows = (await db.execute(stmt)).mappings().all()
+    return rows, available
+
+
 def _serialize_notification(
     record: Notification | Mapping[str, Any], locale: str | None
 ) -> NotificationOut:
@@ -206,9 +354,7 @@ async def list_notifications(
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    table = Notification.__table__
-    cols = table.c
-    where = [cols.user_id == user.id]
+    cursor_info: Optional[Tuple[datetime, int]] = None
     if cursor:
         parsed = _decode_cursor(cursor)
         if not parsed:
@@ -216,40 +362,40 @@ async def list_notifications(
                 status_code=400,
                 detail=translate("errors.notifications.bad_cursor", locale=locale),
             )
-        c_dt, c_id = parsed
-        c_dt = _ensure_utc(c_dt)
-        where.append(
-            or_(
-                cols.created_at < c_dt,
-                and_(cols.created_at == c_dt, cols.id < c_id),
-            )
-        )
+        cursor_dt, cursor_id = parsed
+        cursor_info = (_ensure_utc(cursor_dt), cursor_id)
 
-    q_items = (
-        select(
-            cols.id,
-            cols.title,
-            cols.title_en,
-            cols.body,
-            cols.body_en,
-            cols.type,
-            cols.url,
-            cols.created_at.cast(String).label("created_at"),
-            cols.read,
-            cols.read_at.cast(String).label("read_at"),
-        )
-        .where(and_(*where))
-        .order_by(desc(cols.created_at), desc(cols.id))
-        .limit(limit + 1)
+    rows, available_columns = await _fetch_notification_rows(
+        db, user.id, limit, cursor_info
     )
-    rows = (await db.execute(q_items)).mappings().all()
     items = rows[:limit]
     has_more = len(rows) > limit
 
-    q_unread = select(func.count(Notification.id)).where(
-        and_(Notification.user_id == user.id, Notification.read.is_(False))
-    )
-    unread = (await db.execute(q_unread)).scalar_one() or 0
+    unread = 0
+    if available_columns == set():
+        unread = 0
+    elif available_columns is None or "read" in available_columns:
+        q_unread = select(func.count(Notification.id)).where(
+            and_(Notification.user_id == user.id, Notification.read.is_(False))
+        )
+        try:
+            unread = (await db.execute(q_unread)).scalar_one() or 0
+        except SQLAlchemyError as exc:  # pragma: no cover - defensive fallback
+            if not _is_missing_column_error(exc):
+                raise
+            unread = sum(
+                1 for row in rows if not _coerce_bool(row.get("read", False))
+            )
+    else:
+        count_stmt = select(func.count(Notification.id)).where(
+            Notification.user_id == user.id
+        )
+        try:
+            unread = (await db.execute(count_stmt)).scalar_one() or 0
+        except SQLAlchemyError:  # pragma: no cover - defensive fallback
+            unread = sum(
+                1 for row in rows if not _coerce_bool(row.get("read", False))
+            )
 
     next_cursor = None
     if items and has_more:
