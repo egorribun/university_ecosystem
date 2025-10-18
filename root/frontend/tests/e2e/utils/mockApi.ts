@@ -293,11 +293,66 @@ export async function useMockApi(page: Page) {
       return;
     }
 
-    if (pathname.startsWith("api/stats")) {
+    if (pathname === "api/stats/attendance") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          percent: 82,
+          present: 18,
+          total: 22,
+          trend: 6.5,
+          window_label: "last 30 days",
+          recent: [
+            {
+              date: new Date().toISOString(),
+              status: "present",
+              course: "Discrete Math",
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === "api/stats/grades") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          average: 4.7,
+          scale: "5",
+          trend: 0.4,
+          recent: [
+            {
+              course: "Physics",
+              score: 5,
+              max: 5,
+              date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === "api/stats/participation") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          events: 4,
+          hours: 12,
+          groups: 3,
+          trend: 1,
+          recent: [
+            {
+              title: "Volunteer Day",
+              date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+              role: "volunteer",
+            },
+          ],
+        }),
       });
       return;
     }
