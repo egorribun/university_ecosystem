@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union
+from uuid import uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from passlib.hash import bcrypt as passlib_bcrypt
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.localization import translate
+from app.models.models import ActiveSession
 
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 200
@@ -96,20 +99,37 @@ def get_password_hash(password: str, *, locale: str | None = None) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(
-    sub: Union[str, Any], expires_delta: int | None = None, extra: dict | None = None
+async def create_access_token(
+    sub: Union[str, Any],
+    expires_delta: int | None = None,
+    extra: dict | None = None,
+    db: AsyncSession | None = None,
 ) -> str:
     minutes = expires_delta or settings.access_token_expire_minutes
     now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=minutes)
+    jti = str(uuid4())
     payload = {
         "sub": str(sub),
         "iat": now,
         "nbf": now,
-        "exp": now + timedelta(minutes=minutes),
+        "exp": expires_at,
+        "jti": jti,
     }
     if extra:
         payload.update(extra)
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    if db is not None:
+        try:
+            user_id = int(sub)
+        except (TypeError, ValueError):  # pragma: no cover - defensive guard
+            raise ValueError(
+                "sub must be an integer when persisting sessions"
+            ) from None
+        session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
+        db.add(session)
+        await db.commit()
+    return token
 
 
 def decode_token(token: str) -> dict | None:

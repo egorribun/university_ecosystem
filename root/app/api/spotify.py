@@ -183,7 +183,7 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(user: User = Depends(get_current_user)):
-    state = create_access_token(str(user.id), expires_delta=10)
+    state = await create_access_token(str(user.id), expires_delta=10)
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
