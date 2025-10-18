@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import ValidationError
 from sqlalchemy import String, and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,6 @@ from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
 )
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
