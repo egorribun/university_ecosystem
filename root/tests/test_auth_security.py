@@ -1,4 +1,5 @@
 import pytest
+from fastapi import status
 from passlib.hash import bcrypt
 
 from app.auth.security import (
@@ -124,3 +125,90 @@ async def test_login_migrates_legacy_hash(async_client, user_factory, db_session
     await db_session.refresh(user)
     assert user.hashed_password.startswith("$argon2id$")
     assert verify_password(password, user.hashed_password)
+
+
+@pytest.mark.anyio
+async def test_create_user_requires_authentication(async_client):
+    payload = {
+        "email": "unauthorized@example.com",
+        "password": "ValidPass123!",
+        "role": "student",
+    }
+
+    response = await async_client.post("/users", json=payload)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.anyio
+async def test_create_user_forbidden_for_non_admin(async_client, user_factory):
+    password = "UserPass123!"
+    user = await user_factory(
+        role="student",
+        hashed_password=get_password_hash(password),
+    )
+
+    login_response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert login_response.status_code == status.HTTP_200_OK
+    token = login_response.json()["access_token"]
+
+    payload = {
+        "email": "new-student@example.com",
+        "password": "ValidPass456!",
+        "role": "student",
+    }
+
+    response = await async_client.post(
+        "/users",
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+        },
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json() == {"detail": "Access denied"}
+
+
+@pytest.mark.anyio
+async def test_create_user_allows_admin(async_client, user_factory):
+    password = "AdminPass123!"
+    admin = await user_factory(
+        role="admin",
+        hashed_password=get_password_hash(password),
+    )
+
+    login_response = await async_client.post(
+        "/auth/login",
+        data={"username": admin.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert login_response.status_code == status.HTTP_200_OK
+    token = login_response.json()["access_token"]
+
+    payload = {
+        "email": "created-by-admin@example.com",
+        "password": "ValidPass789!",
+        "role": "student",
+    }
+
+    response = await async_client.post(
+        "/users",
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["email"] == payload["email"]
+    assert body["role"] == "student"
