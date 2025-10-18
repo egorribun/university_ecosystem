@@ -1,6 +1,8 @@
 import pytest
+from sqlalchemy import select
 
-from app.auth.security import get_password_hash
+from app.auth.security import decode_token, get_password_hash
+from app.models.models import ActiveSession
 
 pytestmark = pytest.mark.anyio("asyncio")
 
@@ -67,3 +69,38 @@ async def test_logout_clears_cookie(async_client, user_factory):
 
     profile_response = await async_client.get("/users/me")
     assert profile_response.status_code == 401
+
+
+async def test_token_reuse_after_logout_rejected(
+    async_client, user_factory, db_session
+):
+    password = "ReusePass789!"
+    user = await _create_active_user(user_factory, password)
+
+    login_response = await _login(async_client, user.email, password)
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    payload = decode_token(token)
+    assert payload is not None
+    jti = payload.get("jti")
+    assert jti
+
+    result = await db_session.execute(
+        select(ActiveSession).where(ActiveSession.jti == jti)
+    )
+    session = result.scalars().first()
+    assert session is not None and session.revoked_at is None
+
+    headers = {"Authorization": f"Bearer {token}"}
+    ok_response = await async_client.get("/users/me", headers=headers)
+    assert ok_response.status_code == 200
+
+    logout_response = await async_client.post("/auth/logout", headers=headers)
+    assert logout_response.status_code == 200
+
+    await db_session.refresh(session)
+    assert session.revoked_at is not None
+
+    rejected = await async_client.get("/users/me", headers=headers)
+    assert rejected.status_code == 401

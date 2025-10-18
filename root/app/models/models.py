@@ -88,6 +88,12 @@ class User(Base):
         back_populates="user",
         passive_deletes=True,
     )
+    sessions = relationship(
+        "ActiveSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def spotify_connected(self) -> bool:
@@ -154,6 +160,24 @@ class Event(Base):
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
     )
+
+
+class ActiveSession(Base):
+    __tablename__ = "active_sessions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    jti = Column(String, nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    user = relationship("User", back_populates="sessions")
 
 
 class EventAttendance(Base):

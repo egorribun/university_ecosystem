@@ -8,13 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import (
     create_access_token,
+    decode_token,
     get_password_hash,
     verify_and_update_password,
 )
 from app.core.config import settings
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
-from app.models.models import User
+from app.models.models import ActiveSession, User
 from app.schemas.schemas import Token, UserCreate
 from app.utils.ratelimit import sensitive_route_limit
 
@@ -107,7 +108,7 @@ async def login(
         user.hashed_password = new_hash
         await db.commit()
         await db.refresh(user)
-    token = create_access_token(str(user_id))
+    token = await create_access_token(str(user_id), db=db)
     _set_access_token_cookie(response, token)
     return {"access_token": token, "token_type": "bearer"}
 
@@ -158,7 +159,7 @@ async def login_json(
         user.hashed_password = new_hash
         await db.commit()
         await db.refresh(user)
-    token = create_access_token(str(user_id))
+    token = await create_access_token(str(user_id), db=db)
     _set_access_token_cookie(response, token)
     return {"access_token": token, "token_type": "bearer"}
 
@@ -195,8 +196,30 @@ async def register(
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Terminate the client session."""
+
+    raw_token: str | None = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        scheme, _, value = auth_header.partition(" ")
+        if scheme.lower() == "bearer":
+            raw_token = value.strip() or None
+    if raw_token is None:
+        raw_token = request.cookies.get("access_token")
+
+    payload = decode_token(raw_token) if raw_token else None
+    jti = payload.get("jti") if payload else None
+    if jti:
+        res = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
+        session = res.scalars().first()
+        if session and session.revoked_at is None:
+            session.revoked_at = datetime.now(UTC)
+            await db.commit()
 
     _clear_access_token_cookie(response)
     return {"status": "ok"}
