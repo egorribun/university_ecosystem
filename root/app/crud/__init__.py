@@ -1,5 +1,6 @@
+import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy import and_, func, or_, select
@@ -594,3 +595,285 @@ async def delete_user(db: AsyncSession, user_id: int):
         raise ValueError(translate("errors.users.not_found"))
     await db.delete(user)
     await db.commit()
+
+
+def _dt_to_iso(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat()
+
+
+async def get_attendance_stats(
+    db: AsyncSession, *, user_id: int, period_days: int
+) -> Dict[str, Any]:
+    now = datetime.now(UTC)
+    window_start = now - timedelta(days=period_days)
+    previous_start = window_start - timedelta(days=period_days)
+
+    base_event_filter = (
+        models.Event.is_active.is_(True),
+        models.Event.starts_at >= window_start,
+        models.Event.starts_at < now,
+    )
+    total_events = await db.scalar(
+        select(func.count())
+        .select_from(models.Event)
+        .where(*base_event_filter)
+    )
+    total_events = int(total_events or 0)
+
+    attendance_filter = (
+        models.EventAttendance.user_id == user_id,
+        models.EventAttendance.event_id == models.Event.id,
+        *base_event_filter,
+    )
+    attended_events = await db.scalar(
+        select(func.count())
+        .select_from(models.EventAttendance)
+        .join(models.Event, models.Event.id == models.EventAttendance.event_id)
+        .where(*attendance_filter)
+    )
+    attended_events = int(attended_events or 0)
+
+    percent = (attended_events / total_events * 100) if total_events else 0.0
+
+    previous_events = await db.scalar(
+        select(func.count())
+        .select_from(models.Event)
+        .where(
+            models.Event.is_active.is_(True),
+            models.Event.starts_at >= previous_start,
+            models.Event.starts_at < window_start,
+        )
+    )
+    previous_events = int(previous_events or 0)
+
+    previous_attended = await db.scalar(
+        select(func.count())
+        .select_from(models.EventAttendance)
+        .join(models.Event, models.Event.id == models.EventAttendance.event_id)
+        .where(
+            models.EventAttendance.user_id == user_id,
+            models.Event.starts_at >= previous_start,
+            models.Event.starts_at < window_start,
+            models.Event.is_active.is_(True),
+        )
+    )
+    previous_attended = int(previous_attended or 0)
+    previous_percent = (
+        previous_attended / previous_events * 100 if previous_events else 0.0
+    )
+
+    recent_rows = await db.execute(
+        select(
+            models.EventAttendance.registered_at,
+            models.Event.starts_at,
+            models.Event.title,
+        )
+        .join(models.Event, models.Event.id == models.EventAttendance.event_id)
+        .where(*attendance_filter)
+        .order_by(models.EventAttendance.registered_at.desc())
+        .limit(5)
+    )
+    recent = []
+    for registered_at, starts_at, title in recent_rows.all():
+        date_source = starts_at or registered_at
+        recent.append(
+            {
+                "date": _dt_to_iso(date_source),
+                "status": "present",
+                "course": title or None,
+            }
+        )
+
+    return {
+        "percent": round(percent, 2),
+        "present": attended_events,
+        "total": total_events,
+        "trend": round(percent - previous_percent, 2),
+        "window_label": f"last {period_days} days",
+        "recent": recent,
+    }
+
+
+def _parse_grade_payload(
+    body: str | None, *, fallback_title: str, fallback_date: datetime | None
+) -> Dict[str, Any] | None:
+    if not body:
+        return None
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    score = payload.get("score")
+    try:
+        score_value = float(score)
+    except (TypeError, ValueError):
+        return None
+    max_score = payload.get("max")
+    max_value = None
+    if max_score is not None:
+        try:
+            max_value = float(max_score)
+        except (TypeError, ValueError):
+            max_value = None
+    course = payload.get("course")
+    if not isinstance(course, str) or not course.strip():
+        course = fallback_title
+    date_raw = payload.get("date")
+    if isinstance(date_raw, str):
+        try:
+            parsed = datetime.fromisoformat(date_raw)
+        except ValueError:
+            parsed = None
+    else:
+        parsed = None
+    date_value = parsed or fallback_date
+    return {
+        "course": course,
+        "score": score_value,
+        "max": max_value,
+        "date": _dt_to_iso(date_value),
+    }
+
+
+async def get_grade_stats(
+    db: AsyncSession, *, user_id: int, period_days: int
+) -> Dict[str, Any]:
+    now = datetime.now(UTC)
+    window_start = now - timedelta(days=period_days)
+    previous_start = window_start - timedelta(days=period_days)
+
+    current_rows = await db.execute(
+        select(models.Notification)
+        .where(
+            models.Notification.user_id == user_id,
+            models.Notification.type == "grade",
+            models.Notification.created_at >= window_start,
+            models.Notification.created_at < now,
+        )
+        .order_by(models.Notification.created_at.desc())
+    )
+    current_entries = []
+    for notification in current_rows.scalars():
+        entry = _parse_grade_payload(
+            notification.body,
+            fallback_title=notification.title or "",
+            fallback_date=notification.created_at,
+        )
+        if entry:
+            current_entries.append(entry)
+
+    previous_rows = await db.execute(
+        select(models.Notification)
+        .where(
+            models.Notification.user_id == user_id,
+            models.Notification.type == "grade",
+            models.Notification.created_at >= previous_start,
+            models.Notification.created_at < window_start,
+        )
+    )
+    previous_entries = []
+    for notification in previous_rows.scalars():
+        entry = _parse_grade_payload(
+            notification.body,
+            fallback_title=notification.title or "",
+            fallback_date=notification.created_at,
+        )
+        if entry:
+            previous_entries.append(entry)
+
+    def _average(items: List[Dict[str, Any]]) -> float:
+        if not items:
+            return 0.0
+        return sum(item["score"] for item in items) / len(items)
+
+    average = _average(current_entries)
+    previous_average = _average(previous_entries)
+
+    max_values = [item["max"] for item in current_entries if item.get("max")]
+    scale = "5"
+    if any(value and value > 5 for value in max_values):
+        scale = "100"
+
+    recent = current_entries[:5]
+
+    return {
+        "average": round(average, 2) if current_entries else 0.0,
+        "scale": scale,
+        "trend": round(average - previous_average, 2),
+        "recent": recent,
+    }
+
+
+async def get_participation_stats(
+    db: AsyncSession, *, user_id: int, period_days: int
+) -> Dict[str, Any]:
+    now = datetime.now(UTC)
+    window_start = now - timedelta(days=period_days)
+    previous_start = window_start - timedelta(days=period_days)
+
+    def _attendance_query(start: datetime, end: datetime):
+        return (
+            select(
+                models.EventAttendance.event_id,
+                models.EventAttendance.registered_at,
+                models.Event.starts_at,
+                models.Event.ends_at,
+                models.Event.title,
+                models.Event.event_type,
+            )
+            .join(models.Event, models.Event.id == models.EventAttendance.event_id)
+            .where(
+                models.EventAttendance.user_id == user_id,
+                models.Event.starts_at >= start,
+                models.Event.starts_at < end,
+                models.Event.is_active.is_(True),
+            )
+        )
+
+    current_rows = await db.execute(
+        _attendance_query(window_start, now).order_by(models.Event.starts_at.desc())
+    )
+    current_entries = current_rows.all()
+    previous_rows = await db.execute(_attendance_query(previous_start, window_start))
+    previous_entries = previous_rows.all()
+
+    unique_events = {}
+    total_hours = 0.0
+    event_types = set()
+    recent = []
+    for event_id, registered_at, starts_at, ends_at, title, event_type in current_entries:
+        if event_id not in unique_events:
+            unique_events[event_id] = (starts_at, ends_at)
+            if starts_at and ends_at:
+                start_dt = _ensure_utc(starts_at)
+                end_dt = _ensure_utc(ends_at)
+                if end_dt > start_dt:
+                    total_hours += (end_dt - start_dt).total_seconds() / 3600
+        if event_type:
+            event_types.add(event_type)
+        recent.append(
+            {
+                "title": title or "",
+                "date": _dt_to_iso(starts_at or registered_at),
+                "role": event_type or None,
+            }
+        )
+
+    recent.sort(key=lambda item: item["date"], reverse=True)
+    recent = recent[:5]
+
+    previous_event_ids = {row[0] for row in previous_entries}
+
+    return {
+        "events": len(unique_events),
+        "hours": round(total_hours, 2) if total_hours else 0.0,
+        "groups": len(event_types),
+        "trend": len(unique_events) - len(previous_event_ids),
+        "recent": recent,
+    }
