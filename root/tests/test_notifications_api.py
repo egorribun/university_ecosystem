@@ -2,6 +2,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, text, update
 
+from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.models.models import Notification
 
@@ -177,3 +178,24 @@ async def test_list_notifications_handles_invalid_data(
     from datetime import datetime
 
     datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+
+
+def test_serialize_notification_accepts_orm_instance():
+    notification = Notification(
+        id=42,
+        user_id=10,
+        title="Прямой доступ",
+        body="Проверка",
+        type="system",
+        url="/test",
+        read=True,
+    )
+
+    serialized = _serialize_notification(notification, locale="ru")
+
+    assert serialized.id == 42
+    assert serialized.title == "Прямой доступ"
+    assert serialized.body == "Проверка"
+    assert serialized.type == "system"
+    assert serialized.url == "/test"
+    assert serialized.read is True

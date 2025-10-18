@@ -107,7 +107,13 @@ def _serialize_notification(
     if isinstance(record, Mapping):
         getter = record.get
     else:
-        getter = record.__getattribute__  # type: ignore[attr-defined]
+        # ``getattr`` gracefully falls back to a default value, unlike
+        # ``object.__getattribute__`` which expects only the attribute name.
+        # Using a small wrapper keeps the ``getter`` interface consistent for
+        # mapping and ORM objects alike, preventing ``TypeError`` when
+        # additional arguments are supplied (as ``dict.get`` supports).
+        def getter(key: str, default: Any = None) -> Any:
+            return getattr(record, key, default)
 
     created_at = _ensure_utc(getter("created_at", None))
     read_at_raw = getter("read_at", None)
