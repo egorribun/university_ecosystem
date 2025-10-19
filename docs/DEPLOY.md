@@ -13,6 +13,19 @@ cp .env.production .env.local      # при необходимости
 VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
+## Docker image
+
+- `root/frontend.Dockerfile` собран в два этапа: на этапе `builder` запускается `npm ci && npm run build`, а финальный образ основан на `nginx:alpine` и содержит только содержимое `dist/`.
+- Значение `VITE_BACKEND_ORIGIN` передаётся через `--build-arg` (см. `docker-compose.yml`). Для локальной разработки оно уже выставлено в `http://localhost:8000`.
+- Статика отдаётся Nginx'ом с кэшированием: файлы в `assets/` получают заголовок `Cache-Control: public, max-age=31536000, immutable`, а `index.html` — `Cache-Control: no-cache`.
+- Контейнер слушает порт `80`. В docker-compose он проброшен на `8080`, поэтому SPA доступна на http://localhost:8080.
+
+```bash
+# пример локальной сборки
+docker compose build frontend
+docker compose up frontend
+```
+
 ## Reverse-proxy (Nginx)
 
 Если фронтенд и API находятся на разных хостах, проксируйте статику и медиа через тот же домен, что и SPA. Это избавит от CORS/Service Worker артефактов и позволит использовать абсолютные ссылки на API-домен.

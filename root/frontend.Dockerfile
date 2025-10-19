@@ -5,13 +5,18 @@ WORKDIR /app
 
 FROM base AS deps
 COPY root/frontend/package.json root/frontend/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --include=dev
+RUN --mount=type=cache,target=/root/.npm npm ci
 
-FROM base AS runner
-RUN addgroup -S app && adduser -S -G app app
+FROM base AS builder
+ARG VITE_BACKEND_ORIGIN=http://localhost:8000
+ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 COPY --from=deps /app/node_modules ./node_modules
 COPY root/frontend ./
-USER app
-EXPOSE 5173
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 CMD wget -qO- http://127.0.0.1:5173/ >/dev/null || exit 1
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+COPY root/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+CMD ["nginx", "-g", "daemon off;"]
