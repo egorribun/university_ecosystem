@@ -295,6 +295,11 @@ export default function Settings() {
     staleTime: 30_000,
   })
 
+  const sessionList = useMemo(
+    () => (Array.isArray(sessions) ? sessions : []),
+    [sessions]
+  )
+
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
       const { data } = await api.delete<ActiveSession>(`/auth/sessions/${sessionId}`)
@@ -1082,13 +1087,13 @@ export default function Settings() {
                 <Alert severity="error" variant="outlined" sx={{ mt: 2 }}>
                   {sessionsErrorMessage}
                 </Alert>
-              ) : sessions.length === 0 ? (
+              ) : sessionList.length === 0 ? (
                 <Typography variant="body2" sx={{ mt: 2, color: "var(--page-text)" }}>
                   {t("settings:sessions.empty")}
                 </Typography>
               ) : (
                 <List disablePadding sx={{ mt: 1 }}>
-                  {sessions.map((session) => {
+                  {sessionList.map((session) => {
                     const lastSeen = session.last_seen_at ?? session.created_at
                     const lastSeenText = t("settings:sessions.lastSeen.value", {
                       value: formatSessionTimestamp(lastSeen),
