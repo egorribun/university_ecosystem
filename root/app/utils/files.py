@@ -11,6 +11,7 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.localization import translate
+from app.utils.images import optimize_image
 
 logger = logging.getLogger(__name__)
 
@@ -167,14 +168,27 @@ async def save_image(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=translate("errors.files.content_type_mismatch", locale=locale),
         )
-    ext = _PREFERRED_EXTENSIONS.get(detected_type) or _ext_from_mime(detected_type)
+    try:
+        optimized_data, optimized_type = await asyncio.to_thread(
+            optimize_image,
+            data,
+            max_width=getattr(settings, "image_max_width", 0),
+            max_height=getattr(settings, "image_max_height", 0),
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=translate("errors.files.unsupported_type", locale=locale),
+        ) from None
+
+    ext = _PREFERRED_EXTENSIONS.get(optimized_type) or _ext_from_mime(optimized_type)
     name = _gen_name(prefix, ext)
     base = settings.static_dir_path
     sanitized_subdir = subdir.strip("/ ")
     target_dir = base / sanitized_subdir
     await asyncio.to_thread(_ensure_dir, target_dir)
     path = target_dir / name
-    await asyncio.to_thread(path.write_bytes, data)
+    await asyncio.to_thread(path.write_bytes, optimized_data)
     # Return canonical public URL without accidental duplicate slashes.
     return f"/static/{sanitized_subdir}/{name}"
 

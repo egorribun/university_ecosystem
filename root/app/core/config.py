@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     frontend_origins: str | list[str] = ""
     app_base_url: str = "http://localhost:5173"
     static_dir: str = "app/static"
+    image_max_width: int = 1920
+    image_max_height: int = 1920
     trusted_hosts: str | list[str] = "localhost,127.0.0.1"
     environment: str = "development"
     auto_create_schema: bool = True

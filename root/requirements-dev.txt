@@ -4,3 +4,4 @@ httpx>=0.27
 asgi-lifespan>=2.1
 argon2-cffi>=23.1.0
 python-magic>=0.4.27
+Pillow>=10

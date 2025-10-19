@@ -4,6 +4,7 @@ import re
 
 import pytest
 from fastapi import HTTPException, UploadFile
+from PIL import Image
 from starlette.datastructures import Headers
 
 from app.core.config import settings
@@ -23,11 +24,12 @@ def test_normalize_filename_prefix_compacts_symbols():
 
 @pytest.mark.asyncio
 async def test_save_image_offloads_io(tmp_path, monkeypatch):
-    png_header = b"\x89PNG\r\n\x1a\n"
-    body = png_header + b"\x00" * 10
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), color=(255, 0, 0)).save(buffer, format="PNG")
+    buffer.seek(0)
     upload = UploadFile(
         filename="avatar.png",
-        file=io.BytesIO(body),
+        file=buffer,
         headers=Headers({"content-type": "image/png"}),
     )
 
@@ -86,3 +88,62 @@ async def test_save_image_reports_localized_size_limit(monkeypatch):
         await files.save_image(upload, "avatars", "Profile Pic", locale="ru")
 
     assert excinfo.value.detail == translate("errors.files.too_large", locale="ru")
+
+
+@pytest.mark.asyncio
+async def test_save_image_resizes_and_converts_large_images(tmp_path, monkeypatch):
+    big = Image.new("RGB", (4000, 2000), color=(255, 0, 0))
+    buffer = io.BytesIO()
+    big.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    upload = UploadFile(
+        filename="huge.png",
+        file=buffer,
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "image_max_width", 512)
+    monkeypatch.setattr(settings, "image_max_height", 512)
+
+    url = await files.save_image(upload, "avatars", "Large Pic")
+    rel_path = url.removeprefix("/static/")
+    stored_path = settings.static_dir_path / rel_path
+
+    assert stored_path.suffix == ".webp"
+    with Image.open(stored_path) as saved:
+        assert saved.format == "WEBP"
+        assert saved.width <= 512
+        assert saved.height <= 512
+        assert "exif" not in saved.info
+
+
+@pytest.mark.asyncio
+async def test_save_image_preserves_transparency_with_png(tmp_path, monkeypatch):
+    image = Image.new("RGBA", (300, 200), color=(0, 128, 255, 128))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    upload = UploadFile(
+        filename="transparent.png",
+        file=buffer,
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "image_max_width", 512)
+    monkeypatch.setattr(settings, "image_max_height", 512)
+
+    url = await files.save_image(upload, "avatars", "Transparent Pic")
+    rel_path = url.removeprefix("/static/")
+    stored_path = settings.static_dir_path / rel_path
+
+    assert stored_path.suffix == ".png"
+    with Image.open(stored_path) as saved:
+        assert saved.format == "PNG"
+        assert saved.mode == "RGBA"
+        assert saved.width <= 300
+        assert saved.height <= 200
+        assert "exif" not in saved.info
