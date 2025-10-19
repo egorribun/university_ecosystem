@@ -9,7 +9,6 @@ from app.auth.security import get_password_hash
 from app.models import models
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
-
 pytestmark = pytest.mark.anyio("asyncio")
 
 
@@ -108,7 +107,9 @@ async def test_password_reset_initiation_audit(async_client, user_factory, caplo
     assert event["reason"] == "initiated"
 
 
-async def test_password_reset_completed_audit(async_client, user_factory, db_session, caplog):
+async def test_password_reset_completed_audit(
+    async_client, user_factory, db_session, caplog
+):
     caplog.set_level(logging.INFO)
     caplog.clear()
     hashed = get_password_hash("ResetCompletePass123!")
@@ -137,4 +138,3 @@ async def test_password_reset_completed_audit(async_client, user_factory, db_ses
     event = _find_event(caplog, "app.users.audit", "password.reset.completed")
     assert event["user_id"] == str(user.id)
     assert event["reason"] == "completed"
-

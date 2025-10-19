@@ -495,4 +495,3 @@ def _audit_log(
     if reason:
         payload["reason"] = reason
     audit_logger.log(level, json.dumps(payload, ensure_ascii=False))
-

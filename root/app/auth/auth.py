@@ -15,8 +15,8 @@ from app.auth.security import (
     verify_and_update_password,
 )
 from app.core.config import settings
-from app.core.observability import get_request_id
 from app.core.database import get_db
+from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
 from app.schemas.schemas import Token, UserCreate
@@ -309,4 +309,3 @@ def _audit_log(
     if reason:
         payload["reason"] = reason
     logger.log(level, json.dumps(payload, ensure_ascii=False))
-
