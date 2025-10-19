@@ -135,7 +135,9 @@ async def test_sensitive_dependency_memory_backend():
 
 
 @pytest.mark.anyio
-async def test_sensitive_dependency_redis_backend(monkeypatch, _rate_limit_redis_client):
+async def test_sensitive_dependency_redis_backend(
+    monkeypatch, _rate_limit_redis_client
+):
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
     settings.rate_limit_storage_backend = "redis"
@@ -152,7 +154,9 @@ async def test_sensitive_dependency_redis_backend(monkeypatch, _rate_limit_redis
         return {"ok": True}
 
     def _fail_check(*args, **kwargs):
-        raise AssertionError("Memory limiter should not run when Redis backend is configured")
+        raise AssertionError(
+            "Memory limiter should not run when Redis backend is configured"
+        )
 
     monkeypatch.setattr(ratelimit_module.limiter, "check", _fail_check)
 
