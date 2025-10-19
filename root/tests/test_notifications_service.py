@@ -1,15 +1,18 @@
 import asyncio
 import datetime as dt
 import logging
+from contextlib import contextmanager
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, event, select
 
 from app.core.config import settings
 from app.models.models import (
+    Group,
     Notification,
     NotificationDelivery,
     PushSubscription,
+    Schedule,
     User,
 )
 from app.services import notifications as notifications_module
@@ -25,6 +28,29 @@ from app.services.webpush import WebPushResult
 def _reset_vapid_cache() -> None:
     for cached in ("VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "WEBPUSH_SUBJECT"):
         settings.__dict__.pop(cached, None)
+
+
+@contextmanager
+def _count_queries(session):
+    queries = 0
+    engine = session.bind
+    if engine is None:
+        yield lambda: queries
+        return
+
+    sync_engine = engine.sync_engine
+
+    def _before_cursor_execute(
+        _conn, _cursor, _statement, _parameters, _context, _executemany
+    ) -> None:
+        nonlocal queries
+        queries += 1
+
+    event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        yield lambda: queries
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before_cursor_execute)
 
 
 @pytest.fixture
@@ -168,6 +194,59 @@ async def test_create_notifications_records_skip_without_credentials(
     assert delivery.status == "skipped_no_credentials"
     assert delivery.delivered_at is None
     _reset_vapid_cache()
+
+
+@pytest.mark.anyio
+async def test_generate_schedule_reminders_query_count_constant(
+    db_session, user_factory, monkeypatch: pytest.MonkeyPatch
+):
+    group = Group(name="G1")
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+
+    await user_factory(group_id=group.id)
+
+    async def _fake_create(*_args, **_kwargs) -> int:
+        return 0
+
+    monkeypatch.setattr(
+        notifications_module,
+        "create_notifications_for_users",
+        _fake_create,
+    )
+
+    async def _prepare_lessons(count: int) -> None:
+        await db_session.execute(delete(Schedule))
+        await db_session.commit()
+        now = dt.datetime.now(dt.timezone.utc)
+        lessons = [
+            Schedule(
+                group_id=group.id,
+                subject=f"Subject {idx}",
+                teacher="Teacher",
+                room="101",
+                weekday="monday",
+                start_time=now + dt.timedelta(minutes=idx + 1),
+                end_time=now + dt.timedelta(minutes=idx + 2),
+            )
+            for idx in range(count)
+        ]
+        db_session.add_all(lessons)
+        await db_session.commit()
+
+    async def _run_with_count(count: int) -> int:
+        await _prepare_lessons(count)
+        with _count_queries(db_session) as get_count:
+            await notifications_module.generate_schedule_reminders(
+                db_session, window_minutes=15
+            )
+        return get_count()
+
+    single_count = await _run_with_count(1)
+    many_count = await _run_with_count(5)
+
+    assert single_count == many_count
 
 
 @pytest.mark.anyio
