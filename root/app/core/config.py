@@ -141,6 +141,7 @@ class Settings(BaseSettings):
     notifications_scheduler_inline_enabled: bool = True
     notifications_worker_metrics_host: str = "0.0.0.0"
     notifications_worker_metrics_port: int = 9101
+    session_cleanup_interval_seconds: int = 900
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"
         "text/plain,"

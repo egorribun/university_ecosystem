@@ -25,6 +25,11 @@ from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services.notifications import start_notifications_scheduler
+from app.services.session_cleanup import (
+    SessionCleanupConfig,
+    cleanup_expired_sessions,
+    start_session_cleanup_scheduler,
+)
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -39,17 +44,27 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     stop_scheduler = None
+    stop_session_cleanup = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
             poll_seconds=settings.notifications_scheduler_poll_seconds,
             window_minutes=settings.notifications_scheduler_window_minutes,
             max_backoff_seconds=settings.notifications_scheduler_max_backoff_seconds,
         )
+    await cleanup_expired_sessions()
+    if settings.session_cleanup_interval_seconds > 0:
+        stop_session_cleanup = await start_session_cleanup_scheduler(
+            config=SessionCleanupConfig(
+                interval_seconds=settings.session_cleanup_interval_seconds
+            )
+        )
     try:
         yield
     finally:
         if stop_scheduler is not None:
             await stop_scheduler()
+        if stop_session_cleanup is not None:
+            await stop_session_cleanup()
         await shutdown_cache()
         shutdown_observability()
 
