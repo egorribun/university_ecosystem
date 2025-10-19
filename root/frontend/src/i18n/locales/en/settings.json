@@ -98,6 +98,30 @@
       "confirm": "Sign out"
     }
   },
+  "sessions": {
+    "title": "Devices & sessions",
+    "subtitle": "Sign out from browsers you no longer use.",
+    "loading": "Loading sessions…",
+    "empty": "No other sessions are active.",
+    "loadFailed": "Couldn't load sessions",
+    "revoke": "Revoke",
+    "unknownDevice": "Unknown device",
+    "ipAddress": "IP {{ip}}",
+    "ipUnknown": "IP unknown",
+    "lastSeen": {
+      "value": "Last seen {{value}}",
+      "never": "never"
+    },
+    "status": {
+      "active": "Active",
+      "current": "This device",
+      "revoked": "Revoked"
+    },
+    "snackbar": {
+      "revoked": "Session revoked",
+      "failed": "Couldn't revoke session"
+    }
+  },
   "integrations": {
     "spotify": {
       "title": "Spotify",

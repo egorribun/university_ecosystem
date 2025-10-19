@@ -265,6 +265,19 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class ActiveSessionOut(OrmModel):
+    id: int
+    user_id: int
+    jti: str
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    last_seen_at: datetime | None = None
+    is_current: bool = False
+
+
 class SpotifyAuthURL(BaseModel):
     url: str
 

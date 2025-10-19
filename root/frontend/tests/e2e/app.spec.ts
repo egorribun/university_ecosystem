@@ -57,4 +57,21 @@ test.describe("University ecosystem app", () => {
     await expect(page.getByText("Новость дня")).toBeVisible()
     expect(mock.state.newsLog.some((entry) => entry.status === 503)).toBeTruthy()
   })
+
+  test("allows revoking secondary sessions from settings", async ({ page }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    await page.goto("/settings")
+    await page.waitForURL(/\/settings$/)
+
+    await page.getByRole("tab", { name: "Аккаунт" }).click()
+
+    await expect(page.getByText("Устройства и сессии")).toBeVisible()
+    const revokeButton = await page.getByRole("button", { name: "Завершить" })
+    await revokeButton.click()
+
+    await expect(page.getByText("Сессия завершена")).toBeVisible()
+    await expect(page.getByText("Завершена")).toBeVisible()
+  })
 })

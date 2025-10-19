@@ -11,6 +11,7 @@ from app.api.events import router as events_router
 from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
 from app.api.schedule import router as schedule_api_router
+from app.api.sessions import router as sessions_router
 from app.api.spotify import router as spotify_router
 from app.api.stats import router as stats_router
 from app.api.users import router as users_router
@@ -173,6 +174,7 @@ async def ready():
 
 app.include_router(auth_router)
 app.include_router(spotify_router)
+app.include_router(sessions_router)
 app.include_router(notifications_router)
 app.include_router(push_router)
 app.include_router(legacy_push_router)

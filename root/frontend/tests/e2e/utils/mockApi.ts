@@ -10,6 +10,19 @@ type MockState = {
   newsVersion: string
   offline: boolean
   newsLog: NewsLogEntry[]
+  sessions: SessionMock[]
+}
+
+type SessionMock = {
+  id: number
+  user_id: number
+  jti: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  ip_address: string
+  user_agent: string
+  last_seen_at: string
 }
 
 const mockUser = {
@@ -74,12 +87,41 @@ const mockGroups = [
   { id: 2, name: "БИ-22", course: 2, faculty: "Бизнес" },
 ]
 
+const createMockSessions = (): SessionMock[] => {
+  const now = Date.now()
+  return [
+    {
+      id: 1,
+      user_id: 1,
+      jti: "mock-session-current",
+      created_at: new Date(now).toISOString(),
+      expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
+      revoked_at: null,
+      ip_address: "198.51.100.20",
+      user_agent: "Playwright Test Browser",
+      last_seen_at: new Date(now).toISOString(),
+    },
+    {
+      id: 2,
+      user_id: 1,
+      jti: "mock-session-secondary",
+      created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
+      expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
+      revoked_at: null,
+      ip_address: "203.0.113.50",
+      user_agent: "Safari/17.0 (iPhone; CPU iPhone OS)",
+      last_seen_at: new Date(now - 15 * 60 * 1000).toISOString(),
+    },
+  ]
+}
+
 export async function useMockApi(page: Page) {
   const state: MockState = {
     loggedIn: false,
     newsVersion: '"news-v1"',
     offline: false,
     newsLog: [],
+    sessions: createMockSessions(),
   }
 
   await page.addInitScript(() => {
@@ -179,6 +221,58 @@ export async function useMockApi(page: Page) {
           body: JSON.stringify({ detail: "Unauthorized" }),
         })
       }
+      return
+    }
+
+    if (pathname === "api/auth/sessions") {
+      if (!state.loggedIn) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+      const sessions = state.sessions.map((session, index) => ({
+        ...session,
+        is_current: index === 0,
+      }))
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(sessions),
+      })
+      return
+    }
+
+    const sessionDeleteMatch = pathname.match(/^api\/auth\/sessions\/(\d+)$/)
+    if (sessionDeleteMatch) {
+      if (!state.loggedIn) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+      const id = Number.parseInt(sessionDeleteMatch[1], 10)
+      const session = state.sessions.find((item) => item.id === id)
+      if (!session) {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Session not found" }),
+        })
+        return
+      }
+      const nowIso = new Date().toISOString()
+      session.revoked_at = nowIso
+      session.last_seen_at = nowIso
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...session, is_current: false }),
+      })
       return
     }
 

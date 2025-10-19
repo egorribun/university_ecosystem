@@ -178,6 +178,9 @@ class ActiveSession(Base):
     )
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    ip_address = Column(String(64))
+    user_agent = Column(String(512))
+    last_seen_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     user = relationship("User", back_populates="sessions")
 

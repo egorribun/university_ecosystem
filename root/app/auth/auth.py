@@ -134,7 +134,22 @@ async def login(
         user.hashed_password = new_hash
         await db.commit()
         await db.refresh(user)
-    token = await create_access_token(str(user_id), db=db)
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    now = datetime.now(UTC)
+    token = await create_access_token(
+        str(user_id),
+        db=db,
+        session_metadata={
+            "ip_address": client_ip,
+            "user_agent": user_agent,
+            "last_seen_at": now,
+        },
+    )
     _set_access_token_cookie(response, token)
     _audit_log(
         "auth.login.success",
@@ -211,7 +226,22 @@ async def login_json(
         user.hashed_password = new_hash
         await db.commit()
         await db.refresh(user)
-    token = await create_access_token(str(user_id), db=db)
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    now = datetime.now(UTC)
+    token = await create_access_token(
+        str(user_id),
+        db=db,
+        session_metadata={
+            "ip_address": client_ip,
+            "user_agent": user_agent,
+            "last_seen_at": now,
+        },
+    )
     _set_access_token_cookie(response, token)
     _audit_log(
         "auth.login.success",

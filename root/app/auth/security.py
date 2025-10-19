@@ -104,6 +104,7 @@ async def create_access_token(
     expires_delta: int | None = None,
     extra: dict | None = None,
     db: AsyncSession | None = None,
+    session_metadata: dict | None = None,
 ) -> str:
     minutes = expires_delta or settings.access_token_expire_minutes
     now = datetime.now(timezone.utc)
@@ -127,6 +128,16 @@ async def create_access_token(
                 "sub must be an integer when persisting sessions"
             ) from None
         session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
+        if session_metadata:
+            ip_address = session_metadata.get("ip_address")
+            user_agent = session_metadata.get("user_agent")
+            last_seen_at = session_metadata.get("last_seen_at")
+            if ip_address:
+                session.ip_address = str(ip_address)[:64]
+            if user_agent:
+                session.user_agent = str(user_agent)[:512]
+            if last_seen_at is not None:
+                session.last_seen_at = last_seen_at
         db.add(session)
         await db.commit()
     return token

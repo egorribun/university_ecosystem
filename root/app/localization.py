@@ -296,6 +296,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Пользователь не найден",
         "en": "User not found",
     },
+    "errors.sessions.not_found": {
+        "ru": "Сессия не найдена",
+        "en": "Session not found",
+    },
     "notifications.push.test.title_default": {
         "ru": "Тестовое веб-push уведомление",
         "en": "Test web push notification",
