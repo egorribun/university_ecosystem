@@ -8,7 +8,9 @@ from app.services.notifications import cleanup_stale_notifications
 
 
 @pytest.mark.anyio
-async def test_cleanup_stale_notifications_respects_read_state(db_session, user_factory):
+async def test_cleanup_stale_notifications_respects_read_state(
+    db_session, user_factory
+):
     now = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
     user = await user_factory()
 
@@ -80,15 +82,25 @@ async def test_cleanup_stale_notifications_respects_read_state(db_session, user_
     assert deleted_deliveries == 2
 
     remaining_notifications = (
-        await db_session.execute(select(Notification).order_by(Notification.id))
-    ).scalars().all()
+        (await db_session.execute(select(Notification).order_by(Notification.id)))
+        .scalars()
+        .all()
+    )
     remaining_titles = {notification.title for notification in remaining_notifications}
     assert remaining_titles == {"Old unread", "Recent read"}
 
     remaining_deliveries = (
-        await db_session.execute(select(NotificationDelivery).order_by(NotificationDelivery.id))
-    ).scalars().all()
-    assert [delivery.notification_id for delivery in remaining_deliveries] == [recent_read_id]
+        (
+            await db_session.execute(
+                select(NotificationDelivery).order_by(NotificationDelivery.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [delivery.notification_id for delivery in remaining_deliveries] == [
+        recent_read_id
+    ]
 
 
 @pytest.mark.anyio

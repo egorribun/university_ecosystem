@@ -31,6 +31,7 @@ async def start_notifications_retention_scheduler(
     cfg = config or NotificationsRetentionConfig()
     retention_days = cfg.normalized_retention_days()
     if retention_days <= 0:
+
         async def _noop() -> None:
             return None
 
