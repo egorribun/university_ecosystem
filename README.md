@@ -90,9 +90,17 @@ Key settings you may want to adjust for local development:
 | `SPOTIFY_*` | OAuth credentials required for Spotify integration. | Empty |
 | `VAPID_*` | Keys used to send web push notifications. | Empty |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
+| `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. The `.env` file is loaded automatically when you start the backend or worker.
+
+## Image uploads
+
+Uploaded profile photos and news images are limited to **5&nbsp;MB**. The backend
+automatically resizes images so they fit within the `IMAGE_MAX_WIDTH` ×
+`IMAGE_MAX_HEIGHT` bounding box (default 1920×1920), strips EXIF metadata, and
+stores them as optimized WebP files (PNG when transparency is required).
 
 ## Running tests and linters
 
