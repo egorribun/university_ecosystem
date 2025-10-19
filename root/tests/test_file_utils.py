@@ -3,8 +3,8 @@ import io
 import re
 
 import pytest
-from PIL import Image
 from fastapi import HTTPException, UploadFile
+from PIL import Image
 from starlette.datastructures import Headers
 
 from app.core.config import settings

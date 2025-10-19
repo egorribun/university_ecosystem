@@ -53,7 +53,11 @@ def optimize_image(
             else:
                 img.save(buffer, format="WEBP", method=6, quality=85)
                 mime = "image/webp"
-    except (UnidentifiedImageError, OSError, ValueError) as exc:  # pragma: no cover - runtime guard
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:  # pragma: no cover - runtime guard
         raise ValueError("Invalid image data") from exc
 
     return buffer.getvalue(), mime
