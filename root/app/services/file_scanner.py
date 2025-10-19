@@ -70,7 +70,11 @@ async def scan_for_malware(data: bytes, *, locale: str | None = None) -> None:
     if not getattr(settings, "event_file_scanner_enabled", False):
         return
 
-    backend = (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd").strip().lower()
+    backend = (
+        (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd")
+        .strip()
+        .lower()
+    )
 
     try:
         if backend == "clamd":
