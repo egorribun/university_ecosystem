@@ -164,7 +164,7 @@ async def login_json(
     return {"access_token": token, "token_type": "bearer"}
 
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(sensitive_route_limit())])
 async def register(
     user: UserCreate,
     request: Request,
