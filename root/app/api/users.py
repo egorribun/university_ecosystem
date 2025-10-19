@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import List, Optional
 
+import anyio
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -70,7 +71,7 @@ def _redact_sensitive_query(url: str) -> str:
     return result or "[redacted]"
 
 
-def _send_reset_email(
+def _send_reset_email_blocking(
     to_email: str, link: str, full_name: str = "", locale: str | None = None
 ) -> None:
     host = settings.smtp_host or ""
@@ -122,6 +123,18 @@ def _send_reset_email(
             extra={"email": to_email, "link": safe_link},
             exc_info=True,
         )
+
+
+async def _send_reset_email(
+    to_email: str, link: str, full_name: str = "", locale: str | None = None
+) -> None:
+    await anyio.to_thread.run_sync(
+        _send_reset_email_blocking,
+        to_email,
+        link,
+        full_name,
+        locale,
+    )
 
 
 @password_router.post(

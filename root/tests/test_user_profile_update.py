@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import pytest
@@ -135,3 +136,36 @@ async def test_delete_avatar_ignores_invalid_path(
         assert user.avatar_url is None
     finally:
         sentinel_path.unlink(missing_ok=True)
+
+
+@pytest.mark.anyio
+async def test_forgot_password_sends_email_via_thread(
+    async_client, user_factory, monkeypatch
+):
+    user = await user_factory(email="forgot-password@example.com")
+
+    event = asyncio.Event()
+    captured: dict[str, object] = {}
+
+    async def fake_run_sync(func, *args, **kwargs):
+        captured["func"] = func
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        event.set()
+        return None
+
+    def fake_blocking(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.users.anyio.to_thread.run_sync", fake_run_sync)
+    monkeypatch.setattr("app.api.users._send_reset_email_blocking", fake_blocking)
+
+    response = await async_client.post("/password/forgot", json={"email": user.email})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+    await asyncio.wait_for(event.wait(), timeout=1)
+    assert captured.get("func") is fake_blocking
+    assert captured.get("args") is not None
+    assert captured["args"][0] == user.email
