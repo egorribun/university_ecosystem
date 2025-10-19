@@ -5,7 +5,6 @@ import smtplib
 import ssl
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from pathlib import Path
 from typing import List, Optional
 
 from fastapi import (
@@ -32,10 +31,8 @@ from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
-from app.utils.email import (
-    RESET_TOKEN_EXPIRY_MINUTES,
-    build_reset_email_content,
-)
+from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, build_reset_email_content
+from app.utils.files import delete_static_file
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger(__name__)
@@ -368,14 +365,7 @@ async def delete_avatar(
 ):
     db_user = await db.get(models.User, user.id)
     if db_user.avatar_url:
-        base_dir = settings.static_dir_path
-        rel_path = db_user.avatar_url.replace("/static/", "", 1).lstrip("/")
-        avatar_path = base_dir / Path(rel_path)
-        if avatar_path.exists():
-            try:
-                avatar_path.unlink()
-            except Exception:
-                pass
+        await delete_static_file(db_user.avatar_url)
     db_user.avatar_url = None
     await db.commit()
     await db.refresh(db_user)
