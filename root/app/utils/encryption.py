@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+
 from functools import lru_cache
 from typing import Optional
 
@@ -42,10 +45,25 @@ def _build_cipher(raw_secret: str) -> Fernet | MultiFernet:
     return MultiFernet(ciphers)
 
 
+def _derive_default_secret() -> str:
+    """Derive a deterministic Fernet key from the primary app secret.
+
+    When ``SPOTIFY_TOKEN_SECRET`` is not explicitly configured we fall back to a key
+    derived from :setting:`secret_key`. This keeps development environments working
+    out of the box while still requiring a strong base secret.
+    """
+
+    primary = settings.secret_key.strip()
+    if not primary:
+        raise SpotifyEncryptionError("SPOTIFY_TOKEN_SECRET is not configured")
+    digest = hashlib.sha256(primary.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("utf-8")
+
+
 def _get_cipher() -> Fernet | MultiFernet:
     raw = settings.spotify_token_secret.strip()
     if not raw:
-        raise SpotifyEncryptionError("SPOTIFY_TOKEN_SECRET is not configured")
+        raw = _derive_default_secret()
     return _build_cipher(raw)
 
 
