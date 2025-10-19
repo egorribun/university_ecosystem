@@ -6,7 +6,11 @@ from typing import Awaitable, Callable
 from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
-from app.core.rate_limit import parse_rate_limit
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    enforce_rate_limit,
+    parse_rate_limit,
+)
 from app.localization import resolve_locale, translate
 
 DEFAULT_LIMIT = 5
@@ -59,6 +63,14 @@ class MemoryLimiter:
 limiter = MemoryLimiter()
 
 
+def _resolve_redis_url() -> str | None:
+    backend = settings.rate_limit_storage_backend.strip().lower()
+    url = settings.rate_limit_storage_uri.strip()
+    if backend == "redis" and url.lower().startswith(("redis://", "rediss://")):
+        return url
+    return None
+
+
 def _resolve_limits(
     override_limit: int | None, override_window: int | None
 ) -> tuple[int, int]:
@@ -85,6 +97,25 @@ def sensitive_route_limit(
         key = f"{key_prefix}:{ip}:{request.url.path}"
         locale = resolve_locale(request=request)
         message = translate("errors.rate_limit.generic", locale=locale)
-        limiter.check(key, resolved_limit, resolved_window, message=message)
+        redis_url = _resolve_redis_url()
+        if redis_url:
+            try:
+                await enforce_rate_limit(
+                    identifier=key,
+                    namespace="",
+                    limit=resolved_limit,
+                    window_seconds=resolved_window,
+                    redis_url=redis_url,
+                )
+            except RateLimitExceeded as exc:
+                retry_after = max(0, exc.info.retry_after)
+                headers = {"Retry-After": str(retry_after)} if retry_after else None
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=message,
+                    headers=headers,
+                ) from exc
+        else:
+            limiter.check(key, resolved_limit, resolved_window, message=message)
 
     return dependency
