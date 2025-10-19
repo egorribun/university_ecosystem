@@ -295,10 +295,7 @@ export default function Settings() {
     staleTime: 30_000,
   })
 
-  const sessionList = useMemo(
-    () => (Array.isArray(sessions) ? sessions : []),
-    [sessions]
-  )
+  const sessionList = useMemo(() => (Array.isArray(sessions) ? sessions : []), [sessions])
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
