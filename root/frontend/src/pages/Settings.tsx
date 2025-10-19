@@ -3,11 +3,12 @@ import { isAxiosError } from "axios"
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
 import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
 import { useNavigate } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
 import api from "../api/client"
 import type { User } from "@/types/User"
+import type { ActiveSession } from "@/types/Session"
 import { useTranslation } from "react-i18next"
 import {
   Box,
@@ -36,6 +37,7 @@ import {
   TextField,
   CircularProgress,
 } from "@mui/material"
+import dayjs from "dayjs"
 import { useColorScheme, styled, alpha, darken, lighten } from "@mui/material/styles"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
@@ -272,6 +274,36 @@ export default function Settings() {
 
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
+
+  const sessionsKey = useMemo(
+    () => ["auth", "sessions", user?.id ?? "me"],
+    [user?.id]
+  )
+
+  const fetchSessions = useCallback(async () => {
+    const { data } = await api.get<ActiveSession[]>("/auth/sessions")
+    return data
+  }, [])
+
+  const {
+    data: sessions = [],
+    isFetching: sessionsFetching,
+    isError: sessionsIsError,
+    error: sessionsError,
+    refetch: refetchSessions,
+  } = useQuery<ActiveSession[]>({
+    queryKey: sessionsKey,
+    queryFn: fetchSessions,
+    enabled: tab === 1 && Boolean(user),
+    staleTime: 30_000,
+  })
+
+  const revokeSessionMutation = useMutation({
+    mutationFn: async (sessionId: number) => {
+      const { data } = await api.delete<ActiveSession>(`/auth/sessions/${sessionId}`)
+      return data
+    },
+  })
 
   const syncDndFromUser = useCallback((value: User | null) => {
     const enabled = Boolean(value?.dnd_enabled)
@@ -527,6 +559,43 @@ export default function Settings() {
     }
     return fallback
   }, [])
+
+  const handleRevokeSession = useCallback(
+    async (sessionId: number) => {
+      try {
+        const result = await revokeSessionMutation.mutateAsync(sessionId)
+        setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
+        await refetchSessions()
+        if (result?.is_current) {
+          await logout()
+        }
+      } catch (error) {
+        setSnack({
+          text: resolveDetailMessage(error, t("settings:sessions.snackbar.failed")),
+          sev: "error",
+        })
+      }
+    },
+    [logout, refetchSessions, resolveDetailMessage, revokeSessionMutation, t]
+  )
+
+  const formatSessionTimestamp = useCallback(
+    (value: string | null) => {
+      if (!value) return t("settings:sessions.lastSeen.never")
+      const parsed = dayjs(value)
+      if (!parsed.isValid()) return t("settings:sessions.lastSeen.never")
+      return parsed.format("DD MMM YYYY HH:mm")
+    },
+    [t]
+  )
+
+  const sessionsErrorMessage = useMemo(
+    () =>
+      sessionsIsError
+        ? resolveDetailMessage(sessionsError, t("settings:sessions.loadFailed"))
+        : null,
+    [resolveDetailMessage, sessionsError, sessionsIsError, t]
+  )
 
   const uploadAvatar = async (file: File) => {
     if (!isImage(file))
@@ -992,7 +1061,110 @@ export default function Settings() {
               </ListItem>
             </List>
 
-            <Box sx={{ pt: 1.5, mt: 0.5, borderTop: "1px solid var(--glass-border)" }}>
+            <Divider sx={{ my: 2 }} />
+
+            <Box>
+              <Typography variant="h6" sx={{ color: "var(--page-text)", mb: 0.5 }}>
+                {t("settings:sessions.title")}
+              </Typography>
+              <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}>
+                {t("settings:sessions.subtitle")}
+              </Typography>
+
+              {sessionsFetching ? (
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                    {t("settings:sessions.loading")}
+                  </Typography>
+                </Stack>
+              ) : sessionsErrorMessage ? (
+                <Alert severity="error" variant="outlined" sx={{ mt: 2 }}>
+                  {sessionsErrorMessage}
+                </Alert>
+              ) : sessions.length === 0 ? (
+                <Typography variant="body2" sx={{ mt: 2, color: "var(--page-text)" }}>
+                  {t("settings:sessions.empty")}
+                </Typography>
+              ) : (
+                <List disablePadding sx={{ mt: 1 }}>
+                  {sessions.map((session) => {
+                    const lastSeen = session.last_seen_at ?? session.created_at
+                    const lastSeenText = t("settings:sessions.lastSeen.value", {
+                      value: formatSessionTimestamp(lastSeen),
+                    })
+                    const ipLabel = session.ip_address
+                      ? t("settings:sessions.ipAddress", { ip: session.ip_address })
+                      : t("settings:sessions.ipUnknown")
+                    const details = `${ipLabel} • ${lastSeenText}`
+                    const revoked = Boolean(session.revoked_at)
+                    const statusLabel = revoked
+                      ? t("settings:sessions.status.revoked")
+                      : session.is_current
+                        ? t("settings:sessions.status.current")
+                        : t("settings:sessions.status.active")
+                    const statusColor: "default" | "primary" | "success" = revoked
+                      ? "default"
+                      : session.is_current
+                        ? "primary"
+                        : "success"
+                    const disableRevoke =
+                      revoked || session.is_current || revokeSessionMutation.isPending
+                    return (
+                      <ListItem
+                        key={session.id}
+                        alignItems="flex-start"
+                        divider
+                        sx={{
+                          opacity: revoked ? 0.6 : 1,
+                        }}
+                        secondaryAction={
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Chip
+                              size="small"
+                              color={statusColor}
+                              label={statusLabel}
+                              variant={revoked ? "outlined" : "filled"}
+                            />
+                            {!revoked && (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="error"
+                                disabled={disableRevoke}
+                                onClick={() => void handleRevokeSession(session.id)}
+                              >
+                                {t("settings:sessions.revoke")}
+                              </Button>
+                            )}
+                          </Stack>
+                        }
+                      >
+                        <ListItemText
+                          primary={
+                            session.user_agent || t("settings:sessions.unknownDevice")
+                          }
+                          secondary={details}
+                          primaryTypographyProps={{
+                            sx: {
+                              color: "var(--page-text)",
+                              fontWeight: session.is_current ? 600 : 500,
+                            },
+                          }}
+                          secondaryTypographyProps={{
+                            sx: {
+                              color: "color-mix(in srgb, var(--page-text) 68%, transparent)",
+                            },
+                          }}
+                        />
+                      </ListItem>
+                    )
+                  })}
+                </List>
+              )}
+            </Box>
+
+            <Box sx={{ pt: 1.5, mt: 2, borderTop: "1px solid var(--glass-border)" }}>
               <List dense disablePadding>
                 <ListItem>
                   <Button

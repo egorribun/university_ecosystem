@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -56,4 +56,16 @@ async def get_current_user(
         expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at <= now:
         raise credentials_exception
+    update_last_seen = False
+    last_seen_at = session.last_seen_at
+    if last_seen_at is None:
+        update_last_seen = True
+    else:
+        if last_seen_at.tzinfo is None:
+            last_seen_at = last_seen_at.replace(tzinfo=UTC)
+        if now - last_seen_at >= timedelta(seconds=30):
+            update_last_seen = True
+    if update_last_seen:
+        session.last_seen_at = now
+        await db.commit()
     return user

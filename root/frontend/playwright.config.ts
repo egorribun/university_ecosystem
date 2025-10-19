@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test"
+import { fileURLToPath } from "node:url"
+import { dirname } from "node:path"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173)
 const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1"

@@ -5,6 +5,7 @@ import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
 import { toHaveNoViolations } from "jest-axe"
 import { server } from "./tests/mocks/server"
+import { resetTestSessions } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
 
 expect.extend(toHaveNoViolations)
@@ -14,7 +15,10 @@ beforeAll(async () => {
   document.documentElement.lang = "en"
   server.listen({ onUnhandledRequest: "error" })
 })
-afterEach(() => server.resetHandlers())
+afterEach(() => {
+  server.resetHandlers()
+  resetTestSessions()
+})
 afterAll(() => server.close())
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!(globalThis as any).TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
