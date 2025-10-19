@@ -3,8 +3,8 @@ from fastapi import status
 from sqlalchemy import select
 
 from app.auth.security import decode_token, get_password_hash
-from app.models.models import ActiveSession
 from app.localization import translate
+from app.models.models import ActiveSession
 
 pytestmark = pytest.mark.anyio("asyncio")
 
