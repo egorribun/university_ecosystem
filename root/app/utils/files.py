@@ -11,6 +11,7 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.localization import translate
+from app.services.file_scanner import scan_for_malware
 from app.utils.images import optimize_image
 
 logger = logging.getLogger(__name__)
@@ -283,6 +284,7 @@ async def save_attachment(
     target_dir = base / sanitized_subdir
     await asyncio.to_thread(_ensure_dir, target_dir)
     path = target_dir / name
+    await scan_for_malware(data, locale=locale)
     await asyncio.to_thread(path.write_bytes, data)
     return f"/static/{sanitized_subdir}/{name}"
 

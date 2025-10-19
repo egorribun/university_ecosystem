@@ -169,6 +169,83 @@ async def test_upload_event_file_rejects_mismatched_magic_bytes(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_upload_event_file_rejects_infected_payload(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    payload = b"clean-looking"
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
+        assert data == payload
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=translate("errors.files.infected", locale=locale),
+        )
+
+    monkeypatch.setattr(files, "scan_for_malware", fake_scan)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
+
+    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert excinfo.value.detail == translate("errors.files.infected", locale="en")
+    folder = tmp_path / "event_files"
+    assert not folder.exists()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_upload_event_file_allows_clean_payload_with_scanner(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    payload = b"safe data"
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    calls: list[tuple[bytes, str | None]] = []
+
+    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
+        calls.append((data, locale))
+        return None
+
+    monkeypatch.setattr(files, "scan_for_malware", fake_scan)
+
+    result = await events.upload_event_file(
+        event.id, upload, request=None, db=db_session, user=admin
+    )
+
+    assert result.event_id == event.id
+    assert calls and calls[0][0] == payload
+    stored_path = tmp_path / "event_files" / result.file_url.rsplit("/", 1)[-1]
+    assert stored_path.exists()
+    assert stored_path.read_bytes() == payload
+
+
+@pytest.mark.anyio("asyncio")
 async def test_update_event_replaces_image_removes_old_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):
