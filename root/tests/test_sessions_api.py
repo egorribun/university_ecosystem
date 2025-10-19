@@ -71,7 +71,11 @@ async def test_admin_can_list_sessions_for_other_user(
     db_session,
 ):
     password = "AdminSessions42!"
-    admin = await user_factory(email="admin@example.com", hashed_password=get_password_hash(password), role="admin")
+    admin = await user_factory(
+        email="admin@example.com",
+        hashed_password=get_password_hash(password),
+        role="admin",
+    )
     target = await user_factory(email="target@example.com")
     session = ActiveSession(
         user_id=target.id,
@@ -105,7 +109,9 @@ async def test_non_admin_cannot_list_sessions_for_other_user(
     db_session,
 ):
     password = "Forbidden42!"
-    actor = await user_factory(email="actor@example.com", hashed_password=get_password_hash(password))
+    actor = await user_factory(
+        email="actor@example.com", hashed_password=get_password_hash(password)
+    )
     other = await user_factory(email="other@example.com")
     db_session.add(
         ActiveSession(
@@ -133,7 +139,9 @@ async def test_revoke_session_marks_revoked(
     db_session,
 ):
     password = "Revoke123!"
-    user = await user_factory(email="revoker@example.com", hashed_password=get_password_hash(password))
+    user = await user_factory(
+        email="revoker@example.com", hashed_password=get_password_hash(password)
+    )
     other_session = ActiveSession(
         user_id=user.id,
         jti="revocable",
@@ -145,7 +153,9 @@ async def test_revoke_session_marks_revoked(
 
     headers = await _login(async_client, email=user.email, password=password)
 
-    response = await async_client.delete(f"/auth/sessions/{other_session.id}", headers=headers)
+    response = await async_client.delete(
+        f"/auth/sessions/{other_session.id}", headers=headers
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["revoked_at"] is not None
@@ -162,7 +172,11 @@ async def test_admin_can_revoke_foreign_session(
     db_session,
 ):
     password = "AdminDelete7!"
-    admin = await user_factory(email="admin-del@example.com", hashed_password=get_password_hash(password), role="admin")
+    admin = await user_factory(
+        email="admin-del@example.com",
+        hashed_password=get_password_hash(password),
+        role="admin",
+    )
     target = await user_factory(email="victim@example.com")
     doomed = ActiveSession(
         user_id=target.id,
@@ -186,7 +200,9 @@ async def test_revoke_other_user_session_forbidden(
     db_session,
 ):
     password = "Nope123!"
-    actor = await user_factory(email="nope@example.com", hashed_password=get_password_hash(password))
+    actor = await user_factory(
+        email="nope@example.com", hashed_password=get_password_hash(password)
+    )
     other = await user_factory(email="outsider@example.com")
     session = ActiveSession(
         user_id=other.id,
@@ -198,7 +214,9 @@ async def test_revoke_other_user_session_forbidden(
 
     headers = await _login(async_client, email=actor.email, password=password)
 
-    response = await async_client.delete(f"/auth/sessions/{session.id}", headers=headers)
+    response = await async_client.delete(
+        f"/auth/sessions/{session.id}", headers=headers
+    )
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
 
@@ -210,7 +228,9 @@ async def test_revoke_missing_session_returns_404(
     db_session,
 ):
     password = "Missing404!"
-    user = await user_factory(email="missing@example.com", hashed_password=get_password_hash(password))
+    user = await user_factory(
+        email="missing@example.com", hashed_password=get_password_hash(password)
+    )
     headers = await _login(async_client, email=user.email, password=password)
 
     response = await async_client.delete("/auth/sessions/9999", headers=headers)
