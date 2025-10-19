@@ -139,7 +139,9 @@ async def test_delete_avatar_ignores_invalid_path(
 
 
 @pytest.mark.anyio
-async def test_forgot_password_sends_email_via_thread(async_client, user_factory, monkeypatch):
+async def test_forgot_password_sends_email_via_thread(
+    async_client, user_factory, monkeypatch
+):
     user = await user_factory(email="forgot-password@example.com")
 
     event = asyncio.Event()
@@ -155,14 +157,10 @@ async def test_forgot_password_sends_email_via_thread(async_client, user_factory
     def fake_blocking(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(
-        "app.api.users.anyio.to_thread.run_sync", fake_run_sync
-    )
+    monkeypatch.setattr("app.api.users.anyio.to_thread.run_sync", fake_run_sync)
     monkeypatch.setattr("app.api.users._send_reset_email_blocking", fake_blocking)
 
-    response = await async_client.post(
-        "/password/forgot", json={"email": user.email}
-    )
+    response = await async_client.post("/password/forgot", json={"email": user.email})
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}

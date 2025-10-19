@@ -9,7 +9,6 @@ from email.message import EmailMessage
 from typing import List, Optional
 
 import anyio
-
 from fastapi import (
     APIRouter,
     BackgroundTasks,
