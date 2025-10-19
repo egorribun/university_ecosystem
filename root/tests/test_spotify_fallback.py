@@ -2,9 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
+import sqlalchemy as sa
 from httpx import AsyncClient
 
-from app.api.spotify import _fallback_now_playing
+from app.api.spotify import _ensure_access_token, _fallback_now_playing, _save_tokens
 
 _spotify_fallback_now_playing = _fallback_now_playing
 from app.auth.security import get_password_hash
@@ -290,3 +291,60 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     assert user.spotify_is_connected is False
     assert user.spotify_access_token is None
     assert user.spotify_refresh_token is None
+
+
+async def test_spotify_tokens_are_encrypted_in_database(db_session, user_factory) -> None:
+    user = await user_factory(is_active=True)
+
+    await _save_tokens(
+        db_session,
+        user,
+        access="access-token-value",
+        refresh="refresh-token-value",
+        scope="user-read-currently-playing",
+        expires_in=3600,
+    )
+
+    row = await db_session.execute(
+        sa.text(
+            "SELECT spotify_access_token, spotify_refresh_token FROM users "
+            "WHERE id = :user_id"
+        ),
+        {"user_id": user.id},
+    )
+    stored_access, stored_refresh = row.one()
+
+    assert stored_access is not None
+    assert stored_refresh is not None
+    assert stored_access != "access-token-value"
+    assert stored_refresh != "refresh-token-value"
+
+    await db_session.refresh(user)
+    assert user.spotify_access_token == "access-token-value"
+    assert user.spotify_refresh_token == "refresh-token-value"
+
+
+async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -> None:
+    user = await user_factory(is_active=True)
+
+    await _save_tokens(
+        db_session,
+        user,
+        access="plaintext-token",
+        refresh="plaintext-refresh",
+        scope="user-read-email",
+        expires_in=7200,
+    )
+
+    token = await _ensure_access_token(db_session, user)
+
+    assert token == "plaintext-token"
+
+    raw = await db_session.execute(
+        sa.text(
+            "SELECT spotify_access_token FROM users WHERE id = :user_id"
+        ),
+        {"user_id": user.id},
+    )
+    stored_token = raw.scalar_one()
+    assert stored_token != "plaintext-token"

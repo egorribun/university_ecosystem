@@ -14,6 +14,54 @@ cp .env.production .env.local      # при необходимости
 VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
+### Spotify токены
+
+- Backend шифрует Spotify access/refresh токены с помощью Fernet. Перед включением интеграции задайте `SPOTIFY_TOKEN_SECRET` — это base64-строка из `Fernet.generate_key()`.
+
+```bash
+python - <<'PY'
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+PY
+```
+
+- Для ротации используйте несколько ключей, перечисленных через запятую: новый ключ укажите первым, старый оставьте вторым (`SPOTIFY_TOKEN_SECRET="new_key,old_key"`). После деплоя выполните скрипт ниже, чтобы перешифровать уже сохранённые значения и убрать зависимость от старого ключа, затем удалите его из переменной и перезапустите сервисы.
+
+```bash
+python - <<'PY'
+import asyncio
+from sqlalchemy import text
+
+from app.core.database import async_session
+from app.utils.encryption import rotate_encrypted_string
+
+
+async def main() -> None:
+    async with async_session() as session:
+        rows = await session.execute(
+            text(
+                "SELECT id, spotify_access_token, spotify_refresh_token FROM users"
+            )
+        )
+        for row in rows.all():
+            await session.execute(
+                text(
+                    "UPDATE users SET spotify_access_token = :access, "
+                    "spotify_refresh_token = :refresh WHERE id = :user_id"
+                ),
+                {
+                    "user_id": row.id,
+                    "access": rotate_encrypted_string(row.spotify_access_token),
+                    "refresh": rotate_encrypted_string(row.spotify_refresh_token),
+                },
+            )
+        await session.commit()
+
+
+asyncio.run(main())
+PY
+```
+
 ## Docker image
 
 - `root/frontend.Dockerfile` собран в два этапа: на этапе `builder` запускается `npm ci && npm run build`, а финальный образ основан на `nginx:alpine` и содержит только содержимое `dist/`.

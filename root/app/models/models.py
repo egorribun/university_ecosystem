@@ -19,6 +19,7 @@ from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 from app.models.enums import UserRole
+from app.utils.encryption import EncryptedString
 
 ROLE_VALUES_SQL = ", ".join(f"'{role.value}'" for role in UserRole)
 
@@ -61,8 +62,8 @@ class User(Base):
     dnd_end = Column(Time(timezone=False))
 
     spotify_user_id = Column(String, unique=True, index=True)
-    spotify_access_token = Column(String)
-    spotify_refresh_token = Column(String)
+    spotify_access_token = Column(EncryptedString())
+    spotify_refresh_token = Column(EncryptedString())
     spotify_token_expires_at = Column(DateTime(timezone=True), index=True)
     spotify_scope = Column(String)
     spotify_display_name = Column(String)

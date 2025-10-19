@@ -34,6 +34,9 @@ os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("STATIC_DIR", "app/test-static")
 os.environ.setdefault("ENVIRONMENT", "testing")
+os.environ.setdefault(
+    "SPOTIFY_TOKEN_SECRET", "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+)
 os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
 os.environ.setdefault("RATE_LIMIT_DEFAULT", "5/minute,10/hour")
 os.environ.setdefault("RATE_LIMIT_SENSITIVE", "4/minute")
