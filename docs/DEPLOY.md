@@ -62,6 +62,12 @@ server {
 ## Системные зависимости backend
 
 - Для серверной проверки контента файлов используется `python-magic`, поэтому на хостах с backend нужно установить пакеты `libmagic` (например, `apt install libmagic1 libmagic-dev` для Debian/Ubuntu или `apk add file` в Alpine).
+- Для антивирусной проверки загружаемых файлов поднимите сервис `clamd` (например, из пакета `clamav-daemon` или Docker-образа `clamav/clamav`).
+  - Включите проверку, установив `EVENT_FILE_SCANNER_ENABLED=true`.
+  - По умолчанию backend подключается к `clamd` по TCP (`EVENT_FILE_SCANNER_HOST` и `EVENT_FILE_SCANNER_PORT`, стандартно `127.0.0.1:3310`).
+  - Для Unix-сокета укажите путь через `EVENT_FILE_SCANNER_SOCKET` (приоритетнее хоста/порта).
+  - Таймаут подключения задаётся переменной `EVENT_FILE_SCANNER_TIMEOUT` (секунды).
+  - При недоступности сканера запросы загрузки файлов вернут HTTP 503, а при обнаружении угрозы — HTTP 422 с локализованным сообщением.
 
 ## Notifications worker
 

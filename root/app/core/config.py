@@ -154,6 +154,12 @@ class Settings(BaseSettings):
     )
     event_file_allowed_extensions: str | list[str] = ".pdf,.txt,.doc,.docx,.xls,.xlsx"
     event_file_max_size_bytes: int = 10 * 1024 * 1024
+    event_file_scanner_enabled: bool = False
+    event_file_scanner_backend: str = "clamd"
+    event_file_scanner_host: str = "127.0.0.1"
+    event_file_scanner_port: int = 3310
+    event_file_scanner_socket: str = ""
+    event_file_scanner_timeout: float = 30.0
 
     @field_validator("coep_value")
     @classmethod

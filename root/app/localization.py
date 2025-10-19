@@ -176,6 +176,14 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Неподдерживаемое расширение файла",
         "en": "Unsupported file extension",
     },
+    "errors.files.infected": {
+        "ru": "Файл содержит вредоносное содержимое",
+        "en": "The file contains malicious content",
+    },
+    "errors.files.scanner_unavailable": {
+        "ru": "Служба проверки файлов временно недоступна",
+        "en": "File scanning service is temporarily unavailable",
+    },
     "errors.events.registration_forbidden": {
         "ru": "Регистрация на мероприятия недоступна для вашей роли",
         "en": "Event registration is not available for your role",
