@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import secrets
 import smtplib
@@ -28,6 +29,7 @@ from app.api.utils import save_upload
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
@@ -36,6 +38,7 @@ from app.utils.files import delete_static_file
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger(__name__)
+audit_logger = logging.getLogger("app.users.audit")
 
 
 router = APIRouter()
@@ -157,6 +160,19 @@ async def forgot_password(
             user.full_name or "",
             locale,
         )
+        _audit_log(
+            "password.reset.initiated",
+            request,
+            user_id=user.id,
+            reason="initiated",
+        )
+    else:
+        _audit_log(
+            "password.reset.initiated",
+            request,
+            level=logging.WARNING,
+            reason="user_not_found",
+        )
     return {"ok": True}
 
 
@@ -178,13 +194,42 @@ async def reset_password(
         )
     )
     rec = result.scalar_one_or_none()
-    if not rec or rec.expires_at < datetime.now(timezone.utc):
+    now = datetime.now(timezone.utc)
+    if not rec:
+        _audit_log(
+            "password.reset.failed",
+            request,
+            level=logging.WARNING,
+            reason="token_invalid",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.password.invalid_or_expired_link", locale=locale),
+        )
+    expires_at = rec.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
+        _audit_log(
+            "password.reset.failed",
+            request,
+            level=logging.WARNING,
+            user_id=rec.user_id,
+            reason="token_expired",
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=translate("errors.password.invalid_or_expired_link", locale=locale),
         )
     user = await db.get(models.User, rec.user_id)
     if not user or not getattr(user, "is_active", True):
+        _audit_log(
+            "password.reset.failed",
+            request,
+            level=logging.WARNING,
+            user_id=rec.user_id,
+            reason="user_inactive",
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=translate("errors.password.invalid_link", locale=locale),
@@ -203,6 +248,12 @@ async def reset_password(
         .values(used=True)
     )
     await db.commit()
+    _audit_log(
+        "password.reset.completed",
+        request,
+        user_id=rec.user_id,
+        reason="completed",
+    )
     return {"ok": True}
 
 
@@ -422,3 +473,26 @@ router.include_router(groups_router)
 
 
 __all__ = ["router"]
+
+
+def _audit_log(
+    event: str,
+    request: Request,
+    *,
+    level: int = logging.INFO,
+    user_id: int | str | None = None,
+    reason: str | None = None,
+) -> None:
+    request_id = get_request_id() or request.headers.get("x-request-id")
+    client_ip = request.client.host if request.client else None
+    payload: dict[str, str] = {"event": event}
+    if user_id is not None:
+        payload["user_id"] = str(user_id)
+    if request_id:
+        payload["request_id"] = request_id
+    if client_ip:
+        payload["ip"] = client_ip
+    if reason:
+        payload["reason"] = reason
+    audit_logger.log(level, json.dumps(payload, ensure_ascii=False))
+
