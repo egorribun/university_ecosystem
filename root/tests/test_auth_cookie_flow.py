@@ -1,8 +1,10 @@
 import pytest
+from fastapi import status
 from sqlalchemy import select
 
 from app.auth.security import decode_token, get_password_hash
 from app.models.models import ActiveSession
+from app.localization import translate
 
 pytestmark = pytest.mark.anyio("asyncio")
 
@@ -104,3 +106,25 @@ async def test_token_reuse_after_logout_rejected(
 
     rejected = await async_client.get("/users/me", headers=headers)
     assert rejected.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_register_rate_limit(async_client):
+    for attempt in range(4):
+        payload = {
+            "email": f"rate-limit-{attempt}@example.com",
+            "password": "ValidPass123!",
+            "full_name": "Rate Limited User",
+        }
+        response = await async_client.post("/auth/register", json=payload)
+        assert response.status_code == status.HTTP_200_OK
+
+    blocked_payload = {
+        "email": "rate-limit-final@example.com",
+        "password": "ValidPass123!",
+        "full_name": "Rate Limited User",
+    }
+    blocked = await async_client.post("/auth/register", json=blocked_payload)
+
+    assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert blocked.json()["detail"] == translate("errors.rate_limit.generic")
