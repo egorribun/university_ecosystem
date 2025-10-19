@@ -89,6 +89,7 @@ Key settings you may want to adjust for local development:
 | `SMTP_*` | Outgoing email server configuration. | Empty (email disabled) |
 | `SPOTIFY_*` | OAuth credentials required for Spotify integration. | Empty |
 | `VAPID_*` | Keys used to send web push notifications. | Empty |
+| `NOTIFICATIONS_WEBPUSH_CONCURRENCY_LIMIT` | Maximum number of simultaneous web push delivery jobs. | `10` |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |

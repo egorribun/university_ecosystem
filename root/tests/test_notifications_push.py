@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
+from threading import Lock
 from types import SimpleNamespace
 from typing import Any
 
@@ -21,6 +23,7 @@ from app.models.models import PushSubscription
 from app.routers.notifications import _serialize_subscription
 from app.services import notifications
 from app.services import webpush as webpush_module
+from app.services.webpush import WebPushResult
 
 
 @pytest.fixture
@@ -339,3 +342,72 @@ async def test_notify_about_news_uses_locale(
 
     assert captures[1]["title"] == "Новая новость: Русский заголовок"
     assert captures[1]["body"].startswith("Русский текст")
+    assert captures[1]["payload"]["headline"] == "Русский заголовок"
+
+
+@pytest.mark.anyio
+async def test_create_notifications_limits_concurrent_push_tasks(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    _configured_webpush_settings,
+):
+    limit = 2
+    monkeypatch.setattr(settings, "notifications_webpush_concurrency_limit", limit)
+
+    users = [await user_factory(is_active=True) for _ in range(6)]
+    for idx, user in enumerate(users):
+        db_session.add(
+            PushSubscription(
+                user_id=user.id,
+                endpoint=f"https://push.example.test/{idx}",
+                auth=f"auth-{idx}",
+                p256dh=f"p256-{idx}",
+                topics=["news"],
+            )
+        )
+    await db_session.commit()
+
+    async def _noop_schema(_db):
+        return None
+
+    monkeypatch.setattr(notifications, "ensure_push_subscription_schema", _noop_schema)
+
+    active = 0
+    max_active = 0
+    lock = Lock()
+    call_count = 0
+
+    def _fake_send_web_push(subscription, payload):
+        nonlocal active, max_active, call_count
+        with lock:
+            active += 1
+            call_count += 1
+            if active > max_active:
+                max_active = active
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=subscription.user_id,
+            status="sent",
+            status_code=201,
+        )
+
+    monkeypatch.setattr(notifications, "send_web_push", _fake_send_web_push)
+
+    created = await notifications.create_notifications_for_users(
+        db_session,
+        title="Test",
+        body="Body",
+        type="news",
+        url="/news",
+        user_ids=[user.id for user in users],
+        topic="news",
+    )
+
+    assert created == len(users)
+    assert call_count == len(users)
+    assert max_active == limit

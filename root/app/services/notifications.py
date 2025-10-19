@@ -388,6 +388,23 @@ async def create_notifications_for_users(
             send_jobs: list[tuple[PushSubscription, int]] = []
             tasks: list[Awaitable[WebPushResult]] = []
 
+            limit = int(getattr(settings, "notifications_webpush_concurrency_limit", 0) or 0)
+            semaphore: asyncio.Semaphore | None = None
+            if limit > 0:
+                semaphore = asyncio.Semaphore(limit)
+
+            async def _send_push(
+                subscription: PushSubscription, payload: Mapping[str, Any]
+            ) -> WebPushResult:
+                if semaphore is None:
+                    return await asyncio.to_thread(
+                        send_web_push, subscription, payload
+                    )
+                async with semaphore:
+                    return await asyncio.to_thread(
+                        send_web_push, subscription, payload
+                    )
+
             for sub in subs:
                 user_id = int(getattr(sub, "user_id", 0) or 0)
                 notification_id = notification_ids_by_user.get(user_id)
@@ -406,7 +423,7 @@ async def create_notifications_for_users(
                     base_payload, getattr(sub, "user", None), now_time=now_time
                 )
                 send_jobs.append((sub, notification_id))
-                tasks.append(asyncio.to_thread(send_web_push, sub, prepared_payload))
+                tasks.append(_send_push(sub, prepared_payload))
 
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
