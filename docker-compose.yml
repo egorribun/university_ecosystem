@@ -8,8 +8,8 @@ services:
       - root/.env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
-      FRONTEND_ORIGIN: http://localhost:5173
-      FRONTEND_ORIGINS: http://localhost:5173
+      FRONTEND_ORIGIN: http://localhost:8080
+      FRONTEND_ORIGINS: http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
     depends_on:
       postgres:
@@ -23,15 +23,17 @@ services:
     build:
       context: .
       dockerfile: root/frontend.Dockerfile
-    environment:
-      VITE_BACKEND_ORIGIN: http://localhost:8000
-    depends_on:
-      backend:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      target: runtime
+      args:
+        VITE_BACKEND_ORIGIN: http://localhost:8000
     ports:
-      - "5173:5173"
+      - "8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
 
   notifications-worker:
     build:
