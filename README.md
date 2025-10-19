@@ -91,6 +91,8 @@ Key settings you may want to adjust for local development:
 | `SPOTIFY_TOKEN_SECRET` | Comma-separated Fernet keys used to encrypt Spotify access/refresh tokens (first key is used for new data). | Empty |
 | `VAPID_*` | Keys used to send web push notifications. | Empty |
 | `NOTIFICATIONS_WEBPUSH_CONCURRENCY_LIMIT` | Maximum number of simultaneous web push delivery jobs. | `10` |
+| `NOTIFICATIONS_RETENTION_DAYS` | Number of days to keep read notifications before purging them. | `90` |
+| `NOTIFICATIONS_RETENTION_CLEANUP_INTERVAL_SECONDS` | Interval between background retention cleanup runs. | `86400` |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |

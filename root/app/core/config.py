@@ -145,6 +145,8 @@ class Settings(BaseSettings):
     notifications_worker_metrics_host: str = "0.0.0.0"
     notifications_worker_metrics_port: int = 9101
     notifications_webpush_concurrency_limit: int = 10
+    notifications_retention_days: int = 90
+    notifications_retention_cleanup_interval_seconds: int = 86_400
     session_cleanup_interval_seconds: int = 900
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"

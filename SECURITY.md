@@ -43,6 +43,12 @@ Cross-Origin Resource Sharing (CORS) is also tightened: wildcard origins are rej
   2. Call `POST /push/admin/disable-user` with the target `user_id`. The endpoint removes every `PushSubscription` row for that account and returns the number of deleted entries.
   3. Confirm the user no longer has active subscriptions before finalising account removal.
 
+## Notification Retention
+
+- Read notifications are purged automatically after **90 days** by default. Unread notifications are preserved regardless of age so users can review unseen alerts.
+- The cleanup job runs on a dedicated background scheduler; tune its cadence with `NOTIFICATIONS_RETENTION_CLEANUP_INTERVAL_SECONDS` (defaults to 86,400 seconds / 24 hours).
+- Set `NOTIFICATIONS_RETENTION_DAYS=0` to disable automatic notification retention if your policy mandates manual review before deletion.
+
 ## Frontend Profile Cache Hardening
 
 - The React auth context now persists a **versioned, minimal snapshot** of the authenticated user. Only the fields required for optimistic UI (currently the numeric `id`, `full_name`, and `avatar_url`) are written to `localStorage`.

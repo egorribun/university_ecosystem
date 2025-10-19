@@ -8,7 +8,7 @@ from html import unescape
 from textwrap import shorten
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 
-from sqlalchemy import and_, func, insert, select
+from sqlalchemy import and_, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -102,6 +102,62 @@ def _build_delivery_row(
     if detail:
         row["detail"] = str(detail)
     return row
+
+
+async def cleanup_stale_notifications(
+    *,
+    db: AsyncSession | None = None,
+    retention_days: int | None = None,
+    now: dt.datetime | None = None,
+) -> tuple[int, int]:
+    """Remove notifications and deliveries older than the retention window.
+
+    Unread notifications are preserved regardless of age. Returns a tuple with
+    counts of deleted notifications and deliveries respectively.
+    """
+
+    if retention_days is None:
+        retention_days = getattr(settings, "notifications_retention_days", 0) or 0
+
+    retention_days = int(retention_days)
+
+    if retention_days <= 0:
+        return (0, 0)
+
+    now_value = now or dt.datetime.now(UTC)
+
+    if db is None:
+        async with _async_session() as session:
+            return await cleanup_stale_notifications(
+                db=session, retention_days=retention_days, now=now_value
+            )
+
+    cutoff = now_value - dt.timedelta(days=int(retention_days))
+
+    deliveries_stmt = delete(NotificationDelivery).where(
+        NotificationDelivery.attempted_at < cutoff
+    )
+    notifications_stmt = delete(Notification).where(
+        Notification.created_at < cutoff,
+        or_(Notification.read.is_(True), Notification.read_at.is_not(None)),
+    )
+
+    deliveries_result = await db.execute(deliveries_stmt)
+    notifications_result = await db.execute(notifications_stmt)
+    await db.commit()
+
+    deliveries_deleted = int(deliveries_result.rowcount or 0)
+    notifications_deleted = int(notifications_result.rowcount or 0)
+
+    if notifications_deleted or deliveries_deleted:
+        logger.info(
+            "Removed %s notifications and %s deliveries older than %s days",
+            notifications_deleted,
+            deliveries_deleted,
+            retention_days,
+        )
+
+    return notifications_deleted, deliveries_deleted
 
 
 async def _fetch_active_user_ids(
