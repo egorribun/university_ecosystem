@@ -275,10 +275,7 @@ export default function Settings() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
 
-  const sessionsKey = useMemo(
-    () => ["auth", "sessions", user?.id ?? "me"],
-    [user?.id]
-  )
+  const sessionsKey = useMemo(() => ["auth", "sessions", user?.id ?? "me"], [user?.id])
 
   const fetchSessions = useCallback(async () => {
     const { data } = await api.get<ActiveSession[]>("/auth/sessions")
@@ -1067,7 +1064,10 @@ export default function Settings() {
               <Typography variant="h6" sx={{ color: "var(--page-text)", mb: 0.5 }}>
                 {t("settings:sessions.title")}
               </Typography>
-              <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}>
+              <Typography
+                variant="body2"
+                sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
+              >
                 {t("settings:sessions.subtitle")}
               </Typography>
 
@@ -1141,9 +1141,7 @@ export default function Settings() {
                         }
                       >
                         <ListItemText
-                          primary={
-                            session.user_agent || t("settings:sessions.unknownDevice")
-                          }
+                          primary={session.user_agent || t("settings:sessions.unknownDevice")}
                           secondary={details}
                           primaryTypographyProps={{
                             sx: {
