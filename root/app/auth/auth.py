@@ -1,3 +1,5 @@
+import json
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -14,10 +16,14 @@ from app.auth.security import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
 from app.schemas.schemas import Token, UserCreate
 from app.utils.ratelimit import sensitive_route_limit
+
+logger = logging.getLogger("app.auth")
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -78,6 +84,12 @@ async def login(
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
     if not user:
+        _audit_log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            reason="invalid_credentials",
+        )
         message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -90,6 +102,13 @@ async def login(
         form_data.password, user.hashed_password
     )
     if not verified:
+        _audit_log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            user_id=user.id,
+            reason="invalid_credentials",
+        )
         message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -97,6 +116,13 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        _audit_log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            user_id=user.id,
+            reason="inactive_user",
+        )
         message = translate("errors.auth.user_deactivated", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -110,6 +136,12 @@ async def login(
         await db.refresh(user)
     token = await create_access_token(str(user_id), db=db)
     _set_access_token_cookie(response, token)
+    _audit_log(
+        "auth.login.success",
+        request,
+        user_id=user_id,
+        reason="authenticated",
+    )
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -129,6 +161,12 @@ async def login_json(
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalars().first()
     if not user:
+        _audit_log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            reason="invalid_credentials",
+        )
         message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -141,6 +179,13 @@ async def login_json(
         payload.password, user.hashed_password
     )
     if not verified:
+        _audit_log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            user_id=user.id,
+            reason="invalid_credentials",
+        )
         message = translate("errors.auth.credentials_invalid", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -148,6 +193,13 @@ async def login_json(
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        _audit_log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            user_id=user.id,
+            reason="inactive_user",
+        )
         message = translate("errors.auth.user_deactivated", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -161,6 +213,12 @@ async def login_json(
         await db.refresh(user)
     token = await create_access_token(str(user_id), db=db)
     _set_access_token_cookie(response, token)
+    _audit_log(
+        "auth.login.success",
+        request,
+        user_id=user_id,
+        reason="authenticated",
+    )
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -220,6 +278,34 @@ async def logout(
         if session and session.revoked_at is None:
             session.revoked_at = datetime.now(UTC)
             await db.commit()
+            _audit_log(
+                "auth.logout.revoked",
+                request,
+                user_id=session.user_id,
+                reason="user_initiated",
+            )
 
     _clear_access_token_cookie(response)
     return {"status": "ok"}
+
+
+def _audit_log(
+    event: str,
+    request: Request,
+    *,
+    level: int = logging.INFO,
+    user_id: int | str | None = None,
+    reason: str | None = None,
+) -> None:
+    request_id = get_request_id() or request.headers.get("x-request-id")
+    client_ip = request.client.host if request.client else None
+    payload: dict[str, str] = {"event": event}
+    if user_id is not None:
+        payload["user_id"] = str(user_id)
+    if request_id:
+        payload["request_id"] = request_id
+    if client_ip:
+        payload["ip"] = client_ip
+    if reason:
+        payload["reason"] = reason
+    logger.log(level, json.dumps(payload, ensure_ascii=False))

@@ -1,0 +1,140 @@
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.api.users import _hash_token
+from app.auth.security import get_password_hash
+from app.models import models
+from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
+
+pytestmark = pytest.mark.anyio("asyncio")
+
+
+def _find_event(caplog, logger_name: str, event: str) -> dict:
+    for record in reversed(caplog.records):
+        if record.name != logger_name:
+            continue
+        try:
+            payload = json.loads(record.message)
+        except json.JSONDecodeError:  # pragma: no cover - defensive guard
+            continue
+        if payload.get("event") == event:
+            return payload
+    raise AssertionError(f"event {event!r} not found for logger {logger_name!r}")
+
+
+async def test_login_success_logs_audit(async_client, user_factory, caplog):
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+    hashed = get_password_hash("StrongPass123!")
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": "StrongPass123!"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+
+    event = _find_event(caplog, "app.auth", "auth.login.success")
+    assert event["user_id"] == str(user.id)
+    assert event["reason"] == "authenticated"
+    assert "ip" in event or "request_id" in event
+
+
+async def test_login_failure_logs_audit(async_client, user_factory, caplog):
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+    hashed = get_password_hash("ValidPass123!")
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": "WrongPass!"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 401
+
+    event = _find_event(caplog, "app.auth", "auth.login.failure")
+    assert event.get("reason") == "invalid_credentials"
+    assert "ip" in event or "request_id" in event
+
+
+async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+    hashed = get_password_hash("LogoutPass123!")
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    login_response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": "LogoutPass123!"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    logout_response = await async_client.post(
+        "/auth/logout",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert logout_response.status_code == 200
+
+    event = _find_event(caplog, "app.auth", "auth.logout.revoked")
+    assert event["user_id"] == str(user.id)
+    assert event["reason"] == "user_initiated"
+
+
+async def test_password_reset_initiation_audit(async_client, user_factory, caplog):
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+    hashed = get_password_hash("ResetInitPass123!")
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    response = await async_client.post(
+        "/password/forgot",
+        json={"email": user.email},
+    )
+
+    assert response.status_code == 200
+
+    event = _find_event(caplog, "app.users.audit", "password.reset.initiated")
+    assert event["user_id"] == str(user.id)
+    assert event["reason"] == "initiated"
+
+
+async def test_password_reset_completed_audit(
+    async_client, user_factory, db_session, caplog
+):
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+    hashed = get_password_hash("ResetCompletePass123!")
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    token = "reset-token-value"
+    token_hash = _hash_token(token)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+    db_session.add(
+        models.PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires,
+            used=False,
+        )
+    )
+    await db_session.commit()
+
+    response = await async_client.post(
+        "/password/reset",
+        json={"token": token, "password": "BrandNewPass123!"},
+    )
+
+    assert response.status_code == 200
+
+    event = _find_event(caplog, "app.users.audit", "password.reset.completed")
+    assert event["user_id"] == str(user.id)
+    assert event["reason"] == "completed"

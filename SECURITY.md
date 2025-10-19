@@ -16,6 +16,13 @@ To report a vulnerability, use the **Security** tab on GitHub and open a new **P
 - Password length requirements: **8–200 characters**. Unicode is fully supported and input is stored verbatim (no trimming or normalization).
 - Password changes and account provisioning use the same policy and algorithm, and the behaviour is covered by automated tests.
 
+## Authentication Audit Logging
+
+- Authentication and password-recovery endpoints emit structured JSON audit events through the `app.auth` and `app.users.audit` loggers. The payloads include the `event` name, a stringified `user_id` when known, the caller IP (`ip`) when available, and the current request correlation identifier (`request_id`). Reasons for success or failure are normalised tokens such as `authenticated`, `invalid_credentials`, `token_expired`, etc.
+- Logs inherit the JSON formatter defined in [`app/core/observability.py`](root/app/core/observability.py), so downstream consumers can parse them without regexes. Example pipelines include shipping stdout to your SIEM or subscribing to the OTLP stream when observability exporters are enabled.
+- Sensitive fields (passwords, reset tokens, email addresses) are never included. If additional context is required for an investigation, correlate by `request_id` or session identifiers rather than augmenting the log payloads with PII.
+- Operators should alert on high volumes of `auth.login.failure` or `password.reset.failed` events from a single IP, and reconcile `auth.logout.revoked` events with expected device revocations to detect account takeovers.
+
 ## HTTP Security Headers & Browser Hardening
 
 Our FastAPI middleware enables a strict set of transport and browser security headers in production:
