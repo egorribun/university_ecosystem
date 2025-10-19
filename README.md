@@ -88,6 +88,7 @@ Key settings you may want to adjust for local development:
 | `APP_BASE_URL` | Base URL used inside emails and notifications. | `http://localhost:5173` |
 | `SMTP_*` | Outgoing email server configuration. | Empty (email disabled) |
 | `SPOTIFY_*` | OAuth credentials required for Spotify integration. | Empty |
+| `SPOTIFY_TOKEN_SECRET` | Comma-separated Fernet keys used to encrypt Spotify access/refresh tokens (first key is used for new data). | Empty |
 | `VAPID_*` | Keys used to send web push notifications. | Empty |
 | `NOTIFICATIONS_WEBPUSH_CONCURRENCY_LIMIT` | Maximum number of simultaneous web push delivery jobs. | `10` |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |

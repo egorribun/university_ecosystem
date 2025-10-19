@@ -101,9 +101,9 @@ async def _save_tokens(
     scope: Optional[str],
     expires_in: int | str | None,
 ):
-    user.spotify_access_token = access
-    if refresh:
-        user.spotify_refresh_token = refresh
+    user.spotify_access_token = access or None
+    if refresh is not None:
+        user.spotify_refresh_token = refresh or None
     seconds = _coerce_expires(expires_in)
     # Refresh a little earlier to compensate for latency and clock skew.
     user.spotify_token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
@@ -127,11 +127,12 @@ async def _ensure_access_token(
     """
 
     now = _now_utc()
-    token = user.spotify_access_token
+    token = user.spotify_access_token or None
     exp = _ensure_utc(user.spotify_token_expires_at)
     if token and exp and exp > now:
         return token
-    if not user.spotify_refresh_token:
+    refresh_token = user.spotify_refresh_token or None
+    if not refresh_token:
         if not token and not user.spotify_is_connected:
             # The user never connected Spotify or already disconnected it;
             # returning ``None`` allows the caller to fall back gracefully.
@@ -147,7 +148,7 @@ async def _ensure_access_token(
             "https://accounts.spotify.com/api/token",
             data={
                 "grant_type": "refresh_token",
-                "refresh_token": user.spotify_refresh_token,
+                "refresh_token": refresh_token,
             },
             headers={
                 "Authorization": "Basic "
