@@ -157,6 +157,18 @@ async def async_client(
         main, "start_notifications_scheduler", _start_notifications_scheduler
     )
 
+    async def _start_session_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        main, "start_session_cleanup_scheduler", _start_session_cleanup_scheduler
+    )
+
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(

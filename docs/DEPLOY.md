@@ -69,3 +69,8 @@ server {
 - При запуске API и воркера в разных процессах выключите встроенный планировщик в API, установив `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
+
+## Очистка сессий пользователей
+
+- API автоматически удаляет устаревшие записи из `active_sessions` при старте и затем каждые 15 минут.
+- Частоту можно изменить переменной `SESSION_CLEANUP_INTERVAL_SECONDS` (минимум 30 секунд). Значение `0` выключает фоновой планировщик; при этом скрипт очистки можно запускать вручную, вызвав `python -m app.services.session_cleanup` внутри контейнера/виртуального окружения.
