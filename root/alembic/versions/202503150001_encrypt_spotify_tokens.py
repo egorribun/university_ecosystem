@@ -6,7 +6,6 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from alembic import op
-
 from app.utils.encryption import decrypt_string, encrypt_string
 
 # revision identifiers, used by Alembic.
@@ -20,7 +19,9 @@ def _column_exists(bind, table_name: str, column_name: str) -> bool:
     inspector = sa.inspect(bind)
     if table_name not in inspector.get_table_names():
         return False
-    return column_name in {column["name"] for column in inspector.get_columns(table_name)}
+    return column_name in {
+        column["name"] for column in inspector.get_columns(table_name)
+    }
 
 
 def _encrypt_existing_tokens(session: Session) -> None:
@@ -32,9 +33,7 @@ def _encrypt_existing_tokens(session: Session) -> None:
         return
 
     rows = session.execute(
-        sa.text(
-            "SELECT id, spotify_access_token, spotify_refresh_token FROM users"
-        )
+        sa.text("SELECT id, spotify_access_token, spotify_refresh_token FROM users")
     ).all()
     for row in rows:
         access = encrypt_string(row.spotify_access_token)
@@ -64,9 +63,7 @@ def _decrypt_existing_tokens(session: Session) -> None:
         return
 
     rows = session.execute(
-        sa.text(
-            "SELECT id, spotify_access_token, spotify_refresh_token FROM users"
-        )
+        sa.text("SELECT id, spotify_access_token, spotify_refresh_token FROM users")
     ).all()
     for row in rows:
         access = decrypt_string(row.spotify_access_token)
