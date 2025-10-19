@@ -275,10 +275,7 @@ export default function Settings() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
 
-  const sessionsKey = useMemo(
-    () => ["auth", "sessions", user?.id ?? "me"],
-    [user?.id]
-  )
+  const sessionsKey = useMemo(() => ["auth", "sessions", user?.id ?? "me"], [user?.id])
 
   const fetchSessions = useCallback(async () => {
     const { data } = await api.get<ActiveSession[]>("/auth/sessions")
@@ -297,6 +294,8 @@ export default function Settings() {
     enabled: tab === 1 && Boolean(user),
     staleTime: 30_000,
   })
+
+  const sessionList = useMemo(() => (Array.isArray(sessions) ? sessions : []), [sessions])
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
@@ -1067,7 +1066,10 @@ export default function Settings() {
               <Typography variant="h6" sx={{ color: "var(--page-text)", mb: 0.5 }}>
                 {t("settings:sessions.title")}
               </Typography>
-              <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}>
+              <Typography
+                variant="body2"
+                sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
+              >
                 {t("settings:sessions.subtitle")}
               </Typography>
 
@@ -1082,13 +1084,13 @@ export default function Settings() {
                 <Alert severity="error" variant="outlined" sx={{ mt: 2 }}>
                   {sessionsErrorMessage}
                 </Alert>
-              ) : sessions.length === 0 ? (
+              ) : sessionList.length === 0 ? (
                 <Typography variant="body2" sx={{ mt: 2, color: "var(--page-text)" }}>
                   {t("settings:sessions.empty")}
                 </Typography>
               ) : (
                 <List disablePadding sx={{ mt: 1 }}>
-                  {sessions.map((session) => {
+                  {sessionList.map((session) => {
                     const lastSeen = session.last_seen_at ?? session.created_at
                     const lastSeenText = t("settings:sessions.lastSeen.value", {
                       value: formatSessionTimestamp(lastSeen),
@@ -1141,9 +1143,7 @@ export default function Settings() {
                         }
                       >
                         <ListItemText
-                          primary={
-                            session.user_agent || t("settings:sessions.unknownDevice")
-                          }
+                          primary={session.user_agent || t("settings:sessions.unknownDevice")}
                           secondary={details}
                           primaryTypographyProps={{
                             sx: {

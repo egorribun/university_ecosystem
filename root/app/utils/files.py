@@ -279,12 +279,12 @@ async def save_attachment(
 
     ext_for_name = f".{chosen_ext_without_dot}" if chosen_ext_without_dot else ""
     name = _gen_name(prefix, ext_for_name)
+    await scan_for_malware(data, locale=locale)
     base = settings.static_dir_path
     sanitized_subdir = subdir.strip("/ ")
     target_dir = base / sanitized_subdir
-    await asyncio.to_thread(_ensure_dir, target_dir)
     path = target_dir / name
-    await scan_for_malware(data, locale=locale)
+    await asyncio.to_thread(_ensure_dir, target_dir)
     await asyncio.to_thread(path.write_bytes, data)
     return f"/static/{sanitized_subdir}/{name}"
 

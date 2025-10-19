@@ -2,6 +2,7 @@ import asyncio
 import datetime as dt
 import logging
 import re
+from collections import defaultdict
 from datetime import UTC
 from html import unescape
 from textwrap import shorten
@@ -466,57 +467,85 @@ async def generate_schedule_reminders(
     q = select(Schedule).where(
         and_(Schedule.start_time >= now, Schedule.start_time <= soon)
     )
-    rows = (await db.execute(q)).scalars().all()
-    if not rows:
+    schedules = (await db.execute(q)).scalars().all()
+    if not schedules:
         return 0
-    total_created = 0
-    for sch in rows:
-        title, body, tag, data_payload = build_schedule_reminder_message(sch)
-        uids_all = (
-            (await db.execute(select(User.id).where(User.group_id == sch.group_id)))
-            .scalars()
-            .all()
-        )
-        if not uids_all:
+
+    schedules_by_group: dict[int, list[Schedule]] = defaultdict(list)
+    message_payloads: dict[int, tuple[str, str, str, dict[str, Any]]] = {}
+    titles: set[str] = set()
+    for schedule in schedules:
+        schedules_by_group[int(schedule.group_id)].append(schedule)
+        payload = build_schedule_reminder_message(schedule)
+        message_payloads[int(schedule.id)] = payload
+        titles.add(payload[0])
+
+    group_ids = list(schedules_by_group.keys())
+    if not group_ids:
+        return 0
+
+    users_stmt = select(User.id, User.group_id).where(User.group_id.in_(group_ids))
+    user_rows = await db.execute(users_stmt)
+    group_users: dict[int, set[int]] = defaultdict(set)
+    for user_id, group_id in user_rows:
+        if user_id is None or group_id is None:
             continue
-        dup_since = now - dt.timedelta(minutes=30)
-        existing_q = (
-            select(Notification.user_id)
+        group_users[int(group_id)].add(int(user_id))
+
+    if not any(group_users.values()):
+        return 0
+
+    dup_since = now - dt.timedelta(minutes=30)
+    all_user_ids = {uid for users in group_users.values() for uid in users}
+    existing_by_title: dict[str, set[int]] = defaultdict(set)
+    if titles and all_user_ids:
+        existing_stmt = (
+            select(Notification.user_id, Notification.title)
             .where(
-                and_(
-                    Notification.user_id.in_(
-                        select(User.id).where(User.group_id == sch.group_id)
-                    ),
-                    Notification.title == title,
-                    Notification.url == "/schedule",
-                    Notification.created_at >= dup_since,
-                )
+                Notification.user_id.in_(all_user_ids),
+                Notification.url == "/schedule",
+                Notification.created_at >= dup_since,
+                Notification.title.in_(titles),
             )
             .distinct()
         )
-        existing = set((await db.execute(existing_q)).scalars().all())
-        to_notify = [u for u in uids_all if u not in existing]
-        if not to_notify:
+        existing_rows = await db.execute(existing_stmt)
+        for user_id, title in existing_rows:
+            if user_id is None or title is None:
+                continue
+            existing_by_title[str(title)].add(int(user_id))
+
+    action_title = translate("notifications.actions.open_schedule", locale=None)
+    total_created = 0
+    for group_id, group_schedules in schedules_by_group.items():
+        user_ids = group_users.get(group_id)
+        if not user_ids:
             continue
-        action_title = translate("notifications.actions.open_schedule", locale=None)
-        total_created += await create_notifications_for_users(
-            db,
-            title=title,
-            body=body,
-            type="schedule.reminder",
-            url="/schedule",
-            tag=tag,
-            actions=[
-                {
-                    "action": "open-schedule",
-                    "title": action_title,
-                    "url": "/schedule",
-                }
-            ],
-            payload_data=data_payload,
-            user_ids=to_notify,
-            topic="schedule",
-        )
+        for schedule in group_schedules:
+            title, body, tag, data_payload = message_payloads[int(schedule.id)]
+            already_notified = existing_by_title.get(title, set())
+            to_notify = [uid for uid in user_ids if uid not in already_notified]
+            if not to_notify:
+                continue
+            total_created += await create_notifications_for_users(
+                db,
+                title=title,
+                body=body,
+                type="schedule.reminder",
+                url="/schedule",
+                tag=tag,
+                actions=[
+                    {
+                        "action": "open-schedule",
+                        "title": action_title,
+                        "url": "/schedule",
+                    }
+                ],
+                payload_data=data_payload,
+                user_ids=to_notify,
+                topic="schedule",
+            )
+            existing_by_title[title].update(to_notify)
     return total_created
 
 
