@@ -156,3 +156,56 @@ async def test_schedule_endpoint_localizes_lesson_type(
     payload_ru = response_ru.json()
     expected_ru = translate_lesson_type("lecture", locale="ru")
     assert payload_ru[0]["lesson_type_display"] == expected_ru
+
+
+@pytest.mark.anyio
+async def test_schedule_endpoint_preserves_existing_vary_values(
+    async_client, db_session, fake_cache
+) -> None:
+    _ = fake_cache
+    group = models.Group(name="VU-01", course=2, faculty="Physics")
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+
+    lesson = models.Schedule(
+        group_id=group.id,
+        subject="Astronomy",
+        teacher="Dr. Stone",
+        room="Planetarium",
+        weekday="tuesday",
+        start_time=datetime(2024, 4, 2, 14, 0),
+        end_time=datetime(2024, 4, 2, 15, 30),
+        parity="both",
+        lesson_type="seminar",
+    )
+    db_session.add(lesson)
+    await db_session.commit()
+
+    headers = {
+        "Origin": "http://localhost:5173",
+        "Accept-Language": "ru",
+    }
+    fresh_response = await async_client.get(f"/schedule/{group.id}", headers=headers)
+    assert fresh_response.status_code == 200
+    fresh_vary_values = {
+        value.strip()
+        for value in fresh_response.headers.get("Vary", "").split(",")
+        if value.strip()
+    }
+    assert {"Origin", "Accept-Language"} <= fresh_vary_values
+
+    etag = fresh_response.headers.get("ETag")
+    assert etag
+
+    cached_response = await async_client.get(
+        f"/schedule/{group.id}",
+        headers={**headers, "If-None-Match": etag},
+    )
+    assert cached_response.status_code == 304
+    cached_vary_values = {
+        value.strip()
+        for value in cached_response.headers.get("Vary", "").split(",")
+        if value.strip()
+    }
+    assert {"Origin", "Accept-Language"} <= cached_vary_values

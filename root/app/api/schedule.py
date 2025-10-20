@@ -1,4 +1,5 @@
-from typing import Any, List, Mapping, Sequence
+from functools import lru_cache
+from typing import Any, Callable, List, Mapping, Sequence
 
 from fastapi import (
     APIRouter,
@@ -19,6 +20,13 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.localization import resolve_locale, translate, translate_lesson_type
 from app.models import models
 from app.schemas import schemas
+
+
+@lru_cache(maxsize=1)
+def _get_vary_helper() -> Callable[[Response, str], None]:
+    from app.main import _ensure_vary_header
+
+    return _ensure_vary_header
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
@@ -68,7 +76,7 @@ async def get_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     locale = resolve_locale(request=request)
-    response.headers["Vary"] = "Accept-Language"
+    _get_vary_helper()(response, "Accept-Language")
     response.headers["Content-Language"] = locale
     cache = get_cache()
     cache_key = _schedule_cache_key(group_id)
@@ -77,10 +85,10 @@ async def get_schedule(
         if cached:
             etag_header = format_etag(cached.etag)
             if etag_matches(cached.etag, if_none_match):
-                return Response(
-                    status_code=status.HTTP_304_NOT_MODIFIED,
-                    headers={"ETag": etag_header, "Vary": "Accept-Language"},
-                )
+                cached_response = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+                cached_response.headers["ETag"] = etag_header
+                _get_vary_helper()(cached_response, "Accept-Language")
+                return cached_response
             response.headers["ETag"] = etag_header
             return _localize_schedule_payload(cached.payload, locale=locale)
 
