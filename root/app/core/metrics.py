@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+import logging
 import time
 from ipaddress import ip_address, ip_network
 from typing import Iterable
@@ -53,6 +54,8 @@ _REQUEST_DURATION = (
 )
 
 _CONFIGURED_ATTR = "_metrics_configured"
+_PLACEHOLDER_PASSWORDS = {"changeme"}
+logger = logging.getLogger(__name__)
 
 
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
@@ -170,6 +173,13 @@ async def metrics_endpoint(request: Request) -> Response:
 
 def configure_metrics(app: FastAPI) -> None:
     if getattr(app.state, _CONFIGURED_ATTR, False):
+        return
+
+    if settings.enable_metrics_endpoint and settings.metrics_basic_auth_password.strip().lower() in _PLACEHOLDER_PASSWORDS:
+        logger.warning(
+            "Metrics endpoint is enabled but METRICS_BASIC_AUTH_PASSWORD uses a placeholder "
+            "value; refusing to expose /metrics until strong credentials are configured."
+        )
         return
 
     app.add_middleware(PrometheusRequestMetricsMiddleware)
