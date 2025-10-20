@@ -60,6 +60,7 @@ class User(Base):
     dnd_enabled = Column(Boolean, default=False, nullable=False)
     dnd_start = Column(Time(timezone=False))
     dnd_end = Column(Time(timezone=False))
+    timezone = Column(String(64))
 
     spotify_user_id = Column(String, unique=True, index=True)
     spotify_access_token = Column(EncryptedString())

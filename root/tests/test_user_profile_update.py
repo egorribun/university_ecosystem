@@ -88,6 +88,56 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
 
 
 @pytest.mark.anyio
+async def test_update_profile_timezone_persisted(
+    async_client, user_factory, db_session
+):
+    password = "TimezonePersist123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(
+        hashed_password=hashed,
+        is_active=True,
+    )
+
+    headers = await _login(async_client, user.email, password)
+
+    response = await async_client.put(
+        "/users/me",
+        json={"timezone": "Europe/Paris"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["timezone"] == "Europe/Paris"
+
+    await db_session.refresh(user)
+    assert user.timezone == "Europe/Paris"
+
+
+@pytest.mark.anyio
+async def test_update_profile_timezone_invalid(async_client, user_factory):
+    password = "TimezoneInvalid123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(
+        hashed_password=hashed,
+        is_active=True,
+    )
+
+    headers = await _login(async_client, user.email, password)
+
+    response = await async_client.put(
+        "/users/me",
+        json={"timezone": "Invalid/Zone"},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"][0]
+    assert detail["loc"][-1] == "timezone"
+    assert detail["msg"] == "Enter a valid time zone identifier"
+
+
+@pytest.mark.anyio
 async def test_delete_avatar_removes_file(async_client, user_factory, db_session):
     password = "DeleteAvatar123!"
     hashed = get_password_hash(password)

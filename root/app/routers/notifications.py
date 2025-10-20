@@ -623,14 +623,11 @@ async def send_test(
             if value is not None:
                 message[field] = value
 
-    now_time = datetime.now().astimezone().time()
     results: list[WebPushResult] = []
     for sub in subscriptions:
         if not subscription_supports_topic(sub, normalized_topic):
             continue
-        prepared = prepare_push_payload_for_user(
-            message, getattr(sub, "user", None), now_time=now_time
-        )
+        prepared = prepare_push_payload_for_user(message, getattr(sub, "user", None))
         result = await _deliver_to_subscription(sub, prepared)
         results.append(result)
     summary = _aggregate_results(
@@ -740,13 +737,12 @@ async def broadcast(
     else:
         payload.pop("topic", None)
 
-    now_time = datetime.now().astimezone().time()
     results: list[WebPushResult] = []
     for subscription in subscriptions:
         if not subscription_supports_topic(subscription, topic):
             continue
         prepared = prepare_push_payload_for_user(
-            payload, getattr(subscription, "user", None), now_time=now_time
+            payload, getattr(subscription, "user", None)
         )
         results.append(await _deliver_to_subscription(subscription, prepared))
 
