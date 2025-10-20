@@ -54,11 +54,12 @@ export const currentUserQueryKey = ["users", "me"] as const
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 2
-const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
+export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const PROFILE_CACHE_SIGNING_SALT = "ecosystem-profile-cache-salt"
+const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
 
 type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
 
@@ -70,6 +71,13 @@ type CachedProfileEnvelope = {
 }
 
 type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
+
+type ProfileBroadcastMessage = { type: "unauthorized" }
+
+type HandleUnauthorizedOptions = {
+  broadcast?: boolean
+  persist?: boolean
+}
 
 const encodeBase64 = (value: string): string => {
   if (typeof globalThis === "undefined") return value
@@ -237,18 +245,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
 
-  const setUser = useCallback(
-    (value: SetUserArg) => {
+  const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
+    if (typeof window === "undefined") return
+    if (!("BroadcastChannel" in window)) return
+    try {
+      const channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
+      channel.postMessage(message)
+      channel.close()
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn("Failed to broadcast profile event", error)
+      }
+    }
+  }, [])
+
+  const applyUserState = useCallback(
+    (value: SetUserArg, { persist }: { persist: boolean }) => {
       setUserState((prev: UserState) => {
         const next =
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
-        persistUserToCache(normalized)
+        if (persist) {
+          persistUserToCache(normalized)
+        }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
       })
     },
     [queryClient]
+  )
+
+  const setUser = useCallback(
+    (value: SetUserArg) => {
+      applyUserState(value, { persist: true })
+    },
+    [applyUserState]
   )
 
   useEffect(() => {
@@ -258,19 +289,76 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [queryClient])
 
-  const clearProfile = useCallback(() => {
-    const controller = activeRequestRef.current
-    controller?.abort()
-    activeRequestRef.current = null
-    setUser(null)
-    cachedUserRef.current = null
-  }, [setUser])
+  const clearProfile = useCallback(
+    ({ persist = true }: { persist?: boolean } = {}) => {
+      const controller = activeRequestRef.current
+      controller?.abort()
+      activeRequestRef.current = null
+      applyUserState(() => null, { persist })
+      cachedUserRef.current = null
+    },
+    [applyUserState]
+  )
 
-  const handleUnauthorized = useCallback(() => {
-    clearProfile()
-    setAuthOperation(false)
-    setInitializing(false)
-  }, [clearProfile])
+  const handleUnauthorized = useCallback(
+    ({ broadcast = true, persist = true }: HandleUnauthorizedOptions = {}) => {
+      clearProfile({ persist })
+      setAuthOperation(false)
+      setInitializing(false)
+      if (broadcast) {
+        broadcastProfileEvent({ type: "unauthorized" })
+      }
+    },
+    [broadcastProfileEvent, clearProfile]
+  )
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const syncFromCache = () => {
+      applyUserState(() => readCachedUser() ?? null, { persist: false })
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === PROFILE_CACHE_STORAGE_KEY || event.key === PROFILE_CACHE_VERSION_KEY) {
+        syncFromCache()
+      }
+    }
+
+    window.addEventListener("storage", onStorage)
+
+    let channel: BroadcastChannel | null = null
+
+    const onBroadcastMessage = (event: MessageEvent<ProfileBroadcastMessage>) => {
+      const { data } = event
+      if (!data || typeof data !== "object" || !("type" in data)) {
+        return
+      }
+
+      if (data.type === "unauthorized") {
+        handleUnauthorized({ broadcast: false, persist: false })
+      }
+    }
+
+    if ("BroadcastChannel" in window) {
+      try {
+        channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
+        channel.addEventListener("message", onBroadcastMessage as EventListener)
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn("Failed to subscribe to profile broadcast channel", error)
+        }
+      }
+    }
+
+    return () => {
+      window.removeEventListener("storage", onStorage)
+      if (channel) {
+        channel.removeEventListener("message", onBroadcastMessage as EventListener)
+        channel.close()
+      }
+    }
+  }, [applyUserState, handleUnauthorized])
 
   useEffect(() => {
     if (typeof window === "undefined") {

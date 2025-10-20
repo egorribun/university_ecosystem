@@ -145,6 +145,12 @@ stores them as optimized WebP files (PNG when transparency is required).
   npm run lhci
   ```
 
+#### Multi-tab authentication state
+
+The frontend caches a lightweight profile snapshot in `localStorage` to speed up reloads. Changes to this cache trigger both the
+native `storage` event and a `BroadcastChannel` message so that other open tabs synchronize immediately. Logging out or being
+signed out in one tab clears the cached profile and authentication state everywhere.
+
 ## Architecture overview
 
 ```
