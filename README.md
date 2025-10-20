@@ -105,6 +105,11 @@ Key settings you may want to adjust for local development:
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. The `.env` file is loaded automatically when you start the backend or worker.
 
+> **Security note:** When exposing the metrics endpoint, set `METRICS_BASIC_AUTH_USERNAME` and
+> `METRICS_BASIC_AUTH_PASSWORD` in your `.env` file (or Compose override) to unique, strong values.
+> The backend refuses to serve `/metrics` when `METRICS_BASIC_AUTH_PASSWORD` uses a known placeholder
+> to prevent deployments with weak credentials.
+
 ## Image uploads
 
 Uploaded profile photos and news images are limited to **5&nbsp;MB**. The backend
