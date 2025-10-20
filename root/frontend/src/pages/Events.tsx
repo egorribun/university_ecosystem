@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useMemo,
+  useRef,
   type SyntheticEvent,
   type CSSProperties,
 } from "react"
@@ -114,6 +115,7 @@ const Events = () => {
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null)
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
+  const etagCacheRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     const t = (searchParams.get("tab") as typeof tab) || "active"
@@ -154,10 +156,34 @@ const Events = () => {
                 location: dLocation,
               }
 
+        const keyBase =
+          tab === "my"
+            ? `my:${language}`
+            : `${tab}:${language}:${String(isActiveFilter)}:${dSearch}:${dType}:${dLocation}`
+        const headers = etagCacheRef.current[keyBase]
+          ? { "If-None-Match": etagCacheRef.current[keyBase] }
+          : undefined
+        const requestConfig = {
+          signal,
+          params,
+          headers,
+          validateStatus: (status: number) => status >= 200 && status < 400,
+        } as const
+
         const res =
           tab === "my"
-            ? await axios.get<Event[]>("/events/my", { signal })
-            : await axios.get<Event[]>("/events", { params, signal })
+            ? await axios.get<Event[]>("/events/my", requestConfig)
+            : await axios.get<Event[]>("/events", requestConfig)
+
+        const receivedEtag = res.headers?.etag
+        if (receivedEtag) {
+          etagCacheRef.current[keyBase] = receivedEtag
+        } else {
+          delete etagCacheRef.current[keyBase]
+        }
+        if (res.status === 304) {
+          return
+        }
 
         setEvents(Array.isArray(res.data) ? res.data : [])
       } catch (err: any) {
@@ -168,7 +194,7 @@ const Events = () => {
         setLoading(false)
       }
     },
-    [tab, dSearch, dType, dLocation]
+    [tab, dSearch, dType, dLocation, language]
   )
 
   useEffect(() => {

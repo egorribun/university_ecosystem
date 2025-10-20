@@ -3,6 +3,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
   type KeyboardEvent,
   type CSSProperties,
 } from "react"
@@ -223,6 +224,7 @@ export default function Dashboard() {
   const [schedule, setSchedule] = useState<Lesson[]>([])
 
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
+  const eventsEtagRef = useRef<string | null>(null)
 
   const parity = useMemo(nowParity, [])
   const todayIndex = time.getDay()
@@ -313,7 +315,21 @@ export default function Dashboard() {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const r = await axios.get("/events", { params: { is_active: true } })
+      const previousTag = eventsEtagRef.current
+      const r = await axios.get("/events", {
+        params: { is_active: true },
+        headers: previousTag ? { "If-None-Match": previousTag } : undefined,
+        validateStatus: (status: number) => status >= 200 && status < 400,
+      })
+      const responseTag = r.headers?.etag
+      if (responseTag) {
+        eventsEtagRef.current = responseTag
+      } else {
+        eventsEtagRef.current = null
+      }
+      if (r.status === 304) {
+        return
+      }
       const arr = Array.isArray(r.data) ? r.data : []
       const sorted = arr
         .filter((e) => e.starts_at)
@@ -322,6 +338,7 @@ export default function Dashboard() {
       setCache<EventItem[]>("dash:events", sorted.slice(0, 30))
     } catch {
       setEvents([])
+      eventsEtagRef.current = null
     } finally {
       setLoadingEvents(false)
     }

@@ -1,17 +1,23 @@
+import hashlib
+import json
 import logging
 import uuid
-from typing import List
+from functools import lru_cache
+from typing import Any, List, Tuple
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
+    Header,
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +25,7 @@ from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
 from app.core.database import get_db
+from app.deps.cache import etag_matches, format_etag
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
@@ -29,6 +36,31 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+
+@lru_cache(maxsize=1)
+def _get_vary_helper():
+    from app.main import _ensure_vary_header
+
+    return _ensure_vary_header
+
+
+def _set_language_headers(response: Response, locale: str) -> None:
+    response.headers["Content-Language"] = locale
+    _get_vary_helper()(response, "Accept-Language")
+
+
+def _encode_payload_with_etag(payload: Any) -> Tuple[Any, str, str]:
+    encoded = jsonable_encoder(payload)
+    serialized = json.dumps(
+        encoded,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    digest = hashlib.sha256(serialized).hexdigest()
+    weak_header = f"W/{format_etag(digest)}"
+    return encoded, digest, weak_header
 
 
 @router.post("", response_model=schemas.EventOut)
@@ -57,15 +89,18 @@ async def create_event(
 @router.get("", response_model=List[schemas.EventOut])
 async def all_events(
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     search: str = Query("", alias="search"),
     type: str = Query("", alias="type"),
     location: str = Query("", alias="location"),
     is_active: bool = Query(True, alias="is_active"),
+    if_none_match: str | None = Header(default=None),
 ):
     locale = resolve_locale(request=request, user=user)
-    return await crud.get_all_events(
+    _set_language_headers(response, locale)
+    payload = await crud.get_all_events(
         db,
         user_id=user.id,
         search=search,
@@ -74,6 +109,14 @@ async def all_events(
         is_active=is_active,
         locale=locale,
     )
+    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    if etag_matches(digest, if_none_match):
+        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        not_modified.headers["ETag"] = weak_header
+        _set_language_headers(not_modified, locale)
+        return not_modified
+    response.headers["ETag"] = weak_header
+    return encoded
 
 
 @router.post("/attendance", response_model=schemas.EventAttendanceOut)
@@ -104,11 +147,22 @@ async def unregister_event(
 @router.get("/my", response_model=List[schemas.EventOut])
 async def my_events(
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    if_none_match: str | None = Header(default=None),
 ):
     locale = resolve_locale(request=request, user=user)
-    return await crud.get_my_events(db, user_id=user.id, locale=locale)
+    _set_language_headers(response, locale)
+    payload = await crud.get_my_events(db, user_id=user.id, locale=locale)
+    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    if etag_matches(digest, if_none_match):
+        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        not_modified.headers["ETag"] = weak_header
+        _set_language_headers(not_modified, locale)
+        return not_modified
+    response.headers["ETag"] = weak_header
+    return encoded
 
 
 @router.post("/{id}/upload_file", response_model=schemas.EventFileOut)
@@ -270,10 +324,13 @@ async def delete_event(
 async def get_event(
     id: int,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    if_none_match: str | None = Header(default=None),
 ):
     locale = resolve_locale(request=request, user=user)
+    _set_language_headers(response, locale)
     q = await db.get(models.Event, id)
     if not q:
         raise HTTPException(
@@ -310,7 +367,7 @@ async def get_event(
             .where(models.EventAttendance.event_id == q.id)
         )
     ).scalar()
-    return crud.serialize_event(
+    payload = crud.serialize_event(
         q,
         locale,
         participant_count=participant_count,
@@ -318,6 +375,14 @@ async def get_event(
         is_registered=attendance is not None,
         my_qr_code=attendance.qr_code if attendance else None,
     )
+    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    if etag_matches(digest, if_none_match):
+        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        not_modified.headers["ETag"] = weak_header
+        _set_language_headers(not_modified, locale)
+        return not_modified
+    response.headers["ETag"] = weak_header
+    return encoded
 
 
 @router.delete("/file/{file_id}", response_model=dict)

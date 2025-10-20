@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+from fastapi import status
+
 import pytest
 
 from app.auth.security import get_password_hash
@@ -65,6 +67,15 @@ async def test_events_localization(async_client, db_session, user_factory):
         headers={**headers, "Accept-Language": "en"},
     )
     assert response_en.status_code == 200
+    assert response_en.headers.get("Content-Language") == "en"
+    vary_en = response_en.headers.get("Vary", "")
+    assert any(
+        value.strip().lower() == "accept-language"
+        for value in vary_en.split(",")
+        if value.strip()
+    )
+    etag_en = response_en.headers.get("ETag")
+    assert etag_en
     payload_en = {item["id"]: item for item in response_en.json()}
 
     assert payload_en[primary.id]["title"] == "English Event"
@@ -87,6 +98,14 @@ async def test_events_localization(async_client, db_session, user_factory):
         headers={**headers, "Accept-Language": "ru"},
     )
     assert response_ru.status_code == 200
+    assert response_ru.headers.get("Content-Language") == "ru"
+    vary_ru = response_ru.headers.get("Vary", "")
+    assert any(
+        value.strip().lower() == "accept-language"
+        for value in vary_ru.split(",")
+        if value.strip()
+    )
+    assert response_ru.headers.get("ETag")
     payload_ru = {item["id"]: item for item in response_ru.json()}
 
     assert payload_ru[primary.id]["title"] == "Русское событие"
@@ -96,3 +115,90 @@ async def test_events_localization(async_client, db_session, user_factory):
     assert payload_ru[primary.id]["about"] == "Подробности"
     assert payload_ru[fallback.id]["title"] == "Только русский"
     assert payload_ru[fallback.id]["description"] == "Без перевода"
+
+
+@pytest.mark.anyio
+async def test_events_etag_and_not_modified(async_client, db_session, user_factory):
+    password = "TestEvent456!"
+    hashed = get_password_hash(password)
+    admin = await user_factory(role="admin")
+    student = await user_factory(hashed_password=hashed, is_active=True)
+
+    now = datetime.now(timezone.utc)
+    event = models.Event(
+        title="Test event",
+        description="Primary description",
+        location="Campus",
+        title_en="Test event EN",
+        description_en="Primary description EN",
+        location_en="Campus EN",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=1),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    attendance = models.EventAttendance(
+        event_id=event.id,
+        user_id=student.id,
+        qr_code="qr-test",
+    )
+    db_session.add(attendance)
+    await db_session.commit()
+
+    headers = await _login(async_client, student.email, password)
+    base_headers = {**headers, "Accept-Language": "en"}
+
+    list_response = await async_client.get("/events", headers=base_headers)
+    assert list_response.status_code == status.HTTP_200_OK
+    list_etag = list_response.headers.get("ETag")
+    assert list_etag
+
+    list_not_modified = await async_client.get(
+        "/events",
+        headers={**base_headers, "If-None-Match": list_etag},
+    )
+    assert list_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
+    assert list_not_modified.headers.get("Content-Language") == "en"
+    vary_list = list_not_modified.headers.get("Vary", "")
+    assert any(
+        value.strip().lower() == "accept-language"
+        for value in vary_list.split(",")
+        if value.strip()
+    )
+    assert list_not_modified.headers.get("ETag") == list_etag
+
+    my_response = await async_client.get("/events/my", headers=base_headers)
+    assert my_response.status_code == status.HTTP_200_OK
+    my_etag = my_response.headers.get("ETag")
+    assert my_etag
+
+    my_not_modified = await async_client.get(
+        "/events/my",
+        headers={**base_headers, "If-None-Match": my_etag},
+    )
+    assert my_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
+    assert my_not_modified.headers.get("Content-Language") == "en"
+    assert my_not_modified.headers.get("ETag") == my_etag
+
+    headers = await _login(async_client, student.email, password)
+    detail_headers = {**headers, "Accept-Language": "en"}
+
+    detail_response = await async_client.get(
+        f"/events/{event.id}",
+        headers=detail_headers,
+    )
+    assert detail_response.status_code == status.HTTP_200_OK
+    detail_etag = detail_response.headers.get("ETag")
+    assert detail_etag
+
+    detail_not_modified = await async_client.get(
+        f"/events/{event.id}",
+        headers={**detail_headers, "If-None-Match": detail_etag},
+    )
+    assert detail_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
+    assert detail_not_modified.headers.get("Content-Language") == "en"
+    assert detail_not_modified.headers.get("ETag") == detail_etag
