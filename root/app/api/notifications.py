@@ -507,17 +507,29 @@ async def check_schedule_and_generate(
             data_payload,
             title_translations,
             body_translations,
+            dedupe_key,
         ) = build_schedule_reminder_message(les, locale=locale)
         url = "/schedule"
 
-        dupe = select(func.count(Notification.id)).where(
-            and_(
-                Notification.user_id == user.id,
-                Notification.title == title,
-                Notification.url == url,
-                Notification.created_at >= now - timedelta(hours=1),
+        key_for_dedupe = dedupe_key or tag or title
+        if key_for_dedupe:
+            dupe = select(func.count(Notification.id)).where(
+                and_(
+                    Notification.user_id == user.id,
+                    Notification.dedupe_key == key_for_dedupe,
+                    Notification.url == url,
+                    Notification.created_at >= now - timedelta(hours=1),
+                )
             )
-        )
+        else:
+            dupe = select(func.count(Notification.id)).where(
+                and_(
+                    Notification.user_id == user.id,
+                    Notification.title == title,
+                    Notification.url == url,
+                    Notification.created_at >= now - timedelta(hours=1),
+                )
+            )
         exists = (await db.execute(dupe)).scalar_one() or 0
         if exists:
             continue
@@ -531,6 +543,7 @@ async def check_schedule_and_generate(
             type="schedule.reminder",
             url=url,
             tag=tag,
+            dedupe_key=key_for_dedupe,
             payload_data=data_payload,
             actions=[
                 {

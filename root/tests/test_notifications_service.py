@@ -316,6 +316,60 @@ async def test_generate_schedule_reminders_query_count_constant(
 
 
 @pytest.mark.anyio
+async def test_generate_schedule_reminders_handles_duplicate_titles(
+    db_session, user_factory
+):
+    group = Group(name="G2")
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+
+    user = await user_factory(group_id=group.id)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    lessons = [
+        Schedule(
+            group_id=group.id,
+            subject="Mathematics",
+            teacher="Teacher",
+            room="201",
+            weekday="monday",
+            start_time=now + dt.timedelta(minutes=idx * 5 + 5),
+            end_time=now + dt.timedelta(minutes=idx * 5 + 55),
+        )
+        for idx in range(2)
+    ]
+    db_session.add_all(lessons)
+    await db_session.commit()
+
+    created = await notifications_module.generate_schedule_reminders(
+        db_session, window_minutes=30
+    )
+
+    assert created == 2
+
+    notifications = (
+        (
+            await db_session.execute(
+                select(Notification).where(Notification.user_id == user.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(notifications) == 2
+    dedupe_keys = {note.dedupe_key for note in notifications}
+    assert len(dedupe_keys) == 2
+    assert all(key and key.startswith("schedule-reminder") for key in dedupe_keys)
+
+    repeat_created = await notifications_module.generate_schedule_reminders(
+        db_session, window_minutes=30
+    )
+
+    assert repeat_created == 0
+
+
+@pytest.mark.anyio
 async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, caplog):
     class _DummySession:
         async def __aenter__(self):

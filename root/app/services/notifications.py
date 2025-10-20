@@ -223,13 +223,24 @@ def _ensure_aware(value: dt.datetime | None) -> dt.datetime:
 
 def build_schedule_reminder_message(
     lesson: Schedule, *, locale: str | None = None
-) -> tuple[str, str, str, dict[str, Any], dict[str, str], dict[str, str]]:
+) -> tuple[
+    str,
+    str,
+    str,
+    dict[str, Any],
+    dict[str, str],
+    dict[str, str],
+    str,
+]:
     start_dt = _ensure_aware(getattr(lesson, "start_time", None))
     start_local = start_dt.astimezone()
     lesson_type_raw = getattr(lesson, "lesson_type", None)
     when_line = f"{start_local.strftime('%d.%m')} · {start_local.strftime('%H:%M')}"
 
-    cache: dict[str, tuple[str, str, str, dict[str, Any]]] = {}
+    schedule_id = getattr(lesson, "id", None)
+    timestamp_part = str(int(start_dt.timestamp())) if start_dt else "timestamp"
+
+    cache: dict[str, tuple[str, str, str, dict[str, Any], str]] = {}
 
     def _render(locale_option: str | None) -> tuple[str, str, str, dict[str, Any]]:
         cache_key = locale_option if locale_option is not None else "__default__"
@@ -302,7 +313,12 @@ def build_schedule_reminder_message(
                 )
             )
         default_body = "\n".join(default_lines)
-        default_tag = f"schedule-reminder:{getattr(lesson, 'id', 'lesson')}:{int(start_dt.timestamp())}"
+        identifier_component = (
+            str(schedule_id)
+            if schedule_id is not None
+            else "lesson"
+        )
+        default_tag = f"schedule-reminder:{identifier_component}:{timestamp_part}"
         default_data: dict[str, Any] = {
             "url": "/schedule",
             "category": "schedule",
@@ -339,21 +355,41 @@ def build_schedule_reminder_message(
         filtered_data = {
             key: value for key, value in merged_data.items() if value not in (None, "")
         }
-        result = (title_value, body_value, tag_value, filtered_data)
+        dedupe_candidate = (
+            template.get("dedupeKey")
+            if template and template.get("dedupeKey") not in (None, "")
+            else template.get("dedupe_key")
+            if template and template.get("dedupe_key") not in (None, "")
+            else tag_value
+        )
+        dedupe_value = (
+            str(dedupe_candidate)
+            if dedupe_candidate not in (None, "")
+            else ""
+        )
+        result = (title_value, body_value, tag_value, filtered_data, dedupe_value)
         cache[cache_key] = result
         return result
 
-    title, body, tag, data_payload = _render(locale)
+    title, body, tag, data_payload, dedupe_value = _render(locale)
     title_translations: dict[str, str] = {}
     body_translations: dict[str, str] = {}
     for locale_code in SUPPORTED_LOCALES:
-        localized_title, localized_body, _, _ = _render(locale_code)
+        localized_title, localized_body, _, _, _ = _render(locale_code)
         if localized_title:
             title_translations[locale_code] = localized_title
         if localized_body:
             body_translations[locale_code] = localized_body
 
-    return title, body, tag, data_payload, title_translations, body_translations
+    return (
+        title,
+        body,
+        tag,
+        data_payload,
+        title_translations,
+        body_translations,
+        dedupe_value,
+    )
 
 
 def is_user_in_quiet_hours(
@@ -410,6 +446,7 @@ async def create_notifications_for_users(
     url: Optional[str] = None,
     badge: Optional[str] = None,
     tag: Optional[str] = None,
+    dedupe_key: Optional[str] = None,
     actions: Optional[Sequence[Mapping[str, Any]]] = None,
     payload_data: Optional[Mapping[str, Any]] = None,
     user_ids: Sequence[int],
@@ -436,6 +473,7 @@ async def create_notifications_for_users(
             body_en=notification_body_en,
             type=type,
             url=url,
+            dedupe_key=dedupe_key,
             created_at=now,
             read=False,
         )
@@ -608,14 +646,29 @@ async def generate_schedule_reminders(
 
     schedules_by_group: dict[int, list[Schedule]] = defaultdict(list)
     message_payloads: dict[
-        int, tuple[str, str, str, dict[str, Any], dict[str, str], dict[str, str]]
+        int,
+        tuple[
+            str,
+            str,
+            str,
+            dict[str, Any],
+            dict[str, str],
+            dict[str, str],
+            str,
+        ],
     ] = {}
-    titles: set[str] = set()
     for schedule in schedules:
         schedules_by_group[int(schedule.group_id)].append(schedule)
         payload = build_schedule_reminder_message(schedule)
         message_payloads[int(schedule.id)] = payload
-        titles.add(payload[0])
+    dedupe_keys: set[str] = {
+        str(key)
+        for key in (
+            payload[6] or payload[2] or payload[0]
+            for payload in message_payloads.values()
+        )
+        if key not in (None, "")
+    }
 
     group_ids = list(schedules_by_group.keys())
     if not group_ids:
@@ -634,23 +687,23 @@ async def generate_schedule_reminders(
 
     dup_since = now - dt.timedelta(minutes=30)
     all_user_ids = {uid for users in group_users.values() for uid in users}
-    existing_by_title: dict[str, set[int]] = defaultdict(set)
-    if titles and all_user_ids:
+    existing_by_dedupe: dict[str, set[int]] = defaultdict(set)
+    if dedupe_keys and all_user_ids:
         existing_stmt = (
-            select(Notification.user_id, Notification.title)
+            select(Notification.user_id, Notification.dedupe_key)
             .where(
                 Notification.user_id.in_(all_user_ids),
                 Notification.url == "/schedule",
                 Notification.created_at >= dup_since,
-                Notification.title.in_(titles),
+                Notification.dedupe_key.in_(dedupe_keys),
             )
             .distinct()
         )
         existing_rows = await db.execute(existing_stmt)
-        for user_id, title in existing_rows:
-            if user_id is None or title is None:
+        for user_id, dedupe_key in existing_rows:
+            if user_id is None or dedupe_key is None:
                 continue
-            existing_by_title[str(title)].add(int(user_id))
+            existing_by_dedupe[str(dedupe_key)].add(int(user_id))
 
     action_title = translate("notifications.actions.open_schedule", locale=None)
     total_created = 0
@@ -666,8 +719,10 @@ async def generate_schedule_reminders(
                 data_payload,
                 title_translations,
                 body_translations,
+                dedupe_key,
             ) = message_payloads[int(schedule.id)]
-            already_notified = existing_by_title.get(title, set())
+            key_for_dedupe = dedupe_key or tag or title
+            already_notified = existing_by_dedupe.get(key_for_dedupe, set())
             to_notify = [uid for uid in user_ids if uid not in already_notified]
             if not to_notify:
                 continue
@@ -680,6 +735,7 @@ async def generate_schedule_reminders(
                 type="schedule.reminder",
                 url="/schedule",
                 tag=tag,
+                dedupe_key=key_for_dedupe,
                 actions=[
                     {
                         "action": "open-schedule",
@@ -691,7 +747,7 @@ async def generate_schedule_reminders(
                 user_ids=to_notify,
                 topic="schedule",
             )
-            existing_by_title[title].update(to_notify)
+            existing_by_dedupe[key_for_dedupe].update(to_notify)
     return total_created
 
 
