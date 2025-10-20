@@ -83,6 +83,59 @@ def _resolve_limits(
     return limit, window
 
 
+def _extract_ip_from_forwarded(forwarded_header: str) -> str | None:
+    for segment in forwarded_header.split(","):
+        directives = segment.split(";")
+        for directive in directives:
+            directive = directive.strip()
+            if not directive:
+                continue
+            if not directive.lower().startswith("for="):
+                continue
+            value = directive.split("=", 1)[1].strip()
+            if not value:
+                continue
+            value = value.strip('"')
+            if not value:
+                continue
+            if value.startswith("[") and "]" in value:
+                value = value[1 : value.index("]")]
+            elif value.count(":") == 1 and "]" not in value:
+                value = value.split(":", 1)[0]
+            return value
+    return None
+
+
+def _resolve_client_ip(request: Request) -> str:
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        for part in x_forwarded_for.split(","):
+            candidate = part.strip()
+            if candidate:
+                ip = candidate
+                break
+        else:
+            ip = None
+    else:
+        ip = None
+
+    if not ip:
+        forwarded_header = request.headers.get("Forwarded")
+        if forwarded_header:
+            ip = _extract_ip_from_forwarded(forwarded_header)
+
+    if not ip:
+        ip = request.client.host if request.client else "unknown"
+
+    ip = ip.strip().lower()
+    if ip.startswith("[") and "]" in ip:
+        ip = ip[1 : ip.index("]")]
+    elif ip.count(":") == 1 and "]" not in ip:
+        ip = ip.split(":", 1)[0]
+
+    return ip or "unknown"
+
+
 def sensitive_route_limit(
     limit: int | None = None,
     window_sec: int | None = None,
@@ -93,7 +146,7 @@ def sensitive_route_limit(
         resolved_limit, resolved_window = _resolve_limits(limit, window_sec)
         if resolved_limit <= 0 or resolved_window <= 0:
             return
-        ip = request.client.host if request.client else "unknown"
+        ip = _resolve_client_ip(request)
         key = f"{key_prefix}:{ip}:{request.url.path}"
         locale = resolve_locale(request=request)
         message = translate("errors.rate_limit.generic", locale=locale)
