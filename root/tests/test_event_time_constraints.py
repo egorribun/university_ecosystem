@@ -104,12 +104,8 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     await db_session.commit()
     await db_session.refresh(event)
 
-    ru_events = await crud.get_all_events(
-        db_session, user_id=student.id, locale="ru"
-    )
-    en_events = await crud.get_all_events(
-        db_session, user_id=student.id, locale="en"
-    )
+    ru_events = await crud.get_all_events(db_session, user_id=student.id, locale="ru")
+    en_events = await crud.get_all_events(db_session, user_id=student.id, locale="en")
 
     assert ru_events.items[0].title == "Русское название"
     assert ru_events.items[0].title_en == "English title"
