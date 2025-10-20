@@ -62,7 +62,9 @@ async def test_news_localization_preference(async_client, db_session):
 
 
 @pytest.mark.anyio
-async def test_news_list_localization_headers_cache(async_client, db_session, fake_cache):
+async def test_news_list_localization_headers_cache(
+    async_client, db_session, fake_cache
+):
     _ = fake_cache
     record = models.News(
         title="Новость дня",
