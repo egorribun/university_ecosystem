@@ -6,7 +6,7 @@ A unified university platform that brings together the class schedule, news, eve
 Before running the project locally make sure you have the following tooling available:
 
 - **Docker & Docker Compose** (optional but recommended for a one-command stack)
-- **Python 3.12+** with `pip`
+- **Python 3.11+** with `pip`
 - **Node.js 20.19+** and `npm`
 - **PostgreSQL 16** (only if you are not relying on Docker)
 
