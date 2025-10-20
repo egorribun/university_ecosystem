@@ -2,6 +2,8 @@
 
 from typing import Sequence, Union
 
+import textwrap
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -52,16 +54,26 @@ def upgrade() -> None:
         # Prefer historical timestamps when available to avoid inflating retention windows.
         op.execute(
             sa.text(
-                "UPDATE {table} AS nd "
-                "SET {column} = COALESCE(nd.delivered_at, n.created_at, NOW()) "
-                "FROM notifications AS n "
-                "WHERE nd.notification_id = n.id AND nd.{column} IS NULL"
-            ).format(table=_TABLE_NAME, column=_COLUMN_NAME)
+                textwrap.dedent(
+                    """
+                    UPDATE {table} AS nd
+                    SET {column} = COALESCE(nd.delivered_at, n.created_at, NOW())
+                    FROM notifications AS n
+                    WHERE nd.notification_id = n.id AND nd.{column} IS NULL
+                    """
+                ).format(table=_TABLE_NAME, column=_COLUMN_NAME)
+            )
         )
         op.execute(
             sa.text(
-                "UPDATE {table} " "SET {column} = NOW() " "WHERE {column} IS NULL"
-            ).format(table=_TABLE_NAME, column=_COLUMN_NAME)
+                textwrap.dedent(
+                    """
+                    UPDATE {table}
+                    SET {column} = NOW()
+                    WHERE {column} IS NULL
+                    """
+                ).format(table=_TABLE_NAME, column=_COLUMN_NAME)
+            )
         )
 
         with op.batch_alter_table(_TABLE_NAME) as batch_op:
