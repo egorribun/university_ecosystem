@@ -60,7 +60,9 @@ async def _worker_loop() -> None:
             except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
                 raise
             except Exception:  # pragma: no cover - defensive guard
-                logger.exception("Failed to process notification job", extra={"job": job})
+                logger.exception(
+                    "Failed to process notification job", extra={"job": job}
+                )
             finally:
                 _job_queue.task_done()
     except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
@@ -122,10 +124,14 @@ async def _process_job(job: NotificationJob) -> None:
             logger.warning("Unsupported notification job", extra={"job": job})
 
 
-async def enqueue_event_notification(event_id: int, *, locale: str | None = None) -> None:
+async def enqueue_event_notification(
+    event_id: int, *, locale: str | None = None
+) -> None:
     """Queue an event notification job for asynchronous delivery."""
 
-    await _job_queue.put(NotificationJob(kind="event", record_id=event_id, locale=locale))
+    await _job_queue.put(
+        NotificationJob(kind="event", record_id=event_id, locale=locale)
+    )
     await _ensure_worker()
 
 
@@ -155,4 +161,3 @@ async def reset_testing_state() -> None:
             break
         else:
             _job_queue.task_done()
-
