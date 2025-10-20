@@ -69,10 +69,7 @@ const resolveAcceptLanguage = (language?: string) => {
 
   const supportedMatch = supportedLngs.find((locale) => {
     const normalizedLocale = locale.toLowerCase()
-    return (
-      normalized === normalizedLocale ||
-      normalized.startsWith(`${normalizedLocale}-`)
-    )
+    return normalized === normalizedLocale || normalized.startsWith(`${normalizedLocale}-`)
   })
 
   return supportedMatch ?? fallbackLanguage
