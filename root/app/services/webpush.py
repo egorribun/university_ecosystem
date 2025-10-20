@@ -16,6 +16,8 @@ from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import selectinload, sessionmaker
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
@@ -98,8 +100,22 @@ def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
         root_logger.log(level, "webpush.%s", event, extra={**extra})
 
 
-def _current_local_time() -> time:
-    return datetime.now().astimezone().time()
+def _current_local_time(user: Any | None = None) -> time:
+    tz = UTC
+    if user is not None:
+        raw = getattr(user, "timezone", None)
+        if isinstance(raw, str):
+            candidate = raw.strip()
+            if candidate:
+                try:
+                    tz = ZoneInfo(candidate)
+                except (ZoneInfoNotFoundError, ValueError):
+                    tz = UTC
+    now = datetime.now(tz)
+    current = now.timetz()
+    if current.tzinfo is not None:
+        current = current.replace(tzinfo=None)
+    return current
 
 
 def _is_user_in_quiet_hours(user: Any | None, *, now_time: time | None = None) -> bool:
@@ -108,7 +124,7 @@ def _is_user_in_quiet_hours(user: Any | None, *, now_time: time | None = None) -
     start = getattr(user, "dnd_start", None)
     end = getattr(user, "dnd_end", None)
     if now_time is None:
-        now_time = _current_local_time()
+        now_time = _current_local_time(user)
     if start is None or end is None:
         return True
     if start == end:

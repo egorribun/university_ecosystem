@@ -88,7 +88,7 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     insp = sa.inspect(engine)
     assert insp.has_table("users")
     user_columns = {col["name"] for col in insp.get_columns("users")}
-    assert {"dnd_enabled", "dnd_start", "dnd_end"}.issubset(user_columns)
+    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(user_columns)
     assert insp.has_table("push_subscriptions")
     engine.dispose()
 
