@@ -302,9 +302,7 @@ def build_schedule_reminder_message(
                 )
             )
         default_body = "\n".join(default_lines)
-        default_tag = (
-            f"schedule-reminder:{getattr(lesson, 'id', 'lesson')}:{int(start_dt.timestamp())}"
-        )
+        default_tag = f"schedule-reminder:{getattr(lesson, 'id', 'lesson')}:{int(start_dt.timestamp())}"
         default_data: dict[str, Any] = {
             "url": "/schedule",
             "category": "schedule",
@@ -324,7 +322,9 @@ def build_schedule_reminder_message(
             body_value = str(template.get("body") or default_body)
             tag_value = str(template.get("tag") or default_tag)
             template_data = (
-                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+                template.get("data")
+                if isinstance(template.get("data"), Mapping)
+                else {}
             )
             merged_data = {**default_data}
             if isinstance(template_data, Mapping):
@@ -706,7 +706,9 @@ async def notify_about_news(
         text = str(value)
         return text if text.strip() else None
 
-    def _variant(locale_option: str | None) -> tuple[
+    def _variant(
+        locale_option: str | None,
+    ) -> tuple[
         str,
         str,
         str,
@@ -755,7 +757,9 @@ async def notify_about_news(
             resolved_url = str(template.get("url") or url)
             tag_value = str(template.get("tag") or default_tag)
             template_data = (
-                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+                template.get("data")
+                if isinstance(template.get("data"), Mapping)
+                else {}
             )
             payload_data = (
                 dict(template_data) if isinstance(template_data, Mapping) else {}
@@ -775,9 +779,7 @@ async def notify_about_news(
         payload_data.setdefault("url", resolved_url)
         payload_data.setdefault("category", "news")
         filtered_payload = {
-            key: value
-            for key, value in payload_data.items()
-            if value not in (None, "")
+            key: value for key, value in payload_data.items() if value not in (None, "")
         }
         return (
             normalized,
@@ -840,7 +842,9 @@ async def notify_about_news(
 async def notify_about_event(
     db: AsyncSession, event: Event, *, locale: str | None = None
 ) -> int:
-    def _variant(locale_option: str | None) -> tuple[
+    def _variant(
+        locale_option: str | None,
+    ) -> tuple[
         str,
         str,
         str,
@@ -859,9 +863,7 @@ async def notify_about_event(
         )
         if not localized_title_value:
             localized_title_value = (
-                getattr(event, "title", None)
-                or getattr(event, "title_en", None)
-                or ""
+                getattr(event, "title", None) or getattr(event, "title_en", None) or ""
             )
         localized_description = localized_text(
             normalized,
@@ -910,7 +912,9 @@ async def notify_about_event(
                 title=localized_title_value,
             )
         else:
-            default_title = translate("notifications.events.title", locale=locale_option)
+            default_title = translate(
+                "notifications.events.title", locale=locale_option
+            )
         details = [start_local.strftime("%d.%m · %H:%M")]
         if localized_location:
             details.append(str(localized_location))
@@ -933,7 +937,9 @@ async def notify_about_event(
             resolved_url = str(template.get("url") or url)
             tag_value = str(template.get("tag") or default_tag)
             template_data = (
-                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+                template.get("data")
+                if isinstance(template.get("data"), Mapping)
+                else {}
             )
             payload_data = (
                 dict(template_data) if isinstance(template_data, Mapping) else {}
@@ -961,9 +967,7 @@ async def notify_about_event(
         payload_data.setdefault("url", resolved_url)
         payload_data.setdefault("category", "events")
         filtered_payload = {
-            key: value
-            for key, value in payload_data.items()
-            if value not in (None, "")
+            key: value for key, value in payload_data.items() if value not in (None, "")
         }
         return (
             normalized,

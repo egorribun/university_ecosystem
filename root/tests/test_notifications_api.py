@@ -292,6 +292,7 @@ async def test_notifications_list_returns_bilingual_fields(
     assert item_ru["title_en"] == "English Title"
     assert item_ru["body_en"] == "English Body"
 
+
 def test_serialize_notification_accepts_orm_instance():
     notification = Notification(
         id=42,
