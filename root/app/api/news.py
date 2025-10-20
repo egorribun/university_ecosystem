@@ -3,6 +3,7 @@ from typing import Any, List
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     File,
@@ -29,7 +30,7 @@ from app.localization import (
 )
 from app.models import models
 from app.schemas import schemas
-from app.services.notifications import notify_about_news
+from app.services import notification_queue
 from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,7 @@ def _news_cache_keys(news_id: int | None = None) -> list[str]:
 async def create_news(
     data: schemas.NewsCreate,
     request: Request,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -136,10 +138,14 @@ async def create_news(
     await cache.invalidate(*_news_cache_keys(record.id))
     serialized = _serialize_news(record, locale)
     try:
-        await notify_about_news(db, record, locale=locale)
+        background.add_task(
+            notification_queue.enqueue_news_notification,
+            record.id,
+            locale=locale,
+        )
     except Exception:
         logger.exception(
-            "Failed to dispatch news notification", extra={"news_id": record.id}
+            "Failed to enqueue news notification", extra={"news_id": record.id}
         )
     return schemas.NewsOut.model_validate(serialized)
 

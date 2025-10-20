@@ -7,6 +7,7 @@ from typing import Any, List, Tuple
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Header,
@@ -29,7 +30,7 @@ from app.deps.cache import etag_matches, format_etag
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
-from app.services.notifications import notify_about_event
+from app.services import notification_queue
 from app.utils.files import delete_static_file, save_attachment
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ def _encode_payload_with_etag(payload: Any) -> Tuple[Any, str, str]:
 async def create_event(
     data: schemas.EventCreate,
     request: Request,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -78,10 +80,14 @@ async def create_event(
         )
     record = await crud.create_event(db, data, user_id=user.id)
     try:
-        await notify_about_event(db, record, locale=locale)
+        background.add_task(
+            notification_queue.enqueue_event_notification,
+            record.id,
+            locale=locale,
+        )
     except Exception:
         logger.exception(
-            "Failed to dispatch event notification", extra={"event_id": record.id}
+            "Failed to enqueue event notification", extra={"event_id": record.id}
         )
     return crud.serialize_event(record, locale)
 

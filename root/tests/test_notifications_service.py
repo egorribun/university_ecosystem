@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import pytest
 from sqlalchemy import delete, event, select
 
+from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models.models import (
     Group,
@@ -15,6 +16,7 @@ from app.models.models import (
     Schedule,
     User,
 )
+from app.services import notification_queue
 from app.services import notifications as notifications_module
 from app.services.notifications import (
     aggregate_notification_delivery_stats,
@@ -61,6 +63,23 @@ def configured_push_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "vapid_subject", "mailto:test@example.com")
     yield
     _reset_vapid_cache()
+
+
+@pytest.fixture(autouse=True)
+async def reset_notification_queue_state() -> None:
+    await notification_queue.reset_testing_state()
+    yield
+    await notification_queue.reset_testing_state()
+
+
+async def _login(async_client, email: str, password: str) -> dict[str, str]:
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": email, "password": password},
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_is_user_in_quiet_hours_crosses_midnight():
@@ -280,3 +299,93 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
         "Failed to generate schedule reminders" in record.getMessage()
         for record in caplog.records
     )
+
+
+@pytest.mark.anyio
+async def test_event_creation_enqueues_notifications(
+    async_client,
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    admin = await user_factory(role="admin")
+    password = "Adm1nPass!"
+    admin.hashed_password = get_password_hash(password)
+    await db_session.commit()
+
+    headers = await _login(async_client, admin.email, password)
+
+    delivery_started = asyncio.Event()
+    calls = 0
+
+    async def _fake_create(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        delivery_started.set()
+        return 0
+
+    monkeypatch.setattr(
+        notifications_module,
+        "create_notifications_for_users",
+        _fake_create,
+    )
+
+    starts_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    ends_at = starts_at + dt.timedelta(hours=2)
+
+    payload = {
+        "title": "Async Event",
+        "description": "Test event",
+        "starts_at": starts_at.isoformat(),
+        "ends_at": ends_at.isoformat(),
+    }
+
+    response = await async_client.post("/events", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert not delivery_started.is_set()
+
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+    await asyncio.wait_for(delivery_started.wait(), timeout=1.0)
+    assert calls == 1
+
+
+@pytest.mark.anyio
+async def test_news_creation_enqueues_notifications(
+    async_client,
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    admin = await user_factory(role="admin")
+    password = "Adm1nPass!"
+    admin.hashed_password = get_password_hash(password)
+    await db_session.commit()
+
+    headers = await _login(async_client, admin.email, password)
+
+    delivery_started = asyncio.Event()
+    calls = 0
+
+    async def _fake_create(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        delivery_started.set()
+        return 0
+
+    monkeypatch.setattr(
+        notifications_module,
+        "create_notifications_for_users",
+        _fake_create,
+    )
+
+    response = await async_client.post(
+        "/news",
+        json={"title": "Async News", "content": "Hello"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert not delivery_started.is_set()
+
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+    await asyncio.wait_for(delivery_started.wait(), timeout=1.0)
+    assert calls == 1

@@ -24,7 +24,6 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.crud import sanitize_optional_text
 from app.localization import localized_text, resolve_locale, translate
-from app.main import _ensure_vary_header
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import NotificationOut, NotificationsListOut
 from app.services.notifications import (
@@ -47,6 +46,12 @@ _MISSING_COLUMN_MARKERS = (
 def _is_missing_column_error(exc: SQLAlchemyError) -> bool:
     message = str(getattr(exc, "orig", exc)).lower()
     return any(marker in message for marker in _MISSING_COLUMN_MARKERS)
+
+
+def _ensure_vary_header(response: Response, header_name: str) -> None:
+    from app.main import _ensure_vary_header as ensure_vary
+
+    ensure_vary(response, header_name)
 
 
 def _parse_datetime(value: Any) -> datetime | None:
