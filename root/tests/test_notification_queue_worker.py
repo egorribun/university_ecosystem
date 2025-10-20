@@ -6,7 +6,9 @@ from app.services import notification_queue
 
 
 @pytest.mark.anyio
-async def test_shutdown_notification_queue_completes_jobs(monkeypatch: pytest.MonkeyPatch):
+async def test_shutdown_notification_queue_completes_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+):
     processed_ids: list[int] = []
     processed_event = asyncio.Event()
 
@@ -33,7 +35,9 @@ async def test_shutdown_notification_queue_completes_jobs(monkeypatch: pytest.Mo
 
 
 @pytest.mark.anyio
-async def test_shutdown_notification_queue_does_not_leak_tasks(monkeypatch: pytest.MonkeyPatch):
+async def test_shutdown_notification_queue_does_not_leak_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+):
     processed_event = asyncio.Event()
 
     async def _fake_process(job):

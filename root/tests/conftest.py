@@ -78,8 +78,8 @@ from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
-from app.utils import ratelimit as ratelimit_module
 from app.services import notification_queue
+from app.utils import ratelimit as ratelimit_module
 
 
 @pytest.fixture(scope="session")
