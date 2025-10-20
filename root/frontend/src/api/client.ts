@@ -4,7 +4,7 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
 } from "axios"
-import i18n from "@/i18n/config"
+import i18n, { fallbackLng, supportedLngs } from "@/i18n/config"
 
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
@@ -57,16 +57,29 @@ const api: ApiInstance = axios.create({
 
 const acceptLanguageHeader = "Accept-Language"
 
+const normalizeLanguageCandidate = (candidate: string) =>
+  candidate.toLowerCase().replace(/_/g, "-").split(",", 1)[0]?.trim() ?? ""
+
 const resolveAcceptLanguage = (language?: string) => {
-  if (!language) return "ru"
-  const normalized = language.toLowerCase()
-  if (normalized.startsWith("en")) return "en"
-  if (normalized.startsWith("ru")) return "ru"
-  return "ru"
+  const fallbackLanguage = fallbackLng
+  if (!language) return fallbackLanguage
+
+  const normalized = normalizeLanguageCandidate(language)
+  if (!normalized) return fallbackLanguage
+
+  const supportedMatch = supportedLngs.find((locale) => {
+    const normalizedLocale = locale.toLowerCase()
+    return (
+      normalized === normalizedLocale ||
+      normalized.startsWith(`${normalizedLocale}-`)
+    )
+  })
+
+  return supportedMatch ?? fallbackLanguage
 }
 
 api.interceptors.request.use((config) => {
-  const currentLanguage = i18n.language || i18n.resolvedLanguage || "ru"
+  const currentLanguage = i18n.language || i18n.resolvedLanguage || fallbackLng
   const headerValue = resolveAcceptLanguage(currentLanguage)
 
   const headers = AxiosHeaders.from(config.headers ?? {})
