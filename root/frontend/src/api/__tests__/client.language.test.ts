@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw"
 import api from "@/api/client"
 import i18n from "@/i18n/config"
 import { server } from "@/tests/mocks/server"
+import type { PaginatedResponse } from "@/types/Pagination"
 
 type NewsPayload = { id: number; title: string; content: string }
 type EventPayload = { id: number; title: string; description: string }
@@ -51,7 +52,15 @@ describe("API language interceptor", () => {
       http.get("*/events", ({ request }) => {
         const english = isEnglishRequest(request)
         observedLanguages.push(request.headers.get("accept-language") ?? "")
-        return HttpResponse.json(english ? englishEvents : russianEvents)
+        const payload = english ? englishEvents : russianEvents
+        return HttpResponse.json({
+          items: payload,
+          total: payload.length,
+          limit: payload.length,
+          cursor: 0,
+          next_cursor: null,
+          has_more: false,
+        })
       }),
       http.get("*/notifications", ({ request }) => {
         const english = isEnglishRequest(request)
@@ -71,8 +80,8 @@ describe("API language interceptor", () => {
     const newsResponse = await api.get<NewsPayload[]>("/news")
     expect(newsResponse.data[0].title).toBe("Campus renovation update")
 
-    const eventsResponse = await api.get<EventPayload[]>("/events")
-    expect(eventsResponse.data[0].title).toBe("Career fair")
+    const eventsResponse = await api.get<PaginatedResponse<EventPayload>>("/events")
+    expect(eventsResponse.data.items[0].title).toBe("Career fair")
 
     const notificationsResponse = await api.get<NotificationPayload[]>("/notifications")
     expect(notificationsResponse.data[0].message).toBe("New grade posted in Calculus.")

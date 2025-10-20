@@ -92,7 +92,7 @@ async def create_event(
     return crud.serialize_event(record, locale)
 
 
-@router.get("", response_model=List[schemas.EventOut])
+@router.get("", response_model=schemas.PaginatedEvents)
 async def all_events(
     request: Request,
     response: Response,
@@ -102,6 +102,13 @@ async def all_events(
     type: str = Query("", alias="type"),
     location: str = Query("", alias="location"),
     is_active: bool = Query(True, alias="is_active"),
+    limit: int = Query(
+        crud.DEFAULT_EVENTS_LIMIT,
+        ge=1,
+        le=crud.MAX_EVENTS_LIMIT,
+        alias="limit",
+    ),
+    cursor: int = Query(0, ge=0, alias="cursor"),
     if_none_match: str | None = Header(default=None),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -114,6 +121,8 @@ async def all_events(
         location=location,
         is_active=is_active,
         locale=locale,
+        limit=limit,
+        cursor=cursor,
     )
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):

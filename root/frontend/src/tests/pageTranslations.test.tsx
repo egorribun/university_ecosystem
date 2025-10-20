@@ -180,7 +180,17 @@ const {
     if (url === "/stats/attendance") return Promise.resolve({ data: attendanceSummary })
     if (url === "/stats/grades") return Promise.resolve({ data: gradeSummary })
     if (url === "/stats/participation") return Promise.resolve({ data: participationSummary })
-    if (url === "/events") return Promise.resolve({ data: [sampleEvent] })
+    if (url === "/events")
+      return Promise.resolve({
+        data: {
+          items: [sampleEvent],
+          total: 1,
+          limit: 20,
+          cursor: 0,
+          next_cursor: null,
+          has_more: false,
+        },
+      })
     if (url === "/events/my") return Promise.resolve({ data: [] })
     if (url === "/news") return Promise.resolve({ data: newsItems })
     if (url === "/notifications") return Promise.resolve({ data: notificationsResponse })

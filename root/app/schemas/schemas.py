@@ -256,6 +256,15 @@ class EventOut(OrmModel):
     my_qr_code: Optional[str] = None
 
 
+class PaginatedEvents(BaseModel):
+    items: List[EventOut]
+    total: int
+    limit: int
+    cursor: int
+    next_cursor: Optional[int] = None
+    has_more: bool
+
+
 class EventAttendanceCreate(BaseModel):
     event_id: int
 

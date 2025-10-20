@@ -51,22 +51,36 @@ const mockNews = [
   },
 ]
 
-const mockEvents = [
-  {
-    id: 10,
-    title: "Хакатон ГУУ",
-    title_en: "GUU Hackathon",
-    description: "Командные соревнования по разработке.",
-    description_en: "A collaborative coding challenge.",
-    starts_at: "2025-01-05T09:00:00",
-    location: "Актовый зал",
-    location_en: "Assembly Hall",
-    event_type: "хакатон",
-    event_type_en: "Hackathon",
+const now = new Date()
+const mockEvents = Array.from({ length: 18 }, (_, index) => {
+  const id = index + 10
+  const start = new Date(now.getTime() + (index + 1) * 24 * 60 * 60 * 1000)
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
+  return {
+    id,
+    title: `Событие ${id}`,
+    title_en: `Event ${id}`,
+    description: `Описание события ${id}`,
+    description_en: `Event description ${id}`,
+    location: `Корпус A, зал ${index + 1}`,
+    location_en: `Building A, hall ${index + 1}`,
+    event_type: null,
+    event_type_en: null,
+    starts_at: start.toISOString(),
+    ends_at: end.toISOString(),
+    created_at: now.toISOString(),
+    created_by: 1,
+    is_active: true,
+    speaker: null,
+    image_url: null,
     about: null,
     about_en: null,
-  },
-]
+    files: [],
+    participant_count: index * 5,
+    is_registered: false,
+    my_qr_code: null,
+  }
+})
 
 const mockSchedule = [
   {
@@ -277,10 +291,35 @@ export async function useMockApi(page: Page) {
     }
 
     if (pathname.startsWith("api/events")) {
+      if (pathname === "api/events/my") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockEvents.slice(0, 3)),
+        })
+        return
+      }
+
+      const limitParam = Number(url.searchParams.get("limit") ?? "")
+      const cursorParam = Number(url.searchParams.get("cursor") ?? "")
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 20
+      const cursor = Number.isFinite(cursorParam) && cursorParam >= 0 ? cursorParam : 0
+      const slice = mockEvents.slice(cursor, cursor + limit)
+      const total = mockEvents.length
+      const nextCursor = cursor + slice.length
+      const hasMore = nextCursor < total
+
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockEvents),
+        body: JSON.stringify({
+          items: slice,
+          total,
+          limit,
+          cursor,
+          next_cursor: hasMore ? nextCursor : null,
+          has_more: hasMore,
+        }),
       })
       return
     }
@@ -491,7 +530,7 @@ export async function useMockApi(page: Page) {
       const emailField = currentPage.locator('input[name="username"]')
       await emailField.fill("student@example.com")
       await currentPage.locator('input[name="password"]').fill("Password123")
-      await currentPage.getByRole("button", { name: "Войти" }).click()
+      await currentPage.getByRole("button", { name: /Sign in|Войти/ }).click()
       await expect(currentPage).toHaveURL(/\/dashboard$/)
     },
   }

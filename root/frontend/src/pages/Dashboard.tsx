@@ -30,6 +30,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { cardHoverSx } from "@/constants/cardHover"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
+import type { PaginatedResponse } from "@/types/Pagination"
 
 type NewsItem = {
   id: number
@@ -316,8 +317,8 @@ export default function Dashboard() {
   const fetchEvents = useCallback(async () => {
     try {
       const previousTag = eventsEtagRef.current
-      const r = await axios.get("/events", {
-        params: { is_active: true },
+      const r = await axios.get<PaginatedResponse<EventItem>>("/events", {
+        params: { is_active: true, limit: 50 },
         headers: previousTag ? { "If-None-Match": previousTag } : undefined,
         validateStatus: (status: number) => status >= 200 && status < 400,
       })
@@ -330,7 +331,7 @@ export default function Dashboard() {
       if (r.status === 304) {
         return
       }
-      const arr = Array.isArray(r.data) ? r.data : []
+      const arr = Array.isArray(r.data?.items) ? r.data.items : []
       const sorted = arr
         .filter((e) => e.starts_at)
         .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
@@ -412,8 +413,10 @@ export default function Dashboard() {
         .catch(() => {})
     if (type === "events")
       axios
-        .get("/events", { params: { is_active: true } })
-        .then((r) => setCache("prefetch:events", r.data))
+        .get<PaginatedResponse<EventItem>>("/events", { params: { is_active: true, limit: 20 } })
+        .then((r) =>
+          setCache("prefetch:events", Array.isArray(r.data?.items) ? r.data.items : [])
+        )
         .catch(() => {})
   }
 

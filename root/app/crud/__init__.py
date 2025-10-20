@@ -252,6 +252,10 @@ def serialize_event(
     return schemas.EventOut.model_validate(data)
 
 
+DEFAULT_EVENTS_LIMIT = 20
+MAX_EVENTS_LIMIT = 50
+
+
 async def get_all_events(
     db: AsyncSession,
     user_id: int | None = None,
@@ -260,13 +264,18 @@ async def get_all_events(
     location: str = "",
     is_active: bool = True,
     locale: str | None = None,
+    *,
+    limit: int | None = None,
+    cursor: int | None = None,
 ):
-    q = select(models.Event)
     now = datetime.now(UTC)
+    safe_limit = max(1, min(MAX_EVENTS_LIMIT, limit or DEFAULT_EVENTS_LIMIT))
+    safe_cursor = max(0, cursor or 0)
 
+    conditions = []
     if search:
         like = f"%{search}%"
-        q = q.where(
+        conditions.append(
             or_(
                 models.Event.title.ilike(like),
                 models.Event.title_en.ilike(like),
@@ -277,7 +286,7 @@ async def get_all_events(
             )
         )
     if type:
-        q = q.where(
+        conditions.append(
             or_(
                 models.Event.event_type == type,
                 models.Event.event_type_en == type,
@@ -285,32 +294,45 @@ async def get_all_events(
         )
     if location:
         like = f"%{location}%"
-        q = q.where(
+        conditions.append(
             or_(
                 models.Event.location.ilike(like),
                 models.Event.location_en.ilike(like),
             )
         )
     if is_active:
-        q = q.where(models.Event.ends_at >= now)
+        conditions.append(models.Event.ends_at >= now)
     else:
-        q = q.where(models.Event.ends_at < now)
+        conditions.append(models.Event.ends_at < now)
 
-    events = (
-        (await db.execute(q.order_by(models.Event.starts_at.asc()))).scalars().all()
-    )
+    stmt = select(models.Event)
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
+
+    ordered_stmt = stmt.order_by(models.Event.starts_at.asc(), models.Event.id.asc())
+    page_stmt = ordered_stmt.offset(safe_cursor).limit(safe_limit)
+    rows = await db.execute(page_stmt)
+    events = rows.scalars().all()
     ids = [e.id for e in events]
     counts = await _attendance_counts(db, ids)
     files_map = await _files_by_event(db, ids)
 
+    total_stmt = select(func.count()).select_from(models.Event)
+    if conditions:
+        total_stmt = total_stmt.where(and_(*conditions))
+    total = (await db.execute(total_stmt)).scalar_one()
+
     registered_ids: set[int] = set()
     qr_map: Dict[int, Optional[str]] = {}
-    if user_id:
+    if user_id and ids:
         attendance_rows = (
             (
                 await db.execute(
                     select(models.EventAttendance).where(
-                        models.EventAttendance.user_id == user_id
+                        and_(
+                            models.EventAttendance.user_id == user_id,
+                            models.EventAttendance.event_id.in_(ids),
+                        )
                     )
                 )
             )
@@ -327,8 +349,8 @@ async def get_all_events(
         registered_ids = {row.event_id for row in attendance_rows}
         qr_map = {row.event_id: row.qr_code for row in attendance_rows}
 
-    result: List[schemas.EventOut] = []
     normalized_locale = normalize_locale(locale)
+    result: List[schemas.EventOut] = []
     for event in events:
         files = files_map.get(event.id, [])
         result.append(
@@ -341,7 +363,18 @@ async def get_all_events(
                 my_qr_code=qr_map.get(event.id),
             )
         )
-    return result
+
+    next_cursor = safe_cursor + len(result)
+    has_more = next_cursor < total
+
+    return schemas.PaginatedEvents(
+        items=result,
+        total=total,
+        limit=safe_limit,
+        cursor=safe_cursor,
+        next_cursor=next_cursor if has_more else None,
+        has_more=has_more,
+    )
 
 
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
