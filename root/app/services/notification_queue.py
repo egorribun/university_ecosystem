@@ -57,6 +57,9 @@ def _get_loop_state() -> _LoopState:
     return state
 
 
+_WORKER_TASK_NAME = "notification-queue-worker"
+
+
 async def _ensure_worker() -> None:
     """Ensure that a background worker is running to process queued jobs."""
 
@@ -69,7 +72,9 @@ async def _ensure_worker() -> None:
         if state.worker_task and not state.worker_task.done():
             return
         loop = asyncio.get_running_loop()
-        state.worker_task = loop.create_task(_worker_loop(state.queue))
+        state.worker_task = loop.create_task(
+            _worker_loop(state.queue), name=_WORKER_TASK_NAME
+        )
 
 
 async def _worker_loop(queue: asyncio.Queue[NotificationJob]) -> None:
@@ -180,6 +185,31 @@ async def reset_testing_state() -> None:
     """Best-effort helper to clear pending jobs between tests."""
 
     queue = _get_loop_state().queue
+
+    while not queue.empty():
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:  # pragma: no cover - defensive guard
+            break
+        else:
+            queue.task_done()
+
+
+async def shutdown_notification_queue() -> None:
+    """Stop the background worker and drain any pending jobs."""
+
+    state = _get_loop_state()
+    queue = state.queue
+    worker = state.worker_task
+
+    if worker is not None:
+        if not worker.done():
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+        state.worker_task = None
 
     while not queue.empty():
         try:
