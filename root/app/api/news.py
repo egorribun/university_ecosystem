@@ -71,6 +71,13 @@ def _non_empty_text(value: Any) -> str | None:
     return None
 
 
+def _set_language_headers(response: Response, locale: str) -> None:
+    from app.main import _ensure_vary_header as ensure_vary_header
+
+    response.headers["Content-Language"] = locale
+    ensure_vary_header(response, "Accept-Language")
+
+
 def _localized_text(locale: str, ru_value: Any, en_value: Any) -> str:
     normalized = _normalized_cache_locale(locale)
     candidates: tuple[Any, ...]
@@ -146,6 +153,7 @@ async def news_list(
 ):
     locale = resolve_locale(request=request)
     cache = get_cache()
+    normalized_locale = _normalized_cache_locale(locale)
     cache_key = _news_list_cache_key(locale)
     legacy_key = _LEGACY_NEWS_LIST_CACHE_KEY if locale == DEFAULT_LOCALE else None
 
@@ -156,11 +164,14 @@ async def news_list(
         if cached:
             etag_header = format_etag(cached.etag)
             if etag_matches(cached.etag, if_none_match):
-                return Response(
+                not_modified = Response(
                     status_code=status.HTTP_304_NOT_MODIFIED,
                     headers={"ETag": etag_header},
                 )
+                _set_language_headers(not_modified, normalized_locale)
+                return not_modified
             response.headers["ETag"] = etag_header
+            _set_language_headers(response, normalized_locale)
             return cached.payload
 
     rows = await crud.get_news_list(db)
@@ -170,6 +181,7 @@ async def news_list(
     if cache.enabled:
         entry = await cache.set(cache_key, encoded)
         response.headers["ETag"] = format_etag(entry.etag)
+    _set_language_headers(response, normalized_locale)
     return encoded
 
 
@@ -183,6 +195,7 @@ async def get_news(
 ):
     locale = resolve_locale(request=request)
     cache = get_cache()
+    normalized_locale = _normalized_cache_locale(locale)
     cache_key = _news_item_cache_key(id, locale)
     legacy_key = _legacy_news_item_cache_key(id) if locale == DEFAULT_LOCALE else None
     if cache.enabled:
@@ -192,11 +205,14 @@ async def get_news(
         if cached:
             etag_header = format_etag(cached.etag)
             if etag_matches(cached.etag, if_none_match):
-                return Response(
+                not_modified = Response(
                     status_code=status.HTTP_304_NOT_MODIFIED,
                     headers={"ETag": etag_header},
                 )
+                _set_language_headers(not_modified, normalized_locale)
+                return not_modified
             response.headers["ETag"] = etag_header
+            _set_language_headers(response, normalized_locale)
             return cached.payload
     q = await db.get(models.News, id)
     if not q:
@@ -209,6 +225,7 @@ async def get_news(
     if cache.enabled:
         entry = await cache.set(cache_key, encoded)
         response.headers["ETag"] = format_etag(entry.etag)
+    _set_language_headers(response, normalized_locale)
     return encoded
 
 

@@ -5,6 +5,13 @@ from app.models import models
 from app.schemas import schemas
 
 
+def _assert_language_headers(response, expected_language: str) -> None:
+    assert response.headers.get("Content-Language") == expected_language
+    vary_header = response.headers.get("Vary", "")
+    vary_values = {value.strip() for value in vary_header.split(",") if value.strip()}
+    assert "Accept-Language" in vary_values
+
+
 @pytest.mark.anyio
 async def test_news_localization_preference(async_client, db_session):
     primary = models.News(
@@ -52,6 +59,76 @@ async def test_news_localization_preference(async_client, db_session):
     assert payload_ru["title"] == "Только русский"
     assert payload_ru["content"] == "Контент без перевода"
     assert payload_ru["title_en"] is None
+
+
+@pytest.mark.anyio
+async def test_news_list_localization_headers_cache(async_client, db_session, fake_cache):
+    _ = fake_cache
+    record = models.News(
+        title="Новость дня",
+        content="Русский текст",
+        title_en="Daily News",
+        content_en="English text",
+    )
+    db_session.add(record)
+    await db_session.commit()
+    await db_session.refresh(record)
+
+    headers = {"Accept-Language": "en"}
+
+    first = await async_client.get("/news", headers=headers)
+    assert first.status_code == 200
+    _assert_language_headers(first, "en")
+    etag = first.headers.get("ETag")
+    assert etag
+
+    not_modified = await async_client.get(
+        "/news", headers={**headers, "If-None-Match": etag}
+    )
+    assert not_modified.status_code == 304
+    _assert_language_headers(not_modified, "en")
+    assert not_modified.headers.get("ETag") == etag
+
+    cached = await async_client.get("/news", headers=headers)
+    assert cached.status_code == 200
+    _assert_language_headers(cached, "en")
+    assert cached.headers.get("ETag") == etag
+
+
+@pytest.mark.anyio
+async def test_news_detail_localization_headers_cache(
+    async_client, db_session, fake_cache
+):
+    _ = fake_cache
+    record = models.News(
+        title="Новость дня",
+        content="Русский текст",
+        title_en="Daily News",
+        content_en="English text",
+    )
+    db_session.add(record)
+    await db_session.commit()
+    await db_session.refresh(record)
+
+    headers = {"Accept-Language": "en"}
+
+    first = await async_client.get(f"/news/{record.id}", headers=headers)
+    assert first.status_code == 200
+    _assert_language_headers(first, "en")
+    etag = first.headers.get("ETag")
+    assert etag
+
+    not_modified = await async_client.get(
+        f"/news/{record.id}", headers={**headers, "If-None-Match": etag}
+    )
+    assert not_modified.status_code == 304
+    _assert_language_headers(not_modified, "en")
+    assert not_modified.headers.get("ETag") == etag
+
+    cached = await async_client.get(f"/news/{record.id}", headers=headers)
+    assert cached.status_code == 200
+    _assert_language_headers(cached, "en")
+    assert cached.headers.get("ETag") == etag
 
 
 @pytest.mark.anyio("asyncio")
