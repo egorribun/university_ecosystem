@@ -3,7 +3,12 @@ import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createQueryClient } from "@/app/queryClient"
-import { AuthProvider, currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
+import {
+  AuthProvider,
+  PROFILE_CACHE_STORAGE_KEY,
+  currentUserQueryKey,
+  useAuth,
+} from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
 
@@ -53,6 +58,33 @@ describe("AuthProvider caching", () => {
 
     await waitFor(() => expect(result.current.user).toBeNull())
 
+    expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+
+    queryClient.clear()
+  })
+
+  it("synchronizes cached profile state when storage changes", async () => {
+    localStorage.setItem("token", "token-789")
+    const { queryClient, wrapper } = setup()
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    await waitFor(() => expect(result.current.user).toBeTruthy())
+
+    const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+
+    act(() => {
+      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          oldValue: cachedEnvelope,
+          newValue: null,
+          storageArea: localStorage,
+        })
+      )
+    })
+
+    await waitFor(() => expect(result.current.user).toBeNull())
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()
