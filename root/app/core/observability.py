@@ -39,6 +39,7 @@ try:
         CollectorRegistry,
         Counter,
         Gauge,
+        Histogram,
         generate_latest,
     )
 except Exception:  # pragma: no cover - optional dependency guard
@@ -46,6 +47,7 @@ except Exception:  # pragma: no cover - optional dependency guard
     CollectorRegistry = None  # type: ignore[assignment]
     Counter = None  # type: ignore[assignment]
     Gauge = None  # type: ignore[assignment]
+    Histogram = None  # type: ignore[assignment]
 
     def generate_latest(_: object) -> bytes:  # type: ignore[misc]
         raise RuntimeError("prometheus-client is required for worker metrics")
@@ -77,6 +79,7 @@ _otel_configured = False
 _sqlalchemy_instrumented = False
 _otel_logger_provider: LoggerProvider | None = None
 _otel_logging_handler: LoggingHandler | None = None
+_notification_queue_metrics: "NotificationQueueMetrics | None" = None
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
@@ -512,3 +515,61 @@ def configure_worker_observability(*, worker_name: str | None = None) -> None:
         logging.getLogger(__name__).info(
             "Worker %s observability configured", worker_name
         )
+
+
+@dataclass
+class NotificationQueueMetrics:
+    """Prometheus metrics describing the notification queue state."""
+
+    queue_size: Gauge
+    dropped_jobs_total: Counter
+    processing_latency_seconds: Histogram
+
+    def reset(self) -> None:
+        """Best-effort helper used by tests to zero recorded values."""
+
+        self.queue_size.set(0)
+        # The internals below are implementation details of prometheus_client,
+        # hence the type: ignore annotations.
+        self.dropped_jobs_total._value.set(0)  # type: ignore[attr-defined]
+        self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
+        for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
+            bucket.set(0)
+
+
+def get_notification_queue_metrics() -> NotificationQueueMetrics:
+    """Return a singleton bundle of Prometheus metrics for the queue."""
+
+    global _notification_queue_metrics
+    if _notification_queue_metrics is None:
+        if Gauge is None or Counter is None or Histogram is None:  # pragma: no cover
+            raise RuntimeError(
+                "prometheus-client is required to create notification queue metrics"
+            )
+
+        _notification_queue_metrics = NotificationQueueMetrics(
+            queue_size=Gauge(
+                "notification_queue_size",
+                "Number of pending notification jobs in the in-process queue",
+            ),
+            dropped_jobs_total=Counter(
+                "notification_queue_dropped_jobs_total",
+                "Total notification jobs dropped due to queue saturation",
+            ),
+            processing_latency_seconds=Histogram(
+                "notification_queue_processing_latency_seconds",
+                "Time spent processing individual notification jobs in seconds",
+                buckets=(
+                    0.01,
+                    0.05,
+                    0.1,
+                    0.5,
+                    1.0,
+                    2.5,
+                    5.0,
+                    10.0,
+                ),
+            ),
+        )
+
+    return _notification_queue_metrics
