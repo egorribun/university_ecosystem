@@ -156,6 +156,14 @@ class NewsCreate(BaseModel):
     image_url: Optional[str] = None
 
 
+class NewsUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    title_en: Optional[str] = None
+    content_en: Optional[str] = None
+    image_url: Optional[str] = None
+
+
 class NewsOut(OrmModel, NewsCreate):
     id: int
     created_at: datetime

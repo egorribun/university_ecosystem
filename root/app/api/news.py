@@ -3,6 +3,7 @@ from typing import Any, List
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Header,
@@ -214,8 +215,8 @@ async def get_news(
 @router.patch("/{id}", response_model=schemas.NewsOut)
 async def update_news(
     id: int,
-    data: schemas.NewsCreate,
     request: Request,
+    data: schemas.NewsUpdate | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -231,7 +232,7 @@ async def update_news(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    updates = data.model_dump(exclude_unset=True)
+    updates = data.model_dump(exclude_unset=True) if data else {}
     if "title_en" in updates:
         updates["title_en"] = crud.sanitize_optional_text(updates.get("title_en"))
     if "content_en" in updates:
