@@ -238,6 +238,7 @@ async def test_list_notifications_sets_language_and_cache_headers(
     assert follow_up.headers.get("Cache-Control") == "no-store, max-age=0"
     assert follow_up.headers.get("Pragma") == "no-cache"
 
+
 def test_serialize_notification_accepts_orm_instance():
     notification = Notification(
         id=42,

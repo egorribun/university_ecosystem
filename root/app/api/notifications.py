@@ -24,13 +24,13 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.crud import sanitize_optional_text
 from app.localization import localized_text, resolve_locale, translate
+from app.main import _ensure_vary_header
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import NotificationOut, NotificationsListOut
 from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
 )
-from app.main import _ensure_vary_header
 
 logger = logging.getLogger(__name__)
 
