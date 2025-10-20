@@ -153,9 +153,7 @@ async def enqueue_event_notification(
     """Queue an event notification job for asynchronous delivery."""
 
     queue = _get_loop_state().queue
-    await queue.put(
-        NotificationJob(kind="event", record_id=event_id, locale=locale)
-    )
+    await queue.put(NotificationJob(kind="event", record_id=event_id, locale=locale))
     await _ensure_worker()
 
 
@@ -163,9 +161,7 @@ async def enqueue_news_notification(news_id: int, *, locale: str | None = None) 
     """Queue a news notification job for asynchronous delivery."""
 
     queue = _get_loop_state().queue
-    await queue.put(
-        NotificationJob(kind="news", record_id=news_id, locale=locale)
-    )
+    await queue.put(NotificationJob(kind="news", record_id=news_id, locale=locale))
     await _ensure_worker()
 
 
