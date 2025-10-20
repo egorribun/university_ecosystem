@@ -28,6 +28,7 @@ def _get_vary_helper() -> Callable[[Response, str], None]:
 
     return _ensure_vary_header
 
+
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
 
