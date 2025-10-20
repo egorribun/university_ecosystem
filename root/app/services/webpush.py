@@ -8,13 +8,14 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from hashlib import sha256
-from typing import Any, Literal
+from threading import Lock
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import create_engine, delete, select, update
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import selectinload, sessionmaker
 
 from app.core.config import settings
@@ -22,21 +23,50 @@ from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.localization import resolve_locale, translate
 from app.models.models import PushSubscription
+from app.services import push_schema
 from app.services.notification_templates import render_notification_template
-from app.services.push_schema import ensure_push_subscription_schema_sync
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.NOTSET)
 
-url = make_url(settings.database_url)
-if url.drivername.endswith("+asyncpg"):
-    url = url.set(drivername="postgresql+psycopg")
-elif url.drivername.endswith("+aiosqlite"):
-    url = url.set(drivername="sqlite")
-_sync_engine = create_engine(str(url), pool_pre_ping=True, future=True)
-ensure_push_subscription_schema_sync(_sync_engine)
-_Session = sessionmaker(bind=_sync_engine, autocommit=False, autoflush=False)
+_sync_url = make_url(settings.database_url)
+if _sync_url.drivername.endswith("+asyncpg"):
+    _sync_url = _sync_url.set(drivername="postgresql+psycopg")
+elif _sync_url.drivername.endswith("+aiosqlite"):
+    _sync_url = _sync_url.set(drivername="sqlite")
+
+_sync_engine: Engine | None = None
+_Session: sessionmaker | None = None
+_sync_init_lock = Lock()
+_async_init_lock = asyncio.Lock()
+
+
+def _initialize_sync_resources() -> None:
+    global _sync_engine, _Session
+    if _Session is not None:
+        return
+    engine = create_engine(str(_sync_url), pool_pre_ping=True, future=True)
+    push_schema.ensure_push_subscription_schema_sync(engine)
+    _sync_engine = engine
+    _Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+def _ensure_sync_sessionmaker() -> sessionmaker:
+    if _Session is None:
+        with _sync_init_lock:
+            if _Session is None:
+                _initialize_sync_resources()
+    return cast(sessionmaker, _Session)
+
+
+async def _ensure_async_sessionmaker() -> sessionmaker:
+    if _Session is None:
+        async with _async_init_lock:
+            if _Session is None:
+                await asyncio.to_thread(_ensure_sync_sessionmaker)
+    return cast(sessionmaker, _Session)
+
 
 _OPTION_KEYS: set[str] = {
     "actions",
@@ -539,7 +569,8 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         elif message:
             gone = "404" in message or "410" in message
         if gone:
-            with _Session() as session:
+            session_factory = _ensure_sync_sessionmaker()
+            with session_factory() as session:
                 session.execute(
                     delete(PushSubscription).where(PushSubscription.id == sub.id)
                 )
@@ -594,7 +625,8 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             error=str(exc),
         )
     now = datetime.now(UTC)
-    with _Session() as session:
+    session_factory = _ensure_sync_sessionmaker()
+    with session_factory() as session:
         session.execute(
             update(PushSubscription)
             .where(PushSubscription.id == sub.id)
@@ -640,6 +672,7 @@ async def send_to_user(
             retry_after=rate_info.retry_after,
         )
         return []
+    await _ensure_async_sessionmaker()
     async with async_session() as session:
         result = await session.execute(
             select(PushSubscription)
@@ -711,6 +744,7 @@ async def broadcast_to_topic(
             retry_after=rate_info.retry_after,
         )
         return []
+    await _ensure_async_sessionmaker()
     async with async_session() as session:
         result = await session.execute(
             select(PushSubscription)
