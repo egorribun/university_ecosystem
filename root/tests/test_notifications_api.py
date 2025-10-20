@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -181,6 +181,62 @@ async def test_list_notifications_handles_invalid_data(
 
     datetime.fromisoformat(created_at.replace("Z", "+00:00"))
 
+
+@pytest.mark.anyio
+async def test_list_notifications_sets_language_and_cache_headers(
+    async_client: AsyncClient,
+    user_factory,
+    db_session,
+):
+    password = "Headers123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    headers = await _login(async_client, user.email, password)
+
+    now = datetime.now(UTC)
+    notifications = [
+        Notification(
+            user_id=user.id,
+            title="First",
+            body="Test",
+            created_at=now - timedelta(minutes=5),
+        ),
+        Notification(
+            user_id=user.id,
+            title="Second",
+            body="Test",
+            created_at=now,
+        ),
+    ]
+    db_session.add_all(notifications)
+    await db_session.commit()
+
+    response = await async_client.get(
+        "/notifications?lang=en&limit=1",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("Content-Language") == "en"
+    assert "Accept-Language" in response.headers.get("Vary", "")
+    assert response.headers.get("Cache-Control") == "no-store, max-age=0"
+    assert response.headers.get("Pragma") == "no-cache"
+
+    payload = response.json()
+    cursor = payload.get("next_cursor")
+    assert cursor
+
+    follow_up = await async_client.get(
+        f"/notifications?cursor={cursor}&lang=en&limit=1",
+        headers=headers,
+    )
+
+    assert follow_up.status_code == 200
+    assert follow_up.headers.get("Content-Language") == "en"
+    assert "Accept-Language" in follow_up.headers.get("Vary", "")
+    assert follow_up.headers.get("Cache-Control") == "no-store, max-age=0"
+    assert follow_up.headers.get("Pragma") == "no-cache"
 
 def test_serialize_notification_accepts_orm_instance():
     notification = Notification(

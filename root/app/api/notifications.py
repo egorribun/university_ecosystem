@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import (
     String,
@@ -30,6 +30,7 @@ from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
 )
+from app.main import _ensure_vary_header
 
 logger = logging.getLogger(__name__)
 
@@ -344,12 +345,17 @@ def _serialize_notification(
 @router.get("", response_model=NotificationsListOut)
 async def list_notifications(
     request: Request,
+    response: Response,
     cursor: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
+    response.headers["Content-Language"] = locale or ""
+    _ensure_vary_header(response, "Accept-Language")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
     cursor_info: Optional[Tuple[datetime, int]] = None
     if cursor:
         parsed = _decode_cursor(cursor)
@@ -461,6 +467,7 @@ async def clear_notifications(
 @router.post("/check-schedule", response_model=NotificationsListOut)
 async def check_schedule_and_generate(
     request: Request,
+    response: Response,
     lookahead_minutes: int = Query(15, ge=1, le=180),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -468,7 +475,7 @@ async def check_schedule_and_generate(
     locale = resolve_locale(request=request, user=user)
     if not user.group_id:
         return await list_notifications(
-            request=request, db=db, user=user, limit=20, cursor=None
+            request=request, response=response, db=db, user=user, limit=20, cursor=None
         )
 
     now = datetime.now(UTC)
@@ -525,5 +532,10 @@ async def check_schedule_and_generate(
         )
 
     return await list_notifications(
-        request=request, db=db, user=user, limit=20, cursor=None
+        request=request,
+        response=response,
+        db=db,
+        user=user,
+        limit=20,
+        cursor=None,
     )
