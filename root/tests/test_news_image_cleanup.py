@@ -24,14 +24,10 @@ async def test_update_news_removes_replaced_image(
 
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
-    payload = schemas.NewsCreate(
-        title=record.title,
-        content=record.content,
-        image_url="/static/news_images/new.png",
-    )
+    payload = schemas.NewsUpdate(image_url="/static/news_images/new.png")
 
     updated = await news.update_news(
-        record.id, payload, request=None, db=db_session, user=admin
+        record.id, request=None, data=payload, db=db_session, user=admin
     )
 
     assert updated.image_url == "/static/news_images/new.png"

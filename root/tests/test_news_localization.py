@@ -1,6 +1,8 @@
 import pytest
 
+from app.api import news
 from app.models import models
+from app.schemas import schemas
 
 
 @pytest.mark.anyio
@@ -50,3 +52,60 @@ async def test_news_localization_preference(async_client, db_session):
     assert payload_ru["title"] == "Только русский"
     assert payload_ru["content"] == "Контент без перевода"
     assert payload_ru["title_en"] is None
+
+
+@pytest.mark.anyio("asyncio")
+@pytest.mark.parametrize(
+    "payload_kwargs, expected_changes",
+    [
+        ({"title_en": "Updated English"}, {"title_en": "Updated English"}),
+        (
+            {"image_url": "/static/news_images/new-image.png"},
+            {"image_url": "/static/news_images/new-image.png"},
+        ),
+    ],
+)
+async def test_partial_news_updates_keep_other_fields(
+    payload_kwargs,
+    expected_changes,
+    db_session,
+    user_factory,
+):
+    admin = await user_factory(role="admin")
+    record = models.News(
+        title="Новость дня",
+        content="Русский текст",
+        title_en="Daily News",
+        content_en="English text",
+        image_url="/static/news_images/original.png",
+    )
+    db_session.add(record)
+    await db_session.commit()
+    await db_session.refresh(record)
+
+    original_values = {
+        "title": record.title,
+        "content": record.content,
+        "title_en": record.title_en,
+        "content_en": record.content_en,
+        "image_url": record.image_url,
+    }
+
+    payload = schemas.NewsUpdate(**payload_kwargs)
+    await news.update_news(
+        record.id,
+        request=None,
+        data=payload,
+        db=db_session,
+        user=admin,
+    )
+
+    stored = await db_session.get(models.News, record.id)
+    assert stored is not None
+
+    for field, expected in expected_changes.items():
+        assert getattr(stored, field) == expected
+
+    for field, original in original_values.items():
+        if field not in expected_changes:
+            assert getattr(stored, field) == original
