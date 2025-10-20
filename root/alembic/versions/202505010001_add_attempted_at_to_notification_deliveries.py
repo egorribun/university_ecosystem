@@ -1,8 +1,7 @@
 """Add attempted_at column to notification deliveries."""
 
-from typing import Sequence, Union
-
 import textwrap
+from typing import Sequence, Union
 
 import sqlalchemy as sa
 
