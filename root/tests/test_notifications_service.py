@@ -18,6 +18,7 @@ from app.models.models import (
 )
 from app.services import notification_queue
 from app.services import notifications as notifications_module
+from app.services import webpush as webpush_module
 from app.services.notifications import (
     aggregate_notification_delivery_stats,
     create_notifications_for_users,
@@ -87,6 +88,52 @@ def test_is_user_in_quiet_hours_crosses_midnight():
     assert is_user_in_quiet_hours(user, now_time=dt.time(23, 15)) is True
     assert is_user_in_quiet_hours(user, now_time=dt.time(6, 45)) is True
     assert is_user_in_quiet_hours(user, now_time=dt.time(12, 0)) is False
+
+
+def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPatch):
+    user = User(
+        dnd_enabled=True,
+        dnd_start=dt.time(21, 0),
+        dnd_end=dt.time(6, 0),
+        timezone="America/New_York",
+    )
+
+    base = dt.datetime(2024, 1, 1, 2, 30, tzinfo=dt.timezone.utc)
+
+    class _FixedDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return base.replace(tzinfo=None)
+            return base.astimezone(tz)
+
+    monkeypatch.setattr(notifications_module.dt, "datetime", _FixedDatetime)
+    assert is_user_in_quiet_hours(user) is True
+
+    monkeypatch.setattr(webpush_module, "datetime", _FixedDatetime)
+    assert webpush_module._is_user_in_quiet_hours(user) is True
+
+
+def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch):
+    user = User(dnd_enabled=True, dnd_start=dt.time(1, 0), dnd_end=dt.time(5, 0))
+
+    base = dt.datetime(2024, 6, 1, 3, 0, tzinfo=dt.timezone.utc)
+
+    class _UtcDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return base.replace(tzinfo=None)
+            return base.astimezone(tz)
+
+    monkeypatch.setattr(notifications_module.dt, "datetime", _UtcDatetime)
+    assert is_user_in_quiet_hours(user) is True
+
+    user.timezone = "Invalid/Zone"
+    assert is_user_in_quiet_hours(user) is True
+
+    monkeypatch.setattr(webpush_module, "datetime", _UtcDatetime)
+    assert webpush_module._is_user_in_quiet_hours(user) is True
 
 
 def test_prepare_push_payload_applies_silent_mode():

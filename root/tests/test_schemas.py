@@ -32,6 +32,14 @@ def test_user_profile_update_accepts_dnd_interval():
     assert payload.dnd_enabled is True
 
 
+def test_user_profile_update_validates_timezone():
+    payload = schemas.UserProfileUpdate(timezone="Europe/Berlin")
+    assert payload.timezone == "Europe/Berlin"
+
+    with pytest.raises(ValidationError):
+        schemas.UserProfileUpdate(timezone="Invalid/Zone")
+
+
 def test_event_create_requires_end_after_start():
     starts = datetime.now(timezone.utc)
     with pytest.raises(ValidationError):
@@ -77,4 +85,5 @@ async def test_user_out_contract(user_factory):
     assert data["dnd_enabled"] is False
     assert data["dnd_start"] is None
     assert data["dnd_end"] is None
+    assert data["timezone"] is None
     assert "hashed_password" not in data

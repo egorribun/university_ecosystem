@@ -426,6 +426,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": 'Укажите время начала и окончания режима "Не беспокоить"',
         "en": 'Provide both start and end times for "Do Not Disturb" mode',
     },
+    "validation.timezone.invalid": {
+        "ru": "Укажите корректный идентификатор часового пояса",
+        "en": "Enter a valid time zone identifier",
+    },
     "validation.events.end_after_start": {
         "ru": "Время окончания должно быть позже времени начала мероприятия",
         "en": "The end time must be later than the start time",

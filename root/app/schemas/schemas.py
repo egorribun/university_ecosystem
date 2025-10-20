@@ -1,7 +1,9 @@
 from datetime import datetime, time
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.localization import translate
 from app.models.enums import UserRole
@@ -48,6 +50,7 @@ class UserBase(BaseModel):
     dnd_enabled: bool = False
     dnd_start: Optional[time] = None
     dnd_end: Optional[time] = None
+    timezone: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -86,6 +89,21 @@ class UserProfileUpdate(BaseModel):
     dnd_enabled: Optional[bool] = None
     dnd_start: Optional[time] = None
     dnd_end: Optional[time] = None
+    timezone: Optional[str] = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            ZoneInfo(text)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(translate("validation.timezone.invalid")) from exc
+        return text
 
     @model_validator(mode="before")
     def _validate_dnd(cls, data: Any) -> Any:

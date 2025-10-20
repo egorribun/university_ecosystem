@@ -8,6 +8,8 @@ from html import unescape
 from textwrap import shorten
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from sqlalchemy import and_, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,8 +39,22 @@ from app.services.push_topics import normalize_topic, subscription_supports_topi
 from app.services.webpush import WebPushResult, send_web_push
 
 
-def _current_local_time() -> dt.time:
-    return dt.datetime.now().astimezone().time()
+def _current_local_time(user: User | None = None) -> dt.time:
+    tz = UTC
+    if user is not None:
+        raw = getattr(user, "timezone", None)
+        if isinstance(raw, str):
+            candidate = raw.strip()
+            if candidate:
+                try:
+                    tz = ZoneInfo(candidate)
+                except (ZoneInfoNotFoundError, ValueError):
+                    tz = UTC
+    now = dt.datetime.now(tz)
+    current = now.timetz()
+    if current.tzinfo is not None:
+        current = current.replace(tzinfo=None)
+    return current
 
 
 logger = logging.getLogger(__name__)
@@ -295,7 +311,7 @@ def is_user_in_quiet_hours(
     start = getattr(user, "dnd_start", None)
     end = getattr(user, "dnd_end", None)
     if now_time is None:
-        now_time = _current_local_time()
+        now_time = _current_local_time(user)
     if start is None or end is None:
         return True
     if start == end:
@@ -441,7 +457,6 @@ async def create_notifications_for_users(
                 if normalized_actions:
                     base_payload["actions"] = normalized_actions
 
-            now_time = _current_local_time()
             send_jobs: list[tuple[PushSubscription, int]] = []
             tasks: list[Awaitable[WebPushResult]] = []
 
@@ -475,7 +490,7 @@ async def create_notifications_for_users(
                     )
                     continue
                 prepared_payload = prepare_push_payload_for_user(
-                    base_payload, getattr(sub, "user", None), now_time=now_time
+                    base_payload, getattr(sub, "user", None)
                 )
                 send_jobs.append((sub, notification_id))
                 tasks.append(_send_push(sub, prepared_payload))
