@@ -179,9 +179,7 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
     with pytest.raises(RuntimeError):
-        await users.upload_avatar(
-            upload, request=None, db=db_session, user=user
-        )
+        await users.upload_avatar(upload, request=None, db=db_session, user=user)
 
     avatar_dir = tmp_path / "avatars"
     assert delete_calls, "delete_static_file should be invoked"
@@ -222,9 +220,7 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
     with pytest.raises(RuntimeError):
-        await users.upload_cover(
-            upload, request=None, db=db_session, user=user
-        )
+        await users.upload_cover(upload, request=None, db=db_session, user=user)
 
     cover_dir = tmp_path / "covers"
     assert delete_calls, "delete_static_file should be invoked"
