@@ -7,7 +7,6 @@ from datetime import UTC
 from html import unescape
 from textwrap import shorten
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
-
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import and_, delete, func, insert, or_, select

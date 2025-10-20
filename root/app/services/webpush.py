@@ -10,13 +10,12 @@ from datetime import UTC, datetime, time
 from hashlib import sha256
 from typing import Any, Literal
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import selectinload, sessionmaker
-
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.config import settings
 from app.core.database import async_session

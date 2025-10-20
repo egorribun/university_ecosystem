@@ -1,9 +1,15 @@
 from datetime import datetime, time
 from typing import Any, List, Optional
-
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.localization import translate
 from app.models.enums import UserRole
