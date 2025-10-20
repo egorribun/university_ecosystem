@@ -88,7 +88,9 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
 
 
 @pytest.mark.anyio
-async def test_update_profile_timezone_persisted(async_client, user_factory, db_session):
+async def test_update_profile_timezone_persisted(
+    async_client, user_factory, db_session
+):
     password = "TimezonePersist123!"
     hashed = get_password_hash(password)
     user = await user_factory(

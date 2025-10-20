@@ -627,9 +627,7 @@ async def send_test(
     for sub in subscriptions:
         if not subscription_supports_topic(sub, normalized_topic):
             continue
-        prepared = prepare_push_payload_for_user(
-            message, getattr(sub, "user", None)
-        )
+        prepared = prepare_push_payload_for_user(message, getattr(sub, "user", None))
         result = await _deliver_to_subscription(sub, prepared)
         results.append(result)
     summary = _aggregate_results(
