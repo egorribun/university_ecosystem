@@ -431,6 +431,32 @@ def prepare_push_payload_for_user(
     return base
 
 
+_SCHEMA_CHECK_LOCK = asyncio.Lock()
+_SCHEMA_CHECK_MARKER: float | None = None
+
+
+async def _ensure_push_subscription_schema_once(db: AsyncSession) -> None:
+    """Ensure the push subscription schema exists once per process."""
+
+    global _SCHEMA_CHECK_MARKER
+
+    if _SCHEMA_CHECK_MARKER is not None:
+        return
+
+    async with _SCHEMA_CHECK_LOCK:
+        if _SCHEMA_CHECK_MARKER is not None:
+            return
+        await ensure_push_subscription_schema(db)
+        _SCHEMA_CHECK_MARKER = dt.datetime.now(UTC).timestamp()
+
+
+def invalidate_push_subscription_schema_cache() -> None:
+    """Reset the cached schema check state so it runs again on next use."""
+
+    global _SCHEMA_CHECK_MARKER
+    _SCHEMA_CHECK_MARKER = None
+
+
 async def create_notifications_for_users(
     db: AsyncSession,
     *,
@@ -500,7 +526,7 @@ async def create_notifications_for_users(
                 )
             )
     else:
-        await ensure_push_subscription_schema(db)
+        await _ensure_push_subscription_schema_once(db)
         subs = (
             (
                 await db.execute(

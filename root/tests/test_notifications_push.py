@@ -381,7 +381,9 @@ async def test_create_notifications_limits_concurrent_push_tasks(
     async def _noop_schema(_db):
         return None
 
-    monkeypatch.setattr(notifications, "ensure_push_subscription_schema", _noop_schema)
+    monkeypatch.setattr(
+        notifications, "_ensure_push_subscription_schema_once", _noop_schema
+    )
 
     active = 0
     max_active = 0
@@ -421,3 +423,65 @@ async def test_create_notifications_limits_concurrent_push_tasks(
     assert created == len(users)
     assert call_count == len(users)
     assert max_active == limit
+
+
+@pytest.mark.anyio
+async def test_create_notifications_checks_schema_once_per_process(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    _configured_webpush_settings,
+):
+    notifications.invalidate_push_subscription_schema_cache()
+
+    user = await user_factory(is_active=True)
+    db_session.add(
+        PushSubscription(
+            user_id=user.id,
+            endpoint="https://push.example.test/schema-check",
+            auth="auth-schema",
+            p256dh="p256-schema",
+            topics=["news"],
+        )
+    )
+    await db_session.commit()
+
+    schema_calls = 0
+
+    async def _fake_schema(db):
+        nonlocal schema_calls
+        schema_calls += 1
+
+    monkeypatch.setattr(notifications, "ensure_push_subscription_schema", _fake_schema)
+
+    def _fake_send_web_push(subscription, payload):
+        return WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=subscription.user_id,
+            status="sent",
+            status_code=201,
+        )
+
+    monkeypatch.setattr(notifications, "send_web_push", _fake_send_web_push)
+
+    base_args = dict(
+        db=db_session,
+        title="Hello",
+        body="Body",
+        type="news",
+        url="/news",
+        user_ids=[user.id],
+        topic="news",
+    )
+
+    await notifications.create_notifications_for_users(**base_args)
+    await notifications.create_notifications_for_users(**base_args)
+
+    assert schema_calls == 1
+
+    notifications.invalidate_push_subscription_schema_cache()
+
+    await notifications.create_notifications_for_users(**base_args)
+
+    assert schema_calls == 2
