@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Literal
+from weakref import WeakKeyDictionary
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,32 +30,54 @@ class NotificationJob:
     locale: str | None
 
 
-_job_queue: asyncio.Queue[NotificationJob] = asyncio.Queue()
-_worker_task: asyncio.Task[None] | None = None
-_worker_lock = asyncio.Lock()
+@dataclass(slots=True)
+class _LoopState:
+    """Per-event-loop resources for the notification queue."""
+
+    queue: asyncio.Queue[NotificationJob]
+    worker_task: asyncio.Task[None] | None
+    worker_lock: asyncio.Lock
+
+
+_loop_states: "WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
+    WeakKeyDictionary()
+)
+
+
+def _get_loop_state() -> _LoopState:
+    loop = asyncio.get_running_loop()
+    state = _loop_states.get(loop)
+    if state is None:
+        state = _LoopState(
+            queue=asyncio.Queue(),
+            worker_task=None,
+            worker_lock=asyncio.Lock(),
+        )
+        _loop_states[loop] = state
+    return state
 
 
 async def _ensure_worker() -> None:
     """Ensure that a background worker is running to process queued jobs."""
 
-    global _worker_task
+    state = _get_loop_state()
 
-    if _worker_task and not _worker_task.done():
+    if state.worker_task and not state.worker_task.done():
         return
 
-    async with _worker_lock:
-        if _worker_task and not _worker_task.done():
+    async with state.worker_lock:
+        if state.worker_task and not state.worker_task.done():
             return
         loop = asyncio.get_running_loop()
-        _worker_task = loop.create_task(_worker_loop())
+        state.worker_task = loop.create_task(_worker_loop(state.queue))
 
 
-async def _worker_loop() -> None:
+async def _worker_loop(queue: asyncio.Queue[NotificationJob]) -> None:
     """Continuously process notification jobs from the queue."""
 
     try:
         while True:
-            job = await _job_queue.get()
+            job = await queue.get()
             try:
                 await _process_job(job)
             except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
@@ -64,7 +87,7 @@ async def _worker_loop() -> None:
                     "Failed to process notification job", extra={"job": job}
                 )
             finally:
-                _job_queue.task_done()
+                queue.task_done()
     except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
         raise
 
@@ -129,7 +152,8 @@ async def enqueue_event_notification(
 ) -> None:
     """Queue an event notification job for asynchronous delivery."""
 
-    await _job_queue.put(
+    queue = _get_loop_state().queue
+    await queue.put(
         NotificationJob(kind="event", record_id=event_id, locale=locale)
     )
     await _ensure_worker()
@@ -138,26 +162,33 @@ async def enqueue_event_notification(
 async def enqueue_news_notification(news_id: int, *, locale: str | None = None) -> None:
     """Queue a news notification job for asynchronous delivery."""
 
-    await _job_queue.put(NotificationJob(kind="news", record_id=news_id, locale=locale))
+    queue = _get_loop_state().queue
+    await queue.put(
+        NotificationJob(kind="news", record_id=news_id, locale=locale)
+    )
     await _ensure_worker()
 
 
 async def wait_for_all_jobs(timeout: float | None = None) -> None:
     """Wait until the queue is empty. Intended for tests."""
 
+    queue = _get_loop_state().queue
+
     if timeout is None:
-        await _job_queue.join()
+        await queue.join()
         return
-    await asyncio.wait_for(_job_queue.join(), timeout=timeout)
+    await asyncio.wait_for(queue.join(), timeout=timeout)
 
 
 async def reset_testing_state() -> None:
     """Best-effort helper to clear pending jobs between tests."""
 
-    while not _job_queue.empty():
+    queue = _get_loop_state().queue
+
+    while not queue.empty():
         try:
-            _job_queue.get_nowait()
+            queue.get_nowait()
         except asyncio.QueueEmpty:  # pragma: no cover - defensive guard
             break
         else:
-            _job_queue.task_done()
+            queue.task_done()
