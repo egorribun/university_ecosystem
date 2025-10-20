@@ -313,11 +313,7 @@ def build_schedule_reminder_message(
                 )
             )
         default_body = "\n".join(default_lines)
-        identifier_component = (
-            str(schedule_id)
-            if schedule_id is not None
-            else "lesson"
-        )
+        identifier_component = str(schedule_id) if schedule_id is not None else "lesson"
         default_tag = f"schedule-reminder:{identifier_component}:{timestamp_part}"
         default_data: dict[str, Any] = {
             "url": "/schedule",
@@ -358,14 +354,14 @@ def build_schedule_reminder_message(
         dedupe_candidate = (
             template.get("dedupeKey")
             if template and template.get("dedupeKey") not in (None, "")
-            else template.get("dedupe_key")
-            if template and template.get("dedupe_key") not in (None, "")
-            else tag_value
+            else (
+                template.get("dedupe_key")
+                if template and template.get("dedupe_key") not in (None, "")
+                else tag_value
+            )
         )
         dedupe_value = (
-            str(dedupe_candidate)
-            if dedupe_candidate not in (None, "")
-            else ""
+            str(dedupe_candidate) if dedupe_candidate not in (None, "") else ""
         )
         result = (title_value, body_value, tag_value, filtered_data, dedupe_value)
         cache[cache_key] = result
