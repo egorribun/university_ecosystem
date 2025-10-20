@@ -1,5 +1,7 @@
+import { initObservability } from "./app/observability"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
 
+initObservability()
 ensureTrustedTypesPolicies()
 
 async function bootstrap() {

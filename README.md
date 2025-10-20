@@ -96,6 +96,8 @@ Key settings you may want to adjust for local development:
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |
+| `VITE_SENTRY_DSN` | Frontend Sentry DSN used to initialize error tracking. | Empty |
+| `VITE_ENVIRONMENT` | Optional environment label propagated to the frontend observability SDK. | Derived from Vite build mode |
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. The `.env` file is loaded automatically when you start the backend or worker.
 
