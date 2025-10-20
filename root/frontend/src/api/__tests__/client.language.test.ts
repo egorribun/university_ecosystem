@@ -116,4 +116,23 @@ describe("API language interceptor", () => {
 
     expect(response.data[0].title).toBe("ru")
   })
+
+  it("falls back to the default locale for unsupported languages", async () => {
+    const observedLanguages: string[] = []
+
+    server.use(
+      http.get("*/news", ({ request }) => {
+        observedLanguages.push(request.headers.get("accept-language") ?? "")
+        return HttpResponse.json(englishNews)
+      })
+    )
+
+    await i18n.changeLanguage("kk")
+    await api.get<NewsPayload[]>("/news")
+
+    await i18n.changeLanguage("de")
+    await api.get<NewsPayload[]>("/news")
+
+    expect(observedLanguages).toEqual(["en", "en"])
+  })
 })

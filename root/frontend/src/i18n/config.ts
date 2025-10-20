@@ -63,13 +63,15 @@ export const resources = {
   },
 } as const
 
-const fallbackLng = "en"
+export const supportedLngs = ["en", "ru"] as const
+
+export const fallbackLng = "en"
 
 void i18n.use(initReactI18next).init({
   resources,
   defaultNS,
   fallbackLng,
-  supportedLngs: ["en", "ru"],
+  supportedLngs: [...supportedLngs],
   lng: "ru",
   interpolation: {
     escapeValue: false,
