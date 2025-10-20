@@ -7,6 +7,7 @@ from sqlalchemy import select, text, update
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.models.models import Notification
+from app.services.notifications import create_notifications_for_users
 
 
 async def _login(
@@ -238,6 +239,58 @@ async def test_list_notifications_sets_language_and_cache_headers(
     assert follow_up.headers.get("Cache-Control") == "no-store, max-age=0"
     assert follow_up.headers.get("Pragma") == "no-cache"
 
+
+@pytest.mark.anyio
+async def test_notifications_list_returns_bilingual_fields(
+    async_client: AsyncClient,
+    user_factory,
+    db_session,
+):
+    password = "Bilingual123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    await create_notifications_for_users(
+        db_session,
+        title="English Title",
+        body="English Body",
+        title_translations={"en": "English Title", "ru": "Русский заголовок"},
+        body_translations={"en": "English Body", "ru": "Русский текст"},
+        type="system.message",
+        url="/status",
+        user_ids=[user.id],
+    )
+
+    headers = await _login(async_client, user.email, password)
+
+    response_en = await async_client.get(
+        "/notifications",
+        headers={**headers, "Accept-Language": "en"},
+    )
+    assert response_en.status_code == 200
+    payload_en = response_en.json()
+    assert payload_en["items"], "Expected notifications in response"
+    item_en = payload_en["items"][0]
+
+    assert item_en["title"] == "English Title"
+    assert item_en["body"] == "English Body"
+    assert item_en["title_en"] == "English Title"
+    assert item_en["body_en"] == "English Body"
+
+    response_ru = await async_client.get(
+        "/notifications",
+        headers={**headers, "Accept-Language": "ru"},
+    )
+    assert response_ru.status_code == 200
+    payload_ru = response_ru.json()
+    assert payload_ru["items"], "Expected notifications in response"
+    item_ru = payload_ru["items"][0]
+
+    assert item_ru["id"] == item_en["id"]
+    assert item_ru["title"] == "Русский заголовок"
+    assert item_ru["body"] == "Русский текст"
+    assert item_ru["title_en"] == "English Title"
+    assert item_ru["body_en"] == "English Body"
 
 def test_serialize_notification_accepts_orm_instance():
     notification = Notification(

@@ -500,9 +500,14 @@ async def check_schedule_and_generate(
     lessons = (await db.execute(q)).scalars().all()
 
     for les in lessons:
-        title, body, tag, data_payload = build_schedule_reminder_message(
-            les, locale=locale
-        )
+        (
+            title,
+            body,
+            tag,
+            data_payload,
+            title_translations,
+            body_translations,
+        ) = build_schedule_reminder_message(les, locale=locale)
         url = "/schedule"
 
         dupe = select(func.count(Notification.id)).where(
@@ -521,6 +526,8 @@ async def check_schedule_and_generate(
             db,
             title=title,
             body=body,
+            title_translations=title_translations,
+            body_translations=body_translations,
             type="schedule.reminder",
             url=url,
             tag=tag,

@@ -323,6 +323,8 @@ async def test_notify_about_news_uses_locale(
                 "title": kwargs.get("title"),
                 "body": kwargs.get("body"),
                 "payload": kwargs.get("payload_data", {}),
+                "title_translations": kwargs.get("title_translations", {}),
+                "body_translations": kwargs.get("body_translations", {}),
             }
         )
         return 1
@@ -339,10 +341,18 @@ async def test_notify_about_news_uses_locale(
     assert captures[0]["title"] == "New article: English headline"
     assert captures[0]["body"] == "English body"
     assert captures[0]["payload"]["headline"] == "English headline"
+    assert captures[0]["title_translations"]["en"] == "New article: English headline"
+    assert captures[0]["title_translations"]["ru"] == "Новая новость: Русский заголовок"
+    assert captures[0]["body_translations"]["en"] == "English body"
+    assert captures[0]["body_translations"]["ru"].startswith("Русский текст")
 
     assert captures[1]["title"] == "Новая новость: Русский заголовок"
     assert captures[1]["body"].startswith("Русский текст")
     assert captures[1]["payload"]["headline"] == "Русский заголовок"
+    assert captures[1]["title_translations"]["en"] == "New article: English headline"
+    assert captures[1]["title_translations"]["ru"] == "Новая новость: Русский заголовок"
+    assert captures[1]["body_translations"]["en"] == "English body"
+    assert captures[1]["body_translations"]["ru"].startswith("Русский текст")
 
 
 @pytest.mark.anyio

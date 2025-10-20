@@ -94,6 +94,32 @@ def _plain_text(value: Any, *, limit: int | None = None) -> str | None:
     return text
 
 
+def _coerce_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_translation_map(
+    translations: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    if not translations:
+        return normalized
+    for key, value in translations.items():
+        if value is None:
+            continue
+        locale_key = str(key).strip().lower()
+        if locale_key not in SUPPORTED_LOCALES:
+            continue
+        text = _coerce_optional_text(value)
+        if text is None:
+            continue
+        normalized[locale_key] = text
+    return normalized
+
+
 def _build_delivery_row(
     notification_id: int,
     *,
@@ -197,109 +223,137 @@ def _ensure_aware(value: dt.datetime | None) -> dt.datetime:
 
 def build_schedule_reminder_message(
     lesson: Schedule, *, locale: str | None = None
-) -> tuple[str, str, str, dict[str, Any]]:
+) -> tuple[str, str, str, dict[str, Any], dict[str, str], dict[str, str]]:
     start_dt = _ensure_aware(getattr(lesson, "start_time", None))
     start_local = start_dt.astimezone()
     lesson_type_raw = getattr(lesson, "lesson_type", None)
-    lesson_type_display = translate_lesson_type(lesson_type_raw, locale=locale)
-    payload_input = {
-        "subject": getattr(lesson, "subject", None),
-        "group": getattr(getattr(lesson, "group", None), "name", None),
-        "lesson_type": lesson_type_display or lesson_type_raw,
-        "teacher": getattr(lesson, "teacher", None),
-        "room": getattr(lesson, "room", None),
-        "starts_at": start_dt.isoformat(),
-        "date": start_local.strftime("%d.%m"),
-        "time": start_local.strftime("%H:%M"),
-        "url": "/schedule",
-        "lesson_id": getattr(lesson, "id", None),
-    }
-    template = render_notification_template(
-        "schedule.reminder", payload_input, locale=locale
-    )
-    subject_value = getattr(lesson, "subject", None)
-    if subject_value:
-        default_title = translate(
-            "notifications.schedule.reminder.title_with_subject",
-            locale=locale,
-            subject=subject_value,
+    when_line = f"{start_local.strftime('%d.%m')} · {start_local.strftime('%H:%M')}"
+
+    cache: dict[str, tuple[str, str, str, dict[str, Any]]] = {}
+
+    def _render(locale_option: str | None) -> tuple[str, str, str, dict[str, Any]]:
+        cache_key = locale_option if locale_option is not None else "__default__"
+        if cache_key in cache:
+            return cache[cache_key]
+
+        lesson_type_display = translate_lesson_type(
+            lesson_type_raw, locale=locale_option
         )
-    else:
-        default_title = translate(
-            "notifications.schedule.reminder.title", locale=locale
+        payload_input = {
+            "subject": getattr(lesson, "subject", None),
+            "group": getattr(getattr(lesson, "group", None), "name", None),
+            "lesson_type": lesson_type_display or lesson_type_raw,
+            "teacher": getattr(lesson, "teacher", None),
+            "room": getattr(lesson, "room", None),
+            "starts_at": start_dt.isoformat(),
+            "date": start_local.strftime("%d.%m"),
+            "time": start_local.strftime("%H:%M"),
+            "url": "/schedule",
+            "lesson_id": getattr(lesson, "id", None),
+        }
+        template = render_notification_template(
+            "schedule.reminder", payload_input, locale=locale_option
         )
-    summary_parts: list[str] = []
-    if lesson_type_display:
-        summary_parts.append(lesson_type_display)
-    elif lesson_type_raw:
-        summary_parts.append(str(lesson_type_raw))
-    room_value = getattr(lesson, "room", None)
-    if room_value:
-        room_text = str(room_value)
-        normalized = room_text.strip().lower()
-        if any(normalized.startswith(prefix) for prefix in _ROOM_LABEL_PREFIXES):
-            summary_parts.append(room_text)
+        subject_value = getattr(lesson, "subject", None)
+        if subject_value:
+            default_title = translate(
+                "notifications.schedule.reminder.title_with_subject",
+                locale=locale_option,
+                subject=subject_value,
+            )
         else:
-            summary_parts.append(
+            default_title = translate(
+                "notifications.schedule.reminder.title", locale=locale_option
+            )
+        summary_parts: list[str] = []
+        if lesson_type_display:
+            summary_parts.append(lesson_type_display)
+        elif lesson_type_raw:
+            summary_parts.append(str(lesson_type_raw))
+        room_value = getattr(lesson, "room", None)
+        if room_value:
+            room_text = str(room_value)
+            normalized = room_text.strip().lower()
+            if any(normalized.startswith(prefix) for prefix in _ROOM_LABEL_PREFIXES):
+                summary_parts.append(room_text)
+            else:
+                summary_parts.append(
+                    translate(
+                        "notifications.schedule.room_label",
+                        locale=locale_option,
+                        room=room_text,
+                    )
+                )
+        if getattr(lesson, "teacher", None):
+            summary_parts.append(str(lesson.teacher))
+        default_lines = [
+            translate(
+                "notifications.schedule.reminder.start_line",
+                locale=locale_option,
+                start=when_line,
+            )
+        ]
+        if summary_parts:
+            default_lines.append(" · ".join(summary_parts))
+        else:
+            default_lines.append(
                 translate(
-                    "notifications.schedule.room_label",
-                    locale=locale,
-                    room=room_text,
+                    "notifications.schedule.reminder.no_details", locale=locale_option
                 )
             )
-    if getattr(lesson, "teacher", None):
-        summary_parts.append(str(lesson.teacher))
-    when_line = f"{start_local.strftime('%d.%m')} · {start_local.strftime('%H:%M')}"
-    default_lines = [
-        translate(
-            "notifications.schedule.reminder.start_line",
-            locale=locale,
-            start=when_line,
+        default_body = "\n".join(default_lines)
+        default_tag = (
+            f"schedule-reminder:{getattr(lesson, 'id', 'lesson')}:{int(start_dt.timestamp())}"
         )
-    ]
-    if summary_parts:
-        default_lines.append(" · ".join(summary_parts))
-    else:
-        default_lines.append(
-            translate("notifications.schedule.reminder.no_details", locale=locale)
-        )
-    default_body = "\n".join(default_lines)
-    default_tag = f"schedule-reminder:{getattr(lesson, 'id', 'lesson')}:{int(start_dt.timestamp())}"
-    default_data: dict[str, Any] = {
-        "url": "/schedule",
-        "category": "schedule",
-        "lessonId": getattr(lesson, "id", None),
-        "subject": getattr(lesson, "subject", None),
-        "groupId": getattr(lesson, "group_id", None),
-        "lessonType": lesson_type_display or lesson_type_raw,
-        "lessonTypeRaw": lesson_type_raw,
-        "teacher": getattr(lesson, "teacher", None),
-        "room": getattr(lesson, "room", None),
-        "startText": when_line,
-        "startsAt": start_dt.isoformat(),
-        "startTimestamp": int(start_dt.timestamp()),
-    }
-    if template:
-        title = str(template.get("title") or default_title)
-        body = str(template.get("body") or default_body)
-        tag = str(template.get("tag") or default_tag)
-        template_data = (
-            template.get("data") if isinstance(template.get("data"), Mapping) else {}
-        )
-        merged_data = {**default_data}
-        if isinstance(template_data, Mapping):
-            merged_data.update(template_data)
-    else:
-        title, body, tag, merged_data = (
-            default_title,
-            default_body,
-            default_tag,
-            default_data,
-        )
-    filtered_data = {
-        key: value for key, value in merged_data.items() if value not in (None, "")
-    }
-    return title, body, tag, filtered_data
+        default_data: dict[str, Any] = {
+            "url": "/schedule",
+            "category": "schedule",
+            "lessonId": getattr(lesson, "id", None),
+            "subject": getattr(lesson, "subject", None),
+            "groupId": getattr(lesson, "group_id", None),
+            "lessonType": lesson_type_display or lesson_type_raw,
+            "lessonTypeRaw": lesson_type_raw,
+            "teacher": getattr(lesson, "teacher", None),
+            "room": getattr(lesson, "room", None),
+            "startText": when_line,
+            "startsAt": start_dt.isoformat(),
+            "startTimestamp": int(start_dt.timestamp()),
+        }
+        if template:
+            title_value = str(template.get("title") or default_title)
+            body_value = str(template.get("body") or default_body)
+            tag_value = str(template.get("tag") or default_tag)
+            template_data = (
+                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+            )
+            merged_data = {**default_data}
+            if isinstance(template_data, Mapping):
+                merged_data.update(template_data)
+        else:
+            title_value, body_value, tag_value, merged_data = (
+                default_title,
+                default_body,
+                default_tag,
+                default_data,
+            )
+        filtered_data = {
+            key: value for key, value in merged_data.items() if value not in (None, "")
+        }
+        result = (title_value, body_value, tag_value, filtered_data)
+        cache[cache_key] = result
+        return result
+
+    title, body, tag, data_payload = _render(locale)
+    title_translations: dict[str, str] = {}
+    body_translations: dict[str, str] = {}
+    for locale_code in SUPPORTED_LOCALES:
+        localized_title, localized_body, _, _ = _render(locale_code)
+        if localized_title:
+            title_translations[locale_code] = localized_title
+        if localized_body:
+            body_translations[locale_code] = localized_body
+
+    return title, body, tag, data_payload, title_translations, body_translations
 
 
 def is_user_in_quiet_hours(
@@ -350,6 +404,8 @@ async def create_notifications_for_users(
     *,
     title: str,
     body: Optional[str] = None,
+    title_translations: Mapping[str, Any] | None = None,
+    body_translations: Mapping[str, Any] | None = None,
     type: Optional[str] = None,
     url: Optional[str] = None,
     badge: Optional[str] = None,
@@ -363,12 +419,21 @@ async def create_notifications_for_users(
     uids = list({int(uid) for uid in user_ids})
     if not uids:
         return 0
+    title_map = _normalize_translation_map(title_translations)
+    body_map = _normalize_translation_map(body_translations)
+
     notifications: list[Notification] = []
     for uid in uids:
+        title_ru = title_map.get("ru") or str(title)
+        body_ru = body_map.get("ru") or _coerce_optional_text(body)
+        notification_title_en = title_map.get("en")
+        notification_body_en = body_map.get("en")
         notification = Notification(
             user_id=uid,
-            title=title,
-            body=body,
+            title=title_ru,
+            title_en=notification_title_en,
+            body=body_ru,
+            body_en=notification_body_en,
             type=type,
             url=url,
             created_at=now,
@@ -542,7 +607,9 @@ async def generate_schedule_reminders(
         return 0
 
     schedules_by_group: dict[int, list[Schedule]] = defaultdict(list)
-    message_payloads: dict[int, tuple[str, str, str, dict[str, Any]]] = {}
+    message_payloads: dict[
+        int, tuple[str, str, str, dict[str, Any], dict[str, str], dict[str, str]]
+    ] = {}
     titles: set[str] = set()
     for schedule in schedules:
         schedules_by_group[int(schedule.group_id)].append(schedule)
@@ -592,7 +659,14 @@ async def generate_schedule_reminders(
         if not user_ids:
             continue
         for schedule in group_schedules:
-            title, body, tag, data_payload = message_payloads[int(schedule.id)]
+            (
+                title,
+                body,
+                tag,
+                data_payload,
+                title_translations,
+                body_translations,
+            ) = message_payloads[int(schedule.id)]
             already_notified = existing_by_title.get(title, set())
             to_notify = [uid for uid in user_ids if uid not in already_notified]
             if not to_notify:
@@ -601,6 +675,8 @@ async def generate_schedule_reminders(
                 db,
                 title=title,
                 body=body,
+                title_translations=title_translations,
+                body_translations=body_translations,
                 type="schedule.reminder",
                 url="/schedule",
                 tag=tag,
@@ -630,59 +706,119 @@ async def notify_about_news(
         text = str(value)
         return text if text.strip() else None
 
-    def _news_text(attr: str) -> str | None:
-        ru_value = _clean_text(getattr(news, attr, None))
-        en_value = _clean_text(getattr(news, f"{attr}_en", None))
-        if resolved_locale == "en":
-            return en_value or ru_value
-        return ru_value or en_value
+    def _variant(locale_option: str | None) -> tuple[
+        str,
+        str,
+        str,
+        str,
+        dict[str, Any],
+        str | None,
+        str | None,
+    ]:
+        normalized = resolve_locale(locale=locale_option)
 
-    headline = _news_text("title")
-    summary_source = _news_text("content")
-    summary = _plain_text(summary_source, limit=220)
-    url = f"/news/{news.id}" if getattr(news, "id", None) else "/news"
-    template_payload = {
-        "headline": headline or getattr(news, "title", None),
-        "summary": summary,
-        "id": getattr(news, "id", None),
-        "url": url,
-    }
-    template = render_notification_template(
-        "news.new", template_payload, locale=resolved_locale
-    )
-    if headline:
-        default_title = translate(
-            "notifications.news.title_with_headline",
-            locale=resolved_locale,
-            headline=headline,
+        def _localized_attr(attr: str) -> str | None:
+            ru_value = _clean_text(getattr(news, attr, None))
+            en_value = _clean_text(getattr(news, f"{attr}_en", None))
+            if normalized == "en":
+                return en_value or ru_value
+            return ru_value or en_value
+
+        headline = _localized_attr("title")
+        summary_source = _localized_attr("content")
+        summary = _plain_text(summary_source, limit=220)
+        url = f"/news/{news.id}" if getattr(news, "id", None) else "/news"
+        template_payload = {
+            "headline": headline or getattr(news, "title", None),
+            "summary": summary,
+            "id": getattr(news, "id", None),
+            "url": url,
+        }
+        template = render_notification_template(
+            "news.new", template_payload, locale=normalized
         )
-    else:
-        default_title = translate("notifications.news.title", locale=resolved_locale)
-    default_body = summary or translate(
-        "notifications.news.no_summary", locale=resolved_locale
-    )
-    default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
-    if template:
-        title = str(template.get("title") or default_title)
-        body = str(template.get("body") or default_body)
-        resolved_url = str(template.get("url") or url)
-        tag = str(template.get("tag") or default_tag)
-        template_data = (
-            template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        if headline:
+            default_title = translate(
+                "notifications.news.title_with_headline",
+                locale=normalized,
+                headline=headline,
+            )
+        else:
+            default_title = translate("notifications.news.title", locale=normalized)
+        default_body = summary or translate(
+            "notifications.news.no_summary", locale=normalized
         )
-        payload_data = dict(template_data) if isinstance(template_data, Mapping) else {}
-    else:
-        title, body, resolved_url, tag = default_title, default_body, url, default_tag
-        payload_data = {}
-    payload_data.setdefault("headline", headline or getattr(news, "title", None))
-    payload_data.setdefault("newsId", getattr(news, "id", None))
-    if summary:
-        payload_data.setdefault("summary", summary)
-    payload_data.setdefault("url", resolved_url)
-    payload_data.setdefault("category", "news")
-    payload_data = {
-        key: value for key, value in payload_data.items() if value not in (None, "")
-    }
+        default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
+        if template:
+            title_value = str(template.get("title") or default_title)
+            body_value = str(template.get("body") or default_body)
+            resolved_url = str(template.get("url") or url)
+            tag_value = str(template.get("tag") or default_tag)
+            template_data = (
+                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+            )
+            payload_data = (
+                dict(template_data) if isinstance(template_data, Mapping) else {}
+            )
+        else:
+            title_value, body_value, resolved_url, tag_value = (
+                default_title,
+                default_body,
+                url,
+                default_tag,
+            )
+            payload_data = {}
+        payload_data.setdefault("headline", headline or getattr(news, "title", None))
+        payload_data.setdefault("newsId", getattr(news, "id", None))
+        if summary:
+            payload_data.setdefault("summary", summary)
+        payload_data.setdefault("url", resolved_url)
+        payload_data.setdefault("category", "news")
+        filtered_payload = {
+            key: value
+            for key, value in payload_data.items()
+            if value not in (None, "")
+        }
+        return (
+            normalized,
+            title_value,
+            body_value,
+            resolved_url,
+            tag_value,
+            filtered_payload,
+            headline,
+            summary,
+        )
+
+    (
+        _,
+        title,
+        body,
+        resolved_url,
+        tag,
+        payload_data,
+        _headline,
+        _summary,
+    ) = _variant(resolved_locale)
+
+    title_translations: dict[str, str] = {}
+    body_translations: dict[str, str] = {}
+    for locale_code in SUPPORTED_LOCALES:
+        (
+            _normalized,
+            localized_title,
+            localized_body,
+            _url,
+            _tag,
+            _payload,
+            _loc_headline,
+            _loc_summary,
+        ) = _variant(locale_code)
+        if localized_title:
+            title_translations[locale_code] = localized_title
+        if localized_body:
+            body_translations[locale_code] = localized_body
+
     user_ids = await _fetch_active_user_ids(db)
     if not user_ids:
         return 0
@@ -690,6 +826,8 @@ async def notify_about_news(
         db,
         title=title,
         body=body,
+        title_translations=title_translations,
+        body_translations=body_translations,
         type="news.new",
         url=resolved_url,
         tag=tag,
@@ -702,109 +840,177 @@ async def notify_about_news(
 async def notify_about_event(
     db: AsyncSession, event: Event, *, locale: str | None = None
 ) -> int:
-    normalized_locale = normalize_locale(locale)
-    localized_title = localized_text(
-        normalized_locale,
-        ru=getattr(event, "title", None),
-        en=getattr(event, "title_en", None),
-    )
-    if not localized_title:
-        localized_title = (
-            getattr(event, "title", None) or getattr(event, "title_en", None) or ""
+    def _variant(locale_option: str | None) -> tuple[
+        str,
+        str,
+        str,
+        str,
+        dict[str, Any],
+        str,
+        str,
+        str | None,
+        str | None,
+    ]:
+        normalized = normalize_locale(locale_option)
+        localized_title_value = localized_text(
+            normalized,
+            ru=getattr(event, "title", None),
+            en=getattr(event, "title_en", None),
         )
-    localized_description = localized_text(
-        normalized_locale,
-        ru=getattr(event, "description", None),
-        en=getattr(event, "description_en", None),
-    )
-    localized_about = localized_text(
-        normalized_locale,
-        ru=getattr(event, "about", None),
-        en=getattr(event, "about_en", None),
-    )
-    localized_location = localized_text(
-        normalized_locale,
-        ru=getattr(event, "location", None),
-        en=getattr(event, "location_en", None),
-    )
-    localized_event_type = localized_text(
-        normalized_locale,
-        ru=getattr(event, "event_type", None),
-        en=getattr(event, "event_type_en", None),
-    )
-    summary_source = localized_description or localized_about
-    summary = _plain_text(summary_source, limit=220)
-    url = f"/events/{event.id}" if getattr(event, "id", None) else "/events"
-    start_dt = _ensure_aware(getattr(event, "starts_at", None))
-    start_local = start_dt.astimezone()
-    template_payload = {
-        "title": localized_title,
-        "summary": summary,
-        "location": localized_location,
-        "speaker": getattr(event, "speaker", None),
-        "event_type": localized_event_type,
-        "starts_at": start_dt.isoformat(),
-        "date": start_local.strftime("%d.%m"),
-        "time": start_local.strftime("%H:%M"),
-        "url": url,
-        "id": getattr(event, "id", None),
-    }
-    template = render_notification_template(
-        "events.new", template_payload, locale=locale
-    )
-    if localized_title:
-        default_title = translate(
-            "notifications.events.title_with_name",
-            locale=locale,
-            title=localized_title,
+        if not localized_title_value:
+            localized_title_value = (
+                getattr(event, "title", None)
+                or getattr(event, "title_en", None)
+                or ""
+            )
+        localized_description = localized_text(
+            normalized,
+            ru=getattr(event, "description", None),
+            en=getattr(event, "description_en", None),
         )
-    else:
-        default_title = translate("notifications.events.title", locale=locale)
-    details = [start_local.strftime("%d.%m · %H:%M")]
-    if localized_location:
-        details.append(str(localized_location))
-    if getattr(event, "speaker", None):
-        details.append(str(event.speaker))
-    if localized_event_type:
-        details.append(str(localized_event_type))
-    default_lines = []
-    if summary:
-        default_lines.append(summary)
-    if details:
-        default_lines.append(" · ".join(details))
-    default_body = "\n".join(default_lines) or translate(
-        "notifications.events.no_details", locale=locale
-    )
-    default_tag = f"event:{event.id}" if getattr(event, "id", None) else "event"
-    if template:
-        title = str(template.get("title") or default_title)
-        body = str(template.get("body") or default_body)
-        resolved_url = str(template.get("url") or url)
-        tag = str(template.get("tag") or default_tag)
-        template_data = (
-            template.get("data") if isinstance(template.get("data"), Mapping) else {}
+        localized_about = localized_text(
+            normalized,
+            ru=getattr(event, "about", None),
+            en=getattr(event, "about_en", None),
         )
-        payload_data = dict(template_data) if isinstance(template_data, Mapping) else {}
-    else:
-        title, body, resolved_url, tag = default_title, default_body, url, default_tag
-        payload_data = {}
-    payload_data.setdefault("eventId", getattr(event, "id", None))
-    payload_data.setdefault("title", localized_title)
-    if summary:
-        payload_data.setdefault("summary", summary)
-    if localized_location:
-        payload_data.setdefault("location", str(localized_location))
-    if getattr(event, "speaker", None):
-        payload_data.setdefault("speaker", str(event.speaker))
-    if localized_event_type:
-        payload_data.setdefault("eventType", str(localized_event_type))
-    payload_data.setdefault("startsAt", start_dt.isoformat())
-    payload_data.setdefault("startText", start_local.strftime("%d.%m · %H:%M"))
-    payload_data.setdefault("url", resolved_url)
-    payload_data.setdefault("category", "events")
-    payload_data = {
-        key: value for key, value in payload_data.items() if value not in (None, "")
-    }
+        localized_location = localized_text(
+            normalized,
+            ru=getattr(event, "location", None),
+            en=getattr(event, "location_en", None),
+        )
+        localized_event_type = localized_text(
+            normalized,
+            ru=getattr(event, "event_type", None),
+            en=getattr(event, "event_type_en", None),
+        )
+        summary_source = localized_description or localized_about
+        summary = _plain_text(summary_source, limit=220)
+        url = f"/events/{event.id}" if getattr(event, "id", None) else "/events"
+        start_dt = _ensure_aware(getattr(event, "starts_at", None))
+        start_local = start_dt.astimezone()
+        template_payload = {
+            "title": localized_title_value,
+            "summary": summary,
+            "location": localized_location,
+            "speaker": getattr(event, "speaker", None),
+            "event_type": localized_event_type,
+            "starts_at": start_dt.isoformat(),
+            "date": start_local.strftime("%d.%m"),
+            "time": start_local.strftime("%H:%M"),
+            "url": url,
+            "id": getattr(event, "id", None),
+        }
+        template = render_notification_template(
+            "events.new", template_payload, locale=locale_option
+        )
+        if localized_title_value:
+            default_title = translate(
+                "notifications.events.title_with_name",
+                locale=locale_option,
+                title=localized_title_value,
+            )
+        else:
+            default_title = translate("notifications.events.title", locale=locale_option)
+        details = [start_local.strftime("%d.%m · %H:%M")]
+        if localized_location:
+            details.append(str(localized_location))
+        if getattr(event, "speaker", None):
+            details.append(str(event.speaker))
+        if localized_event_type:
+            details.append(str(localized_event_type))
+        default_lines = []
+        if summary:
+            default_lines.append(summary)
+        if details:
+            default_lines.append(" · ".join(details))
+        default_body = "\n".join(default_lines) or translate(
+            "notifications.events.no_details", locale=locale_option
+        )
+        default_tag = f"event:{event.id}" if getattr(event, "id", None) else "event"
+        if template:
+            title_value = str(template.get("title") or default_title)
+            body_value = str(template.get("body") or default_body)
+            resolved_url = str(template.get("url") or url)
+            tag_value = str(template.get("tag") or default_tag)
+            template_data = (
+                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+            )
+            payload_data = (
+                dict(template_data) if isinstance(template_data, Mapping) else {}
+            )
+        else:
+            title_value, body_value, resolved_url, tag_value = (
+                default_title,
+                default_body,
+                url,
+                default_tag,
+            )
+            payload_data = {}
+        payload_data.setdefault("eventId", getattr(event, "id", None))
+        payload_data.setdefault("title", localized_title_value)
+        if summary:
+            payload_data.setdefault("summary", summary)
+        if localized_location:
+            payload_data.setdefault("location", str(localized_location))
+        if getattr(event, "speaker", None):
+            payload_data.setdefault("speaker", str(event.speaker))
+        if localized_event_type:
+            payload_data.setdefault("eventType", str(localized_event_type))
+        payload_data.setdefault("startsAt", start_dt.isoformat())
+        payload_data.setdefault("startText", start_local.strftime("%d.%m · %H:%M"))
+        payload_data.setdefault("url", resolved_url)
+        payload_data.setdefault("category", "events")
+        filtered_payload = {
+            key: value
+            for key, value in payload_data.items()
+            if value not in (None, "")
+        }
+        return (
+            normalized,
+            title_value,
+            body_value,
+            resolved_url,
+            tag_value,
+            filtered_payload,
+            start_dt.isoformat(),
+            start_local.strftime("%d.%m · %H:%M"),
+            localized_title_value,
+            summary,
+        )
+
+    (
+        _,
+        title,
+        body,
+        resolved_url,
+        tag,
+        payload_data,
+        _starts_at,
+        _start_text,
+        _localized_title,
+        _summary,
+    ) = _variant(locale)
+
+    title_translations: dict[str, str] = {}
+    body_translations: dict[str, str] = {}
+    for locale_code in SUPPORTED_LOCALES:
+        (
+            _normalized,
+            localized_title,
+            localized_body,
+            _url,
+            _tag,
+            _payload,
+            _starts_at,
+            _start_text,
+            _title_value,
+            _summary_value,
+        ) = _variant(locale_code)
+        if localized_title:
+            title_translations[locale_code] = localized_title
+        if localized_body:
+            body_translations[locale_code] = localized_body
+
     user_ids = await _fetch_active_user_ids(db)
     if not user_ids:
         return 0
@@ -812,6 +1018,8 @@ async def notify_about_event(
         db,
         title=title,
         body=body,
+        title_translations=title_translations,
+        body_translations=body_translations,
         type="events.new",
         url=resolved_url,
         tag=tag,
