@@ -331,9 +331,21 @@ async def upload_avatar(
     locale = resolve_locale(request=request, user=user)
     url = await save_upload(file, "avatars", f"user_{user.id}_avatar", locale=locale)
     db_user = await db.get(models.User, user.id)
+    previous_url = db_user.avatar_url
     db_user.avatar_url = url
-    await db.commit()
-    await db.refresh(db_user)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        db_user.avatar_url = previous_url
+        await delete_static_file(url)
+        raise
+    try:
+        await db.refresh(db_user)
+    except Exception:
+        db_user.avatar_url = previous_url
+        await delete_static_file(url)
+        raise
     return db_user
 
 
@@ -348,9 +360,21 @@ async def upload_cover(
     locale = resolve_locale(request=request, user=user)
     url = await save_upload(file, "covers", f"user_{user.id}_cover", locale=locale)
     db_user = await db.get(models.User, user.id)
+    previous_url = db_user.cover_url
     db_user.cover_url = url
-    await db.commit()
-    await db.refresh(db_user)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        db_user.cover_url = previous_url
+        await delete_static_file(url)
+        raise
+    try:
+        await db.refresh(db_user)
+    except Exception:
+        db_user.cover_url = previous_url
+        await delete_static_file(url)
+        raise
     return db_user
 
 

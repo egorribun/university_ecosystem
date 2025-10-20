@@ -72,6 +72,50 @@ async def test_upload_event_file_offloads_io(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_upload_event_file_cleans_up_on_commit_failure(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    payload = b"example data"
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    delete_calls: list[str] = []
+    original_delete = events.delete_static_file
+
+    async def tracking_delete(url: str) -> None:
+        delete_calls.append(url)
+        await original_delete(url)
+
+    monkeypatch.setattr(events, "delete_static_file", tracking_delete)
+
+    async def failing_commit(*_args, **_kwargs):
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+
+    with pytest.raises(RuntimeError):
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
+
+    folder = tmp_path / "event_files"
+    assert delete_calls, "delete_static_file should run on failure"
+    if folder.exists():
+        assert not any(folder.iterdir())
+
+
+@pytest.mark.anyio("asyncio")
 async def test_upload_event_file_rejects_large_payload(
     tmp_path, monkeypatch, db_session, user_factory
 ):

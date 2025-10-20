@@ -189,8 +189,17 @@ async def upload_event_file(
     url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
     ef = models.EventFile(event_id=id, file_url=url)
     db.add(ef)
-    await db.commit()
-    await db.refresh(ef)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await delete_static_file(url)
+        raise
+    try:
+        await db.refresh(ef)
+    except Exception:
+        await delete_static_file(url)
+        raise
     return ef
 
 

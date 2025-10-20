@@ -1,12 +1,23 @@
 import asyncio
+import io
 import uuid
 
 import pytest
+from fastapi import UploadFile
 from httpx import AsyncClient
+from PIL import Image
+from starlette.datastructures import Headers
 
+from app.api import users
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
+
+
+def _make_png_bytes(color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (1, 1), color=color).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 async def _login(
@@ -136,6 +147,92 @@ async def test_delete_avatar_ignores_invalid_path(
         assert user.avatar_url is None
     finally:
         sentinel_path.unlink(missing_ok=True)
+
+
+@pytest.mark.anyio
+async def test_upload_avatar_cleans_up_on_commit_failure(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+
+    payload = _make_png_bytes()
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+
+    delete_calls: list[str] = []
+    original_delete = users.delete_static_file
+
+    async def tracking_delete(url: str) -> None:
+        delete_calls.append(url)
+        await original_delete(url)
+
+    monkeypatch.setattr(users, "delete_static_file", tracking_delete)
+
+    async def failing_commit(*_args, **_kwargs):
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+
+    with pytest.raises(RuntimeError):
+        await users.upload_avatar(
+            upload, request=None, db=db_session, user=user
+        )
+
+    avatar_dir = tmp_path / "avatars"
+    assert delete_calls, "delete_static_file should be invoked"
+    if avatar_dir.exists():
+        assert not any(avatar_dir.iterdir())
+
+    await db_session.refresh(user)
+    assert user.avatar_url is None
+
+
+@pytest.mark.anyio
+async def test_upload_cover_cleans_up_on_commit_failure(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+
+    payload = _make_png_bytes(color=(0, 255, 0))
+    upload = UploadFile(
+        filename="cover.png",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+
+    delete_calls: list[str] = []
+    original_delete = users.delete_static_file
+
+    async def tracking_delete(url: str) -> None:
+        delete_calls.append(url)
+        await original_delete(url)
+
+    monkeypatch.setattr(users, "delete_static_file", tracking_delete)
+
+    async def failing_commit(*_args, **_kwargs):
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+
+    with pytest.raises(RuntimeError):
+        await users.upload_cover(
+            upload, request=None, db=db_session, user=user
+        )
+
+    cover_dir = tmp_path / "covers"
+    assert delete_calls, "delete_static_file should be invoked"
+    if cover_dir.exists():
+        assert not any(cover_dir.iterdir())
+
+    await db_session.refresh(user)
+    assert user.cover_url is None
 
 
 @pytest.mark.anyio
