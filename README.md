@@ -46,6 +46,7 @@ docker compose up --build
 This command builds the backend, frontend, and notifications worker images, starts PostgreSQL, and exposes the services at:
 
 - Backend API: http://localhost:8000
+- Backend metrics: http://localhost:8000/metrics (enable via `ENABLE_METRICS_ENDPOINT`)
 - Frontend UI: http://localhost:8080
 - Worker metrics: http://localhost:9101/metrics
 
@@ -96,6 +97,9 @@ Key settings you may want to adjust for local development:
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |
+| `ENABLE_METRICS_ENDPOINT` | Expose the Prometheus `/metrics` endpoint on the backend. | `false` |
+| `METRICS_BASIC_AUTH_USERNAME` / `METRICS_BASIC_AUTH_PASSWORD` | Optional HTTP basic auth credentials protecting `/metrics`. | Empty |
+| `METRICS_ALLOWLIST` | Comma-separated list of IPs, CIDR blocks, or hostnames allowed to access `/metrics`. | Empty |
 | `VITE_SENTRY_DSN` | Frontend Sentry DSN used to initialize error tracking. | Empty |
 | `VITE_ENVIRONMENT` | Optional environment label propagated to the frontend observability SDK. | Derived from Vite build mode |
 

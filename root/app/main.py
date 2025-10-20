@@ -18,6 +18,7 @@ from app.api.users import router as users_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
+from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
@@ -96,6 +97,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 configure_observability(app, engine=engine)
+configure_metrics(app)
 
 app.add_middleware(
     CORSMiddleware,

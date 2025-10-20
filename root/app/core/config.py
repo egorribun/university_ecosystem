@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
+    enable_metrics_endpoint: bool = False
+    metrics_basic_auth_username: str = ""
+    metrics_basic_auth_password: str = ""
+    metrics_allowlist: str | list[str] = ""
     notifications_scheduler_poll_seconds: int = 30
     notifications_scheduler_window_minutes: int = 6
     notifications_scheduler_max_backoff_seconds: int = 300
@@ -351,6 +355,10 @@ class Settings(BaseSettings):
     @cached_property
     def rate_limit_default_list(self) -> list[str]:
         return _coerce_str_list(self.rate_limit_default)
+
+    @property
+    def metrics_allowlist_entries(self) -> list[str]:
+        return _coerce_str_list(self.metrics_allowlist)
 
     @cached_property
     def rate_limit_sensitive_value(self) -> str | None:
