@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import status
-
 import pytest
+from fastapi import status
 
 from app.auth.security import get_password_hash
 from app.models import models
