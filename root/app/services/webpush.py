@@ -23,8 +23,8 @@ from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.localization import resolve_locale, translate
 from app.models.models import PushSubscription
-from app.services.notification_templates import render_notification_template
 from app.services import push_schema
+from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,7 @@ async def _ensure_async_sessionmaker() -> sessionmaker:
             if _Session is None:
                 await asyncio.to_thread(_ensure_sync_sessionmaker)
     return cast(sessionmaker, _Session)
+
 
 _OPTION_KEYS: set[str] = {
     "actions",
