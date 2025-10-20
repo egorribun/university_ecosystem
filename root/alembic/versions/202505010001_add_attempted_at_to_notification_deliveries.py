@@ -60,9 +60,7 @@ def upgrade() -> None:
         )
         op.execute(
             sa.text(
-                "UPDATE {table} "
-                "SET {column} = NOW() "
-                "WHERE {column} IS NULL"
+                "UPDATE {table} " "SET {column} = NOW() " "WHERE {column} IS NULL"
             ).format(table=_TABLE_NAME, column=_COLUMN_NAME)
         )
 
