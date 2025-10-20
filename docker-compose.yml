@@ -11,6 +11,10 @@ services:
       FRONTEND_ORIGIN: http://localhost:8080
       FRONTEND_ORIGINS: http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
+      ENABLE_METRICS_ENDPOINT: "true"
+      METRICS_BASIC_AUTH_USERNAME: metrics
+      METRICS_BASIC_AUTH_PASSWORD: changeme
+      METRICS_ALLOWLIST: 127.0.0.1,::1
     depends_on:
       postgres:
         condition: service_healthy
