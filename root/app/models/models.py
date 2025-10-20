@@ -284,6 +284,7 @@ class Notification(Base):
     body_en = Column(Text)
     type = Column(String, index=True)
     url = Column(String)
+    dedupe_key = Column(String(255), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     read = Column(Boolean, default=False, index=True)
     read_at = Column(DateTime(timezone=True), index=True)
@@ -299,6 +300,7 @@ class Notification(Base):
     __table_args__ = (
         Index("ix_notifications_user_created", "user_id", "created_at"),
         Index("ix_notifications_dupe_check", "user_id", "title", "url", "created_at"),
+        Index("ix_notifications_user_dedupe", "user_id", "dedupe_key"),
     )
 
 
