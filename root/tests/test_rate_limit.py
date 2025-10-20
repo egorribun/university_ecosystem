@@ -135,6 +135,51 @@ async def test_sensitive_dependency_memory_backend():
 
 
 @pytest.mark.anyio
+async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
+    original_backend = settings.rate_limit_storage_backend
+    original_uri = settings.rate_limit_storage_uri
+    settings.rate_limit_storage_backend = "memory"
+    settings.rate_limit_storage_uri = "memory://"
+    ratelimit_module.limiter.reset()
+
+    dependency = ratelimit_module.sensitive_route_limit(
+        limit=2, window_sec=60, key_prefix="memory-proxy"
+    )
+
+    app = FastAPI()
+
+    @app.get("/limited", dependencies=[Depends(dependency)])
+    async def _limited():  # pragma: no cover - minimal endpoint
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            first = await client.get(
+                "/limited",
+                headers={"X-Forwarded-For": " 2001:DB8::1 "},
+            )
+            second = await client.get(
+                "/limited",
+                headers={"X-Forwarded-For": "2001:db8::1"},
+            )
+            third = await client.get(
+                "/limited",
+                headers={"X-Forwarded-For": "2001:db8::1"},
+            )
+    finally:
+        settings.rate_limit_storage_backend = original_backend
+        settings.rate_limit_storage_uri = original_uri
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.anyio
 async def test_sensitive_dependency_redis_backend(
     monkeypatch, _rate_limit_redis_client
 ):
@@ -169,6 +214,66 @@ async def test_sensitive_dependency_redis_backend(
             first = await client.get("/limited")
             second = await client.get("/limited")
             third = await client.get("/limited")
+    finally:
+        settings.rate_limit_storage_backend = original_backend
+        settings.rate_limit_storage_uri = original_uri
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert third.headers.get("Retry-After") is not None
+
+
+@pytest.mark.anyio
+async def test_sensitive_dependency_redis_backend_forwarded_header(
+    monkeypatch, _rate_limit_redis_client
+):
+    original_backend = settings.rate_limit_storage_backend
+    original_uri = settings.rate_limit_storage_uri
+    settings.rate_limit_storage_backend = "redis"
+    settings.rate_limit_storage_uri = "redis://test"
+
+    dependency = ratelimit_module.sensitive_route_limit(
+        limit=2, window_sec=60, key_prefix="redis-proxy"
+    )
+
+    app = FastAPI()
+
+    @app.get("/limited", dependencies=[Depends(dependency)])
+    async def _limited():  # pragma: no cover - minimal endpoint
+        return {"ok": True}
+
+    def _fail_check(*args, **kwargs):
+        raise AssertionError(
+            "Memory limiter should not run when Redis backend is configured"
+        )
+
+    monkeypatch.setattr(ratelimit_module.limiter, "check", _fail_check)
+
+    transport = httpx.ASGITransport(app=app)
+
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            first = await client.get(
+                "/limited",
+                headers={
+                    "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
+                },
+            )
+            second = await client.get(
+                "/limited",
+                headers={
+                    "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
+                },
+            )
+            third = await client.get(
+                "/limited",
+                headers={
+                    "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
+                },
+            )
     finally:
         settings.rate_limit_storage_backend = original_backend
         settings.rate_limit_storage_uri = original_uri
