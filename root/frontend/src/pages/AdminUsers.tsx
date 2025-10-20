@@ -25,8 +25,7 @@ import DeleteIcon from "@mui/icons-material/Delete"
 import { useAuth } from "../contexts/AuthContext"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import { useTranslation } from "react-i18next"
-
-const backendBaseUrl = "http://localhost:8000"
+import { buildAvatarUrl } from "../utils/avatar"
 
 type UserRole = "student" | "teacher" | "admin"
 
@@ -45,12 +44,6 @@ type UserFilters = {
   full_name: string
   group_id: string
   role: "" | UserRole
-}
-
-function getAvatar(url: string | null | undefined, id: number) {
-  if (!url) return ""
-  if (url.startsWith("http")) return url
-  return backendBaseUrl + url + "?uid=" + id
 }
 
 export default function AdminUsers() {
@@ -197,7 +190,7 @@ export default function AdminUsers() {
                   }}
                 >
                   <Avatar
-                    src={getAvatar(user.avatar_url, user.id)}
+                    src={buildAvatarUrl(user.avatar_url, user.id)}
                     sx={{ width: 44, height: 44 }}
                   />
                   <Box flex={1}>
@@ -291,7 +284,7 @@ export default function AdminUsers() {
                   {users.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell align="center">
-                        <Avatar src={getAvatar(user.avatar_url, user.id)} />
+                        <Avatar src={buildAvatarUrl(user.avatar_url, user.id)} />
                       </TableCell>
                       <TableCell align="center">{user.full_name}</TableCell>
                       <TableCell align="center">{user.email}</TableCell>
