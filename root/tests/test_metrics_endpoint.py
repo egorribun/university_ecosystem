@@ -60,7 +60,9 @@ async def test_metrics_endpoint_exposes_prometheus_payload(
 
 
 @pytest.mark.anyio
-async def test_metrics_endpoint_respects_allowlist(async_client, _configure_metrics: str):
+async def test_metrics_endpoint_respects_allowlist(
+    async_client, _configure_metrics: str
+):
     settings.metrics_allowlist = "10.0.0.0/8"
 
     response = await async_client.get(

@@ -15,9 +15,9 @@ from app.core.config import settings
 try:  # pragma: no cover - optional dependency guard
     from prometheus_client import (  # type: ignore
         CONTENT_TYPE_LATEST,
+        REGISTRY,
         Counter,
         Histogram,
-        REGISTRY,
         generate_latest,
     )
 except Exception:  # pragma: no cover - optional dependency guard
@@ -71,7 +71,9 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
         finally:
             path_template = _resolve_path_template(request)
             method = request.method.upper()
-            _REQUEST_COUNT.labels(method=method, path=path_template, status=status_code).inc()
+            _REQUEST_COUNT.labels(
+                method=method, path=path_template, status=status_code
+            ).inc()
             elapsed = max(time.perf_counter() - start, 0.0)
             _REQUEST_DURATION.labels(method=method, path=path_template).observe(elapsed)
 
