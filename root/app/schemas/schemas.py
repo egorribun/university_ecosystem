@@ -10,6 +10,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from app.localization import translate
 from app.models.enums import UserRole
@@ -108,7 +109,10 @@ class UserProfileUpdate(BaseModel):
         try:
             ZoneInfo(text)
         except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise ValueError(translate("validation.timezone.invalid")) from exc
+            raise PydanticCustomError(
+                "timezone.invalid",
+                translate("validation.timezone.invalid"),
+            ) from exc
         return text
 
     @model_validator(mode="before")
