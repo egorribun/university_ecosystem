@@ -151,6 +151,8 @@ class Settings(BaseSettings):
     notifications_webpush_concurrency_limit: int = 10
     notifications_retention_days: int = 90
     notifications_retention_cleanup_interval_seconds: int = 86_400
+    notifications_queue_max_size: int = 1024
+    notifications_queue_enqueue_timeout_seconds: float = 0.5
     session_cleanup_interval_seconds: int = 900
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"

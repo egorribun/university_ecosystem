@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Literal
 from weakref import WeakKeyDictionary
@@ -11,6 +12,11 @@ from weakref import WeakKeyDictionary
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.observability import (
+    NotificationQueueMetrics,
+    get_notification_queue_metrics,
+)
 from app.core.database import async_session
 from app.models.models import Event, News, Notification
 from app.services.notifications import notify_about_event, notify_about_news
@@ -44,16 +50,32 @@ _loop_states: "WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
 )
 
 
+_queue_metrics: NotificationQueueMetrics | None = None
+
+
+def _get_metrics() -> NotificationQueueMetrics | None:
+    global _queue_metrics
+    if _queue_metrics is None:
+        try:
+            _queue_metrics = get_notification_queue_metrics()
+        except RuntimeError:  # pragma: no cover - optional dependency
+            _queue_metrics = None
+    return _queue_metrics
+
+
 def _get_loop_state() -> _LoopState:
     loop = asyncio.get_running_loop()
     state = _loop_states.get(loop)
     if state is None:
         state = _LoopState(
-            queue=asyncio.Queue(),
+            queue=asyncio.Queue(maxsize=max(0, settings.notifications_queue_max_size)),
             worker_task=None,
             worker_lock=asyncio.Lock(),
         )
         _loop_states[loop] = state
+    metrics = _get_metrics()
+    if metrics is not None:
+        metrics.queue_size.set(state.queue.qsize())
     return state
 
 
@@ -80,9 +102,13 @@ async def _ensure_worker() -> None:
 async def _worker_loop(queue: asyncio.Queue[NotificationJob]) -> None:
     """Continuously process notification jobs from the queue."""
 
+    metrics = _get_metrics()
     try:
         while True:
             job = await queue.get()
+            if metrics is not None:
+                metrics.queue_size.set(queue.qsize())
+            started = time.perf_counter()
             try:
                 await _process_job(job)
             except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
@@ -92,9 +118,69 @@ async def _worker_loop(queue: asyncio.Queue[NotificationJob]) -> None:
                     "Failed to process notification job", extra={"job": job}
                 )
             finally:
+                if metrics is not None:
+                    elapsed = max(time.perf_counter() - started, 0.0)
+                    metrics.processing_latency_seconds.observe(elapsed)
                 queue.task_done()
     except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
         raise
+
+
+def _evict_oldest(queue: asyncio.Queue[NotificationJob]) -> NotificationJob | None:
+    try:
+        job = queue.get_nowait()
+    except asyncio.QueueEmpty:
+        return None
+    else:
+        queue.task_done()
+        return job
+
+
+async def _enqueue_job(job: NotificationJob) -> None:
+    state = _get_loop_state()
+    queue = state.queue
+    metrics = _get_metrics()
+    timeout = max(float(settings.notifications_queue_enqueue_timeout_seconds), 0.0)
+    enqueued = False
+
+    try:
+        queue.put_nowait(job)
+    except asyncio.QueueFull:
+        evicted = _evict_oldest(queue)
+        if metrics is not None:
+            metrics.dropped_jobs_total.inc()
+            metrics.queue_size.set(queue.qsize())
+        logger.warning(
+            "Notification queue full; dropped oldest job",
+            extra={"dropped_job": evicted, "job": job},
+        )
+        if timeout > 0:
+            try:
+                await asyncio.wait_for(queue.put(job), timeout=timeout)
+                enqueued = True
+            except asyncio.TimeoutError:
+                if metrics is not None:
+                    metrics.dropped_jobs_total.inc()
+                    metrics.queue_size.set(queue.qsize())
+                logger.warning(
+                    "Notification queue saturated; dropping job after timeout",
+                    extra={"job": job},
+                )
+                return
+        else:
+            if metrics is not None:
+                metrics.queue_size.set(queue.qsize())
+            logger.warning(
+                "Notification queue saturated; dropping job without timeout",
+                extra={"job": job},
+            )
+            return
+    else:
+        enqueued = True
+    if metrics is not None:
+        metrics.queue_size.set(queue.qsize())
+    if enqueued:
+        await _ensure_worker()
 
 
 async def _notification_exists(
@@ -157,17 +243,17 @@ async def enqueue_event_notification(
 ) -> None:
     """Queue an event notification job for asynchronous delivery."""
 
-    queue = _get_loop_state().queue
-    await queue.put(NotificationJob(kind="event", record_id=event_id, locale=locale))
-    await _ensure_worker()
+    await _enqueue_job(
+        NotificationJob(kind="event", record_id=event_id, locale=locale)
+    )
 
 
 async def enqueue_news_notification(news_id: int, *, locale: str | None = None) -> None:
     """Queue a news notification job for asynchronous delivery."""
 
-    queue = _get_loop_state().queue
-    await queue.put(NotificationJob(kind="news", record_id=news_id, locale=locale))
-    await _ensure_worker()
+    await _enqueue_job(
+        NotificationJob(kind="news", record_id=news_id, locale=locale)
+    )
 
 
 async def wait_for_all_jobs(timeout: float | None = None) -> None:
@@ -185,6 +271,7 @@ async def reset_testing_state() -> None:
     """Best-effort helper to clear pending jobs between tests."""
 
     queue = _get_loop_state().queue
+    metrics = _get_metrics()
 
     while not queue.empty():
         try:
@@ -193,6 +280,8 @@ async def reset_testing_state() -> None:
             break
         else:
             queue.task_done()
+    if metrics is not None:
+        metrics.queue_size.set(queue.qsize())
 
 
 async def shutdown_notification_queue() -> None:
@@ -201,6 +290,7 @@ async def shutdown_notification_queue() -> None:
     state = _get_loop_state()
     queue = state.queue
     worker = state.worker_task
+    metrics = _get_metrics()
 
     if worker is not None:
         if not worker.done():
@@ -218,3 +308,5 @@ async def shutdown_notification_queue() -> None:
             break
         else:
             queue.task_done()
+    if metrics is not None:
+        metrics.queue_size.set(queue.qsize())
