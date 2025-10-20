@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import status
 
+from app import crud
 from app.auth.security import get_password_hash
 from app.models import models
 
@@ -75,7 +76,10 @@ async def test_events_localization(async_client, db_session, user_factory):
     )
     etag_en = response_en.headers.get("ETag")
     assert etag_en
-    payload_en = {item["id"]: item for item in response_en.json()}
+    data_en = response_en.json()
+    assert data_en["total"] == 2
+    assert data_en["limit"] >= len(data_en["items"])
+    payload_en = {item["id"]: item for item in data_en["items"]}
 
     assert payload_en[primary.id]["title"] == "English Event"
     assert payload_en[primary.id]["description"] == "Description in English"
@@ -105,7 +109,10 @@ async def test_events_localization(async_client, db_session, user_factory):
         if value.strip()
     )
     assert response_ru.headers.get("ETag")
-    payload_ru = {item["id"]: item for item in response_ru.json()}
+    data_ru = response_ru.json()
+    assert data_ru["total"] == 2
+    assert data_ru["cursor"] == 0
+    payload_ru = {item["id"]: item for item in data_ru["items"]}
 
     assert payload_ru[primary.id]["title"] == "Русское событие"
     assert payload_ru[primary.id]["description"] == "Описание по-русски"
@@ -201,3 +208,79 @@ async def test_events_etag_and_not_modified(async_client, db_session, user_facto
     assert detail_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
     assert detail_not_modified.headers.get("Content-Language") == "en"
     assert detail_not_modified.headers.get("ETag") == detail_etag
+
+
+@pytest.mark.anyio
+async def test_events_pagination_semantics(async_client, db_session, user_factory):
+    password = "PaginationPass123!"
+    hashed = get_password_hash(password)
+    admin = await user_factory(role="admin")
+    student = await user_factory(hashed_password=hashed, is_active=True)
+
+    base_start = datetime.now(timezone.utc) + timedelta(days=1)
+    events = []
+    for i in range(7):
+        record = models.Event(
+            title=f"Event {i}",
+            description=f"Description {i}",
+            location="Campus",
+            starts_at=base_start + timedelta(days=i),
+            ends_at=base_start + timedelta(days=i, hours=2),
+            created_by=admin.id,
+            is_active=True,
+        )
+        events.append(record)
+    db_session.add_all(events)
+    await db_session.commit()
+
+    headers = await _login(async_client, student.email, password)
+
+    first = await async_client.get(
+        "/events",
+        headers=headers,
+        params={"limit": 3},
+    )
+    assert first.status_code == status.HTTP_200_OK
+    first_data = first.json()
+    assert first_data["limit"] == 3
+    assert first_data["cursor"] == 0
+    assert len(first_data["items"]) == 3
+    assert first_data["has_more"] is True
+    assert first_data["next_cursor"] == 3
+
+    second = await async_client.get(
+        "/events",
+        headers=headers,
+        params={"limit": 3, "cursor": first_data["next_cursor"]},
+    )
+    assert second.status_code == status.HTTP_200_OK
+    second_data = second.json()
+    assert second_data["cursor"] == 3
+    assert len(second_data["items"]) == 3
+    assert second_data["has_more"] is True
+    assert second_data["next_cursor"] == 6
+
+    third = await async_client.get(
+        "/events",
+        headers=headers,
+        params={"cursor": second_data["next_cursor"]},
+    )
+    assert third.status_code == status.HTTP_200_OK
+    third_data = third.json()
+    assert third_data["cursor"] == 6
+    assert len(third_data["items"]) == 1
+    assert third_data["has_more"] is False
+    assert third_data["next_cursor"] is None
+    assert third_data["total"] == 7
+
+    default_response = await async_client.get("/events", headers=headers)
+    assert default_response.status_code == status.HTTP_200_OK
+    assert default_response.json()["limit"] == crud.DEFAULT_EVENTS_LIMIT
+
+    capped = await async_client.get(
+        "/events",
+        headers=headers,
+        params={"limit": crud.MAX_EVENTS_LIMIT},
+    )
+    assert capped.status_code == status.HTTP_200_OK
+    assert capped.json()["limit"] == crud.MAX_EVENTS_LIMIT

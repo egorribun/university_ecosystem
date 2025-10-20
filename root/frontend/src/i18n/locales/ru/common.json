@@ -17,6 +17,7 @@
     "refresh": "Обновить",
     "uploadPhoto": "Загрузить фото",
     "changePhoto": "Изменить фото",
+    "loadMore": "Загрузить ещё",
     "backToTop": "Наверх"
   },
   "statuses": {

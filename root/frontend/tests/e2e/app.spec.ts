@@ -74,4 +74,21 @@ test.describe("University ecosystem app", () => {
     await expect(page.getByText("Сессия завершена")).toBeVisible()
     await expect(page.getByText("Завершена")).toBeVisible()
   })
+
+  test("allows loading additional events from the events page", async ({ page }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    await page.goto("/events")
+    await page.waitForURL(/\/events$/)
+
+    await expect(page.getByText(/Событие 10/)).toBeVisible()
+    const loadMore = page.getByRole("button", { name: /Загрузить ещё|Load more/ })
+    await expect(loadMore).toBeVisible()
+
+    await loadMore.click()
+
+    await expect(page.getByText(/Событие 27/)).toBeVisible()
+    await expect(loadMore).toBeHidden()
+  })
 })

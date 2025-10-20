@@ -12,6 +12,7 @@ import {
 } from "react"
 import axios from "../api/client"
 import type { Event } from "@/types/Event"
+import type { PaginatedResponse } from "@/types/Pagination"
 import {
   Box,
   Tabs,
@@ -47,6 +48,8 @@ const tabs = [
   { key: "archive", is_active: false },
   { key: "my" },
 ] as const satisfies readonly EventTab[]
+
+const PAGE_SIZE = 12
 
 type EventDraft = {
   title: string
@@ -107,6 +110,8 @@ const Events = () => {
   const [eventData, setEventData] = useState<EventDraft>(initialEvent)
   const [imageUploading, setImageUploading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [pagination, setPagination] = useState<PaginatedResponse<Event> | null>(null)
 
   const [createPreview, setCreatePreview] = useState<string | null>(null)
 
@@ -144,6 +149,9 @@ const Events = () => {
   const fetchEvents = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true)
+      if (tab !== "my") {
+        setPagination(null)
+      }
       try {
         const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
         const params =
@@ -154,12 +162,14 @@ const Events = () => {
                 search: dSearch,
                 type: dType,
                 location: dLocation,
+                limit: PAGE_SIZE,
+                cursor: 0,
               }
 
         const keyBase =
           tab === "my"
             ? `my:${language}`
-            : `${tab}:${language}:${String(isActiveFilter)}:${dSearch}:${dType}:${dLocation}`
+            : `${tab}:${language}:${String(isActiveFilter)}:${dSearch}:${dType}:${dLocation}:limit:${PAGE_SIZE}`
         const headers = etagCacheRef.current[keyBase]
           ? { "If-None-Match": etagCacheRef.current[keyBase] }
           : undefined
@@ -170,11 +180,23 @@ const Events = () => {
           validateStatus: (status: number) => status >= 200 && status < 400,
         } as const
 
-        const res =
-          tab === "my"
-            ? await axios.get<Event[]>("/events/my", requestConfig)
-            : await axios.get<Event[]>("/events", requestConfig)
+        if (tab === "my") {
+          const res = await axios.get<Event[]>("/events/my", requestConfig)
+          const receivedEtag = res.headers?.etag
+          if (receivedEtag) {
+            etagCacheRef.current[keyBase] = receivedEtag
+          } else {
+            delete etagCacheRef.current[keyBase]
+          }
+          if (res.status === 304) {
+            return
+          }
+          setEvents(Array.isArray(res.data) ? res.data : [])
+          setPagination(null)
+          return
+        }
 
+        const res = await axios.get<PaginatedResponse<Event>>("/events", requestConfig)
         const receivedEtag = res.headers?.etag
         if (receivedEtag) {
           etagCacheRef.current[keyBase] = receivedEtag
@@ -185,10 +207,13 @@ const Events = () => {
           return
         }
 
-        setEvents(Array.isArray(res.data) ? res.data : [])
+        const data = res.data
+        setEvents(Array.isArray(data?.items) ? data.items : [])
+        setPagination(data ?? null)
       } catch (err: any) {
         if (err?.name !== "CanceledError" && err?.code !== "ERR_CANCELED") {
           setEvents([])
+          setPagination(null)
         }
       } finally {
         setLoading(false)
@@ -202,6 +227,57 @@ const Events = () => {
     fetchEvents(ctrl.signal)
     return () => ctrl.abort()
   }, [fetchEvents])
+
+  const loadMore = useCallback(async () => {
+    if (tab === "my" || loadingMore) return
+    const nextCursor = pagination?.next_cursor
+    if (nextCursor == null) return
+    setLoadingMore(true)
+    try {
+      const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
+      const res = await axios.get<PaginatedResponse<Event>>("/events", {
+        params: {
+          is_active: isActiveFilter,
+          search: dSearch,
+          type: dType,
+          location: dLocation,
+          limit: PAGE_SIZE,
+          cursor: nextCursor,
+        },
+        validateStatus: (status: number) => status >= 200 && status < 300,
+      })
+      const data = res.data
+      const newItems = Array.isArray(data?.items) ? data.items : []
+      setEvents((prev) => {
+        const existing = Array.isArray(prev) ? [...prev] : []
+        const seen = new Set(existing.map((item) => item.id))
+        newItems.forEach((item) => {
+          if (seen.has(item.id)) {
+            const index = existing.findIndex((evt) => evt.id === item.id)
+            if (index >= 0) existing[index] = item
+          } else {
+            existing.push(item)
+            seen.add(item.id)
+          }
+        })
+        return existing
+      })
+      setPagination((prev) => {
+        if (!data) return prev
+        if (!prev) return data
+        return {
+          ...prev,
+          ...data,
+        }
+      })
+    } catch (err: any) {
+      if (err?.name !== "CanceledError" && err?.code !== "ERR_CANCELED") {
+        setPagination((prev) => (prev ? { ...prev, has_more: false, next_cursor: null } : prev))
+      }
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [tab, loadingMore, pagination?.next_cursor, dSearch, dType, dLocation])
 
   const handleTabChange = (_event: SyntheticEvent, newValue: EventTabKey) => setTab(newValue)
 
@@ -254,6 +330,7 @@ const Events = () => {
       closeCreate()
       setTab("active")
       setEvents((prev) => [res.data, ...prev])
+      setPagination((prev) => (prev ? { ...prev, total: prev.total + 1 } : prev))
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch {}
   }
@@ -600,6 +677,26 @@ const Events = () => {
           </Popover>
 
           {eventsContent}
+
+          {tab !== "my" && pagination?.has_more ? (
+            <Box display="flex" justifyContent="center" mt={4} mb={6}>
+              <Button
+                variant="outlined"
+                size="large"
+                onClick={loadMore}
+                disabled={loadingMore}
+                sx={{
+                  px: 3.5,
+                  borderRadius: 2,
+                  fontWeight: 600,
+                }}
+              >
+                {loadingMore
+                  ? t("common:statuses.loading")
+                  : t("common:buttons.loadMore", { defaultValue: "Load more" })}
+              </Button>
+            </Box>
+          ) : null}
 
           <Dialog open={createOpen} onClose={closeCreate}>
             <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
