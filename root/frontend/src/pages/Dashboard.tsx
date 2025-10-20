@@ -414,9 +414,7 @@ export default function Dashboard() {
     if (type === "events")
       axios
         .get<PaginatedResponse<EventItem>>("/events", { params: { is_active: true, limit: 20 } })
-        .then((r) =>
-          setCache("prefetch:events", Array.isArray(r.data?.items) ? r.data.items : [])
-        )
+        .then((r) => setCache("prefetch:events", Array.isArray(r.data?.items) ? r.data.items : []))
         .catch(() => {})
   }
 
