@@ -26,6 +26,7 @@ from app.deps.cache import shutdown_cache
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
+from app.services import notification_queue
 from app.services.notifications import (
     cleanup_stale_notifications,
     start_notifications_scheduler,
@@ -90,6 +91,7 @@ async def lifespan(app: FastAPI):
             await stop_notifications_retention()
         if stop_session_cleanup is not None:
             await stop_session_cleanup()
+        await notification_queue.shutdown_notification_queue()
         await shutdown_cache()
         shutdown_observability()
 

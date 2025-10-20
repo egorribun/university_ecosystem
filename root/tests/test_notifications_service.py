@@ -68,9 +68,10 @@ def configured_push_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 async def reset_notification_queue_state() -> None:
+    await notification_queue.shutdown_notification_queue()
     await notification_queue.reset_testing_state()
     yield
-    await notification_queue.reset_testing_state()
+    await notification_queue.shutdown_notification_queue()
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:

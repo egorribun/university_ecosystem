@@ -78,6 +78,7 @@ from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
+from app.services import notification_queue
 from app.utils import ratelimit as ratelimit_module
 
 
@@ -88,6 +89,15 @@ def event_loop() -> AsyncIterator[asyncio.AbstractEventLoop]:
         yield loop
     finally:
         loop.close()
+
+
+@pytest.fixture(autouse=True)
+async def notification_queue_shutdown() -> AsyncIterator[None]:
+    await notification_queue.shutdown_notification_queue()
+    try:
+        yield
+    finally:
+        await notification_queue.shutdown_notification_queue()
 
 
 @pytest.fixture(scope="session", autouse=True)
