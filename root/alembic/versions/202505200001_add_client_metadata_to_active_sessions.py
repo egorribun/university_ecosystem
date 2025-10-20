@@ -3,8 +3,8 @@
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "202505200001"
@@ -16,9 +16,7 @@ depends_on: Union[str, Sequence[str], None] = None
 _TABLE_NAME = "active_sessions"
 _IP_ADDRESS_COLUMN = sa.Column("ip_address", sa.String(length=64), nullable=True)
 _USER_AGENT_COLUMN = sa.Column("user_agent", sa.String(length=512), nullable=True)
-_LAST_SEEN_COLUMN = sa.Column(
-    "last_seen_at", sa.DateTime(timezone=True), nullable=True
-)
+_LAST_SEEN_COLUMN = sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True)
 _LAST_SEEN_INDEX_NAME = "ix_active_sessions_last_seen_at"
 
 
