@@ -109,6 +109,47 @@ jobs:
           audit_file root/requirements.txt
           audit_file root/requirements-dev.txt
 
+  verify-runtime-reqs:
+    name: Verify runtime requirements
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
+      - name: Ensure requirements.txt excludes test-only packages
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          banned = {
+              "pytest",
+              "pytest-asyncio",
+              "pytest-cov",
+              "pre-commit",
+              "fakeredis",
+              "asgi-lifespan",
+          }
+
+          req_path = pathlib.Path("root/requirements.txt")
+          violations: list[str] = []
+          for raw_line in req_path.read_text().splitlines():
+              line = raw_line.strip()
+              if not line or line.startswith("#"):
+                  continue
+              name = re.split(r"[<=>!\\[]", line, 1)[0].strip().lower()
+              if name in banned:
+                  violations.append(raw_line.strip())
+
+          if violations:
+              print("::error::test/development packages found in requirements.txt:")
+              for entry in violations:
+                  print(f"  - {entry}")
+              sys.exit(1)
+
+          print("Runtime requirements look clean.")
+          PY
+
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
@@ -133,18 +174,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
-          pip install asgi-lifespan pytest-asyncio httpx
-      - name: Verify test deps
-        run: |
-          python - <<'PY'
-          import sys
-          try:
-              import asgi_lifespan, httpx, pytest_asyncio
-              print("OK: asgi_lifespan/httpx/pytest_asyncio installed")
-          except Exception as e:
-              print("Import check failed:", e)
-              sys.exit(1)
-          PY
       - name: Run pytest
         run: pytest --cov=app --cov-report=xml --cov-report=term-missing --junitxml=pytest-report.xml
       - name: Upload coverage artifact

@@ -56,7 +56,7 @@ This command builds the backend, frontend, and notifications worker images, star
 cd root
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-dev.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -109,6 +109,11 @@ stores them as optimized WebP files (PNG when transparency is required).
 ## Running tests and linters
 
 ### Backend
+- Install backend development dependencies:
+  ```bash
+  cd root
+  pip install -r requirements.txt -r requirements-dev.txt
+  ```
 - Run the unit test suite:
   ```bash
   cd root

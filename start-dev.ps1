@@ -10,10 +10,9 @@ if (!(Test-Path ".venv")) { py -3 -m venv .venv }
 $python = Join-Path $api ".venv\Scripts\python.exe"
 
 & $python -m pip install -U pip wheel
+& $python -m pip install -r requirements.txt
 if (Test-Path "requirements-dev.txt") {
   & $python -m pip install -r requirements-dev.txt
-} else {
-  & $python -m pip install -r requirements.txt
 }
 
 $env:APP_ENV = "development"
