@@ -13,11 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import async_session
 from app.core.observability import (
     NotificationQueueMetrics,
     get_notification_queue_metrics,
 )
-from app.core.database import async_session
 from app.models.models import Event, News, Notification
 from app.services.notifications import notify_about_event, notify_about_news
 
@@ -243,17 +243,13 @@ async def enqueue_event_notification(
 ) -> None:
     """Queue an event notification job for asynchronous delivery."""
 
-    await _enqueue_job(
-        NotificationJob(kind="event", record_id=event_id, locale=locale)
-    )
+    await _enqueue_job(NotificationJob(kind="event", record_id=event_id, locale=locale))
 
 
 async def enqueue_news_notification(news_id: int, *, locale: str | None = None) -> None:
     """Queue a news notification job for asynchronous delivery."""
 
-    await _enqueue_job(
-        NotificationJob(kind="news", record_id=news_id, locale=locale)
-    )
+    await _enqueue_job(NotificationJob(kind="news", record_id=news_id, locale=locale))
 
 
 async def wait_for_all_jobs(timeout: float | None = None) -> None:

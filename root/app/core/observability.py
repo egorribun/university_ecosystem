@@ -515,6 +515,8 @@ def configure_worker_observability(*, worker_name: str | None = None) -> None:
         logging.getLogger(__name__).info(
             "Worker %s observability configured", worker_name
         )
+
+
 @dataclass
 class NotificationQueueMetrics:
     """Prometheus metrics describing the notification queue state."""
@@ -531,9 +533,7 @@ class NotificationQueueMetrics:
         # hence the type: ignore annotations.
         self.dropped_jobs_total._value.set(0)  # type: ignore[attr-defined]
         self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
-        for bucket in getattr(
-            self.processing_latency_seconds, "_buckets", []
-        ):  # type: ignore[attr-defined]
+        for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
             bucket.set(0)
 
 
