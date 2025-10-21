@@ -3,7 +3,12 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 const toHex = (value: number) => value.toString(16).padStart(2, "0")
 
 const expandHex = (hex: string) =>
-  hex.length === 3 ? hex.split("").map((char) => char + char).join("") : hex
+  hex.length === 3
+    ? hex
+        .split("")
+        .map((char) => char + char)
+        .join("")
+    : hex
 
 const mixChannelWithWhite = (channel: number, coefficient: number) =>
   Math.round(channel + (255 - channel) * coefficient)

@@ -98,14 +98,17 @@ const scheduleRateLimitWindow = (delayMs: number) => {
     rateLimitTimer = null
   }
 
-  rateLimitTimer = setTimeout(() => {
-    rateLimitTimer = null
-    rateLimitResetAt = 0
-    while (rateLimitWaiters.length > 0) {
-      const resolve = rateLimitWaiters.shift()
-      resolve?.()
-    }
-  }, Math.max(0, target - Date.now()))
+  rateLimitTimer = setTimeout(
+    () => {
+      rateLimitTimer = null
+      rateLimitResetAt = 0
+      while (rateLimitWaiters.length > 0) {
+        const resolve = rateLimitWaiters.shift()
+        resolve?.()
+      }
+    },
+    Math.max(0, target - Date.now())
+  )
 }
 
 const waitForRateLimitWindow = async () => {
