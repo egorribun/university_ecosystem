@@ -374,6 +374,10 @@ class Settings(BaseSettings):
             return not self.is_development
         return bool(value)
 
+    @property
+    def cookie_secure(self) -> bool:
+        return self.strict_security_headers_enabled
+
     @cached_property
     def security_csp_report_only_effective(self) -> bool:
         if self.security_csp_report_only is not None:

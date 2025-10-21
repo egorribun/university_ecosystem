@@ -50,7 +50,7 @@ def _set_access_token_cookie(response: Response, token: str) -> None:
         "access_token",
         token,
         httponly=True,
-        secure=True,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=max_age,
         expires=expires,
@@ -63,7 +63,7 @@ def _clear_access_token_cookie(response: Response) -> None:
         "access_token",
         path="/",
         httponly=True,
-        secure=True,
+        secure=settings.cookie_secure,
         samesite="strict",
     )
 
