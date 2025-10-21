@@ -483,7 +483,10 @@ async def register_attendance(
         await db.rollback()
         exist = (await db.execute(stmt)).scalar_one_or_none()
         if not exist:
-            raise
+            event = await db.get(models.Event, data.event_id)
+            if not event:
+                raise LookupError("event_not_found") from None
+            raise ValueError("attendance_registration_failed") from None
         if not exist.qr_code:
             exist.qr_code = str(uuid.uuid4())
             await db.commit()

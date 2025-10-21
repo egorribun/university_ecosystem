@@ -192,6 +192,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Событие не найдено",
         "en": "Event not found",
     },
+    "errors.events.registration_closed": {
+        "ru": "Регистрация на событие закрыта",
+        "en": "Event registration is closed",
+    },
     "errors.events.file_not_found": {
         "ru": "Файл не найден",
         "en": "File not found",

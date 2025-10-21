@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, List, Tuple
 
@@ -147,7 +148,29 @@ async def attend(
             status_code=403,
             detail=translate("errors.events.registration_forbidden", locale=locale),
         )
-    return await crud.register_attendance(db, data, user_id=user.id)
+    event = await db.get(models.Event, data.event_id)
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.not_found", locale=locale),
+        )
+    if not event.is_active or event.ends_at <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=translate("errors.events.registration_closed", locale=locale),
+        )
+    try:
+        return await crud.register_attendance(db, data, user_id=user.id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.events.not_found", locale=locale),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=translate("errors.events.registration_closed", locale=locale),
+        ) from exc
 
 
 @router.delete("/attendance", response_model=dict)
