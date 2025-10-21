@@ -6,7 +6,6 @@ from email.message import EmailMessage
 from app.core.config import settings
 from app.localization import resolve_locale, translate
 
-
 logger = logging.getLogger(__name__)
 
 RESET_TOKEN_EXPIRY_MINUTES = 45
