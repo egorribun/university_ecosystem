@@ -5,6 +5,7 @@ import math
 import time
 import uuid
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Callable, Optional
 
 from fastapi import Request
@@ -227,15 +228,39 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return info
 
     def _build_identifier(self, request: Request) -> str:
-        auth_header = request.headers.get("authorization")
-        if auth_header:
-            parts = auth_header.strip().split()
-            if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1]:
-                return f"token:{parts[1]}"
+        token = self._extract_bearer_token(request.headers.get("authorization"))
+        if token:
+            return f"token:{token}"
+
+        cookie_token = self._fingerprint_token(request.cookies.get("access_token"))
+        if cookie_token:
+            return f"token:{cookie_token}"
         client = request.client
         if client and client.host:
             return f"ip:{client.host}"
         return "ip:unknown"
+
+    @staticmethod
+    def _extract_bearer_token(header_value: str | None) -> str | None:
+        if not header_value:
+            return None
+        parts = header_value.strip().split()
+        if len(parts) != 2:
+            return None
+        scheme, token = parts[0].lower(), parts[1].strip()
+        if scheme != "bearer" or not token:
+            return None
+        return RateLimitMiddleware._fingerprint_token(token)
+
+    @staticmethod
+    def _fingerprint_token(token: str | None) -> str | None:
+        if not token:
+            return None
+        normalized = token.strip()
+        if not normalized:
+            return None
+        digest = sha256(normalized.encode("utf-8", "ignore")).hexdigest()
+        return digest
 
     def _should_skip(self, method: str, path: str) -> bool:
         """Return ``True`` when the request should bypass rate limiting."""
