@@ -2,11 +2,25 @@ import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
+from typing import Any
 
 from app.core.config import settings
 from app.localization import resolve_locale, translate
 
 logger = logging.getLogger(__name__)
+
+
+def _log_event(
+    level: int,
+    message: str,
+    *,
+    extra: dict[str, object] | None = None,
+    exc_info: bool | BaseException | tuple[type[BaseException], BaseException, Any] | None = None,
+) -> None:
+    """Emit a log record even if the module logger is disabled upstream."""
+
+    target = logger if logger.isEnabledFor(level) and not logger.disabled else logging.getLogger()
+    target.log(level, message, extra=extra, exc_info=exc_info, stacklevel=3)
 
 RESET_TOKEN_EXPIRY_MINUTES = 45
 
@@ -88,7 +102,8 @@ def send_reset_email(
     try:
         if not host or not port:
             safe_link = _redact_sensitive_query(link)
-            logger.warning(
+            _log_event(
+                logging.WARNING,
                 "password.reset_email.fallback",
                 extra={"email": to_email, "link": safe_link},
             )
@@ -115,7 +130,8 @@ def send_reset_email(
                 s.send_message(msg)
     except Exception:
         safe_link = _redact_sensitive_query(link)
-        logger.error(
+        _log_event(
+            logging.ERROR,
             "password.reset_email.error",
             extra={"email": to_email, "link": safe_link},
             exc_info=True,
