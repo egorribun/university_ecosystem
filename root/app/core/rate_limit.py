@@ -173,6 +173,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if self._storage_backend == "redis":
             self._enabled = self._enabled and bool(self._redis_url)
         self._headers_enabled = headers_enabled
+        # Each middleware instance should maintain isolated counters when using the
+        # in-process memory backend so multiple apps/tests sharing a process do not
+        # influence each other.
+        self._namespace = f"middleware:{uuid.uuid4().hex}"
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         if not self._enabled or self._should_skip(request):
@@ -206,9 +210,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def _check_limit(self, identifier: str) -> RateLimitInfo:
         redis_url = self._redis_url if self._storage_backend == "redis" else None
+        namespace = self._namespace if self._storage_backend == "memory" else ""
         info = await check_rate_limit(
             identifier=identifier,
-            namespace="",
+            namespace=namespace,
             limit=self._limit,
             window_seconds=self._window_seconds,
             redis_url=redis_url,
