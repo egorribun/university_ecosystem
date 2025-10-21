@@ -165,12 +165,15 @@ const scheduleClientQueueWindowReset = () => {
   }
 
   clientQueueResetAt = target
-  clientQueueTimer = setTimeout(() => {
-    clientQueueTimer = null
-    clientQueueResetAt = 0
-    pruneClientQueueTimestamps()
-    notifyClientQueue()
-  }, Math.max(0, target - Date.now()))
+  clientQueueTimer = setTimeout(
+    () => {
+      clientQueueTimer = null
+      clientQueueResetAt = 0
+      pruneClientQueueTimestamps()
+      notifyClientQueue()
+    },
+    Math.max(0, target - Date.now())
+  )
 }
 
 const shouldThrottleRequest = (config: ApiRequestConfig) => {
