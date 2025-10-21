@@ -15,12 +15,19 @@ def _log_event(
     message: str,
     *,
     extra: dict[str, object] | None = None,
-    exc_info: bool | BaseException | tuple[type[BaseException], BaseException, Any] | None = None,
+    exc_info: (
+        bool | BaseException | tuple[type[BaseException], BaseException, Any] | None
+    ) = None,
 ) -> None:
     """Emit a log record even if the module logger is disabled upstream."""
 
-    target = logger if logger.isEnabledFor(level) and not logger.disabled else logging.getLogger()
+    target = (
+        logger
+        if logger.isEnabledFor(level) and not logger.disabled
+        else logging.getLogger()
+    )
     target.log(level, message, extra=extra, exc_info=exc_info, stacklevel=3)
+
 
 RESET_TOKEN_EXPIRY_MINUTES = 45
 
