@@ -312,7 +312,9 @@ class NotificationQueueJob(Base):
     kind = Column(String(16), nullable=False, index=True)
     record_id = Column(Integer, nullable=False)
     locale = Column(String(16))
-    enqueued_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    enqueued_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     claimed_at = Column(DateTime(timezone=True), index=True)
     attempts = Column(Integer, nullable=False, server_default=text("0"))
 

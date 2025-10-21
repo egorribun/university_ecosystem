@@ -389,9 +389,9 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
     try:
         async with async_session() as session:
             result = await session.execute(
-                select(func.count()).select_from(NotificationQueueJob).where(
-                    NotificationQueueJob.claimed_at.is_(None)
-                )
+                select(func.count())
+                .select_from(NotificationQueueJob)
+                .where(NotificationQueueJob.claimed_at.is_(None))
             )
             metrics.queue_size.set(int(result.scalar_one()))
     except Exception:  # pragma: no cover - defensive guard
@@ -401,9 +401,9 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
 async def _pending_persistent_jobs() -> int:
     async with async_session() as session:
         result = await session.execute(
-            select(func.count()).select_from(NotificationQueueJob).where(
-                NotificationQueueJob.claimed_at.is_(None)
-            )
+            select(func.count())
+            .select_from(NotificationQueueJob)
+            .where(NotificationQueueJob.claimed_at.is_(None))
         )
         return int(result.scalar_one())
 
