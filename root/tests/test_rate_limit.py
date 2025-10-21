@@ -38,6 +38,23 @@ async def test_rate_limit_per_token(async_client):
 
 
 @pytest.mark.anyio
+async def test_rate_limit_per_cookie(async_client):
+    async_client.cookies.set("access_token", "cookie-token-a", path="/")
+
+    for _ in range(5):
+        response = await async_client.get("/healthz")
+        assert response.status_code == 200
+
+    blocked = await async_client.get("/healthz")
+    assert blocked.status_code == 429
+
+    async_client.cookies.set("access_token", "cookie-token-b", path="/")
+
+    other = await async_client.get("/healthz")
+    assert other.status_code == 200
+
+
+@pytest.mark.anyio
 async def test_rate_limit_skips_static_paths():
     app = FastAPI()
     app.add_middleware(
