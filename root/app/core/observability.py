@@ -550,7 +550,7 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
         _notification_queue_metrics = NotificationQueueMetrics(
             queue_size=Gauge(
                 "notification_queue_size",
-                "Number of pending notification jobs in the in-process queue",
+                "Number of pending notification jobs awaiting processing",
             ),
             dropped_jobs_total=Counter(
                 "notification_queue_dropped_jobs_total",

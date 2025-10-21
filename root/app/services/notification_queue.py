@@ -1,4 +1,4 @@
-"""In-process queue for dispatching notification jobs asynchronously."""
+"""Hybrid queue for dispatching notification jobs asynchronously."""
 
 from __future__ import annotations
 
@@ -6,10 +6,12 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Literal
+from datetime import datetime, timezone
+from typing import Literal, cast
 from weakref import WeakKeyDictionary
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -18,7 +20,7 @@ from app.core.observability import (
     NotificationQueueMetrics,
     get_notification_queue_metrics,
 )
-from app.models.models import Event, News, Notification
+from app.models.models import Event, News, Notification, NotificationQueueJob
 from app.services.notifications import notify_about_event, notify_about_news
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ class NotificationJob:
     kind: JobKind
     record_id: int
     locale: str | None
+    queue_id: int | None = None
 
 
 @dataclass(slots=True)
@@ -43,6 +46,8 @@ class _LoopState:
     queue: asyncio.Queue[NotificationJob]
     worker_task: asyncio.Task[None] | None
     worker_lock: asyncio.Lock
+    job_event: asyncio.Event
+    active_jobs: int = 0
 
 
 _loop_states: "WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
@@ -63,6 +68,10 @@ def _get_metrics() -> NotificationQueueMetrics | None:
     return _queue_metrics
 
 
+def _use_persistent_backend() -> bool:
+    return not getattr(settings, "notifications_queue_in_memory_only", False)
+
+
 def _get_loop_state() -> _LoopState:
     loop = asyncio.get_running_loop()
     state = _loop_states.get(loop)
@@ -71,11 +80,15 @@ def _get_loop_state() -> _LoopState:
             queue=asyncio.Queue(maxsize=max(0, settings.notifications_queue_max_size)),
             worker_task=None,
             worker_lock=asyncio.Lock(),
+            job_event=asyncio.Event(),
         )
         _loop_states[loop] = state
     metrics = _get_metrics()
     if metrics is not None:
-        metrics.queue_size.set(state.queue.qsize())
+        if _use_persistent_backend():
+            loop.create_task(_refresh_persistent_queue_size(metrics))
+        else:
+            metrics.queue_size.set(state.queue.qsize())
     return state
 
 
@@ -95,22 +108,28 @@ async def _ensure_worker() -> None:
             return
         loop = asyncio.get_running_loop()
         state.worker_task = loop.create_task(
-            _worker_loop(state.queue), name=_WORKER_TASK_NAME
+            _worker_loop(state), name=_WORKER_TASK_NAME
         )
 
 
-async def _worker_loop(queue: asyncio.Queue[NotificationJob]) -> None:
+async def _worker_loop(state: _LoopState) -> None:
     """Continuously process notification jobs from the queue."""
 
     metrics = _get_metrics()
     try:
         while True:
-            job = await queue.get()
-            if metrics is not None:
-                metrics.queue_size.set(queue.qsize())
+            if _use_persistent_backend():
+                job = await _dequeue_persistent_job(state)
+            else:
+                job = await state.queue.get()
+                if metrics is not None:
+                    metrics.queue_size.set(state.queue.qsize())
+            state.active_jobs += 1
             started = time.perf_counter()
+            success = False
             try:
                 await _process_job(job)
+                success = True
             except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
                 raise
             except Exception:  # pragma: no cover - defensive guard
@@ -121,7 +140,13 @@ async def _worker_loop(queue: asyncio.Queue[NotificationJob]) -> None:
                 if metrics is not None:
                     elapsed = max(time.perf_counter() - started, 0.0)
                     metrics.processing_latency_seconds.observe(elapsed)
-                queue.task_done()
+                if _use_persistent_backend():
+                    await _acknowledge_persistent_job(
+                        job, success=success, state=state, metrics=metrics
+                    )
+                else:
+                    state.queue.task_done()
+                state.active_jobs = max(state.active_jobs - 1, 0)
     except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
         raise
 
@@ -137,6 +162,13 @@ def _evict_oldest(queue: asyncio.Queue[NotificationJob]) -> NotificationJob | No
 
 
 async def _enqueue_job(job: NotificationJob) -> None:
+    if _use_persistent_backend():
+        await _enqueue_persistent_job(job)
+    else:
+        await _enqueue_in_memory_job(job)
+
+
+async def _enqueue_in_memory_job(job: NotificationJob) -> None:
     state = _get_loop_state()
     queue = state.queue
     metrics = _get_metrics()
@@ -181,6 +213,26 @@ async def _enqueue_job(job: NotificationJob) -> None:
         metrics.queue_size.set(queue.qsize())
     if enqueued:
         await _ensure_worker()
+
+
+async def _enqueue_persistent_job(job: NotificationJob) -> None:
+    metrics = _get_metrics()
+    state = _get_loop_state()
+    try:
+        async with async_session() as session:
+            async with session.begin():
+                record = NotificationQueueJob(
+                    kind=job.kind,
+                    record_id=job.record_id,
+                    locale=job.locale,
+                )
+                session.add(record)
+    except IntegrityError:
+        logger.debug("Skipping duplicate notification job", extra={"job": job})
+    await _ensure_worker()
+    state.job_event.set()
+    if metrics is not None:
+        await _refresh_persistent_queue_size(metrics)
 
 
 async def _notification_exists(
@@ -255,18 +307,29 @@ async def enqueue_news_notification(news_id: int, *, locale: str | None = None) 
 async def wait_for_all_jobs(timeout: float | None = None) -> None:
     """Wait until the queue is empty. Intended for tests."""
 
-    queue = _get_loop_state().queue
+    state = _get_loop_state()
+
+    async def _wait() -> None:
+        if _use_persistent_backend():
+            while True:
+                pending = await _pending_persistent_jobs()
+                if pending == 0 and state.active_jobs == 0:
+                    return
+                await asyncio.sleep(0.01)
+        else:
+            await state.queue.join()
 
     if timeout is None:
-        await queue.join()
+        await _wait()
         return
-    await asyncio.wait_for(queue.join(), timeout=timeout)
+    await asyncio.wait_for(_wait(), timeout=timeout)
 
 
 async def reset_testing_state() -> None:
     """Best-effort helper to clear pending jobs between tests."""
 
-    queue = _get_loop_state().queue
+    state = _get_loop_state()
+    queue = state.queue
     metrics = _get_metrics()
 
     while not queue.empty():
@@ -276,8 +339,14 @@ async def reset_testing_state() -> None:
             break
         else:
             queue.task_done()
+    state.active_jobs = 0
+    state.job_event.clear()
+    await _clear_persistent_jobs()
     if metrics is not None:
-        metrics.queue_size.set(queue.qsize())
+        if _use_persistent_backend():
+            await _refresh_persistent_queue_size(metrics)
+        else:
+            metrics.queue_size.set(queue.qsize())
 
 
 async def shutdown_notification_queue() -> None:
@@ -304,5 +373,114 @@ async def shutdown_notification_queue() -> None:
             break
         else:
             queue.task_done()
+    state.active_jobs = 0
+    state.job_event.clear()
+    await _clear_persistent_jobs()
     if metrics is not None:
-        metrics.queue_size.set(queue.qsize())
+        if _use_persistent_backend():
+            await _refresh_persistent_queue_size(metrics)
+        else:
+            metrics.queue_size.set(queue.qsize())
+
+
+async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> None:
+    """Update queue size metric based on durable backlog."""
+
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(func.count()).select_from(NotificationQueueJob).where(
+                    NotificationQueueJob.claimed_at.is_(None)
+                )
+            )
+            metrics.queue_size.set(int(result.scalar_one()))
+    except Exception:  # pragma: no cover - defensive guard
+        logger.exception("Failed to refresh persistent queue size metric")
+
+
+async def _pending_persistent_jobs() -> int:
+    async with async_session() as session:
+        result = await session.execute(
+            select(func.count()).select_from(NotificationQueueJob).where(
+                NotificationQueueJob.claimed_at.is_(None)
+            )
+        )
+        return int(result.scalar_one())
+
+
+async def _clear_persistent_jobs() -> None:
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(delete(NotificationQueueJob))
+
+
+async def _dequeue_persistent_job(state: _LoopState) -> NotificationJob:
+    while True:
+        job = await _claim_next_persistent_job()
+        if job is not None:
+            return job
+        state.job_event.clear()
+        await state.job_event.wait()
+
+
+async def _claim_next_persistent_job() -> NotificationJob | None:
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(NotificationQueueJob)
+                .where(NotificationQueueJob.claimed_at.is_(None))
+                .order_by(NotificationQueueJob.enqueued_at, NotificationQueueJob.id)
+                .with_for_update(skip_locked=True)
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            row.claimed_at = datetime.now(timezone.utc)
+            row.attempts = (row.attempts or 0) + 1
+            job = NotificationJob(
+                kind=cast(JobKind, row.kind),
+                record_id=row.record_id,
+                locale=row.locale,
+                queue_id=row.id,
+            )
+    metrics = _get_metrics()
+    if metrics is not None:
+        await _refresh_persistent_queue_size(metrics)
+    return job
+
+
+async def _acknowledge_persistent_job(
+    job: NotificationJob,
+    *,
+    success: bool,
+    state: _LoopState,
+    metrics: NotificationQueueMetrics | None,
+) -> None:
+    if job.queue_id is None:
+        return
+    try:
+        async with async_session() as session:
+            async with session.begin():
+                if success:
+                    await session.execute(
+                        delete(NotificationQueueJob).where(
+                            NotificationQueueJob.id == job.queue_id
+                        )
+                    )
+                else:
+                    await session.execute(
+                        update(NotificationQueueJob)
+                        .where(NotificationQueueJob.id == job.queue_id)
+                        .values(claimed_at=None)
+                    )
+    except Exception:
+        logger.exception(
+            "Failed to acknowledge persistent notification job",
+            extra={"job": job, "success": success},
+        )
+    else:
+        if not success:
+            state.job_event.set()
+    if metrics is not None:
+        await _refresh_persistent_queue_size(metrics)
