@@ -68,6 +68,35 @@ async def _ensure_async_sessionmaker() -> sessionmaker:
     return cast(sessionmaker, _Session)
 
 
+def cleanup() -> None:
+    """Dispose of cached synchronous engine resources."""
+
+    global _sync_engine, _Session
+
+    engine: Engine | None = None
+    session_factory: sessionmaker | None = None
+
+    with _sync_init_lock:
+        if _Session is None and _sync_engine is None:
+            return
+        engine = _sync_engine
+        session_factory = _Session
+        _sync_engine = None
+        _Session = None
+
+    if session_factory is not None and hasattr(session_factory, "close_all"):
+        try:
+            session_factory.close_all()
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to close webpush session factory")
+
+    if engine is not None:
+        try:
+            engine.dispose()
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to dispose webpush engine")
+
+
 _OPTION_KEYS: set[str] = {
     "actions",
     "badge",
