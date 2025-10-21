@@ -14,6 +14,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import relationship
 
@@ -301,6 +302,31 @@ class Notification(Base):
         Index("ix_notifications_user_created", "user_id", "created_at"),
         Index("ix_notifications_dupe_check", "user_id", "title", "url", "created_at"),
         Index("ix_notifications_user_dedupe", "user_id", "dedupe_key"),
+    )
+
+
+class NotificationQueueJob(Base):
+    __tablename__ = "notification_queue_jobs"
+
+    id = Column(Integer, primary_key=True)
+    kind = Column(String(16), nullable=False, index=True)
+    record_id = Column(Integer, nullable=False)
+    locale = Column(String(16))
+    enqueued_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    claimed_at = Column(DateTime(timezone=True), index=True)
+    attempts = Column(Integer, nullable=False, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('event', 'news')",
+            name="ck_notification_queue_jobs_kind",
+        ),
+        UniqueConstraint(
+            "kind", "record_id", name="uq_notification_queue_jobs_kind_record"
+        ),
+        Index("ix_notification_queue_jobs_kind_record", "kind", "record_id"),
     )
 
 

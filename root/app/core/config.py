@@ -153,6 +153,7 @@ class Settings(BaseSettings):
     notifications_retention_cleanup_interval_seconds: int = 86_400
     notifications_queue_max_size: int = 1024
     notifications_queue_enqueue_timeout_seconds: float = 0.5
+    notifications_queue_in_memory_only: bool = False
     session_cleanup_interval_seconds: int = 900
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"

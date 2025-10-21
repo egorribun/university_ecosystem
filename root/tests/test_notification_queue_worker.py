@@ -2,9 +2,22 @@ import asyncio
 
 import pytest
 from prometheus_client import REGISTRY
+from sqlalchemy import select
 
 from app.core import observability
+from app.core.database import async_session
+from app.models.models import NotificationQueueJob
 from app.services import notification_queue
+
+
+@pytest.fixture(autouse=True)
+def _force_persistent_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_in_memory_only",
+        False,
+        raising=False,
+    )
 
 
 @pytest.mark.anyio
@@ -77,6 +90,12 @@ async def test_notification_queue_records_drops_when_saturated(
     notification_queue._loop_states.clear()
     monkeypatch.setattr(
         notification_queue.settings,
+        "notifications_queue_in_memory_only",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        notification_queue.settings,
         "notifications_queue_max_size",
         1,
         raising=False,
@@ -125,5 +144,88 @@ async def test_notification_queue_records_processing_latency(
     assert count == pytest.approx(1.0)
     assert total is not None and total > 0
     assert _metric_value("notification_queue_size") == pytest.approx(0.0)
+
+    notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_persistent_queue_persists_and_clears_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+    notification_queue._loop_states.clear()
+
+    processed_event = asyncio.Event()
+
+    async def _fake_process(job):
+        assert job.queue_id is not None
+        async with async_session() as session:
+            record = await session.get(NotificationQueueJob, job.queue_id)
+            assert record is not None
+            assert record.claimed_at is not None
+        processed_event.set()
+
+    monkeypatch.setattr(notification_queue, "_process_job", _fake_process)
+
+    await notification_queue.enqueue_event_notification(101)
+
+    await asyncio.wait_for(processed_event.wait(), timeout=1.0)
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+
+    async with async_session() as session:
+        result = await session.execute(select(NotificationQueueJob.id))
+        assert result.first() is None
+
+    assert _metric_value("notification_queue_size") == pytest.approx(0.0)
+
+    notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_persistent_queue_deduplicates_jobs(monkeypatch: pytest.MonkeyPatch):
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+    notification_queue._loop_states.clear()
+
+    async def _noop_worker() -> None:
+        return None
+
+    monkeypatch.setattr(notification_queue, "_ensure_worker", _noop_worker)
+
+    await notification_queue.enqueue_news_notification(202)
+    await notification_queue.enqueue_news_notification(202)
+
+    async with async_session() as session:
+        result = await session.execute(select(NotificationQueueJob.record_id))
+        rows = result.fetchall()
+    assert [row[0] for row in rows] == [202]
+
+    notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_persistent_queue_retries_failed_jobs(monkeypatch: pytest.MonkeyPatch):
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+    notification_queue._loop_states.clear()
+
+    attempts: list[int] = []
+    processed_event = asyncio.Event()
+
+    async def _process(job):
+        attempts.append(job.record_id)
+        if len(attempts) == 1:
+            raise RuntimeError("boom")
+        processed_event.set()
+
+    monkeypatch.setattr(notification_queue, "_process_job", _process)
+
+    await notification_queue.enqueue_news_notification(303)
+
+    await asyncio.wait_for(processed_event.wait(), timeout=1.0)
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+
+    assert attempts == [303, 303]
 
     notification_queue._loop_states.clear()
