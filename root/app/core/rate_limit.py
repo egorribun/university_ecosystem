@@ -11,7 +11,7 @@ from fastapi import Request
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 _TIME_UNITS = {
     "s": 1,
@@ -179,7 +179,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._namespace = f"middleware:{uuid.uuid4().hex}"
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
-        if not self._enabled or self._should_skip(request):
+        method = request.method.upper()
+        path = request.url.path or ""
+
+        if method == "HEAD" and self._is_static_like_path(path):
+            return Response(status_code=200)
+
+        if not self._enabled or self._should_skip(method, path):
             return await call_next(request)
 
         identifier = self._build_identifier(request)
@@ -231,25 +237,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return f"ip:{client.host}"
         return "ip:unknown"
 
-    def _should_skip(self, request: Request) -> bool:
+    def _should_skip(self, method: str, path: str) -> bool:
         """Return ``True`` when the request should bypass rate limiting."""
 
-        method = request.method.upper()
         if method in {"OPTIONS", "HEAD"}:
             return True
 
-        path = request.url.path or ""
+        if self._is_static_like_path(path) and method == "GET":
+            return True
 
+        return False
+
+    @staticmethod
+    def _is_static_like_path(path: str) -> bool:
         if path == "/static" or path.startswith("/static/"):
             return True
 
         static_like_prefixes = ("/media/", "/storage/", "/assets/")
-        if method == "GET" and any(
-            path.startswith(prefix) for prefix in static_like_prefixes
-        ):
-            return True
-
-        return False
+        return any(path.startswith(prefix) for prefix in static_like_prefixes)
 
 
 async def _get_shared_client(redis_url: str) -> Redis:
