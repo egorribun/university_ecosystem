@@ -1,7 +1,7 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import axios from "../api/client"
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import {
   Box,
   Typography,
@@ -360,30 +360,69 @@ export default function Activity() {
       t(`activity:sections.attendance.status.${status}`, { defaultValue: status }),
     [t]
   )
-  const fallbackAttendanceRecent = useMemo(() => {
-    const raw = t("activity:fallback.attendance.recent", { returnObjects: true }) as unknown
-    const parsed = parseAttendanceRecent(raw)
-    return parsed.length > 0 ? parsed : defaultAttendanceRecent
-  }, [t])
-  const fallbackGradeRecent = useMemo(() => {
-    const raw = t("activity:fallback.grades.recent", { returnObjects: true }) as unknown
-    const parsed = parseGradeRecent(raw)
-    return parsed.length > 0 ? parsed : defaultGradeRecent
-  }, [t])
-  const fallbackParticipationRecent = useMemo(() => {
-    const raw = t("activity:fallback.participation.recent", { returnObjects: true }) as unknown
-    const parsed = parseParticipationRecent(raw)
-    return parsed.length > 0 ? parsed : defaultParticipationRecent
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
   }, [t])
 
+  const fallbackAttendanceRecentRef = useRef(defaultAttendanceRecent)
+  const fallbackGradeRecentRef = useRef(defaultGradeRecent)
+  const fallbackParticipationRecentRef = useRef(defaultParticipationRecent)
+
+  useEffect(() => {
+    const attendanceRaw = t("activity:fallback.attendance.recent", { returnObjects: true }) as unknown
+    const attendanceParsed = parseAttendanceRecent(attendanceRaw)
+    fallbackAttendanceRecentRef.current =
+      attendanceParsed.length > 0 ? attendanceParsed : defaultAttendanceRecent
+
+    const gradesRaw = t("activity:fallback.grades.recent", { returnObjects: true }) as unknown
+    const gradesParsed = parseGradeRecent(gradesRaw)
+    fallbackGradeRecentRef.current = gradesParsed.length > 0 ? gradesParsed : defaultGradeRecent
+
+    const participationRaw = t("activity:fallback.participation.recent", {
+      returnObjects: true,
+    }) as unknown
+    const participationParsed = parseParticipationRecent(participationRaw)
+    fallbackParticipationRecentRef.current =
+      participationParsed.length > 0 ? participationParsed : defaultParticipationRecent
+  }, [t])
+
+  const summaryRequestRef = useRef<AbortController | null>(null)
+
   const fetchSummary = useCallback(async () => {
+    summaryRequestRef.current?.abort()
+    const controller = new AbortController()
+    summaryRequestRef.current = controller
+
     setLoading(true)
+    const windowLabel = tRef.current(
+      `activity:period.labels.${period}`,
+      {
+        defaultValue: period,
+        count: periodDayCount(period),
+      }
+    )
+
     try {
       const [a, g, p] = await Promise.allSettled([
-        axios.get<AttendanceSummaryResponse>("/stats/attendance", { params: { period } }),
-        axios.get<GradeSummaryResponse>("/stats/grades", { params: { period } }),
-        axios.get<ParticipationSummaryResponse>("/stats/participation", { params: { period } }),
+        axios.get<AttendanceSummaryResponse>("/stats/attendance", {
+          params: { period },
+          signal: controller.signal,
+        }),
+        axios.get<GradeSummaryResponse>("/stats/grades", {
+          params: { period },
+          signal: controller.signal,
+        }),
+        axios.get<ParticipationSummaryResponse>("/stats/participation", {
+          params: { period },
+          signal: controller.signal,
+        }),
       ])
+
+      if (controller.signal.aborted) {
+        return
+      }
+
       if (a.status === "fulfilled" && a.value?.data) {
         const d = a.value.data
         setAttendance({
@@ -391,17 +430,18 @@ export default function Activity() {
           present: toNumber(d.present),
           total: toNumber(d.total),
           trend: toNumber(d.trend),
-          windowLabel: labelByPeriod(period),
+          windowLabel,
           recent: Array.isArray(d.recent) ? d.recent : [],
         })
       } else {
+        const fallbackRecent = fallbackAttendanceRecentRef.current
         setAttendance({
           percent: 92,
           present: 83,
           total: 90,
           trend: 1.4,
-          windowLabel: labelByPeriod(period),
-          recent: fallbackAttendanceRecent.map((item) => ({ ...item })),
+          windowLabel,
+          recent: fallbackRecent.map((item) => ({ ...item })),
         })
       }
       if (g.status === "fulfilled" && g.value?.data) {
@@ -413,11 +453,12 @@ export default function Activity() {
           recent: Array.isArray(d.recent) ? d.recent : [],
         })
       } else {
+        const fallbackRecent = fallbackGradeRecentRef.current
         setGrades({
           average: 4.4,
           scale: "5",
           trend: 0.3,
-          recent: fallbackGradeRecent.map((item) => ({ ...item })),
+          recent: fallbackRecent.map((item) => ({ ...item })),
         })
       }
       if (p.status === "fulfilled" && p.value?.data) {
@@ -430,28 +471,34 @@ export default function Activity() {
           recent: Array.isArray(d.recent) ? d.recent : [],
         })
       } else {
+        const fallbackRecent = fallbackParticipationRecentRef.current
         setParticipation({
           events: 6,
           hours: 12,
           groups: 2,
           trend: 2.0,
-          recent: fallbackParticipationRecent.map((item) => ({ ...item })),
+          recent: fallbackRecent.map((item) => ({ ...item })),
         })
       }
     } finally {
-      setLoading(false)
+      if (summaryRequestRef.current === controller) {
+        summaryRequestRef.current = null
+      }
+      if (!controller.signal.aborted) {
+        setLoading(false)
+      }
     }
-  }, [
-    period,
-    labelByPeriod,
-    fallbackAttendanceRecent,
-    fallbackGradeRecent,
-    fallbackParticipationRecent,
-  ])
+  }, [period])
 
   useEffect(() => {
-    fetchSummary()
-  }, [fetchSummary])
+    void fetchSummary()
+  }, [fetchSummary, language])
+
+  useEffect(() => {
+    return () => {
+      summaryRequestRef.current?.abort()
+    }
+  }, [])
 
   const cardBorder = alpha(
     theme.palette.mode === "dark" ? theme.palette.common.white : theme.palette.common.black,
