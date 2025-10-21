@@ -370,7 +370,9 @@ export default function Activity() {
   const fallbackParticipationRecentRef = useRef(defaultParticipationRecent)
 
   useEffect(() => {
-    const attendanceRaw = t("activity:fallback.attendance.recent", { returnObjects: true }) as unknown
+    const attendanceRaw = t("activity:fallback.attendance.recent", {
+      returnObjects: true,
+    }) as unknown
     const attendanceParsed = parseAttendanceRecent(attendanceRaw)
     fallbackAttendanceRecentRef.current =
       attendanceParsed.length > 0 ? attendanceParsed : defaultAttendanceRecent
@@ -395,13 +397,10 @@ export default function Activity() {
     summaryRequestRef.current = controller
 
     setLoading(true)
-    const windowLabel = tRef.current(
-      `activity:period.labels.${period}`,
-      {
-        defaultValue: period,
-        count: periodDayCount(period),
-      }
-    )
+    const windowLabel = tRef.current(`activity:period.labels.${period}`, {
+      defaultValue: period,
+      count: periodDayCount(period),
+    })
 
     try {
       const [a, g, p] = await Promise.allSettled([
