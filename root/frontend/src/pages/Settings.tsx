@@ -38,7 +38,7 @@ import {
   CircularProgress,
 } from "@mui/material"
 import dayjs from "dayjs"
-import { useColorScheme, styled, alpha, darken, lighten } from "@mui/material/styles"
+import { useColorScheme, styled, alpha, darken } from "@mui/material/styles"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
 import LightModeIcon from "@mui/icons-material/LightMode"

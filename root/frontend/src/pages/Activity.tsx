@@ -24,7 +24,7 @@ import {
   Divider,
   useMediaQuery,
 } from "@mui/material"
-import { alpha, useTheme, lighten } from "@mui/material/styles"
+import { alpha, useTheme } from "@mui/material/styles"
 import {
   motion,
   AnimatePresence,
@@ -41,6 +41,7 @@ import SchoolIcon from "@mui/icons-material/School"
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
+import { lightenColor } from "@/utils/color"
 
 const toNumber = (value: unknown, fallback = 0) => {
   const num = Number(value)
@@ -296,7 +297,7 @@ export default function Activity() {
   const darkToggleBase = alpha(theme.palette.common.white, 0.9)
   const darkToggleHover = alpha(theme.palette.common.white, 0.96)
   const darkToggleBorder = alpha(theme.palette.common.white, 0.24)
-  const darkToggleSelected = lighten(theme.palette.primary.main, 0.6)
+  const darkToggleSelected = lightenColor(theme.palette.primary.main, 0.6)
 
   const [period, setPeriod] = useState<PeriodKey>("90d")
   const [attendance, setAttendance] = useState<AttendanceStats | null>(null)
@@ -785,7 +786,7 @@ export default function Activity() {
                   "& .Mui-selected": {
                     background: isDark
                       ? darkToggleSelected
-                      : lighten(theme.palette.primary.main, 0.35),
+                      : lightenColor(theme.palette.primary.main, 0.35),
                     color: theme.palette.common.white,
                     boxShadow: isDark
                       ? `0 8px 24px ${alpha(theme.palette.primary.main, 0.45)}`
@@ -793,8 +794,8 @@ export default function Activity() {
                   },
                   "& .Mui-selected:hover": {
                     background: isDark
-                      ? lighten(darkToggleSelected, 0.12)
-                      : lighten(theme.palette.primary.main, 0.3),
+                      ? lightenColor(darkToggleSelected, 0.12)
+                      : lightenColor(theme.palette.primary.main, 0.3),
                   },
                 }}
               >
