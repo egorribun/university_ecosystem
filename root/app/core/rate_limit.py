@@ -244,7 +244,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return True
 
         static_like_prefixes = ("/media/", "/storage/", "/assets/")
-        if method == "GET" and any(path.startswith(prefix) for prefix in static_like_prefixes):
+        if method == "GET" and any(
+            path.startswith(prefix) for prefix in static_like_prefixes
+        ):
             return True
 
         return False
