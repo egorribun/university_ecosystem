@@ -175,7 +175,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._headers_enabled = headers_enabled
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
-        if not self._enabled:
+        if not self._enabled or self._should_skip(request):
             return await call_next(request)
 
         identifier = self._build_identifier(request)
@@ -225,6 +225,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if client and client.host:
             return f"ip:{client.host}"
         return "ip:unknown"
+
+    def _should_skip(self, request: Request) -> bool:
+        """Return ``True`` when the request should bypass rate limiting."""
+
+        method = request.method.upper()
+        if method == "OPTIONS":
+            return True
+
+        path = request.url.path or ""
+        if path == "/static" or path.startswith("/static/"):
+            return True
+
+        return False
 
 
 async def _get_shared_client(redis_url: str) -> Redis:
