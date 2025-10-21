@@ -1,9 +1,13 @@
+import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
 
 from app.core.config import settings
 from app.localization import resolve_locale, translate
+
+
+logger = logging.getLogger(__name__)
 
 RESET_TOKEN_EXPIRY_MINUTES = 45
 
@@ -43,15 +47,36 @@ def build_reset_email_content(
     return subject, plain, html
 
 
+def _redact_sensitive_query(url: str) -> str:
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "[redacted]"
+    redacted_items = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key.lower() in {"token", "code"}:
+            redacted_items.append((key, "***redacted***"))
+        else:
+            redacted_items.append((key, value))
+    sanitized_query = urlencode(redacted_items, doseq=True)
+    sanitized = parts._replace(query=sanitized_query)
+    result = urlunsplit(sanitized)
+    return result or "[redacted]"
+
+
 def send_reset_email(
     to_email: str, link: str, full_name: str = "", *, locale: str | None = None
 ) -> None:
-    host = settings.smtp_host
-    port = settings.smtp_port
-    user = settings.smtp_user
-    password = settings.smtp_password
-    starttls = settings.smtp_starttls
-    mail_from = settings.mail_from
+    host = settings.smtp_host or ""
+    port = int(settings.smtp_port or 0)
+    user = settings.smtp_user or ""
+    password = settings.smtp_password or ""
+    mail_from = settings.mail_from or "no-reply@example.com"
+    security = (
+        settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")
+    ).lower()
 
     msg = EmailMessage()
     subject, plain, html = build_reset_email_content(link, full_name, locale=locale)
@@ -61,15 +86,38 @@ def send_reset_email(
     msg.set_content(plain)
     msg.add_alternative(html, subtype="html")
 
-    context = ssl.create_default_context()
-    if starttls:
-        with smtplib.SMTP(host, port) as s:
-            s.starttls(context=context)
-            if user:
-                s.login(user, password)
-            s.send_message(msg)
-    else:
-        with smtplib.SMTP_SSL(host, port, context=context) as s:
-            if user:
-                s.login(user, password)
-            s.send_message(msg)
+    try:
+        if not host or not port:
+            safe_link = _redact_sensitive_query(link)
+            logger.warning(
+                "password.reset_email.fallback",
+                extra={"email": to_email, "link": safe_link},
+            )
+            return
+
+        context = ssl.create_default_context()
+        if security == "ssl":
+            with smtplib.SMTP_SSL(host, port, context=context, timeout=10) as s:
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+        elif security == "starttls":
+            with smtplib.SMTP(host, port, timeout=10) as s:
+                s.ehlo()
+                s.starttls(context=context)
+                s.ehlo()
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=10) as s:
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+    except Exception:
+        safe_link = _redact_sensitive_query(link)
+        logger.error(
+            "password.reset_email.error",
+            extra={"email": to_email, "link": safe_link},
+            exc_info=True,
+        )
