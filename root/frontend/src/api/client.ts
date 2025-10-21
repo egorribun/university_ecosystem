@@ -23,6 +23,11 @@ export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
    * Internal retry counter used by the rate-limit middleware.
    */
   __rateLimitRetryCount?: number
+  /**
+   * Internal flag to indicate that the request acquired a client-side queue
+   * slot and should release it once finished.
+   */
+  __clientRateLimitAcquired?: boolean
 }
 
 type ApiInstance = Omit<AxiosInstance, "get" | "delete" | "post" | "patch" | "put"> & {
@@ -72,6 +77,176 @@ const RATE_LIMIT_MAX_RETRY = 2
 let rateLimitResetAt = 0
 let rateLimitTimer: ReturnType<typeof setTimeout> | null = null
 const rateLimitWaiters: Array<() => void> = []
+
+const RATE_LIMIT_WINDOW_MS = 60_000
+
+const parsePositiveInteger = (value: unknown, fallback: number): number => {
+  const parsed = Number.parseInt(String(value ?? ""), 10)
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  return fallback
+}
+
+const CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW = parsePositiveInteger(
+  import.meta.env.VITE_API_RATE_LIMIT_PER_MINUTE,
+  90
+)
+
+const CLIENT_RATE_LIMIT_MAX_CONCURRENT = parsePositiveInteger(
+  import.meta.env.VITE_API_RATE_LIMIT_MAX_CONCURRENT,
+  6
+)
+
+let clientQueueInFlight = 0
+const clientQueueWaiters: Array<() => void> = []
+const clientQueueTimestamps: number[] = []
+let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
+let clientQueueResetAt = 0
+
+const pruneClientQueueTimestamps = () => {
+  const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
+  while (clientQueueTimestamps.length > 0) {
+    const oldest = clientQueueTimestamps[0]!
+    if (oldest <= threshold) {
+      clientQueueTimestamps.shift()
+    } else {
+      break
+    }
+  }
+}
+
+const notifyClientQueue = () => {
+  if (clientQueueWaiters.length === 0) {
+    return
+  }
+
+  while (clientQueueWaiters.length > 0) {
+    pruneClientQueueTimestamps()
+
+    if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
+      return
+    }
+
+    if (clientQueueTimestamps.length >= CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+      scheduleClientQueueWindowReset()
+      return
+    }
+
+    const resolve = clientQueueWaiters.shift()
+    if (!resolve) {
+      continue
+    }
+    resolve()
+  }
+}
+
+const scheduleClientQueueWindowReset = () => {
+  pruneClientQueueTimestamps()
+
+  if (clientQueueTimestamps.length < CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+    if (clientQueueTimer) {
+      clearTimeout(clientQueueTimer)
+      clientQueueTimer = null
+      clientQueueResetAt = 0
+    }
+    return
+  }
+
+  const oldest = clientQueueTimestamps[0] ?? Date.now()
+  const target = oldest + RATE_LIMIT_WINDOW_MS
+  if (clientQueueTimer && target >= clientQueueResetAt) {
+    return
+  }
+
+  if (clientQueueTimer) {
+    clearTimeout(clientQueueTimer)
+    clientQueueTimer = null
+  }
+
+  clientQueueResetAt = target
+  clientQueueTimer = setTimeout(
+    () => {
+      clientQueueTimer = null
+      clientQueueResetAt = 0
+      pruneClientQueueTimestamps()
+      notifyClientQueue()
+    },
+    Math.max(0, target - Date.now())
+  )
+}
+
+const shouldThrottleRequest = (config: ApiRequestConfig) => {
+  const method = (config.method ?? "get").toString().toLowerCase()
+  return method === "get"
+}
+
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (!signal?.aborted) {
+    return
+  }
+
+  const reason = signal.reason
+  if (reason instanceof Error) {
+    throw reason
+  }
+
+  throw new DOMException("Aborted", "AbortError")
+}
+
+const tryAcquireClientQueueSlot = (): boolean => {
+  pruneClientQueueTimestamps()
+
+  if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
+    return false
+  }
+
+  if (clientQueueTimestamps.length >= CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+    scheduleClientQueueWindowReset()
+    return false
+  }
+
+  clientQueueInFlight += 1
+  clientQueueTimestamps.push(Date.now())
+  return true
+}
+
+const waitForClientQueueSlot = async (config: ApiRequestConfig) => {
+  if (!shouldThrottleRequest(config)) {
+    return
+  }
+
+  while (true) {
+    throwIfAborted(config.signal)
+    if (tryAcquireClientQueueSlot()) {
+      config.__clientRateLimitAcquired = true
+      return
+    }
+
+    await new Promise<void>((resolve) => {
+      clientQueueWaiters.push(resolve)
+    })
+  }
+}
+
+const releaseClientQueueSlot = (config?: ApiRequestConfig) => {
+  if (!config?.__clientRateLimitAcquired) {
+    return
+  }
+
+  config.__clientRateLimitAcquired = false
+
+  if (!shouldThrottleRequest(config)) {
+    return
+  }
+
+  if (clientQueueInFlight > 0) {
+    clientQueueInFlight -= 1
+  }
+
+  pruneClientQueueTimestamps()
+  notifyClientQueue()
+}
 
 const isAbortError = (error: unknown) => {
   if (!error) return false
@@ -167,10 +342,15 @@ const resolveAcceptLanguage = (language?: string) => {
   return supportedMatch ?? fallbackLanguage
 }
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
-  if (!candidate.skipRateLimitQueue && rateLimitResetAt > Date.now()) {
-    return waitForRateLimitWindow().then(() => config)
+
+  if (!candidate.skipRateLimitQueue) {
+    await waitForClientQueueSlot(candidate)
+  }
+
+  if (rateLimitResetAt > Date.now()) {
+    await waitForRateLimitWindow()
   }
 
   const currentLanguage = i18n.language || i18n.resolvedLanguage || fallbackLng
@@ -188,8 +368,13 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (r) => r,
+  (r) => {
+    releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
+    return r
+  },
   async (err) => {
+    releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
+
     if (err?.response?.status === 429 && err.config) {
       const config = err.config as ApiRequestConfig
       if (!config.skipRateLimitQueue) {
