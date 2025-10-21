@@ -52,6 +52,18 @@ async def test_rate_limit_skips_static_paths():
     async def _static() -> Response:  # pragma: no cover - simple passthrough
         return Response(content=b"", media_type="image/png")
 
+    @app.get("/media/example.png")
+    async def _media() -> Response:  # pragma: no cover - simple passthrough
+        return Response(content=b"", media_type="image/png")
+
+    @app.get("/storage/example.png")
+    async def _storage() -> Response:  # pragma: no cover - simple passthrough
+        return Response(content=b"", media_type="image/png")
+
+    @app.get("/assets/app.js")
+    async def _assets() -> Response:  # pragma: no cover - simple passthrough
+        return Response(content=b"console.log('hi');", media_type="text/javascript")
+
     @app.get("/limited")
     async def _limited():  # pragma: no cover - simple passthrough
         return {"ok": True}
@@ -60,9 +72,18 @@ async def test_rate_limit_skips_static_paths():
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as client:
-        for _ in range(5):
-            static_response = await client.get("/static/example.png")
-            assert static_response.status_code == status.HTTP_200_OK
+        for path in [
+            "/static/example.png",
+            "/media/example.png",
+            "/storage/example.png",
+            "/assets/app.js",
+        ]:
+            for _ in range(3):
+                static_response = await client.get(path)
+                assert static_response.status_code == status.HTTP_200_OK
+
+        head_response = await client.head("/media/example.png")
+        assert head_response.status_code == status.HTTP_200_OK
 
         first = await client.get("/limited")
         second = await client.get("/limited")
