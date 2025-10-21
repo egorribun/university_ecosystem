@@ -48,7 +48,9 @@ def _ensure_constraints() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    existing_unique = {uc["name"] for uc in inspector.get_unique_constraints(_TABLE_NAME)}
+    existing_unique = {
+        uc["name"] for uc in inspector.get_unique_constraints(_TABLE_NAME)
+    }
     if _UNIQUE_NAME not in existing_unique:
         op.create_unique_constraint(
             _UNIQUE_NAME,
@@ -56,7 +58,9 @@ def _ensure_constraints() -> None:
             ["kind", "record_id"],
         )
 
-    existing_checks = {cc["name"] for cc in inspector.get_check_constraints(_TABLE_NAME)}
+    existing_checks = {
+        cc["name"] for cc in inspector.get_check_constraints(_TABLE_NAME)
+    }
     if _KIND_CHECK not in existing_checks:
         op.create_check_constraint(
             _KIND_CHECK,
@@ -103,17 +107,25 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
 
     if inspector.has_table(_TABLE_NAME):
-        existing_indexes = {index["name"] for index in inspector.get_indexes(_TABLE_NAME)}
+        existing_indexes = {
+            index["name"] for index in inspector.get_indexes(_TABLE_NAME)
+        }
         if "ix_notification_queue_jobs_claimed_at" in existing_indexes:
-            op.drop_index("ix_notification_queue_jobs_claimed_at", table_name=_TABLE_NAME)
+            op.drop_index(
+                "ix_notification_queue_jobs_claimed_at", table_name=_TABLE_NAME
+            )
         if _INDEX_NAME in existing_indexes:
             op.drop_index(_INDEX_NAME, table_name=_TABLE_NAME)
 
-        existing_checks = {cc["name"] for cc in inspector.get_check_constraints(_TABLE_NAME)}
+        existing_checks = {
+            cc["name"] for cc in inspector.get_check_constraints(_TABLE_NAME)
+        }
         if _KIND_CHECK in existing_checks:
             op.drop_constraint(_KIND_CHECK, _TABLE_NAME, type_="check")
 
-        existing_unique = {uc["name"] for uc in inspector.get_unique_constraints(_TABLE_NAME)}
+        existing_unique = {
+            uc["name"] for uc in inspector.get_unique_constraints(_TABLE_NAME)
+        }
         if _UNIQUE_NAME in existing_unique:
             op.drop_constraint(_UNIQUE_NAME, _TABLE_NAME, type_="unique")
 
