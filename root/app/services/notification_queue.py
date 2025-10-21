@@ -11,7 +11,7 @@ from typing import Literal, cast
 from weakref import WeakKeyDictionary
 
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -122,9 +122,9 @@ async def _worker_loop(state: _LoopState) -> None:
                 job = await _dequeue_persistent_job(state)
             else:
                 job = await state.queue.get()
+                state.active_jobs += 1
                 if metrics is not None:
                     metrics.queue_size.set(state.queue.qsize())
-            state.active_jobs += 1
             started = time.perf_counter()
             success = False
             try:
@@ -314,7 +314,10 @@ async def wait_for_all_jobs(timeout: float | None = None) -> None:
             while True:
                 pending = await _pending_persistent_jobs()
                 if pending == 0 and state.active_jobs == 0:
-                    return
+                    await asyncio.sleep(0)
+                    pending = await _pending_persistent_jobs()
+                    if pending == 0 and state.active_jobs == 0:
+                        return
                 await asyncio.sleep(0.01)
         else:
             await state.queue.join()
@@ -409,15 +412,39 @@ async def _pending_persistent_jobs() -> int:
 
 
 async def _clear_persistent_jobs() -> None:
-    async with async_session() as session:
-        async with session.begin():
-            await session.execute(delete(NotificationQueueJob))
+    if not _use_persistent_backend():
+        return
+
+    try:
+        if await _pending_persistent_jobs() == 0:
+            return
+    except OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        await asyncio.sleep(0.05)
+
+    max_attempts = 5
+    delay_seconds = 0.05
+
+    for attempt in range(1, max_attempts + 1):
+        async with async_session() as session:
+            try:
+                await session.execute(delete(NotificationQueueJob))
+                await session.commit()
+                return
+            except OperationalError as exc:
+                await session.rollback()
+                message = str(exc).lower()
+                if "locked" not in message or attempt == max_attempts:
+                    raise
+                await asyncio.sleep(delay_seconds * attempt)
 
 
 async def _dequeue_persistent_job(state: _LoopState) -> NotificationJob:
     while True:
         job = await _claim_next_persistent_job()
         if job is not None:
+            state.active_jobs += 1
             return job
         state.job_event.clear()
         await state.job_event.wait()

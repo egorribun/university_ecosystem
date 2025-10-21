@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from fastapi import Depends, FastAPI, status
+from fastapi import Depends, FastAPI, Response, status
 
 from app.auth.security import get_password_hash
 from app.core.config import settings
@@ -35,6 +35,42 @@ async def test_rate_limit_per_token(async_client):
         "/healthz", headers={"Authorization": "Bearer token-b"}
     )
     assert other.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_rate_limit_skips_static_paths():
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        redis_url="memory://",
+        limit=2,
+        window_seconds=60,
+    )
+
+    @app.get("/static/example.png")
+    async def _static() -> Response:  # pragma: no cover - simple passthrough
+        return Response(content=b"", media_type="image/png")
+
+    @app.get("/limited")
+    async def _limited():  # pragma: no cover - simple passthrough
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        for _ in range(5):
+            static_response = await client.get("/static/example.png")
+            assert static_response.status_code == status.HTTP_200_OK
+
+        first = await client.get("/limited")
+        second = await client.get("/limited")
+        third = await client.get("/limited")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
 @pytest.mark.anyio
