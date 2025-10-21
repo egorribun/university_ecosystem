@@ -17,6 +17,7 @@ from app.core.observability import (
     create_worker_monitoring_app,
     start_worker_monitoring_server,
 )
+from app.services import webpush
 from app.services.notifications import generate_schedule_reminders
 
 logger = logging.getLogger(__name__)
@@ -207,26 +208,28 @@ async def run_worker() -> None:
     stop_event = asyncio.Event()
     signal_task = asyncio.create_task(_wait_for_signals(stop_event))
 
-    done, pending = await asyncio.wait(
-        {scheduler_task, signal_task}, return_when=asyncio.FIRST_COMPLETED
-    )
+    try:
+        done, pending = await asyncio.wait(
+            {scheduler_task, signal_task}, return_when=asyncio.FIRST_COMPLETED
+        )
 
-    if scheduler_task in done:
-        with suppress(asyncio.CancelledError):
-            await scheduler_task
-        stop_event.set()
-    else:
-        scheduler_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await scheduler_task
+        if scheduler_task in done:
+            with suppress(asyncio.CancelledError):
+                await scheduler_task
+            stop_event.set()
+        else:
+            scheduler_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await scheduler_task
 
-    for task in pending:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-    if monitor_stop is not None:
-        await monitor_stop()
+        for task in pending:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+    finally:
+        if monitor_stop is not None:
+            await monitor_stop()
+        webpush.cleanup()
 
     logger.info("Notifications worker stopped")
 
