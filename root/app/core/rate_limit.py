@@ -235,11 +235,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Return ``True`` when the request should bypass rate limiting."""
 
         method = request.method.upper()
-        if method == "OPTIONS":
+        if method in {"OPTIONS", "HEAD"}:
             return True
 
         path = request.url.path or ""
+
         if path == "/static" or path.startswith("/static/"):
+            return True
+
+        static_like_prefixes = ("/media/", "/storage/", "/assets/")
+        if method == "GET" and any(
+            path.startswith(prefix) for prefix in static_like_prefixes
+        ):
             return True
 
         return False
