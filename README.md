@@ -110,6 +110,11 @@ Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete c
 > The backend refuses to serve `/metrics` when `METRICS_BASIC_AUTH_PASSWORD` uses a known placeholder
 > to prevent deployments with weak credentials.
 
+> **Authentication cookies:** The `Settings.cookie_secure` flag mirrors `ENABLE_STRICT_SECURITY_HEADERS`.
+> In production (strict mode), login cookies include the `Secure` attribute and require HTTPS. During
+> local development and automated tests, strict headers are disabled by default so the cookie omits
+> `Secure`, allowing sign-in flows to work over `http://localhost`.
+
 ## Image uploads
 
 Uploaded profile photos and news images are limited to **5&nbsp;MB**. The backend

@@ -3,6 +3,7 @@ from fastapi import status
 from sqlalchemy import select
 
 from app.auth.security import decode_token, get_password_hash
+from app.core.config import settings
 from app.localization import translate
 from app.models.models import ActiveSession
 
@@ -22,7 +23,33 @@ async def _login(async_client, email: str, password: str):
     )
 
 
-async def test_login_issues_secure_cookie(async_client, user_factory):
+@pytest.fixture
+def configure_cookie_security(monkeypatch):
+    def _configure(value):
+        monkeypatch.setattr(
+            settings, "enable_strict_security_headers", value, raising=False
+        )
+        settings.__dict__.pop("strict_security_headers_enabled", None)
+        settings.__dict__.pop("cookie_secure", None)
+
+    yield _configure
+
+    settings.__dict__.pop("strict_security_headers_enabled", None)
+    settings.__dict__.pop("cookie_secure", None)
+
+
+def _extract_cookie_attributes(header: str) -> set[str]:
+    parts = [part.strip().lower() for part in header.split(";")]
+    return {part for part in parts[1:] if part}
+
+
+@pytest.mark.parametrize("strict_value, expected_secure", [(None, False), (True, True)])
+async def test_login_cookie_security_modes(
+    async_client, user_factory, configure_cookie_security, strict_value, expected_secure
+):
+    configure_cookie_security(strict_value)
+    assert settings.cookie_secure is expected_secure
+
     password = "StrongPass123!"
     user = await _create_active_user(user_factory, password)
 
@@ -31,13 +58,15 @@ async def test_login_issues_secure_cookie(async_client, user_factory):
     assert response.status_code == 200
 
     set_cookie_headers = response.headers.get_list("set-cookie")
-    assert any(
-        header.lower().startswith("access_token=")
-        and "httponly" in header.lower()
-        and "secure" in header.lower()
-        and "samesite=strict" in header.lower()
+    access_cookie_header = next(
+        header
         for header in set_cookie_headers
+        if header.lower().startswith("access_token=")
     )
+    attributes = _extract_cookie_attributes(access_cookie_header)
+    assert "httponly" in attributes
+    assert ("secure" in attributes) is expected_secure
+    assert "samesite=strict" in attributes
 
     stored_cookie = async_client.cookies.get("access_token")
     assert stored_cookie is not None and stored_cookie != ""
@@ -49,23 +78,17 @@ async def test_login_issues_secure_cookie(async_client, user_factory):
     assert profile_response.status_code == 200
     assert profile_response.json()["email"] == user.email
 
-
-async def test_logout_clears_cookie(async_client, user_factory):
-    password = "AnotherPass456!"
-    user = await _create_active_user(user_factory, password)
-
-    login_response = await _login(async_client, user.email, password)
-    assert login_response.status_code == 200
-    assert async_client.cookies.get("access_token")
-
     logout_response = await async_client.post("/auth/logout")
     assert logout_response.status_code == 200
 
-    logout_cookies = logout_response.headers.get_list("set-cookie")
-    assert any(
-        header.lower().startswith("access_token=") and "max-age=0" in header.lower()
-        for header in logout_cookies
+    logout_cookie_header = next(
+        header
+        for header in logout_response.headers.get_list("set-cookie")
+        if header.lower().startswith("access_token=")
     )
+    logout_attributes = _extract_cookie_attributes(logout_cookie_header)
+    assert "max-age=0" in logout_attributes
+    assert ("secure" in logout_attributes) is expected_secure
 
     assert async_client.cookies.get("access_token") is None
 
