@@ -121,6 +121,9 @@ const Events = () => {
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
   const etagCacheRef = useRef<Record<string, string>>({})
+  const eventsCacheRef = useRef<
+    Record<string, { events: Event[]; pagination: PaginatedResponse<Event> | null }>
+  >({})
 
   useEffect(() => {
     const t = (searchParams.get("tab") as typeof tab) || "active"
@@ -146,6 +149,14 @@ const Events = () => {
   const dType = useDebounced(type, 350)
   const dLocation = useDebounced(location, 350)
 
+  const cacheKey = useMemo(() => {
+    if (tab === "my") {
+      return `my:${language}`
+    }
+    const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
+    return `${tab}:${language}:${String(isActiveFilter)}:${dSearch}:${dType}:${dLocation}:limit:${PAGE_SIZE}`
+  }, [tab, language, dSearch, dType, dLocation])
+
   const fetchEvents = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true)
@@ -166,10 +177,7 @@ const Events = () => {
                 cursor: 0,
               }
 
-        const keyBase =
-          tab === "my"
-            ? `my:${language}`
-            : `${tab}:${language}:${String(isActiveFilter)}:${dSearch}:${dType}:${dLocation}:limit:${PAGE_SIZE}`
+        const keyBase = cacheKey
         const headers = etagCacheRef.current[keyBase]
           ? { "If-None-Match": etagCacheRef.current[keyBase] }
           : undefined
@@ -189,9 +197,16 @@ const Events = () => {
             delete etagCacheRef.current[keyBase]
           }
           if (res.status === 304) {
+            const cached = eventsCacheRef.current[keyBase]
+            if (cached) {
+              setEvents(cached.events)
+            }
+            setPagination(null)
             return
           }
-          setEvents(Array.isArray(res.data) ? res.data : [])
+          const nextEvents = Array.isArray(res.data) ? res.data : []
+          eventsCacheRef.current[keyBase] = { events: nextEvents, pagination: null }
+          setEvents(nextEvents)
           setPagination(null)
           return
         }
@@ -204,12 +219,20 @@ const Events = () => {
           delete etagCacheRef.current[keyBase]
         }
         if (res.status === 304) {
+          const cached = eventsCacheRef.current[keyBase]
+          if (cached) {
+            setEvents(cached.events)
+            setPagination(cached.pagination)
+          }
           return
         }
 
         const data = res.data
-        setEvents(Array.isArray(data?.items) ? data.items : [])
-        setPagination(data ?? null)
+        const nextEvents = Array.isArray(data?.items) ? data.items : []
+        const nextPagination = data ?? null
+        eventsCacheRef.current[keyBase] = { events: nextEvents, pagination: nextPagination }
+        setEvents(nextEvents)
+        setPagination(nextPagination)
       } catch (err: any) {
         if (err?.name !== "CanceledError" && err?.code !== "ERR_CANCELED") {
           setEvents([])
@@ -219,7 +242,7 @@ const Events = () => {
         setLoading(false)
       }
     },
-    [tab, dSearch, dType, dLocation, language]
+    [tab, dSearch, dType, dLocation, language, cacheKey]
   )
 
   useEffect(() => {
@@ -248,6 +271,7 @@ const Events = () => {
       })
       const data = res.data
       const newItems = Array.isArray(data?.items) ? data.items : []
+      let mergedEvents: Event[] = []
       setEvents((prev) => {
         const existing = Array.isArray(prev) ? [...prev] : []
         const seen = new Set(existing.map((item) => item.id))
@@ -260,15 +284,31 @@ const Events = () => {
             seen.add(item.id)
           }
         })
+        mergedEvents = existing
         return existing
       })
       setPagination((prev) => {
-        if (!data) return prev
-        if (!prev) return data
-        return {
+        if (!data) {
+          const cached = eventsCacheRef.current[cacheKey]
+          eventsCacheRef.current[cacheKey] = {
+            events: mergedEvents,
+            pagination: prev ?? null,
+          }
+          return prev
+        }
+        if (!prev) {
+          eventsCacheRef.current[cacheKey] = { events: mergedEvents, pagination: data }
+          return data
+        }
+        const nextPagination = {
           ...prev,
           ...data,
         }
+        eventsCacheRef.current[cacheKey] = {
+          events: mergedEvents,
+          pagination: nextPagination,
+        }
+        return nextPagination
       })
     } catch (err: any) {
       if (err?.name !== "CanceledError" && err?.code !== "ERR_CANCELED") {
@@ -277,7 +317,7 @@ const Events = () => {
     } finally {
       setLoadingMore(false)
     }
-  }, [tab, loadingMore, pagination?.next_cursor, dSearch, dType, dLocation])
+  }, [tab, loadingMore, pagination?.next_cursor, dSearch, dType, dLocation, cacheKey])
 
   const handleTabChange = (_event: SyntheticEvent, newValue: EventTabKey) => setTab(newValue)
 
