@@ -23,7 +23,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
-import axios from "@/api/client"
+import apiClient from "@/api/client"
+import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 
 function formatInputDate(value: string | dayjs.Dayjs) {
@@ -59,7 +60,7 @@ function formatTimeLeft(
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
-  if (axios.isAxiosError(error)) {
+  if (isAxiosError(error)) {
     const detail = error.response?.data as { detail?: unknown } | undefined
     if (detail) {
       if (typeof detail === "string") return detail
@@ -154,7 +155,7 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
         expires_at: expiresIso,
       })
       onRefresh()
-    } catch (error) {
+    } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.updateFailed")))
     } finally {
       setSavingTime(false)
@@ -188,7 +189,7 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
       await updateStory(story.id, { cover_url: url })
       handleCoverReset()
       onRefresh()
-    } catch (error) {
+    } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.coverUpdateFailed")))
     } finally {
       setUpdatingCover(false)
@@ -201,7 +202,7 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
     try {
       await updateStory(story.id, { is_active: false })
       onRefresh()
-    } catch (error) {
+    } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.unpublishFailed")))
     } finally {
       setUnpublishing(false)
@@ -215,7 +216,7 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
     try {
       await deleteStory(story.id)
       onRefresh()
-    } catch (error) {
+    } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.deleteFailed")))
     } finally {
       setDeleting(false)
@@ -424,11 +425,11 @@ export default function StoriesAdmin() {
     setLoading(true)
     setListError(null)
     try {
-      const res = await axios.get<StoryItem[]>("/stories")
+      const res = await apiClient.get<StoryItem[]>("/stories")
       const data = Array.isArray(res.data) ? res.data : []
       setStories(data)
       setListError(null)
-    } catch (error) {
+    } catch (error: unknown) {
       setListError(getErrorMessage(error, t("stories:errors.loadFailed")))
     } finally {
       setLoading(false)
@@ -504,7 +505,7 @@ export default function StoriesAdmin() {
       resetForm()
       setFormSuccess(t("stories:form.success"))
       void fetchStories()
-    } catch (error) {
+    } catch (error: unknown) {
       setFormError(getErrorMessage(error, t("stories:errors.createFailed")))
     } finally {
       setSubmitting(false)
