@@ -14,10 +14,10 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    event,
     func,
     text,
 )
-from sqlalchemy import event
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

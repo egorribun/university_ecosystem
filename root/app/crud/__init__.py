@@ -174,9 +174,7 @@ async def update_story(
     if "title_en" in payload:
         payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
     if "short_text_en" in payload:
-        payload["short_text_en"] = sanitize_optional_text(
-            payload.get("short_text_en")
-        )
+        payload["short_text_en"] = sanitize_optional_text(payload.get("short_text_en"))
     if "cover_url" in payload:
         payload["cover_url"] = sanitize_optional_text(payload.get("cover_url"))
     if "cta_url" in payload:
