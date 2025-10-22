@@ -478,15 +478,16 @@ export default function DashboardStories({
                 flexDirection: "column",
                 alignItems: "stretch",
                 justifyContent: "center",
-                width: "min(96vw, 960px)",
-                maxWidth: "min(96vw, 960px)",
-                maxHeight: "80vh",
-                aspectRatio: "16 / 9",
+                width: { xs: "min(92vw, 420px)", sm: "min(96vw, 960px)" },
+                maxWidth: { xs: "min(92vw, 420px)", sm: "min(96vw, 960px)" },
+                maxHeight: { xs: "92vh", sm: "80vh" },
+                aspectRatio: { xs: "9 / 16", sm: "16 / 9" },
                 borderRadius: viewerStory.cover_url ? 0 : { xs: 3, sm: 4 },
                 overflow: "hidden",
                 boxShadow: viewerStory.cover_url ? "none" : "0 30px 80px rgba(0,0,0,0.55)",
-                background: viewerStory.cover_url
-                  ? "transparent"
+                backgroundColor: viewerStory.cover_url ? "#080b15" : undefined,
+                backgroundImage: viewerStory.cover_url
+                  ? "none"
                   : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
               }}
               onPointerDown={handlePointerStart}
@@ -511,7 +512,13 @@ export default function DashboardStories({
                   <SmartImage
                     srcRaw={viewerStory.cover_url}
                     alt={viewerStory.title}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      objectPosition: "center",
+                      backgroundColor: "#080b15",
+                    }}
                   />
                 </>
               ) : (
