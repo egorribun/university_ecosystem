@@ -17,7 +17,6 @@ import {
   Button,
   ButtonBase,
   Dialog,
-  Divider,
   IconButton,
   LinearProgress,
   Skeleton,
@@ -30,7 +29,6 @@ import { visuallyHidden } from "@mui/utils"
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded"
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded"
 import ArrowForwardIosRoundedIcon from "@mui/icons-material/ArrowForwardIosRounded"
-import { cardHoverSx } from "@/constants/cardHover"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
@@ -60,7 +58,6 @@ export default function DashboardStories({
   const listLabel = t("aria.storiesList")
   const emptyLabel = t("stories.empty")
   const emptyDescription = t("stories.emptyDescription")
-  const subheading = t("stories.subheading")
 
   const displayStories = useMemo(() => {
     const filtered = Array.isArray(stories) ? stories.filter(Boolean) : []
@@ -279,7 +276,6 @@ export default function DashboardStories({
     return hints
   }, [autoHint, isMobile, keyboardHint, swipeHint, tapHint])
 
-  const hasSubheading = subheading && subheading !== "stories.subheading"
   const hasEmptyDescription =
     emptyDescription && emptyDescription !== "stories.emptyDescription"
   const hasViewerInstructions =
@@ -312,61 +308,17 @@ export default function DashboardStories({
   return (
     <Box
       data-fade
-      style={{ "--fade-delay": "120ms" } as CSSProperties}
-      sx={{
-        ...cardHoverSx({ hoverTransform: null, hoverBoxShadow: null }),
-        background: "var(--card-bg)",
-        borderRadius: "2rem",
-        border: {
-          xs: "1px solid color-mix(in srgb, var(--page-text) 12%, transparent)",
-          md: "1px solid transparent",
-        },
-        p: { xs: 2, md: 2.5 },
-        boxShadow: {
-          xs: "0 16px 40px rgba(0,0,0,.22), 0 6px 16px rgba(0,0,0,.12)",
-          md: "var(--shadow-1)",
-        },
-        backdropFilter: { xs: "saturate(110%)", md: "none" },
-        mt: 3,
-        mb: 3,
-      }}
+      style={{ "--fade-delay": "120ms" } as CSSProperties }
+      sx={{ mt: 3, mb: 3, display: "flex", flexDirection: "column", gap: 2 }}
       aria-busy={loading}
       onPointerEnter={onPrefetch}
       onFocusCapture={onPrefetch}
     >
-      <Stack spacing={0.75} sx={{ mb: 0.5 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography
-            component="h2"
-            sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}
-          >
-            {t("stories.heading")}
-          </Typography>
-          {viewerStory && viewerStory.cta_url && (
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-              sx={{ textTransform: "none" }}
-            >
-              {t("stories.viewer.openLink")}
-            </Button>
-          )}
-        </Stack>
-        {hasSubheading && (
-          <Typography variant="body2" color="text.secondary">
-            {subheading}
-          </Typography>
-        )}
-      </Stack>
-      <Divider sx={{ my: 1.5 }} />
       {loading && (
         <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6 }}>
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
-            <Stack key={index} spacing={0.9} alignItems="center" sx={{ width: 92 }}>
+            <Stack key={index} alignItems="center" sx={{ width: 92 }}>
               <Skeleton variant="circular" width={76} height={76} />
-              <Skeleton width={70} height={18} />
             </Stack>
           ))}
         </Stack>
@@ -410,7 +362,6 @@ export default function DashboardStories({
               <Stack
                 key={story.id}
                 component="li"
-                spacing={0.9}
                 alignItems="center"
                 sx={{ width: 92, flex: { xs: "0 0 auto", sm: "0 0 92px" } }}
               >
@@ -420,6 +371,7 @@ export default function DashboardStories({
                   onFocus={onPrefetch}
                   onMouseEnter={onPrefetch}
                   aria-label={label}
+                  title={tooltip}
                   sx={{
                     ...storyCircleSx(),
                     cursor: "pointer",
@@ -435,21 +387,6 @@ export default function DashboardStories({
                 >
                   {renderAvatar(story)}
                 </ButtonBase>
-                <Typography
-                  component="span"
-                  align="center"
-                  title={tooltip}
-                  sx={{
-                    maxWidth: 84,
-                    fontWeight: 600,
-                    fontSize: ".85rem",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {story.title}
-                </Typography>
               </Stack>
             )
           })}
