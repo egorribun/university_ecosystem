@@ -14,6 +14,7 @@ from app.api.schedule import router as schedule_api_router
 from app.api.sessions import router as sessions_router
 from app.api.spotify import router as spotify_router
 from app.api.stats import router as stats_router
+from app.api.stories import router as stories_router
 from app.api.users import router as users_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
@@ -210,5 +211,6 @@ app.include_router(schedule_router)
 app.include_router(users_router)
 app.include_router(events_router)
 app.include_router(news_router)
+app.include_router(stories_router)
 app.include_router(schedule_api_router)
 app.include_router(stats_router)

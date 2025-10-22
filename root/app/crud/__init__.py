@@ -137,6 +137,110 @@ async def get_news_list(db: AsyncSession, skip: int = 0, limit: int = 10):
     return result.scalars().all()
 
 
+async def create_story(
+    db: AsyncSession,
+    story: schemas.StoryCreate,
+    *,
+    created_by: int | None = None,
+):
+    payload = story.model_dump()
+    payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
+    payload["short_text_en"] = sanitize_optional_text(payload.get("short_text_en"))
+    payload["cover_url"] = sanitize_optional_text(payload.get("cover_url"))
+    payload["cta_url"] = sanitize_optional_text(payload.get("cta_url"))
+
+    published_at = payload.get("published_at")
+    expires_at = payload.get("expires_at")
+    if published_at is not None:
+        payload["published_at"] = _ensure_utc(published_at)
+    if expires_at is not None:
+        payload["expires_at"] = _ensure_utc(expires_at)
+    if created_by is not None:
+        payload["created_by"] = created_by
+
+    record = models.Story(**payload)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+async def update_story(
+    db: AsyncSession,
+    story: models.Story,
+    updates: schemas.StoryUpdate | None,
+) -> models.Story:
+    payload = updates.model_dump(exclude_unset=True) if updates else {}
+    if "title_en" in payload:
+        payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
+    if "short_text_en" in payload:
+        payload["short_text_en"] = sanitize_optional_text(payload.get("short_text_en"))
+    if "cover_url" in payload:
+        payload["cover_url"] = sanitize_optional_text(payload.get("cover_url"))
+    if "cta_url" in payload:
+        payload["cta_url"] = sanitize_optional_text(payload.get("cta_url"))
+    if "published_at" in payload and payload["published_at"] is not None:
+        payload["published_at"] = _ensure_utc(payload["published_at"])
+    if "expires_at" in payload and payload["expires_at"] is not None:
+        payload["expires_at"] = _ensure_utc(payload["expires_at"])
+
+    for field, value in payload.items():
+        setattr(story, field, value)
+
+    await db.commit()
+    await db.refresh(story)
+    return story
+
+
+async def list_active_stories(
+    db: AsyncSession,
+    *,
+    reference_time: datetime | None = None,
+) -> List[models.Story]:
+    now = reference_time or datetime.now(UTC)
+    now_utc = _ensure_utc(now)
+    stmt = (
+        select(models.Story)
+        .where(
+            models.Story.is_active.is_(True),
+            models.Story.published_at <= now_utc,
+            models.Story.expires_at > now_utc,
+        )
+        .order_by(models.Story.published_at.desc(), models.Story.id.desc())
+    )
+    rows = await db.execute(stmt)
+    return list(rows.scalars().all())
+
+
+async def delete_story(db: AsyncSession, story: models.Story) -> None:
+    await db.delete(story)
+    await db.commit()
+
+
+def serialize_story(
+    story: models.Story | schemas.StoryOut,
+    locale: str | None,
+) -> schemas.StoryOut:
+    normalized_locale = normalize_locale(locale)
+    story_out = (
+        story
+        if isinstance(story, schemas.StoryOut)
+        else schemas.StoryOut.model_validate(story)
+    )
+    data = story_out.model_dump()
+    data["title"] = localized_text(
+        normalized_locale,
+        ru=data.get("title"),
+        en=data.get("title_en"),
+    ) or (data.get("title") or "")
+    data["short_text"] = localized_text(
+        normalized_locale,
+        ru=data.get("short_text"),
+        en=data.get("short_text_en"),
+    ) or (data.get("short_text") or "")
+    return schemas.StoryOut.model_validate(data)
+
+
 async def _attendance_counts(db: AsyncSession, event_ids: List[int]) -> Dict[int, int]:
     if not event_ids:
         return {}

@@ -197,6 +197,86 @@ class NewsOut(OrmModel, NewsCreate):
     created_at: datetime
 
 
+class StoryCreate(BaseModel):
+    title: str
+    title_en: Optional[str] = None
+    short_text: str
+    short_text_en: Optional[str] = None
+    cover_url: Optional[str] = None
+    cta_url: Optional[str] = None
+    published_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    is_active: bool = True
+
+    @field_validator("title_en", "short_text_en", "cover_url", "cta_url", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        text = str(value).strip()
+        return text or None
+
+    @model_validator(mode="after")
+    def _validate_expiration(self):  # type: ignore[override]
+        published = self.published_at
+        expires = self.expires_at
+        if expires is not None and published is not None and expires <= published:
+            raise ValueError(translate("validation.stories.expires_after_publish"))
+        return self
+
+
+class StoryUpdate(BaseModel):
+    title: Optional[str] = None
+    title_en: Optional[str] = None
+    short_text: Optional[str] = None
+    short_text_en: Optional[str] = None
+    cover_url: Optional[str] = None
+    cta_url: Optional[str] = None
+    published_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("title_en", "short_text_en", "cover_url", "cta_url", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        text = str(value).strip()
+        return text or None
+
+    @model_validator(mode="after")
+    def _validate_expiration(self):  # type: ignore[override]
+        provided = self.model_fields_set
+        if "published_at" in provided and "expires_at" in provided:
+            if self.published_at is not None and self.expires_at is not None:
+                if self.expires_at <= self.published_at:
+                    raise ValueError(
+                        translate("validation.stories.expires_after_publish")
+                    )
+        return self
+
+
+class StoryOut(OrmModel):
+    id: int
+    title: str
+    title_en: Optional[str] = None
+    short_text: str
+    short_text_en: Optional[str] = None
+    cover_url: Optional[str] = None
+    cta_url: Optional[str] = None
+    published_at: datetime
+    expires_at: datetime
+    is_active: bool
+    created_by: Optional[int] = None
+    created_at: datetime
+
+
 class EventFileOut(OrmModel):
     id: int
     event_id: int
