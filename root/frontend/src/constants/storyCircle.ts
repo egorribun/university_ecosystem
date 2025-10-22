@@ -15,6 +15,7 @@ export const storyCircleSx = ({
   minWidth: size,
   minHeight: size,
   borderRadius: "50%",
+  overflow: "visible",
   position: "relative",
   display: "flex",
   alignItems: "center",
@@ -25,6 +26,10 @@ export const storyCircleSx = ({
   background: "linear-gradient(135deg,#1d4ed8,#60a5fa)",
   boxShadow: "0 10px 28px rgba(37,99,235,0.18)",
   transition: "box-shadow 0.18s ease",
+  "& .MuiTouchRipple-root": {
+    borderRadius: "50%",
+    overflow: "hidden",
+  },
   "@media (prefers-reduced-motion: reduce)": {
     transition: "box-shadow 0.18s ease",
   },
