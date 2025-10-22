@@ -29,7 +29,17 @@
   },
   "stories": {
     "heading": "Stories",
-    "empty": "No stories to show yet"
+    "empty": "No stories to show yet",
+    "viewer": {
+      "openLink": "Open link",
+      "aria": {
+        "dialog": "Story {{index}} of {{total}}: {{title}}",
+        "close": "Close stories viewer",
+        "next": "Next story",
+        "prev": "Previous story",
+        "progress": "Progress for story {{index}} of {{total}}: {{title}}"
+      }
+    }
   },
   "events": {
     "heading": "Events",

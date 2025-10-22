@@ -6,11 +6,11 @@ import {
   useRef,
   type KeyboardEvent,
   type CSSProperties,
-  type ElementType,
 } from "react"
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import SmartImage from "@/components/SmartImage"
+import DashboardStories from "@/components/DashboardStories"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
 import {
@@ -235,7 +235,6 @@ export default function Dashboard() {
   const eventsEtagRef = useRef<string | null>(null)
   const storiesPrefetchedRef = useRef(false)
 
-  const visibleStories = useMemo(() => stories.slice(0, 8), [stories])
   const parity = useMemo(nowParity, [])
   const todayIndex = time.getDay()
 
@@ -469,6 +468,10 @@ export default function Dashboard() {
     prefetchData("stories")
   }
 
+  const handleStoryOpen = useCallback(() => {
+    triggerStoriesPrefetch()
+  }, [])
+
   const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
     if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
       callback()
@@ -592,153 +595,19 @@ export default function Dashboard() {
             </Box>
           </Box>
 
+          <DashboardStories
+            stories={stories}
+            loading={loadingStories}
+            onPrefetch={triggerStoriesPrefetch}
+            onStoryOpen={handleStoryOpen}
+          />
           <Box
             sx={{
-              mt: 3,
               display: "grid",
               gridTemplateColumns: "repeat(12, 1fr)",
               gap: { xs: 2, md: 3 },
             }}
           >
-            <Box
-              data-fade
-              style={{ "--fade-delay": "120ms" } as CSSProperties}
-              sx={{ ...homeCardSx, gridColumn: "1 / -1" }}
-              aria-busy={loadingStories}
-              onPointerEnter={triggerStoriesPrefetch}
-              onFocusCapture={triggerStoriesPrefetch}
-            >
-              <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
-                  {t("dashboard:stories.heading")}
-                </Typography>
-              </Stack>
-              <Divider sx={{ my: 1.5 }} />
-              {loadingStories && (
-                <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6 }}>
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <Stack key={index} spacing={0.9} alignItems="center" sx={{ width: 92 }}>
-                      <Skeleton variant="circular" width={76} height={76} />
-                      <Skeleton width={70} height={18} />
-                    </Stack>
-                  ))}
-                </Stack>
-              )}
-              {!loadingStories && visibleStories.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:stories.empty")}</Typography>
-              )}
-              {!loadingStories && visibleStories.length > 0 && (
-                <Stack
-                  component="ul"
-                  direction="row"
-                  spacing={1.6}
-                  sx={{
-                    p: 0,
-                    m: 0,
-                    listStyle: "none",
-                    flexWrap: "wrap",
-                    rowGap: 1.6,
-                  }}
-                  aria-label={t("dashboard:aria.storiesList")}
-                >
-                  {visibleStories.map((story) => {
-                    const hrefRaw = (story.cta_url ?? "").trim()
-                    const isInternalLink = hrefRaw.startsWith("/")
-                    const isHttpLink = /^https?:/i.test(hrefRaw)
-                    const storyLabel = t("dashboard:aria.storyItem", { title: story.title })
-                    const component = (
-                      hrefRaw ? (isInternalLink ? Link : "a") : "div"
-                    ) as ElementType
-                    const linkProps = hrefRaw
-                      ? isInternalLink
-                        ? ({ to: hrefRaw } as const)
-                        : ({
-                            href: hrefRaw,
-                            target: isHttpLink ? "_blank" : undefined,
-                            rel: isHttpLink ? "noreferrer" : undefined,
-                          } as const)
-                      : undefined
-                    const tooltipText = story.short_text || story.title
-                    const initials = story.title.slice(0, 2).toUpperCase()
-                    return (
-                      <Stack
-                        key={story.id}
-                        component="li"
-                        spacing={0.9}
-                        alignItems="center"
-                        sx={{ width: 92 }}
-                      >
-                        <Box
-                          component={component}
-                          {...((linkProps ?? {}) as Record<string, unknown>)}
-                          onPointerEnter={triggerStoriesPrefetch}
-                          onFocus={triggerStoriesPrefetch}
-                          sx={{
-                            width: 76,
-                            height: 76,
-                            borderRadius: "50%",
-                            overflow: "hidden",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            textDecoration: "none",
-                            color: "inherit",
-                            border:
-                              "2px solid color-mix(in srgb, var(--page-text) 16%, transparent)",
-                            background: story.cover_url
-                              ? "var(--card-bg)"
-                              : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
-                            position: "relative",
-                            transition: "transform .18s, box-shadow .18s",
-                            cursor: hrefRaw ? "pointer" : "default",
-                            "&:hover": {
-                              transform: hrefRaw ? "translateY(-2px)" : undefined,
-                              boxShadow: hrefRaw ? "0 12px 30px rgba(37,99,235,.24)" : undefined,
-                            },
-                            "&:focus-visible": {
-                              outline: "none",
-                              boxShadow: focusRing,
-                            },
-                          }}
-                          aria-label={storyLabel}
-                          role={hrefRaw ? undefined : "img"}
-                        >
-                          {story.cover_url ? (
-                            <SmartImage
-                              srcRaw={story.cover_url}
-                              alt={story.title}
-                              style={{ width: "100%", height: "100%" }}
-                            />
-                          ) : (
-                            <Typography
-                              sx={{ color: "#fff", fontWeight: 700, fontSize: "1.05rem" }}
-                            >
-                              {initials}
-                            </Typography>
-                          )}
-                        </Box>
-                        <Tooltip title={tooltipText} enterDelay={150}>
-                          <Typography
-                            component="span"
-                            align="center"
-                            sx={{
-                              maxWidth: 84,
-                              fontWeight: 600,
-                              fontSize: ".85rem",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {story.title}
-                          </Typography>
-                        </Tooltip>
-                      </Stack>
-                    )
-                  })}
-                </Stack>
-              )}
-            </Box>
             <Box
               data-fade
               style={{ "--fade-delay": "140ms" } as CSSProperties}
