@@ -436,9 +436,9 @@ export default function DashboardStories({
         }}
         BackdropProps={{
           sx: {
-            backgroundColor: "rgba(9, 14, 28, 0.18)",
-            backdropFilter: "blur(28px) saturate(160%)",
-            WebkitBackdropFilter: "blur(28px) saturate(160%)",
+            backgroundColor: "transparent",
+            backdropFilter: "none",
+            WebkitBackdropFilter: "none",
           },
         }}
       >
@@ -449,9 +449,9 @@ export default function DashboardStories({
             inset: 0,
             zIndex: 0,
             pointerEvents: "none",
-            background: "linear-gradient(180deg, rgba(9,14,28,0.12) 0%, rgba(9,14,28,0.32) 100%)",
-            backdropFilter: "blur(36px) saturate(160%)",
-            WebkitBackdropFilter: "blur(36px) saturate(160%)",
+            background: "transparent",
+            backdropFilter: "none",
+            WebkitBackdropFilter: "none",
           }}
         />
         {viewerStory && (
