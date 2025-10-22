@@ -431,8 +431,7 @@ export default function DashboardStories({
             inset: 0,
             zIndex: 0,
             pointerEvents: "none",
-            background:
-              "linear-gradient(180deg, rgba(9,14,28,0.12) 0%, rgba(9,14,28,0.32) 100%)",
+            background: "linear-gradient(180deg, rgba(9,14,28,0.12) 0%, rgba(9,14,28,0.32) 100%)",
             backdropFilter: "blur(36px) saturate(160%)",
             WebkitBackdropFilter: "blur(36px) saturate(160%)",
           }}
