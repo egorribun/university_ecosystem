@@ -350,17 +350,31 @@ export default function DashboardStories({
                   onMouseEnter={onPrefetch}
                   aria-label={label}
                   title={tooltip}
+                  data-active={viewerStory?.id === story.id || undefined}
                   sx={{
                     ...storyCircleSx(),
                     cursor: "pointer",
                     outline: "none",
                     "&:hover": {
                       boxShadow:
-                        "0 0 0 4px rgba(125,172,255,0.32), 0 14px 40px rgba(37,99,235,0.32)",
+                        "0 10px 28px rgba(37,99,235,0.28), 0 18px 48px rgba(37,99,235,0.28)",
+                    },
+                    "&:hover::after": {
+                      opacity: 1,
+                      transform: "scale(1)",
                     },
                     "&:focus-visible": {
                       outline: "none",
-                      boxShadow: "0 0 0 4px rgba(125,172,255,0.42), 0 0 0 7px rgba(37,99,235,0.32)",
+                      boxShadow:
+                        "0 10px 28px rgba(37,99,235,0.32), 0 0 0 6px rgba(125,172,255,0.42)",
+                    },
+                    "&:focus-visible::after": {
+                      opacity: 1,
+                      transform: "scale(1)",
+                    },
+                    "&[data-active='true']::after": {
+                      opacity: 1,
+                      transform: "scale(1)",
                     },
                   }}
                 >
@@ -404,9 +418,9 @@ export default function DashboardStories({
         }}
         BackdropProps={{
           sx: {
-            backgroundColor: "rgba(9, 14, 28, 0.25)",
-            backdropFilter: "blur(22px) saturate(160%)",
-            WebkitBackdropFilter: "blur(22px) saturate(160%)",
+            backgroundColor: "rgba(9, 14, 28, 0.18)",
+            backdropFilter: "blur(28px) saturate(160%)",
+            WebkitBackdropFilter: "blur(28px) saturate(160%)",
           },
         }}
       >
@@ -417,10 +431,9 @@ export default function DashboardStories({
             inset: 0,
             zIndex: 0,
             pointerEvents: "none",
-            background:
-              "radial-gradient(circle at top, rgba(9, 14, 28, 0.32), rgba(9, 14, 28, 0.62))",
-            backdropFilter: "blur(28px) saturate(160%)",
-            WebkitBackdropFilter: "blur(28px) saturate(160%)",
+            background: "linear-gradient(180deg, rgba(9,14,28,0.12) 0%, rgba(9,14,28,0.32) 100%)",
+            backdropFilter: "blur(36px) saturate(160%)",
+            WebkitBackdropFilter: "blur(36px) saturate(160%)",
           }}
         />
         {viewerStory && (

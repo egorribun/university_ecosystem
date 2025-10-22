@@ -26,9 +26,24 @@ export const storyCircleSx = ({
   background: "linear-gradient(135deg,#1d4ed8,#60a5fa)",
   boxShadow: "0 10px 28px rgba(37,99,235,0.18)",
   transition: "box-shadow 0.18s ease",
+  "&::after": {
+    content: "''",
+    position: "absolute",
+    inset: -6,
+    borderRadius: "inherit",
+    border: "2px solid rgba(125,172,255,0.48)",
+    boxShadow: "0 14px 44px rgba(37,99,235,0.38)",
+    opacity: 0,
+    transform: "scale(0.94)",
+    transition: "opacity 0.2s ease, transform 0.2s ease",
+    pointerEvents: "none",
+  },
   "& .MuiTouchRipple-root": {
     borderRadius: "50%",
     overflow: "hidden",
+  },
+  "& .MuiTouchRipple-root, & .MuiTouchRipple-ripple, & .MuiTouchRipple-child": {
+    borderRadius: "50%",
   },
   "@media (prefers-reduced-motion: reduce)": {
     transition: "box-shadow 0.18s ease",
