@@ -506,11 +506,21 @@ export default function DashboardStories({
               }}
             >
               {viewerStory.cover_url ? (
-                <SmartImage
-                  srcRaw={viewerStory.cover_url}
-                  alt={viewerStory.title}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+                <>
+                  <SmartImage
+                    srcRaw={viewerStory.cover_url}
+                    alt={viewerStory.title}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                  <Typography id={dialogTitleId} component="h2" sx={{ ...visuallyHidden }}>
+                    {viewerStory.title}
+                  </Typography>
+                  {viewerStory.short_text && (
+                    <Typography component="p" sx={{ ...visuallyHidden }}>
+                      {viewerStory.short_text}
+                    </Typography>
+                  )}
+                </>
               ) : (
                 <Box
                   sx={{
@@ -534,15 +544,6 @@ export default function DashboardStories({
 
               <Typography sx={{ ...visuallyHidden }}>{t("stories.viewer.hints.auto")}</Typography>
 
-              <Typography id={dialogTitleId} component="h2" sx={{ ...visuallyHidden }}>
-                {viewerStory.title}
-              </Typography>
-              {viewerStory.short_text && (
-                <Typography component="p" sx={{ ...visuallyHidden }}>
-                  {viewerStory.short_text}
-                </Typography>
-              )}
-
               {!viewerStory.cover_url && (
                 <Stack
                   spacing={viewerStory.cta_url ? 2 : 1}
@@ -557,7 +558,12 @@ export default function DashboardStories({
                       "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
                   }}
                 >
-                  <Typography variant="h5" component="h2" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
+                  <Typography
+                    id={dialogTitleId}
+                    variant="h5"
+                    component="h2"
+                    sx={{ fontWeight: 800, lineHeight: 1.2 }}
+                  >
                     {viewerStory.title}
                   </Typography>
                   {viewerStory.short_text && (
