@@ -30,12 +30,18 @@ async def cleanup_expired_stories(
     owns_session = db is None
     if now is None:
         now = _now()
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    else:
+        now = now.astimezone(UTC)
     if owns_session:
         async with async_session() as session:
             return await cleanup_expired_stories(db=session, now=now)
 
     stmt = delete(Story).where(Story.expires_at <= now)
-    result = await db.execute(stmt)
+    result = await db.execute(
+        stmt.execution_options(synchronize_session=False)
+    )
     await db.commit()
     deleted = int(result.rowcount or 0)
     if deleted:
