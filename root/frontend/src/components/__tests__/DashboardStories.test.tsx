@@ -26,11 +26,13 @@ const translations: Record<string, string> = {
   "dashboard:stories.viewer.aria.next": "Next story",
   "dashboard:stories.viewer.aria.prev": "Previous story",
   "dashboard:stories.viewer.aria.progress": "Progress for {{title}}",
-  "dashboard:stories.viewer.aria.instructions": "Use the arrow keys or swipe to move between stories.",
+  "dashboard:stories.viewer.aria.instructions":
+    "Use the arrow keys or swipe to move between stories.",
   "dashboard:stories.viewer.hints.auto": "Stories advance automatically.",
   "dashboard:stories.viewer.hints.keyboard": "Use the left and right arrow keys to navigate.",
   "dashboard:stories.viewer.hints.swipe": "Swipe left or right to switch stories.",
-  "dashboard:stories.viewer.hints.tap": "Tap the right side to skip ahead and the left side to go back.",
+  "dashboard:stories.viewer.hints.tap":
+    "Tap the right side to skip ahead and the left side to go back.",
 }
 
 vi.mock("react-i18next", () => ({
@@ -111,7 +113,11 @@ function setupMatchMedia({ mobile = false, reducedMotion = false } = {}) {
   vi.spyOn(window, "matchMedia").mockImplementation(
     (query: string) =>
       ({
-        matches: query.includes("max-width") ? mobile : query.includes("prefers-reduced-motion") ? reducedMotion : false,
+        matches: query.includes("max-width")
+          ? mobile
+          : query.includes("prefers-reduced-motion")
+            ? reducedMotion
+            : false,
         media: query,
         onchange: null,
         addEventListener: vi.fn(),
@@ -158,10 +164,12 @@ describe("DashboardStories", () => {
     vi.spyOn(performance, "now").mockImplementation(() => now)
 
     let frameCallback: FrameRequestCallback | null = null
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
-      frameCallback = callback
-      return 1
-    })
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (callback: FrameRequestCallback) => {
+        frameCallback = callback
+        return 1
+      }
+    )
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {
       frameCallback = null
     })

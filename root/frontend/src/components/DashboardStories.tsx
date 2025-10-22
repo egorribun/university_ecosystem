@@ -264,9 +264,7 @@ export default function DashboardStories({
       hints.push(autoHint)
     }
     const navigationHint = isMobile ? swipeHint : keyboardHint
-    const navigationKey = isMobile
-      ? "stories.viewer.hints.swipe"
-      : "stories.viewer.hints.keyboard"
+    const navigationKey = isMobile ? "stories.viewer.hints.swipe" : "stories.viewer.hints.keyboard"
     if (navigationHint && navigationHint !== navigationKey) {
       hints.push(navigationHint)
     }
@@ -276,8 +274,7 @@ export default function DashboardStories({
     return hints
   }, [autoHint, isMobile, keyboardHint, swipeHint, tapHint])
 
-  const hasEmptyDescription =
-    emptyDescription && emptyDescription !== "stories.emptyDescription"
+  const hasEmptyDescription = emptyDescription && emptyDescription !== "stories.emptyDescription"
   const hasViewerInstructions =
     viewerInstructions && viewerInstructions !== "stories.viewer.aria.instructions"
 
@@ -308,7 +305,7 @@ export default function DashboardStories({
   return (
     <Box
       data-fade
-      style={{ "--fade-delay": "120ms" } as CSSProperties }
+      style={{ "--fade-delay": "120ms" } as CSSProperties}
       sx={{ mt: 3, mb: 3, display: "flex", flexDirection: "column", gap: 2 }}
       aria-busy={loading}
       onPointerEnter={onPrefetch}
@@ -518,45 +515,38 @@ export default function DashboardStories({
                 )}
               </Box>
 
-            <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
-              <Typography id={dialogTitleId} variant="h4" component="h2" sx={{ fontWeight: 800 }}>
-                {viewerStory.title}
-              </Typography>
-              {viewerStory.short_text && (
-                <Typography component="p" sx={{ opacity: 0.9, fontSize: "1.05rem" }}>
-                  {viewerStory.short_text}
+              <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
+                <Typography id={dialogTitleId} variant="h4" component="h2" sx={{ fontWeight: 800 }}>
+                  {viewerStory.title}
                 </Typography>
-              )}
-              {viewerStory.cta_url && (
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-                  sx={{ alignSelf: "center", textTransform: "none" }}
-                >
-                  {t("stories.viewer.openLink")}
-                </Button>
-              )}
-              {(hasViewerInstructions || normalizedHints.length > 0) && (
-                <Stack spacing={0.5} id={dialogHintsId}>
-                  {hasViewerInstructions && (
-                    <Typography sx={{ ...visuallyHidden }}>
-                      {viewerInstructions}
-                    </Typography>
-                  )}
-                  {normalizedHints.map((hint, index) => (
-                    <Typography
-                      key={index}
-                      component="p"
-                      variant="body2"
-                      sx={{ opacity: 0.85 }}
-                    >
-                      {hint}
-                    </Typography>
-                  ))}
-                </Stack>
-              )}
-            </Stack>
+                {viewerStory.short_text && (
+                  <Typography component="p" sx={{ opacity: 0.9, fontSize: "1.05rem" }}>
+                    {viewerStory.short_text}
+                  </Typography>
+                )}
+                {viewerStory.cta_url && (
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    {...(linkPropsFor(viewerStory.cta_url) ?? {})}
+                    sx={{ alignSelf: "center", textTransform: "none" }}
+                  >
+                    {t("stories.viewer.openLink")}
+                  </Button>
+                )}
+                {(hasViewerInstructions || normalizedHints.length > 0) && (
+                  <Stack spacing={0.5} id={dialogHintsId}>
+                    {hasViewerInstructions && (
+                      <Typography sx={{ ...visuallyHidden }}>{viewerInstructions}</Typography>
+                    )}
+                    {normalizedHints.map((hint, index) => (
+                      <Typography key={index} component="p" variant="body2" sx={{ opacity: 0.85 }}>
+                        {hint}
+                      </Typography>
+                    ))}
+                  </Stack>
+                )}
+              </Stack>
             </Box>
 
             <Box

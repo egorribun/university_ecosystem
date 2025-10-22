@@ -495,25 +495,19 @@ describe("page translations", () => {
     const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
     expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
-    expect(
-      await screen.findByRole("heading", { name: "Stories" })
-    ).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Stories" })).toBeInTheDocument()
     const storyButton = await screen.findByRole("button", {
       name: "Story: Campus orientation",
     })
 
     await user.click(storyButton)
 
-    expect(
-      await screen.findByText("Stories advance automatically.")
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Stories advance automatically.")).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
 
     expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
-    expect(
-      await screen.findByText("Истории переключаются автоматически.")
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Истории переключаются автоматически.")).toBeInTheDocument()
   })
 
   it("switches news page translations", async () => {
