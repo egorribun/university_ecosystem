@@ -30,6 +30,8 @@ import {
   IconButton,
   Popover,
   Badge,
+  Paper,
+  Chip,
 } from "@mui/material"
 import EventNoteIcon from "@mui/icons-material/EventNote"
 import SearchIcon from "@mui/icons-material/Search"
@@ -120,6 +122,7 @@ const Events = () => {
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null)
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
+  const filtersPopoverId = filtersOpen ? "events-filter-popover" : undefined
   const etagCacheRef = useRef<Record<string, string>>({})
   const eventsCacheRef = useRef<
     Record<string, { events: Event[]; pagination: PaginatedResponse<Event> | null }>
@@ -477,415 +480,539 @@ const Events = () => {
       <PageFadeIn>
         <Box
           sx={{
-            width: "100vw",
+            width: "100%",
             minHeight: "100vh",
-            bgcolor: "var(--page-bg)",
             color: "var(--page-text)",
-            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-            py: { xs: 0.5, sm: 0.5, md: 0.5, lg: 0.5 },
+            bgcolor: "var(--page-bg)",
+            backgroundImage: {
+              xs: "linear-gradient(180deg, rgba(33,150,243,0.08) 0%, rgba(13,71,161,0.0) 55%)",
+              md: "radial-gradient(circle at 0% 0%, rgba(21,101,192,0.18) 0%, rgba(13,71,161,0.02) 38%), linear-gradient(180deg, rgba(13,71,161,0.12) 0%, rgba(13,71,161,0) 65%)",
+            },
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "cover",
+            backgroundAttachment: { xs: "scroll", md: "fixed" },
+            px: { xs: 2.5, sm: 4, md: 6 },
+            py: { xs: 2, md: 4 },
           }}
         >
           <Box
-            data-fade
-            style={{ "--fade-delay": "80ms" } as CSSProperties}
-            display="flex"
-            alignItems="center"
-            gap={2}
-            mb={isMobile ? 1.5 : 3}
-            mt={isMobile ? 1.5 : 3}
-          >
-            <EventNoteIcon color="primary" sx={{ fontSize: 34 }} />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              color="primary.main"
-              sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-            >
-              {t("events:pageTitle")}
-            </Typography>
-          </Box>
-
-          {(user?.role === "admin" || user?.role === "teacher") && (
-            <Box
-              data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}
-            >
-              <Button
-                variant="contained"
-                sx={{ fontWeight: 600, fontSize: 16, px: 2.5, borderRadius: 2 }}
-                onClick={() => setCreateOpen(true)}
-                disabled={imageUploading || loading}
-              >
-                {t("events:actions.openCreate")}
-              </Button>
-            </Box>
-          )}
-
-          <Tabs
-            data-fade
-            style={{ "--fade-delay": "200ms" } as CSSProperties}
-            value={tab}
-            onChange={handleTabChange}
-            variant={isMobile ? "scrollable" : "standard"}
-            scrollButtons={isMobile ? "auto" : false}
             sx={{
-              minHeight: 45,
-              "& .MuiTab-root": {
-                color: "var(--page-text)",
-                fontWeight: 600,
-                fontSize: isMobile ? 16 : 20,
-                opacity: 1,
-                minWidth: isMobile ? 85 : 130,
-                textTransform: "none",
-                mr: isMobile ? 0.3 : 1.5,
-                transition: "color 0.2s",
-              },
-              "& .Mui-selected": { color: "var(--nav-link)", fontWeight: 700 },
-              "& .MuiTabs-indicator": {
-                background: "var(--nav-link)",
-                height: 3,
-                borderRadius: 2,
-              },
-            }}
-            TabIndicatorProps={{ style: { height: 3 } }}
-          >
-            {tabs.map((tabItem) => (
-              <Tab
-                key={tabItem.key}
-                value={tabItem.key}
-                label={t(`events:tabs.${tabItem.key}`)}
-                sx={{
-                  minHeight: 45,
-                  fontWeight: 600,
-                  fontSize: isMobile ? 16 : 20,
-                  textTransform: "none",
-                }}
-              />
-            ))}
-          </Tabs>
-
-          <Stack
-            data-fade
-            style={{ "--fade-delay": "240ms" } as CSSProperties}
-            direction="row"
-            spacing={1.5}
-            alignItems="center"
-            mb={isMobile ? 2 : 5}
-            mt={isMobile ? 2 : 3}
-            sx={{ flexWrap: "wrap" }}
-          >
-            <TextField
-              label={t("events:filters.search")}
-              variant="outlined"
-              size="small"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              sx={{
-                width: { xs: "100%", md: "min(640px, 48vw)" },
-                "& .MuiOutlinedInput-root": {
-                  backgroundColor: "var(--card-bg)",
-                  borderRadius: 2,
-                  "& fieldset": { borderColor: "var(--btn-border)" },
-                  "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                  "&.Mui-focused fieldset": {
-                    borderColor: "var(--nav-link)",
-                    boxShadow: "0 0 0 3px rgba(0,94,162,.18)",
-                  },
-                },
-              }}
-              InputLabelProps={{
-                sx: {
-                  color: "var(--secondary-text)",
-                  "&.Mui-focused": { color: "var(--nav-link)" },
-                },
-              }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: "var(--secondary-text)" }} fontSize="small" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end" sx={{ gap: 0.5 }}>
-                    {search ? (
-                      <IconButton
-                        aria-label={t("events:aria.clearSearch")}
-                        edge="end"
-                        onClick={() => setSearch("")}
-                        size="small"
-                        sx={{
-                          color: "var(--secondary-text)",
-                          "&:hover": { color: "var(--nav-link)" },
-                        }}
-                      >
-                        <ClearIcon fontSize="small" />
-                      </IconButton>
-                    ) : null}
-                    <IconButton
-                      aria-label={t("events:aria.openFilters")}
-                      edge="end"
-                      onClick={(e) => setFilterAnchor(e.currentTarget)}
-                      size="small"
-                      sx={{
-                        color: "var(--secondary-text)",
-                        "&:hover": { color: "var(--nav-link)" },
-                      }}
-                    >
-                      <Badge
-                        color="primary"
-                        variant={filtersActive ? "dot" : "standard"}
-                        overlap="circular"
-                        sx={{
-                          "& .MuiBadge-badge": {
-                            bgcolor: "var(--nav-link)",
-                          },
-                        }}
-                      >
-                        <FilterListIcon fontSize="small" />
-                      </Badge>
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Stack>
-
-          <Popover
-            open={filtersOpen}
-            anchorEl={filterAnchor}
-            onClose={() => setFilterAnchor(null)}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-            PaperProps={{
-              sx: {
-                p: 2,
-                borderRadius: 2,
-                minWidth: 260,
-                bgcolor: "var(--card-bg)",
-                border: "1px solid var(--glass-border)",
-              },
+              maxWidth: 1200,
+              mx: "auto",
+              width: "100%",
             }}
           >
-            <Stack spacing={1.5}>
-              <TextField
-                label={t("events:filters.type")}
-                variant="outlined"
-                size="small"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    backgroundColor: "var(--card-bg)",
-                    "& fieldset": { borderColor: "var(--btn-border)" },
-                    "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                    "&.Mui-focused fieldset": { borderColor: "var(--nav-link)" },
-                  },
-                }}
-              />
-              <TextField
-                label={t("events:filters.location")}
-                variant="outlined"
-                size="small"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    backgroundColor: "var(--card-bg)",
-                    "& fieldset": { borderColor: "var(--btn-border)" },
-                    "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                    "&.Mui-focused fieldset": { borderColor: "var(--nav-link)" },
-                  },
-                }}
-              />
-              <Stack direction="row" spacing={1} justifyContent="flex-end">
-                <Button
-                  variant="text"
-                  onClick={() => {
-                    setType("")
-                    setLocation("")
-                  }}
+            <Stack
+              data-fade
+              style={{ "--fade-delay": "80ms" } as CSSProperties}
+              spacing={1.2}
+              mb={isMobile ? 1.5 : 3}
+              mt={isMobile ? 1.5 : 3}
+            >
+              <Stack direction="row" spacing={2} alignItems="center">
+                <EventNoteIcon color="primary" sx={{ fontSize: 34 }} />
+                <Typography
+                  variant="h4"
+                  fontWeight={700}
+                  color="primary.main"
+                  sx={{ fontSize: "clamp(1.3rem, 4vw, 2.8rem)" }}
                 >
-                  {t("common:buttons.reset")}
-                </Button>
-                <Button variant="contained" onClick={() => setFilterAnchor(null)}>
-                  {t("common:buttons.done")}
-                </Button>
+                  {t("events:pageTitle")}
+                </Typography>
               </Stack>
+              <Typography variant="body1" sx={{ color: "var(--secondary-text)", maxWidth: 700 }}>
+                {t("events:pageDescription", {
+                  defaultValue:
+                    "Stay on top of upcoming lectures, workshops, and the vibrant life around campus.",
+                })}
+              </Typography>
             </Stack>
-          </Popover>
 
-          {eventsContent}
-
-          {tab !== "my" && pagination?.has_more ? (
-            <Box display="flex" justifyContent="center" mt={4} mb={6}>
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={loadMore}
-                disabled={loadingMore}
-                sx={{
-                  px: 3.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                }}
+            {(user?.role === "admin" || user?.role === "teacher") && (
+              <Box
+                data-fade
+                style={{ "--fade-delay": "140ms" } as CSSProperties}
+                sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}
               >
-                {loadingMore
-                  ? t("common:statuses.loading")
-                  : t("common:buttons.loadMore", { defaultValue: "Load more" })}
-              </Button>
-            </Box>
-          ) : null}
+                <Button
+                  variant="contained"
+                  sx={{ fontWeight: 600, fontSize: 16, px: 2.5, borderRadius: 2 }}
+                  onClick={() => setCreateOpen(true)}
+                  disabled={imageUploading || loading}
+                >
+                  {t("events:actions.openCreate")}
+                </Button>
+              </Box>
+            )}
 
-          <Dialog open={createOpen} onClose={closeCreate}>
-            <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.title_en", {
-                          defaultValue: `${t("events:form.title")}${" (English)"}`,
-                        })
-                      : t("events:form.title")
-                  }
-                  value={getLocalizedDraftValue("title")}
-                  onChange={(e) => updateLocalizedDraftValue("title", e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.description_en", {
-                          defaultValue: `${t("events:form.description")}${" (English)"}`,
-                        })
-                      : t("events:form.description")
-                  }
-                  value={getLocalizedDraftValue("description")}
-                  onChange={(e) => updateLocalizedDraftValue("description", e.target.value)}
-                  multiline
-                  rows={3}
-                  fullWidth
-                />
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.type_en", {
-                          defaultValue: `${t("events:form.type")}${" (English)"}`,
-                        })
-                      : t("events:form.type")
-                  }
-                  value={getLocalizedDraftValue("event_type")}
-                  onChange={(e) => updateLocalizedDraftValue("event_type", e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.location_en", {
-                          defaultValue: `${t("events:form.location")}${" (English)"}`,
-                        })
-                      : t("events:form.location")
-                  }
-                  value={getLocalizedDraftValue("location")}
-                  onChange={(e) => updateLocalizedDraftValue("location", e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  label={t("events:form.speaker")}
-                  value={eventData.speaker}
-                  onChange={(e) => setEventData({ ...eventData, speaker: e.target.value })}
-                  fullWidth
-                />
-
-                <Button component="label" variant="outlined" disabled={imageUploading}>
-                  {imageUploading
-                    ? t("common:statuses.uploading")
-                    : eventData.image_url
-                      ? t("events:form.imageSelected")
-                      : t("events:form.uploadImage")}
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleImageUpload(file)
+            <Paper
+              data-fade
+              style={{ "--fade-delay": "200ms" } as CSSProperties}
+              elevation={0}
+              sx={{
+                mb: { xs: 1.5, md: 3 },
+                borderRadius: 3,
+                border: "1px solid var(--glass-border)",
+                bgcolor: "rgba(255,255,255,0.05)",
+                boxShadow: "0 20px 40px rgba(15,23,42,0.08)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              <Tabs
+                value={tab}
+                onChange={handleTabChange}
+                variant={isMobile ? "scrollable" : "standard"}
+                scrollButtons={isMobile ? "auto" : false}
+                sx={{
+                  minHeight: 48,
+                  px: { xs: 0.5, sm: 1.5 },
+                  "& .MuiTab-root": {
+                    color: "var(--page-text)",
+                    fontWeight: 600,
+                    fontSize: isMobile ? 16 : 20,
+                    opacity: 1,
+                    minWidth: isMobile ? 90 : 140,
+                    textTransform: "none",
+                    mr: isMobile ? 0.3 : 1.5,
+                    transition: "color 0.2s, background-color 0.2s",
+                  },
+                  "& .Mui-selected": {
+                    color: "var(--nav-link)",
+                    fontWeight: 700,
+                    backgroundColor: "rgba(25,118,210,0.08)",
+                    borderRadius: 18,
+                  },
+                  "& .MuiTabs-indicator": {
+                    background: "var(--nav-link)",
+                    height: 3,
+                    borderRadius: 2,
+                  },
+                }}
+                TabIndicatorProps={{ style: { height: 3 } }}
+              >
+                {tabs.map((tabItem) => (
+                  <Tab
+                    key={tabItem.key}
+                    value={tabItem.key}
+                    label={t(`events:tabs.${tabItem.key}`)}
+                    sx={{
+                      minHeight: 48,
+                      fontWeight: 600,
+                      fontSize: isMobile ? 16 : 20,
+                      textTransform: "none",
                     }}
                   />
-                </Button>
+                ))}
+              </Tabs>
+            </Paper>
 
-                {createPreview && (
-                  <Box mt={1}>
-                    <SmartImage
-                      srcRaw={createPreview}
-                      alt={t("events:alt.preview")}
-                      style={{
-                        maxHeight: 140,
-                        borderRadius: 8,
-                        border: "1px solid #eee",
-                        display: "block",
-                      }}
-                    />
-                  </Box>
-                )}
-                {!createPreview && eventData.image_url && (
-                  <Box mt={1}>
-                    <SmartImage
-                      srcRaw={eventData.image_url}
-                      alt={t("events:alt.image")}
-                      style={{
-                        maxHeight: 140,
-                        borderRadius: 8,
-                        border: "1px solid #eee",
-                        display: "block",
-                      }}
-                    />
-                  </Box>
-                )}
-
-                <TextField
-                  label={t("events:form.start")}
-                  type="datetime-local"
-                  value={eventData.starts_at}
-                  onChange={(e) => setEventData({ ...eventData, starts_at: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-                <TextField
-                  label={t("events:form.end")}
-                  type="datetime-local"
-                  value={eventData.ends_at}
-                  onChange={(e) => setEventData({ ...eventData, ends_at: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                  error={dateError}
-                  helperText={dateError ? t("events:form.errors.endsBeforeStarts") : " "}
-                  fullWidth
-                />
-
-                <Box display="flex" gap={2} mt={2}>
-                  <Button
-                    variant="contained"
-                    onClick={handleCreateEvent}
-                    disabled={
-                      !normalizedTitle ||
-                      !eventData.starts_at ||
-                      !eventData.ends_at ||
-                      !normalizedLocation ||
-                      imageUploading ||
-                      dateError
-                    }
+            <Paper
+              data-fade
+              style={{ "--fade-delay": "240ms" } as CSSProperties}
+              elevation={0}
+              sx={{
+                mt: { xs: 2, md: 3 },
+                mb: { xs: 2, md: 4 },
+                p: { xs: 2, md: 3 },
+                borderRadius: 3,
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: filtersActive ? "rgba(25,118,210,0.35)" : "var(--glass-border)",
+                bgcolor: "rgba(255,255,255,0.04)",
+                boxShadow: "0 18px 36px rgba(15,23,42,0.08)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <Stack spacing={{ xs: 2, md: 2.5 }}>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={{ xs: 2, md: 3 }}
+                  alignItems={{ xs: "stretch", md: "center" }}
+                >
+                  <TextField
+                    label={t("events:filters.search")}
+                    variant="outlined"
+                    size="small"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    sx={{
+                      width: "100%",
+                      maxWidth: { md: "min(640px, 48vw)" },
+                      "& .MuiOutlinedInput-root": {
+                        backgroundColor: "var(--card-bg)",
+                        borderRadius: 2,
+                        "& fieldset": { borderColor: "var(--btn-border)" },
+                        "&:hover fieldset": { borderColor: "var(--nav-link)" },
+                        "&.Mui-focused fieldset": {
+                          borderColor: "var(--nav-link)",
+                          boxShadow: "0 0 0 3px rgba(0,94,162,.18)",
+                        },
+                      },
+                    }}
+                    InputLabelProps={{
+                      sx: {
+                        color: "var(--secondary-text)",
+                        "&.Mui-focused": { color: "var(--nav-link)" },
+                      },
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon sx={{ color: "var(--secondary-text)" }} fontSize="small" />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end" sx={{ gap: 0.5 }}>
+                          {search ? (
+                            <IconButton
+                              aria-label={t("events:aria.clearSearch")}
+                              edge="end"
+                              onClick={() => setSearch("")}
+                              size="small"
+                              sx={{
+                                color: "var(--secondary-text)",
+                                "&:hover": { color: "var(--nav-link)" },
+                              }}
+                            >
+                              <ClearIcon fontSize="small" />
+                            </IconButton>
+                          ) : null}
+                          <IconButton
+                            aria-label={t("events:aria.openFilters")}
+                            aria-haspopup="dialog"
+                            aria-controls={filtersPopoverId}
+                            aria-expanded={filtersOpen ? "true" : undefined}
+                            edge="end"
+                            onClick={(e) => setFilterAnchor(e.currentTarget)}
+                            size="small"
+                            sx={{
+                              color: "var(--secondary-text)",
+                              "&:hover": { color: "var(--nav-link)" },
+                            }}
+                          >
+                            <Badge
+                              color="primary"
+                              variant={filtersActive ? "dot" : "standard"}
+                              overlap="circular"
+                              sx={{
+                                "& .MuiBadge-badge": {
+                                  bgcolor: "var(--nav-link)",
+                                },
+                              }}
+                            >
+                              <FilterListIcon fontSize="small" />
+                            </Badge>
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    justifyContent={{ xs: "flex-start", md: "flex-end" }}
+                    sx={{ flexWrap: "wrap" }}
                   >
-                    {t("common:buttons.create")}
-                  </Button>
-                  <Button variant="outlined" color="secondary" onClick={closeCreate}>
-                    {t("common:buttons.cancel")}
-                  </Button>
-                </Box>
+                    <Button
+                      variant="text"
+                      size="small"
+                      onClick={() => {
+                        setSearch("")
+                        setType("")
+                        setLocation("")
+                      }}
+                      disabled={!search && !type && !location}
+                      sx={{ fontWeight: 600 }}
+                    >
+                      {t("common:buttons.reset")}
+                    </Button>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={(e) => setFilterAnchor(e.currentTarget)}
+                      startIcon={<FilterListIcon fontSize="small" />}
+                      aria-haspopup="dialog"
+                      aria-controls={filtersPopoverId}
+                      aria-expanded={filtersOpen ? "true" : undefined}
+                      sx={{ fontWeight: 600 }}
+                    >
+                      {t("events:filters.button", {
+                        defaultValue: filtersActive ? "Edit filters" : "Add filters",
+                      })}
+                    </Button>
+                  </Stack>
+                </Stack>
+                {(type || location) && (
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {type ? (
+                      <Chip
+                        color="primary"
+                        variant="outlined"
+                        size="small"
+                        label={`${t("events:filters.type")}: ${type}`}
+                        onDelete={() => setType("")}
+                        sx={{
+                          bgcolor: "rgba(25,118,210,0.12)",
+                          borderColor: "rgba(25,118,210,0.3)",
+                        }}
+                      />
+                    ) : null}
+                    {location ? (
+                      <Chip
+                        color="primary"
+                        variant="outlined"
+                        size="small"
+                        label={`${t("events:filters.location")}: ${location}`}
+                        onDelete={() => setLocation("")}
+                        sx={{
+                          bgcolor: "rgba(25,118,210,0.12)",
+                          borderColor: "rgba(25,118,210,0.3)",
+                        }}
+                      />
+                    ) : null}
+                  </Stack>
+                )}
               </Stack>
-            </DialogContent>
-          </Dialog>
+            </Paper>
+
+            <Popover
+              id={filtersPopoverId}
+              open={filtersOpen}
+              anchorEl={filterAnchor}
+              onClose={() => setFilterAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+              PaperProps={{
+                sx: {
+                  p: 2,
+                  borderRadius: 2,
+                  minWidth: 260,
+                  bgcolor: "var(--card-bg)",
+                  border: "1px solid var(--glass-border)",
+                  boxShadow: "0 18px 38px rgba(15,23,42,0.18)",
+                  backdropFilter: "blur(10px)",
+                },
+              }}
+            >
+              <Stack spacing={1.5}>
+                <TextField
+                  label={t("events:filters.type")}
+                  variant="outlined"
+                  size="small"
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      backgroundColor: "var(--card-bg)",
+                      "& fieldset": { borderColor: "var(--btn-border)" },
+                      "&:hover fieldset": { borderColor: "var(--nav-link)" },
+                      "&.Mui-focused fieldset": { borderColor: "var(--nav-link)" },
+                    },
+                  }}
+                />
+                <TextField
+                  label={t("events:filters.location")}
+                  variant="outlined"
+                  size="small"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      backgroundColor: "var(--card-bg)",
+                      "& fieldset": { borderColor: "var(--btn-border)" },
+                      "&:hover fieldset": { borderColor: "var(--nav-link)" },
+                      "&.Mui-focused fieldset": { borderColor: "var(--nav-link)" },
+                    },
+                  }}
+                />
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button
+                    variant="text"
+                    onClick={() => {
+                      setType("")
+                      setLocation("")
+                    }}
+                  >
+                    {t("common:buttons.reset")}
+                  </Button>
+                  <Button variant="contained" onClick={() => setFilterAnchor(null)}>
+                    {t("common:buttons.done")}
+                  </Button>
+                </Stack>
+              </Stack>
+            </Popover>
+
+            {eventsContent}
+
+            {tab !== "my" && pagination?.has_more ? (
+              <Box display="flex" justifyContent="center" mt={4} mb={6}>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  sx={{
+                    px: 3.5,
+                    borderRadius: 2,
+                    fontWeight: 600,
+                  }}
+                >
+                  {loadingMore
+                    ? t("common:statuses.loading")
+                    : t("common:buttons.loadMore", { defaultValue: "Load more" })}
+                </Button>
+              </Box>
+            ) : null}
+
+            <Dialog open={createOpen} onClose={closeCreate}>
+              <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
+              <DialogContent>
+                <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
+                  <TextField
+                    label={
+                      language === "en"
+                        ? t("events:form.title_en", {
+                            defaultValue: `${t("events:form.title")}${" (English)"}`,
+                          })
+                        : t("events:form.title")
+                    }
+                    value={getLocalizedDraftValue("title")}
+                    onChange={(e) => updateLocalizedDraftValue("title", e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label={
+                      language === "en"
+                        ? t("events:form.description_en", {
+                            defaultValue: `${t("events:form.description")}${" (English)"}`,
+                          })
+                        : t("events:form.description")
+                    }
+                    value={getLocalizedDraftValue("description")}
+                    onChange={(e) => updateLocalizedDraftValue("description", e.target.value)}
+                    multiline
+                    rows={3}
+                    fullWidth
+                  />
+                  <TextField
+                    label={
+                      language === "en"
+                        ? t("events:form.type_en", {
+                            defaultValue: `${t("events:form.type")}${" (English)"}`,
+                          })
+                        : t("events:form.type")
+                    }
+                    value={getLocalizedDraftValue("event_type")}
+                    onChange={(e) => updateLocalizedDraftValue("event_type", e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label={
+                      language === "en"
+                        ? t("events:form.location_en", {
+                            defaultValue: `${t("events:form.location")}${" (English)"}`,
+                          })
+                        : t("events:form.location")
+                    }
+                    value={getLocalizedDraftValue("location")}
+                    onChange={(e) => updateLocalizedDraftValue("location", e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label={t("events:form.speaker")}
+                    value={eventData.speaker}
+                    onChange={(e) => setEventData({ ...eventData, speaker: e.target.value })}
+                    fullWidth
+                  />
+
+                  <Button component="label" variant="outlined" disabled={imageUploading}>
+                    {imageUploading
+                      ? t("common:statuses.uploading")
+                      : eventData.image_url
+                        ? t("events:form.imageSelected")
+                        : t("events:form.uploadImage")}
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleImageUpload(file)
+                      }}
+                    />
+                  </Button>
+
+                  {createPreview && (
+                    <Box mt={1}>
+                      <SmartImage
+                        srcRaw={createPreview}
+                        alt={t("events:alt.preview")}
+                        style={{
+                          maxHeight: 140,
+                          borderRadius: 8,
+                          border: "1px solid #eee",
+                          display: "block",
+                        }}
+                      />
+                    </Box>
+                  )}
+                  {!createPreview && eventData.image_url && (
+                    <Box mt={1}>
+                      <SmartImage
+                        srcRaw={eventData.image_url}
+                        alt={t("events:alt.image")}
+                        style={{
+                          maxHeight: 140,
+                          borderRadius: 8,
+                          border: "1px solid #eee",
+                          display: "block",
+                        }}
+                      />
+                    </Box>
+                  )}
+
+                  <TextField
+                    label={t("events:form.start")}
+                    type="datetime-local"
+                    value={eventData.starts_at}
+                    onChange={(e) => setEventData({ ...eventData, starts_at: e.target.value })}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                  />
+                  <TextField
+                    label={t("events:form.end")}
+                    type="datetime-local"
+                    value={eventData.ends_at}
+                    onChange={(e) => setEventData({ ...eventData, ends_at: e.target.value })}
+                    InputLabelProps={{ shrink: true }}
+                    error={dateError}
+                    helperText={dateError ? t("events:form.errors.endsBeforeStarts") : " "}
+                    fullWidth
+                  />
+
+                  <Box display="flex" gap={2} mt={2}>
+                    <Button
+                      variant="contained"
+                      onClick={handleCreateEvent}
+                      disabled={
+                        !normalizedTitle ||
+                        !eventData.starts_at ||
+                        !eventData.ends_at ||
+                        !normalizedLocation ||
+                        imageUploading ||
+                        dateError
+                      }
+                    >
+                      {t("common:buttons.create")}
+                    </Button>
+                    <Button variant="outlined" color="secondary" onClick={closeCreate}>
+                      {t("common:buttons.cancel")}
+                    </Button>
+                  </Box>
+                </Stack>
+              </DialogContent>
+            </Dialog>
+          </Box>
         </Box>
       </PageFadeIn>
     </Layout>
