@@ -311,6 +311,9 @@ export default function DashboardStories({
       onPointerEnter={onPrefetch}
       onFocusCapture={onPrefetch}
     >
+      <Typography component="h2" variant="h6" sx={{ ...visuallyHidden }}>
+        {t("stories.heading")}
+      </Typography>
       {loading && (
         <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6 }}>
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
