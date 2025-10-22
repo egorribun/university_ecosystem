@@ -289,9 +289,14 @@ export default function DashboardStories({
         {t("stories.heading")}
       </Typography>
       {loading && (
-        <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6 }}>
+        <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6, py: 0.75 }}>
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
-            <Stack key={index} alignItems="center" sx={{ width: 92 }}>
+            <Stack
+              key={index}
+              alignItems="center"
+              justifyContent="center"
+              sx={{ width: 92, minHeight: 112 }}
+            >
               <Skeleton variant="circular" width={76} height={76} />
             </Stack>
           ))}
@@ -337,8 +342,10 @@ export default function DashboardStories({
                 key={story.id}
                 component="li"
                 alignItems="center"
+                justifyContent="center"
                 sx={{
                   width: 92,
+                  minHeight: 112,
                   flex: { xs: "0 0 auto", sm: "0 0 92px" },
                   overflow: "visible",
                 }}
@@ -355,9 +362,12 @@ export default function DashboardStories({
                     ...storyCircleSx(),
                     cursor: "pointer",
                     outline: "none",
+                    position: "relative",
+                    zIndex: 1,
                     "&:hover": {
                       boxShadow:
                         "0 10px 28px rgba(37,99,235,0.28), 0 18px 48px rgba(37,99,235,0.28)",
+                      zIndex: 3,
                     },
                     "&:hover::after": {
                       opacity: 1,
@@ -367,6 +377,7 @@ export default function DashboardStories({
                       outline: "none",
                       boxShadow:
                         "0 10px 28px rgba(37,99,235,0.32), 0 0 0 6px rgba(125,172,255,0.42)",
+                      zIndex: 3,
                     },
                     "&:focus-visible::after": {
                       opacity: 1,
@@ -375,6 +386,9 @@ export default function DashboardStories({
                     "&[data-active='true']::after": {
                       opacity: 1,
                       transform: "scale(1)",
+                    },
+                    "&[data-active='true']": {
+                      zIndex: 3,
                     },
                   }}
                 >
