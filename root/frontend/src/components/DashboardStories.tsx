@@ -419,7 +419,6 @@ export default function DashboardStories({
       )}
 
       <Dialog
-        fullScreen
         open={openIndex !== null}
         onClose={closeViewer}
         aria-labelledby={dialogTitleId}
@@ -431,14 +430,20 @@ export default function DashboardStories({
             boxShadow: "none",
             color: "#fff",
             position: "relative",
-            overflow: "hidden",
+            overflow: "visible",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            p: { xs: 2, sm: 4 },
+            m: 0,
+            maxWidth: "unset",
           },
         }}
         BackdropProps={{
           sx: {
-            backgroundColor: "transparent",
-            backdropFilter: "none",
-            WebkitBackdropFilter: "none",
+            backgroundColor: "rgba(8,11,21,0.35)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
           },
         }}
       >
@@ -459,12 +464,11 @@ export default function DashboardStories({
             sx={{
               position: "relative",
               zIndex: 1,
-              width: "100%",
-              height: "100%",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              px: { xs: 2, sm: 4 },
+              px: { xs: 0, sm: 2 },
+              py: { xs: 0, sm: 2 },
             }}
           >
             <Box
