@@ -139,8 +139,10 @@ async def all_events(
 # comparison with ``datetime.now(timezone.utc)`` working we need to normalize
 # database values back to UTC-aware timestamps before comparing them.
 def _to_utc(dt: datetime) -> datetime:
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(
-        timezone.utc
+    return (
+        dt.replace(tzinfo=timezone.utc)
+        if dt.tzinfo is None
+        else dt.astimezone(timezone.utc)
     )
 
 
