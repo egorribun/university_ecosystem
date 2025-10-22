@@ -29,10 +29,12 @@ export const storyCircleSx = ({
   "&::after": {
     content: "''",
     position: "absolute",
-    inset: -6,
+    inset: 0,
     borderRadius: "inherit",
-    border: "2px solid rgba(125,172,255,0.48)",
-    boxShadow: "0 14px 44px rgba(37,99,235,0.38)",
+    boxShadow:
+      "0 0 0 3px rgba(125,172,255,0.46), 0 0 0 6px rgba(37,99,235,0.14), 0 18px 48px rgba(37,99,235,0.32)",
+    outline: "2px solid rgba(125,172,255,0.32)",
+    outlineOffset: 6,
     opacity: 0,
     transform: "scale(0.94)",
     transition: "opacity 0.2s ease, transform 0.2s ease",
