@@ -27,6 +27,8 @@ import notificationsEn from "./locales/en/notifications.json" assert { type: "js
 import notificationsRu from "./locales/ru/notifications.json" assert { type: "json" }
 import adminEn from "./locales/en/admin.json" assert { type: "json" }
 import adminRu from "./locales/ru/admin.json" assert { type: "json" }
+import storiesEn from "./locales/en/stories.json" assert { type: "json" }
+import storiesRu from "./locales/ru/stories.json" assert { type: "json" }
 
 export const defaultNS = "common"
 
@@ -45,6 +47,7 @@ export const resources = {
     profile: profileEn,
     notifications: notificationsEn,
     admin: adminEn,
+    stories: storiesEn,
   },
   ru: {
     common: commonRu,
@@ -60,6 +63,7 @@ export const resources = {
     profile: profileRu,
     notifications: notificationsRu,
     admin: adminRu,
+    stories: storiesRu,
   },
 } as const
 

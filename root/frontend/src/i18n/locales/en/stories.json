@@ -1,0 +1,66 @@
+{
+  "pageTitle": "Stories management",
+  "notAuthorized": "You do not have permission to manage stories.",
+  "form": {
+    "title": "Create a story",
+    "subtitle": "Fill in the details to publish a new story. The cover and action link are optional.",
+    "titleRu": "Title (RU)",
+    "titleEn": "Title (EN)",
+    "shortTextRu": "Short text (RU)",
+    "shortTextEn": "Short text (EN)",
+    "ctaUrl": "Action link",
+    "publishedAt": "Publish date",
+    "expiresAt": "Expiration date",
+    "submit": "Publish story",
+    "success": "Story created successfully.",
+    "previewAlt": "Story cover preview",
+    "resetCover": "Remove cover"
+  },
+  "list": {
+    "title": "Active stories",
+    "empty": "No active stories at the moment.",
+    "noCover": "No cover",
+    "coverAlt": "Story cover for \"{{title}}\"",
+    "confirmDelete": "Delete this story? This action cannot be undone.",
+    "details": {
+      "published": "Published: {{date}}",
+      "expires": "Expires: {{date}}",
+      "cta": "Link"
+    },
+    "actions": {
+      "pickCover": "Choose",
+      "updateCover": "Update cover",
+      "updateTimer": "Update timer",
+      "unpublish": "Unpublish",
+      "clearCover": "Remove file"
+    },
+    "timeLeft": {
+      "label": "Expires in {{time}}",
+      "unknown": "Expiration time unknown",
+      "expired": "Publication expired",
+      "days_one": "{{count}} day",
+      "days_few": "{{count}} days",
+      "days_many": "{{count}} days",
+      "days_other": "{{count}} days",
+      "hours_one": "{{count}} hour",
+      "hours_few": "{{count}} hours",
+      "hours_many": "{{count}} hours",
+      "hours_other": "{{count}} hours",
+      "minutes_one": "{{count}} minute",
+      "minutes_few": "{{count}} minutes",
+      "minutes_many": "{{count}} minutes",
+      "minutes_other": "{{count}} minutes"
+    }
+  },
+  "errors": {
+    "loadFailed": "Failed to load stories. Please refresh the page.",
+    "createFailed": "Failed to create story.",
+    "updateFailed": "Failed to update the timer.",
+    "coverUpdateFailed": "Failed to update the cover.",
+    "unpublishFailed": "Failed to unpublish the story.",
+    "deleteFailed": "Failed to delete the story.",
+    "required": "Please fill in the required Russian fields.",
+    "invalidDate": "Please choose valid dates.",
+    "expirationAfterPublish": "Expiration must be later than the publish date."
+  }
+}
