@@ -228,7 +228,7 @@ export default function DashboardStories({
     [onStoryOpen]
   )
 
-  const viewerStory = openIndex === null ? null : displayStories[openIndex] ?? null
+  const viewerStory = openIndex === null ? null : (displayStories[openIndex] ?? null)
 
   const linkPropsFor = useCallback((url?: string | null) => {
     if (!url) return null
@@ -414,7 +414,8 @@ export default function DashboardStories({
         keepMounted
         PaperProps={{
           sx: {
-            background: theme.palette.mode === "dark" ? "rgba(6, 11, 25, 0.94)" : "rgba(12, 29, 67, 0.92)",
+            background:
+              theme.palette.mode === "dark" ? "rgba(6, 11, 25, 0.94)" : "rgba(12, 29, 67, 0.92)",
             backdropFilter: "blur(16px)",
             color: "#fff",
           },
@@ -606,4 +607,3 @@ export default function DashboardStories({
     </Box>
   )
 }
-

@@ -30,4 +30,3 @@ export const storyCircleSx = ({
     transition: "box-shadow 0.18s ease",
   },
 })
-

@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, useCallback, useRef, type KeyboardEvent, type CSSProperties } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  type KeyboardEvent,
+  type CSSProperties,
+} from "react"
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import SmartImage from "@/components/SmartImage"
