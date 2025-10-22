@@ -41,6 +41,11 @@ from app.services.session_cleanup import (
     cleanup_expired_sessions,
     start_session_cleanup_scheduler,
 )
+from app.services.story_cleanup import (
+    StoryCleanupConfig,
+    cleanup_expired_stories,
+    start_story_cleanup_scheduler,
+)
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -57,6 +62,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler = None
     stop_notifications_retention = None
     stop_session_cleanup = None
+    stop_story_cleanup = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
             poll_seconds=settings.notifications_scheduler_poll_seconds,
@@ -67,6 +73,7 @@ async def lifespan(app: FastAPI):
         retention_days=settings.notifications_retention_days
     )
     await cleanup_expired_sessions()
+    await cleanup_expired_stories()
     if (
         settings.notifications_retention_days > 0
         and settings.notifications_retention_cleanup_interval_seconds > 0
@@ -83,6 +90,15 @@ async def lifespan(app: FastAPI):
                 interval_seconds=settings.session_cleanup_interval_seconds
             )
         )
+    if (
+        settings.stories_cleanup_enabled
+        and settings.stories_retention_cleanup_interval_seconds > 0
+    ):
+        stop_story_cleanup = await start_story_cleanup_scheduler(
+            config=StoryCleanupConfig(
+                interval_seconds=settings.stories_retention_cleanup_interval_seconds
+            )
+        )
     try:
         yield
     finally:
@@ -92,6 +108,8 @@ async def lifespan(app: FastAPI):
             await stop_notifications_retention()
         if stop_session_cleanup is not None:
             await stop_session_cleanup()
+        if stop_story_cleanup is not None:
+            await stop_story_cleanup()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
