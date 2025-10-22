@@ -135,6 +135,15 @@ async def all_events(
     return encoded
 
 
+# NOTE: SQLite drops timezone information for "datetime" columns. To keep the
+# comparison with ``datetime.now(timezone.utc)`` working we need to normalize
+# database values back to UTC-aware timestamps before comparing them.
+def _to_utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(
+        timezone.utc
+    )
+
+
 @router.post("/attendance", response_model=schemas.EventAttendanceOut)
 async def attend(
     data: schemas.EventAttendanceCreate,
@@ -154,7 +163,8 @@ async def attend(
             status_code=404,
             detail=translate("errors.events.not_found", locale=locale),
         )
-    if not event.is_active or event.ends_at <= datetime.now(timezone.utc):
+    event_ends_at = _to_utc(event.ends_at)
+    if not event.is_active or event_ends_at <= datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=translate("errors.events.registration_closed", locale=locale),
