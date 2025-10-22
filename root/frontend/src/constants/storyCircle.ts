@@ -24,8 +24,8 @@ export const storyCircleSx = ({
   textDecoration: "none",
   border: `${borderWidth}px solid color-mix(in srgb, var(--page-text) 16%, transparent)`,
   background: "linear-gradient(135deg,#1d4ed8,#60a5fa)",
-  boxShadow: "0 14px 38px rgba(37,99,235,0.18)",
-  transition: "transform 0.18s ease, box-shadow 0.18s ease",
+  boxShadow: "0 10px 28px rgba(37,99,235,0.18)",
+  transition: "box-shadow 0.18s ease",
   "@media (prefers-reduced-motion: reduce)": {
     transition: "box-shadow 0.18s ease",
   },
