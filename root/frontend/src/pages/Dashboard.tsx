@@ -646,9 +646,9 @@ export default function Dashboard() {
                     const isInternalLink = hrefRaw.startsWith("/")
                     const isHttpLink = /^https?:/i.test(hrefRaw)
                     const storyLabel = t("dashboard:aria.storyItem", { title: story.title })
-                    const component = (hrefRaw
-                      ? (isInternalLink ? Link : "a")
-                      : "div") as ElementType
+                    const component = (
+                      hrefRaw ? (isInternalLink ? Link : "a") : "div"
+                    ) as ElementType
                     const linkProps = hrefRaw
                       ? isInternalLink
                         ? ({ to: hrefRaw } as const)
@@ -661,7 +661,13 @@ export default function Dashboard() {
                     const tooltipText = story.short_text || story.title
                     const initials = story.title.slice(0, 2).toUpperCase()
                     return (
-                      <Stack key={story.id} component="li" spacing={0.9} alignItems="center" sx={{ width: 92 }}>
+                      <Stack
+                        key={story.id}
+                        component="li"
+                        spacing={0.9}
+                        alignItems="center"
+                        sx={{ width: 92 }}
+                      >
                         <Box
                           component={component}
                           {...((linkProps ?? {}) as Record<string, unknown>)}
@@ -677,7 +683,8 @@ export default function Dashboard() {
                             justifyContent: "center",
                             textDecoration: "none",
                             color: "inherit",
-                            border: "2px solid color-mix(in srgb, var(--page-text) 16%, transparent)",
+                            border:
+                              "2px solid color-mix(in srgb, var(--page-text) 16%, transparent)",
                             background: story.cover_url
                               ? "var(--card-bg)"
                               : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
@@ -703,7 +710,9 @@ export default function Dashboard() {
                               style={{ width: "100%", height: "100%" }}
                             />
                           ) : (
-                            <Typography sx={{ color: "#fff", fontWeight: 700, fontSize: "1.05rem" }}>
+                            <Typography
+                              sx={{ color: "#fff", fontWeight: 700, fontSize: "1.05rem" }}
+                            >
                               {initials}
                             </Typography>
                           )}
