@@ -196,7 +196,7 @@ export default function DashboardStories({
         <SmartImage
           srcRaw={story.cover_url}
           alt={story.title}
-          style={{ width: "100%", height: "100%" }}
+          style={{ width: "100%", height: "100%", borderRadius: "inherit" }}
         />
       )
     }
@@ -337,7 +337,11 @@ export default function DashboardStories({
                 key={story.id}
                 component="li"
                 alignItems="center"
-                sx={{ width: 92, flex: { xs: "0 0 auto", sm: "0 0 92px" } }}
+                sx={{
+                  width: 92,
+                  flex: { xs: "0 0 auto", sm: "0 0 92px" },
+                  overflow: "visible",
+                }}
               >
                 <ButtonBase
                   focusRipple
@@ -360,7 +364,21 @@ export default function DashboardStories({
                     },
                   }}
                 >
-                  {renderAvatar(story)}
+                  <Box
+                    aria-hidden="true"
+                    sx={{
+                      position: "relative",
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {renderAvatar(story)}
+                  </Box>
                 </ButtonBase>
               </Stack>
             )
@@ -384,9 +402,9 @@ export default function DashboardStories({
         }}
         BackdropProps={{
           sx: {
-            backgroundColor: "rgba(9, 14, 28, 0.4)",
-            backdropFilter: "blur(28px) saturate(150%)",
-            WebkitBackdropFilter: "blur(28px) saturate(150%)",
+            backgroundColor: "rgba(9, 14, 28, 0.25)",
+            backdropFilter: "blur(22px) saturate(160%)",
+            WebkitBackdropFilter: "blur(22px) saturate(160%)",
           },
         }}
       >

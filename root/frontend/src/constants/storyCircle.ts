@@ -16,7 +16,6 @@ export const storyCircleSx = ({
   minHeight: size,
   borderRadius: "50%",
   position: "relative",
-  overflow: "hidden",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
