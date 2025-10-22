@@ -534,11 +534,7 @@ export default function DashboardStories({
 
               <Typography sx={{ ...visuallyHidden }}>{t("stories.viewer.hints.auto")}</Typography>
 
-              <Typography
-                id={dialogTitleId}
-                component="h2"
-                sx={{ ...visuallyHidden }}
-              >
+              <Typography id={dialogTitleId} component="h2" sx={{ ...visuallyHidden }}>
                 {viewerStory.title}
               </Typography>
               {viewerStory.short_text && (
@@ -561,11 +557,7 @@ export default function DashboardStories({
                       "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
                   }}
                 >
-                  <Typography
-                    variant="h5"
-                    component="h2"
-                    sx={{ fontWeight: 800, lineHeight: 1.2 }}
-                  >
+                  <Typography variant="h5" component="h2" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
                     {viewerStory.title}
                   </Typography>
                   {viewerStory.short_text && (
