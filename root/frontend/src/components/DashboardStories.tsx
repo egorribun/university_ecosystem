@@ -461,9 +461,7 @@ export default function DashboardStories({
                 </Box>
               )}
 
-              <Typography sx={{ ...visuallyHidden }}>
-                {t("stories.viewer.hints.auto")}
-              </Typography>
+              <Typography sx={{ ...visuallyHidden }}>{t("stories.viewer.hints.auto")}</Typography>
 
               <Stack
                 spacing={viewerStory.cta_url ? 2 : 1}
