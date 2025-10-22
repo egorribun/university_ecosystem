@@ -466,15 +466,25 @@ async def register_attendance(
     )
     exist = (await db.execute(stmt)).scalar_one_or_none()
     if exist:
+        updated = False
+        if exist.registered_at is None:
+            exist.registered_at = datetime.now(UTC)
+            updated = True
         if not exist.qr_code:
             exist.qr_code = str(uuid.uuid4())
+            updated = True
+        if updated:
+            db.add(exist)
             await db.commit()
             await db.refresh(exist)
         return exist
 
     qr_code = str(uuid.uuid4())
     record = models.EventAttendance(
-        user_id=user_id, event_id=data.event_id, qr_code=qr_code
+        user_id=user_id,
+        event_id=data.event_id,
+        qr_code=qr_code,
+        registered_at=datetime.now(UTC),
     )
     db.add(record)
     try:
@@ -487,8 +497,15 @@ async def register_attendance(
             if not event:
                 raise LookupError("event_not_found") from None
             raise ValueError("attendance_registration_failed") from None
+        updated = False
+        if exist.registered_at is None:
+            exist.registered_at = datetime.now(UTC)
+            updated = True
         if not exist.qr_code:
             exist.qr_code = str(uuid.uuid4())
+            updated = True
+        if updated:
+            db.add(exist)
             await db.commit()
             await db.refresh(exist)
         return exist

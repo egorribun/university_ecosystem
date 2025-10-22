@@ -114,3 +114,56 @@ async def test_attend_registration_closed_returns_conflict(
     assert response.json()["detail"] == translate(
         "errors.events.registration_closed", locale="en"
     )
+
+
+@pytest.mark.anyio
+async def test_attend_restores_missing_registration_timestamp(
+    async_client, db_session, user_factory
+):
+    password = "AttendRestore123!"
+    student = await user_factory(
+        hashed_password=get_password_hash(password),
+        is_active=True,
+    )
+    admin = await user_factory(role="admin")
+
+    now = datetime.now(timezone.utc)
+    event = models.Event(
+        title="Restore timestamp",
+        starts_at=now + timedelta(hours=1),
+        ends_at=now + timedelta(hours=2),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    attendance = models.EventAttendance(
+        user_id=student.id,
+        event_id=event.id,
+        registered_at=None,
+        qr_code=None,
+    )
+    db_session.add(attendance)
+    await db_session.commit()
+    await db_session.refresh(attendance)
+
+    headers = await _login(async_client, student.email, password)
+    base_headers = {**headers, "Accept-Language": "en"}
+
+    response = await async_client.post(
+        "/events/attendance",
+        headers=base_headers,
+        json={"event_id": event.id},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()
+    assert payload["event_id"] == event.id
+    assert payload["user_id"] == student.id
+    assert payload["qr_code"]
+    assert payload["registered_at"] is not None
+
+    await db_session.refresh(attendance)
+    assert attendance.registered_at is not None
+    assert attendance.qr_code is not None
