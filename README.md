@@ -1,6 +1,6 @@
 # University Ecosystem Platform
 
-A unified university platform that brings together the class schedule, news, events, campus maps, user profiles, notifications, and Spotify integration in a single modern experience for students, faculty, and staff.
+A unified university platform that brings together the class schedule, news, stories, events, campus maps, user profiles, notifications, and Spotify integration in a single modern experience for students, faculty, and staff.
 
 ## Prerequisites
 Before running the project locally make sure you have the following tooling available:

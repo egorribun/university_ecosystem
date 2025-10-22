@@ -26,6 +26,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material"
+import { visuallyHidden } from "@mui/utils"
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded"
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded"
 import ArrowForwardIosRoundedIcon from "@mui/icons-material/ArrowForwardIosRounded"
@@ -58,6 +59,8 @@ export default function DashboardStories({
 
   const listLabel = t("aria.storiesList")
   const emptyLabel = t("stories.empty")
+  const emptyDescription = t("stories.emptyDescription")
+  const subheading = t("stories.subheading")
 
   const displayStories = useMemo(() => {
     const filtered = Array.isArray(stories) ? stories.filter(Boolean) : []
@@ -180,6 +183,7 @@ export default function DashboardStories({
   }, [openIndex, closeViewer, goNext, goPrev])
 
   const dialogTitleId = useId()
+  const dialogHintsId = useId()
 
   const progressForIndex = useCallback(
     (index: number) => {
@@ -251,6 +255,36 @@ export default function DashboardStories({
       })
     : undefined
 
+  const viewerInstructions = t("stories.viewer.aria.instructions")
+  const autoHint = t("stories.viewer.hints.auto")
+  const tapHint = t("stories.viewer.hints.tap")
+  const keyboardHint = t("stories.viewer.hints.keyboard")
+  const swipeHint = t("stories.viewer.hints.swipe")
+
+  const normalizedHints = useMemo(() => {
+    const hints: string[] = []
+    if (autoHint && autoHint !== "stories.viewer.hints.auto") {
+      hints.push(autoHint)
+    }
+    const navigationHint = isMobile ? swipeHint : keyboardHint
+    const navigationKey = isMobile
+      ? "stories.viewer.hints.swipe"
+      : "stories.viewer.hints.keyboard"
+    if (navigationHint && navigationHint !== navigationKey) {
+      hints.push(navigationHint)
+    }
+    if (tapHint && tapHint !== "stories.viewer.hints.tap") {
+      hints.push(tapHint)
+    }
+    return hints
+  }, [autoHint, isMobile, keyboardHint, swipeHint, tapHint])
+
+  const hasSubheading = subheading && subheading !== "stories.subheading"
+  const hasEmptyDescription =
+    emptyDescription && emptyDescription !== "stories.emptyDescription"
+  const hasViewerInstructions =
+    viewerInstructions && viewerInstructions !== "stories.viewer.aria.instructions"
+
   const handlePointerStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     touchOrigin.current = { x: event.clientX, y: event.clientY }
     setIsPaused(true)
@@ -300,20 +334,30 @@ export default function DashboardStories({
       onPointerEnter={onPrefetch}
       onFocusCapture={onPrefetch}
     >
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
-          {t("stories.heading")}
-        </Typography>
-        {viewerStory && viewerStory.cta_url && (
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-            sx={{ textTransform: "none" }}
+      <Stack spacing={0.75} sx={{ mb: 0.5 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Typography
+            component="h2"
+            sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}
           >
-            {t("stories.viewer.openLink")}
-          </Button>
+            {t("stories.heading")}
+          </Typography>
+          {viewerStory && viewerStory.cta_url && (
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              {...(linkPropsFor(viewerStory.cta_url) ?? {})}
+              sx={{ textTransform: "none" }}
+            >
+              {t("stories.viewer.openLink")}
+            </Button>
+          )}
+        </Stack>
+        {hasSubheading && (
+          <Typography variant="body2" color="text.secondary">
+            {subheading}
+          </Typography>
         )}
       </Stack>
       <Divider sx={{ my: 1.5 }} />
@@ -328,7 +372,14 @@ export default function DashboardStories({
         </Stack>
       )}
       {!loading && displayStories.length === 0 && (
-        <Typography color="text.secondary">{emptyLabel}</Typography>
+        <Stack spacing={0.5}>
+          <Typography color="text.secondary">{emptyLabel}</Typography>
+          {hasEmptyDescription && (
+            <Typography color="text.secondary" variant="body2">
+              {emptyDescription}
+            </Typography>
+          )}
+        </Stack>
       )}
       {!loading && displayStories.length > 0 && (
         <Stack
@@ -411,6 +462,9 @@ export default function DashboardStories({
         onClose={closeViewer}
         aria-labelledby={dialogTitleId}
         aria-label={storyDialogLabel}
+        aria-describedby={
+          hasViewerInstructions || normalizedHints.length > 0 ? dialogHintsId : undefined
+        }
         keepMounted
         PaperProps={{
           sx: {
@@ -527,26 +581,45 @@ export default function DashboardStories({
                 )}
               </Box>
 
-              <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
-                <Typography id={dialogTitleId} variant="h4" component="h2" sx={{ fontWeight: 800 }}>
-                  {viewerStory.title}
+            <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
+              <Typography id={dialogTitleId} variant="h4" component="h2" sx={{ fontWeight: 800 }}>
+                {viewerStory.title}
+              </Typography>
+              {viewerStory.short_text && (
+                <Typography component="p" sx={{ opacity: 0.9, fontSize: "1.05rem" }}>
+                  {viewerStory.short_text}
                 </Typography>
-                {viewerStory.short_text && (
-                  <Typography component="p" sx={{ opacity: 0.9, fontSize: "1.05rem" }}>
-                    {viewerStory.short_text}
-                  </Typography>
-                )}
-                {viewerStory.cta_url && (
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-                    sx={{ alignSelf: "center", textTransform: "none" }}
-                  >
-                    {t("stories.viewer.openLink")}
-                  </Button>
-                )}
-              </Stack>
+              )}
+              {viewerStory.cta_url && (
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  {...(linkPropsFor(viewerStory.cta_url) ?? {})}
+                  sx={{ alignSelf: "center", textTransform: "none" }}
+                >
+                  {t("stories.viewer.openLink")}
+                </Button>
+              )}
+              {(hasViewerInstructions || normalizedHints.length > 0) && (
+                <Stack spacing={0.5} id={dialogHintsId}>
+                  {hasViewerInstructions && (
+                    <Typography sx={{ ...visuallyHidden }}>
+                      {viewerInstructions}
+                    </Typography>
+                  )}
+                  {normalizedHints.map((hint, index) => (
+                    <Typography
+                      key={index}
+                      component="p"
+                      variant="body2"
+                      sx={{ opacity: 0.85 }}
+                    >
+                      {hint}
+                    </Typography>
+                  ))}
+                </Stack>
+              )}
+            </Stack>
             </Box>
 
             <Box

@@ -130,6 +130,23 @@ const {
     is_registered: false,
     my_qr_code: null,
   }
+  const storiesItems = [
+    {
+      id: 1,
+      title: "Campus orientation",
+      title_en: "Campus orientation",
+      short_text: "Welcome week highlights",
+      short_text_en: "Welcome week highlights",
+      cover_url: null,
+      cta_url: "/events",
+      published_at: new Date(Date.now() - 600_000).toISOString(),
+      expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+      is_active: true,
+      created_at: new Date().toISOString(),
+      created_by: 1,
+    },
+  ]
+
   const newsItems = [
     {
       id: 1,
@@ -192,6 +209,9 @@ const {
         },
       })
     if (url === "/events/my") return Promise.resolve({ data: [] })
+    if (url === "/stories") {
+      return Promise.resolve({ data: storiesItems, status: 200 })
+    }
     if (url === "/news") return Promise.resolve({ data: newsItems })
     if (url === "/notifications") return Promise.resolve({ data: notificationsResponse })
     if (url === "/groups") return Promise.resolve({ data: scheduleGroups })
@@ -212,6 +232,7 @@ const {
   const fetchCurrentUserMock = vi.fn(async () => baseUser)
 
   return {
+    storiesItems,
     baseUser,
     apiGetMock,
     apiPostMock,
@@ -474,10 +495,25 @@ describe("page translations", () => {
     const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
     expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Stories" })
+    ).toBeInTheDocument()
+    const storyButton = await screen.findByRole("button", {
+      name: "Story: Campus orientation",
+    })
+
+    await user.click(storyButton)
+
+    expect(
+      await screen.findByText("Stories advance automatically.")
+    ).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
 
     expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
+    expect(
+      await screen.findByText("Истории переключаются автоматически.")
+    ).toBeInTheDocument()
   })
 
   it("switches news page translations", async () => {
