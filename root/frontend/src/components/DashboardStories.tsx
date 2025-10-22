@@ -356,8 +356,7 @@ export default function DashboardStories({
                     },
                     "&:focus-visible": {
                       outline: "none",
-                      boxShadow:
-                        "0 0 0 4px rgba(125,172,255,0.42), 0 0 0 7px rgba(37,99,235,0.32)",
+                      boxShadow: "0 0 0 4px rgba(125,172,255,0.42), 0 0 0 7px rgba(37,99,235,0.32)",
                     },
                   }}
                 >
