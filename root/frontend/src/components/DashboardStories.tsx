@@ -349,13 +349,15 @@ export default function DashboardStories({
                   sx={{
                     ...storyCircleSx(),
                     cursor: "pointer",
+                    outline: "none",
                     "&:hover": {
-                      transform: "translateY(-2px)",
-                      boxShadow: "0 18px 40px rgba(37,99,235,0.28)",
+                      boxShadow:
+                        "0 0 0 4px rgba(125,172,255,0.32), 0 14px 40px rgba(37,99,235,0.32)",
                     },
                     "&:focus-visible": {
                       outline: "none",
-                      boxShadow: "0 0 0 4px #1d4ed81f, 0 0 0 6px #1d4ed880",
+                      boxShadow:
+                        "0 0 0 4px rgba(125,172,255,0.42), 0 0 0 7px rgba(37,99,235,0.32)",
                     },
                   }}
                 >
@@ -383,8 +385,9 @@ export default function DashboardStories({
         }}
         BackdropProps={{
           sx: {
-            backgroundColor: "rgba(9, 14, 28, 0.55)",
-            backdropFilter: "blur(20px)",
+            backgroundColor: "rgba(9, 14, 28, 0.4)",
+            backdropFilter: "blur(28px) saturate(150%)",
+            WebkitBackdropFilter: "blur(28px) saturate(150%)",
           },
         }}
       >
@@ -545,7 +548,7 @@ export default function DashboardStories({
                 aria-label={t("stories.viewer.aria.close")}
                 sx={{
                   position: "absolute",
-                  top: 16,
+                  top: 36,
                   right: 16,
                   color: "inherit",
                   backgroundColor: "rgba(8,11,21,0.55)",
