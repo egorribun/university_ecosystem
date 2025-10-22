@@ -1,0 +1,66 @@
+{
+  "pageTitle": "Управление сторис",
+  "notAuthorized": "У вас нет доступа к управлению сторис.",
+  "form": {
+    "title": "Создать сторис",
+    "subtitle": "Заполните поля, чтобы опубликовать новую сторис. Обложка и ссылка необязательны.",
+    "titleRu": "Заголовок (RU)",
+    "titleEn": "Заголовок (EN)",
+    "shortTextRu": "Краткий текст (RU)",
+    "shortTextEn": "Краткий текст (EN)",
+    "ctaUrl": "Ссылка действия",
+    "publishedAt": "Дата публикации",
+    "expiresAt": "Дата окончания",
+    "submit": "Опубликовать сторис",
+    "success": "Сторис успешно создана.",
+    "previewAlt": "Предпросмотр обложки сторис",
+    "resetCover": "Убрать обложку"
+  },
+  "list": {
+    "title": "Текущие сторис",
+    "empty": "Активных сторис нет.",
+    "noCover": "Нет обложки",
+    "coverAlt": "Обложка сторис «{{title}}»",
+    "confirmDelete": "Удалить сторис? Действие нельзя отменить.",
+    "details": {
+      "published": "Опубликовано: {{date}}",
+      "expires": "Истекает: {{date}}",
+      "cta": "Ссылка"
+    },
+    "actions": {
+      "pickCover": "Выбрать",
+      "updateCover": "Обновить обложку",
+      "updateTimer": "Обновить таймер",
+      "unpublish": "Снять публикацию",
+      "clearCover": "Убрать файл"
+    },
+    "timeLeft": {
+      "label": "Истекает через {{time}}",
+      "unknown": "Время истечения неизвестно",
+      "expired": "Истёк срок публикации",
+      "days_one": "{{count}} день",
+      "days_few": "{{count}} дня",
+      "days_many": "{{count}} дней",
+      "days_other": "{{count}} дней",
+      "hours_one": "{{count}} час",
+      "hours_few": "{{count}} часа",
+      "hours_many": "{{count}} часов",
+      "hours_other": "{{count}} часов",
+      "minutes_one": "{{count}} минуту",
+      "minutes_few": "{{count}} минуты",
+      "minutes_many": "{{count}} минут",
+      "minutes_other": "{{count}} минут"
+    }
+  },
+  "errors": {
+    "loadFailed": "Не удалось загрузить сторис. Попробуйте обновить страницу.",
+    "createFailed": "Не удалось создать сторис.",
+    "updateFailed": "Не удалось обновить сроки публикации.",
+    "coverUpdateFailed": "Не удалось обновить обложку.",
+    "unpublishFailed": "Не удалось снять публикацию.",
+    "deleteFailed": "Не удалось удалить сторис.",
+    "required": "Заполните обязательные поля для русской версии.",
+    "invalidDate": "Выберите корректные даты.",
+    "expirationAfterPublish": "Дата окончания должна быть позже даты публикации."
+  }
+}
