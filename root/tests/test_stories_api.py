@@ -9,7 +9,9 @@ from app.models import models
 from app.services.story_cleanup import cleanup_expired_stories
 
 
-async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, email: str, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -43,7 +45,9 @@ async def test_stories_list_filters_expired(async_client: AsyncClient, story_fac
 
 
 @pytest.mark.anyio
-async def test_stories_list_uses_etag(async_client: AsyncClient, story_factory, fake_cache):
+async def test_stories_list_uses_etag(
+    async_client: AsyncClient, story_factory, fake_cache
+):
     _ = fake_cache
     await story_factory(title="Cached story")
 
@@ -64,7 +68,9 @@ async def test_stories_list_uses_etag(async_client: AsyncClient, story_factory, 
 
 
 @pytest.mark.anyio
-async def test_story_admin_permissions(async_client: AsyncClient, user_factory, db_session):
+async def test_story_admin_permissions(
+    async_client: AsyncClient, user_factory, db_session
+):
     password = "StoryAdmin123!"
     hashed = get_password_hash(password)
     admin = await user_factory(role="admin", hashed_password=hashed)
@@ -118,9 +124,7 @@ async def test_story_admin_permissions(async_client: AsyncClient, user_factory, 
     )
     assert forbidden_delete.status_code == 403
 
-    deleted = await async_client.delete(
-        f"/stories/{created_id}", headers=admin_headers
-    )
+    deleted = await async_client.delete(f"/stories/{created_id}", headers=admin_headers)
     assert deleted.status_code == 200
     assert deleted.json()["ok"] is True
     async with async_session() as verify_session:
