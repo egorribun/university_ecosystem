@@ -478,9 +478,10 @@ export default function DashboardStories({
                 flexDirection: "column",
                 alignItems: "stretch",
                 justifyContent: "center",
-                width: "min(92vw, 430px)",
-                maxWidth: "min(92vw, 430px)",
-                aspectRatio: "9 / 16",
+                width: "min(96vw, 960px)",
+                maxWidth: "min(96vw, 960px)",
+                maxHeight: "80vh",
+                aspectRatio: "16 / 9",
                 borderRadius: viewerStory.cover_url ? 0 : { xs: 3, sm: 4 },
                 overflow: "hidden",
                 boxShadow: viewerStory.cover_url ? "none" : "0 30px 80px rgba(0,0,0,0.55)",
@@ -512,14 +513,6 @@ export default function DashboardStories({
                     alt={viewerStory.title}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
-                  <Typography id={dialogTitleId} component="h2" sx={{ ...visuallyHidden }}>
-                    {viewerStory.title}
-                  </Typography>
-                  {viewerStory.short_text && (
-                    <Typography component="p" sx={{ ...visuallyHidden }}>
-                      {viewerStory.short_text}
-                    </Typography>
-                  )}
                 </>
               ) : (
                 <Box
@@ -544,7 +537,7 @@ export default function DashboardStories({
 
               <Typography sx={{ ...visuallyHidden }}>{t("stories.viewer.hints.auto")}</Typography>
 
-              {!viewerStory.cover_url && (
+              {(viewerStory.title || viewerStory.short_text || viewerStory.cta_url) && (
                 <Stack
                   spacing={viewerStory.cta_url ? 2 : 1}
                   sx={{
@@ -554,8 +547,11 @@ export default function DashboardStories({
                     bottom: 0,
                     p: { xs: 3, sm: 4 },
                     pt: { xs: 6, sm: 7 },
-                    backgroundImage:
-                      "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
+                    backgroundImage: viewerStory.cover_url
+                      ? "linear-gradient(180deg, rgba(8,11,21,0) 0%, rgba(8,11,21,0.65) 55%, rgba(8,11,21,0.85) 100%)"
+                      : "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
+                    backdropFilter: viewerStory.cover_url ? "blur(12px)" : "none",
+                    WebkitBackdropFilter: viewerStory.cover_url ? "blur(12px)" : "none",
                   }}
                 >
                   <Typography
