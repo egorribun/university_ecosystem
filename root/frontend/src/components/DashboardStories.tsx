@@ -289,11 +289,7 @@ export default function DashboardStories({
         {t("stories.heading")}
       </Typography>
       {loading && (
-        <Stack
-          direction="row"
-          spacing={1.6}
-          sx={{ flexWrap: "wrap", rowGap: 1.6, py: 0.75 }}
-        >
+        <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6, py: 0.75 }}>
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
             <Stack
               key={index}
