@@ -171,14 +171,12 @@ describe("Accessibility checks", () => {
       },
     ]
 
-    const getSpy = vi
-      .spyOn(api, "get")
-      .mockImplementation(async (url: string) => {
-        if (url === "/stories") {
-          return { data: stories, status: 200, headers: {} } as any
-        }
-        return { data: [], status: 200, headers: {} } as any
-      })
+    const getSpy = vi.spyOn(api, "get").mockImplementation(async (url: string) => {
+      if (url === "/stories") {
+        return { data: stories, status: 200, headers: {} } as any
+      }
+      return { data: [], status: 200, headers: {} } as any
+    })
 
     const { Wrapper } = createWrapper("/dashboard")
     const { container } = render(<Dashboard />, { wrapper: Wrapper })
