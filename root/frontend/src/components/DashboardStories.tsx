@@ -53,7 +53,6 @@ export default function DashboardStories({
   const theme = useTheme()
   const { t } = useTranslation("dashboard")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"))
 
   const listLabel = t("aria.storiesList")
   const emptyLabel = t("stories.empty")
@@ -180,7 +179,6 @@ export default function DashboardStories({
   }, [openIndex, closeViewer, goNext, goPrev])
 
   const dialogTitleId = useId()
-  const dialogHintsId = useId()
 
   const progressForIndex = useCallback(
     (index: number) => {
@@ -252,31 +250,7 @@ export default function DashboardStories({
       })
     : undefined
 
-  const viewerInstructions = t("stories.viewer.aria.instructions")
-  const autoHint = t("stories.viewer.hints.auto")
-  const tapHint = t("stories.viewer.hints.tap")
-  const keyboardHint = t("stories.viewer.hints.keyboard")
-  const swipeHint = t("stories.viewer.hints.swipe")
-
-  const normalizedHints = useMemo(() => {
-    const hints: string[] = []
-    if (autoHint && autoHint !== "stories.viewer.hints.auto") {
-      hints.push(autoHint)
-    }
-    const navigationHint = isMobile ? swipeHint : keyboardHint
-    const navigationKey = isMobile ? "stories.viewer.hints.swipe" : "stories.viewer.hints.keyboard"
-    if (navigationHint && navigationHint !== navigationKey) {
-      hints.push(navigationHint)
-    }
-    if (tapHint && tapHint !== "stories.viewer.hints.tap") {
-      hints.push(tapHint)
-    }
-    return hints
-  }, [autoHint, isMobile, keyboardHint, swipeHint, tapHint])
-
   const hasEmptyDescription = emptyDescription && emptyDescription !== "stories.emptyDescription"
-  const hasViewerInstructions =
-    viewerInstructions && viewerInstructions !== "stories.viewer.aria.instructions"
 
   const handlePointerStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     touchOrigin.current = { x: event.clientX, y: event.clientY }
@@ -399,16 +373,18 @@ export default function DashboardStories({
         onClose={closeViewer}
         aria-labelledby={dialogTitleId}
         aria-label={storyDialogLabel}
-        aria-describedby={
-          hasViewerInstructions || normalizedHints.length > 0 ? dialogHintsId : undefined
-        }
         keepMounted
         PaperProps={{
           sx: {
-            background:
-              theme.palette.mode === "dark" ? "rgba(6, 11, 25, 0.94)" : "rgba(12, 29, 67, 0.92)",
-            backdropFilter: "blur(16px)",
+            background: "transparent",
+            boxShadow: "none",
             color: "#fff",
+          },
+        }}
+        BackdropProps={{
+          sx: {
+            backgroundColor: "rgba(9, 14, 28, 0.55)",
+            backdropFilter: "blur(20px)",
           },
         }}
       >
@@ -419,60 +395,27 @@ export default function DashboardStories({
               width: "100%",
               height: "100%",
               display: "flex",
-              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              px: { xs: 2, sm: 4 },
             }}
           >
-            <Stack direction="row" spacing={1} sx={{ p: { xs: 2, md: 3 }, gap: 1 }}>
-              {displayStories.map((story, index) => (
-                <LinearProgress
-                  key={story.id}
-                  variant="determinate"
-                  aria-label={t("stories.viewer.aria.progress", {
-                    index: index + 1,
-                    total: displayStories.length,
-                    title: story.title,
-                  })}
-                  value={progressForIndex(index)}
-                  sx={{
-                    flex: 1,
-                    height: 4,
-                    borderRadius: 8,
-                    backgroundColor: "rgba(255,255,255,0.3)",
-                    "& .MuiLinearProgress-bar": {
-                      backgroundColor: "#fff",
-                      transition: "transform 120ms linear",
-                    },
-                  }}
-                />
-              ))}
-            </Stack>
-
-            <IconButton
-              onClick={closeViewer}
-              aria-label={t("stories.viewer.aria.close")}
-              sx={{
-                position: "absolute",
-                top: 16,
-                right: 16,
-                color: "inherit",
-                backgroundColor: "rgba(0,0,0,0.35)",
-                "&:hover": { backgroundColor: "rgba(0,0,0,0.5)" },
-              }}
-            >
-              <CloseRoundedIcon />
-            </IconButton>
-
             <Box
               sx={{
-                flex: 1,
+                position: "relative",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
+                alignItems: "stretch",
                 justifyContent: "center",
-                px: { xs: 2, md: 6 },
-                pb: { xs: 6, md: 8 },
-                textAlign: "center",
-                gap: 3,
+                width: "min(92vw, 430px)",
+                maxWidth: "min(92vw, 430px)",
+                aspectRatio: "9 / 16",
+                borderRadius: { xs: 3, sm: 4 },
+                overflow: "hidden",
+                boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
+                background: viewerStory.cover_url
+                  ? "rgba(14, 23, 42, 0.75)"
+                  : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
               }}
               onPointerDown={handlePointerStart}
               onPointerUp={handlePointerEnd}
@@ -491,39 +434,56 @@ export default function DashboardStories({
                 goNext()
               }}
             >
-              <Box
-                sx={{
-                  display: "grid",
-                  placeItems: "center",
-                  borderRadius: "1.6rem",
-                  overflow: "hidden",
-                  width: "min(86vw, 420px)",
-                  height: isMobile ? 280 : 360,
-                  boxShadow: "0 20px 45px rgba(0,0,0,0.35)",
-                  background: viewerStory.cover_url
-                    ? "rgba(0,0,0,0.35)"
-                    : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
-                }}
-              >
-                {viewerStory.cover_url ? (
-                  <SmartImage
-                    srcRaw={viewerStory.cover_url}
-                    alt={viewerStory.title}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-                ) : (
-                  <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.8rem, 8vw, 2.6rem)" }}>
+              {viewerStory.cover_url ? (
+                <SmartImage
+                  srcRaw={viewerStory.cover_url}
+                  alt={viewerStory.title}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <Box
+                  sx={{
+                    flex: 1,
+                    display: "grid",
+                    placeItems: "center",
+                    background: "linear-gradient(135deg,#1d4ed8,#60a5fa)",
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      fontWeight: 800,
+                      fontSize: "clamp(2.2rem, 12vw, 3.2rem)",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {viewerStory.title.slice(0, 2).toUpperCase()}
                   </Typography>
-                )}
-              </Box>
+                </Box>
+              )}
 
-              <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
-                <Typography id={dialogTitleId} variant="h4" component="h2" sx={{ fontWeight: 800 }}>
+              <Stack
+                spacing={viewerStory.cta_url ? 2 : 1}
+                sx={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  p: { xs: 3, sm: 4 },
+                  pt: { xs: 6, sm: 7 },
+                  backgroundImage:
+                    "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
+                }}
+              >
+                <Typography
+                  id={dialogTitleId}
+                  variant="h5"
+                  component="h2"
+                  sx={{ fontWeight: 800, lineHeight: 1.2 }}
+                >
                   {viewerStory.title}
                 </Typography>
                 {viewerStory.short_text && (
-                  <Typography component="p" sx={{ opacity: 0.9, fontSize: "1.05rem" }}>
+                  <Typography component="p" sx={{ opacity: 0.95, fontSize: "1rem" }}>
                     {viewerStory.short_text}
                   </Typography>
                 )}
@@ -532,24 +492,66 @@ export default function DashboardStories({
                     variant="contained"
                     color="secondary"
                     {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-                    sx={{ alignSelf: "center", textTransform: "none" }}
+                    sx={{
+                      alignSelf: "flex-start",
+                      textTransform: "none",
+                      borderRadius: 999,
+                      px: 3,
+                    }}
                   >
                     {t("stories.viewer.openLink")}
                   </Button>
                 )}
-                {(hasViewerInstructions || normalizedHints.length > 0) && (
-                  <Stack spacing={0.5} id={dialogHintsId}>
-                    {hasViewerInstructions && (
-                      <Typography sx={{ ...visuallyHidden }}>{viewerInstructions}</Typography>
-                    )}
-                    {normalizedHints.map((hint, index) => (
-                      <Typography key={index} component="p" variant="body2" sx={{ opacity: 0.85 }}>
-                        {hint}
-                      </Typography>
-                    ))}
-                  </Stack>
-                )}
               </Stack>
+
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  position: "absolute",
+                  top: 12,
+                  left: 16,
+                  right: 16,
+                }}
+              >
+                {displayStories.map((story, index) => (
+                  <LinearProgress
+                    key={story.id}
+                    variant="determinate"
+                    aria-label={t("stories.viewer.aria.progress", {
+                      index: index + 1,
+                      total: displayStories.length,
+                      title: story.title,
+                    })}
+                    value={progressForIndex(index)}
+                    sx={{
+                      flex: 1,
+                      height: 3,
+                      borderRadius: 999,
+                      backgroundColor: "rgba(255,255,255,0.35)",
+                      "& .MuiLinearProgress-bar": {
+                        backgroundColor: "#fff",
+                        transition: "transform 140ms linear",
+                      },
+                    }}
+                  />
+                ))}
+              </Stack>
+
+              <IconButton
+                onClick={closeViewer}
+                aria-label={t("stories.viewer.aria.close")}
+                sx={{
+                  position: "absolute",
+                  top: 16,
+                  right: 16,
+                  color: "inherit",
+                  backgroundColor: "rgba(8,11,21,0.55)",
+                  "&:hover": { backgroundColor: "rgba(8,11,21,0.7)" },
+                }}
+              >
+                <CloseRoundedIcon />
+              </IconButton>
             </Box>
 
             <Box
@@ -564,7 +566,7 @@ export default function DashboardStories({
                 sx={{
                   position: "absolute",
                   top: "50%",
-                  left: 8,
+                  left: { xs: 4, sm: 24 },
                   transform: "translateY(-50%)",
                   pointerEvents: "auto",
                 }}
@@ -574,8 +576,8 @@ export default function DashboardStories({
                   aria-label={t("stories.viewer.aria.prev")}
                   sx={{
                     color: "inherit",
-                    backgroundColor: "rgba(0,0,0,0.35)",
-                    "&:hover": { backgroundColor: "rgba(0,0,0,0.5)" },
+                    backgroundColor: "rgba(8,11,21,0.55)",
+                    "&:hover": { backgroundColor: "rgba(8,11,21,0.7)" },
                   }}
                 >
                   <ArrowBackIosNewRoundedIcon />
@@ -586,7 +588,7 @@ export default function DashboardStories({
                 sx={{
                   position: "absolute",
                   top: "50%",
-                  right: 8,
+                  right: { xs: 4, sm: 24 },
                   transform: "translateY(-50%)",
                   pointerEvents: "auto",
                 }}
@@ -596,8 +598,8 @@ export default function DashboardStories({
                   aria-label={t("stories.viewer.aria.next")}
                   sx={{
                     color: "inherit",
-                    backgroundColor: "rgba(0,0,0,0.35)",
-                    "&:hover": { backgroundColor: "rgba(0,0,0,0.5)" },
+                    backgroundColor: "rgba(8,11,21,0.55)",
+                    "&:hover": { backgroundColor: "rgba(8,11,21,0.7)" },
                   }}
                 >
                   <ArrowForwardIosRoundedIcon />
