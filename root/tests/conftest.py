@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 import os
 import sys
 import uuid
@@ -196,6 +197,18 @@ async def async_client(
         main, "start_session_cleanup_scheduler", _start_session_cleanup_scheduler
     )
 
+    async def _start_story_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        main, "start_story_cleanup_scheduler", _start_story_cleanup_scheduler
+    )
+
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
@@ -252,6 +265,27 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
         await db_session.commit()
         await db_session.refresh(user)
         return user
+
+    return _factory
+
+
+@pytest.fixture
+async def story_factory(db_session) -> Callable[..., Awaitable[models.Story]]:
+    async def _factory(**kwargs) -> models.Story:
+        now = dt.datetime.now(dt.UTC)
+        defaults = {
+            "title": f"Story {uuid.uuid4().hex[:8]}",
+            "short_text": "Story body",
+            "expires_at": now + dt.timedelta(hours=24),
+            "published_at": now,
+            "is_active": True,
+        }
+        defaults.update(kwargs)
+        story = models.Story(**defaults)
+        db_session.add(story)
+        await db_session.commit()
+        await db_session.refresh(story)
+        return story
 
     return _factory
 
