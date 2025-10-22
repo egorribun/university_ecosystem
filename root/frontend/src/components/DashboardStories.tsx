@@ -398,6 +398,8 @@ export default function DashboardStories({
             background: "transparent",
             boxShadow: "none",
             color: "#fff",
+            position: "relative",
+            overflow: "hidden",
           },
         }}
         BackdropProps={{
@@ -408,10 +410,23 @@ export default function DashboardStories({
           },
         }}
       >
+        <Box
+          aria-hidden
+          sx={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            background: "radial-gradient(circle at top, rgba(9, 14, 28, 0.32), rgba(9, 14, 28, 0.62))",
+            backdropFilter: "blur(28px) saturate(160%)",
+            WebkitBackdropFilter: "blur(28px) saturate(160%)",
+          }}
+        />
         {viewerStory && (
           <Box
             sx={{
               position: "relative",
+              zIndex: 1,
               width: "100%",
               height: "100%",
               display: "flex",
