@@ -348,6 +348,11 @@ export default function DashboardStories({
                   minHeight: 112,
                   flex: { xs: "0 0 auto", sm: "0 0 92px" },
                   overflow: "visible",
+                  ...(index === 0
+                    ? {
+                        ml: { xs: 1.2, sm: 0.8 },
+                      }
+                    : {}),
                 }}
               >
                 <ButtonBase
@@ -366,7 +371,7 @@ export default function DashboardStories({
                     zIndex: 1,
                     "&:hover": {
                       boxShadow:
-                        "0 10px 28px rgba(37,99,235,0.28), 0 18px 48px rgba(37,99,235,0.28)",
+                        "0 8px 22px rgba(37,99,235,0.26), 0 0 0 4px rgba(125,172,255,0.22)",
                       zIndex: 3,
                     },
                     "&:hover::after": {
@@ -375,8 +380,7 @@ export default function DashboardStories({
                     },
                     "&:focus-visible": {
                       outline: "none",
-                      boxShadow:
-                        "0 10px 28px rgba(37,99,235,0.32), 0 0 0 6px rgba(125,172,255,0.42)",
+                      boxShadow: "0 8px 24px rgba(37,99,235,0.3), 0 0 0 4px rgba(125,172,255,0.42)",
                       zIndex: 3,
                     },
                     "&:focus-visible::after": {
