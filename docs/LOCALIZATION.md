@@ -16,3 +16,18 @@ When shell copy changes, update `public/static-shell-i18n.js` for both `ru` and
 `en` bundles and adjust the default Russian HTML in `index.html` and
 `public/offline.html` to match. Document the source of the new text in this file
 so future updates can trace back to the in-app locale keys.
+
+## Dashboard stories
+
+The dashboard "stories" carousel now exposes additional localized strings in
+`dashboard.json`:
+
+- `stories.subheading` — short tagline under the block heading.
+- `stories.emptyDescription` — supporting text for the empty state.
+- `stories.viewer.hints.auto` / `keyboard` / `swipe` / `tap` — navigation tips
+  shown inside the viewer dialog.
+- `stories.viewer.aria.instructions` — screen reader summary announced when the
+  viewer opens.
+
+Whenever you adjust these phrases, update both `en` and `ru` locales so the
+dashboard and accessibility hints stay in sync across languages.

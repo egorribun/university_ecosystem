@@ -29,15 +29,24 @@
   },
   "stories": {
     "heading": "Stories",
+    "subheading": "Quick highlights from your campus communications team.",
     "empty": "No stories to show yet",
+    "emptyDescription": "New stories will appear here once they are published.",
     "viewer": {
       "openLink": "Open link",
+      "hints": {
+        "auto": "Stories advance automatically.",
+        "keyboard": "Use the left and right arrow keys to move between stories.",
+        "swipe": "Swipe left or right to switch stories.",
+        "tap": "Tap the right side to skip ahead and the left side to go back."
+      },
       "aria": {
         "dialog": "Story {{index}} of {{total}}: {{title}}",
         "close": "Close stories viewer",
         "next": "Next story",
         "prev": "Previous story",
-        "progress": "Progress for story {{index}} of {{total}}: {{title}}"
+        "progress": "Progress for story {{index}} of {{total}}: {{title}}",
+        "instructions": "Stories viewer. Use the arrow keys, tap, or swipe to switch stories. Press Escape to close."
       }
     }
   },

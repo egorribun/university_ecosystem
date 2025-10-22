@@ -154,7 +154,31 @@ describe("Accessibility checks", () => {
   })
 
   it("Dashboard page has no axe violations", async () => {
-    const getSpy = vi.spyOn(api, "get").mockImplementation(async () => ({ data: [] }) as any)
+    const stories = [
+      {
+        id: 1,
+        title: "Orientation",
+        short_text: "Welcome week",
+        cover_url: null,
+        cta_url: null,
+        published_at: new Date(Date.now() - 3_600_000).toISOString(),
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        title_en: "Orientation",
+        short_text_en: "Welcome week",
+        created_by: 1,
+      },
+    ]
+
+    const getSpy = vi
+      .spyOn(api, "get")
+      .mockImplementation(async (url: string) => {
+        if (url === "/stories") {
+          return { data: stories, status: 200, headers: {} } as any
+        }
+        return { data: [], status: 200, headers: {} } as any
+      })
 
     const { Wrapper } = createWrapper("/dashboard")
     const { container } = render(<Dashboard />, { wrapper: Wrapper })
