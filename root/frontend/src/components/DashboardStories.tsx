@@ -481,11 +481,11 @@ export default function DashboardStories({
                 width: "min(92vw, 430px)",
                 maxWidth: "min(92vw, 430px)",
                 aspectRatio: "9 / 16",
-                borderRadius: { xs: 3, sm: 4 },
+                borderRadius: viewerStory.cover_url ? 0 : { xs: 3, sm: 4 },
                 overflow: "hidden",
-                boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
+                boxShadow: viewerStory.cover_url ? "none" : "0 30px 80px rgba(0,0,0,0.55)",
                 background: viewerStory.cover_url
-                  ? "rgba(14, 23, 42, 0.75)"
+                  ? "transparent"
                   : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
               }}
               onPointerDown={handlePointerStart}
@@ -506,11 +506,21 @@ export default function DashboardStories({
               }}
             >
               {viewerStory.cover_url ? (
-                <SmartImage
-                  srcRaw={viewerStory.cover_url}
-                  alt={viewerStory.title}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+                <>
+                  <SmartImage
+                    srcRaw={viewerStory.cover_url}
+                    alt={viewerStory.title}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                  <Typography id={dialogTitleId} component="h2" sx={{ ...visuallyHidden }}>
+                    {viewerStory.title}
+                  </Typography>
+                  {viewerStory.short_text && (
+                    <Typography component="p" sx={{ ...visuallyHidden }}>
+                      {viewerStory.short_text}
+                    </Typography>
+                  )}
+                </>
               ) : (
                 <Box
                   sx={{
@@ -534,48 +544,50 @@ export default function DashboardStories({
 
               <Typography sx={{ ...visuallyHidden }}>{t("stories.viewer.hints.auto")}</Typography>
 
-              <Stack
-                spacing={viewerStory.cta_url ? 2 : 1}
-                sx={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  p: { xs: 3, sm: 4 },
-                  pt: { xs: 6, sm: 7 },
-                  backgroundImage:
-                    "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
-                }}
-              >
-                <Typography
-                  id={dialogTitleId}
-                  variant="h5"
-                  component="h2"
-                  sx={{ fontWeight: 800, lineHeight: 1.2 }}
+              {!viewerStory.cover_url && (
+                <Stack
+                  spacing={viewerStory.cta_url ? 2 : 1}
+                  sx={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    p: { xs: 3, sm: 4 },
+                    pt: { xs: 6, sm: 7 },
+                    backgroundImage:
+                      "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
+                  }}
                 >
-                  {viewerStory.title}
-                </Typography>
-                {viewerStory.short_text && (
-                  <Typography component="p" sx={{ opacity: 0.95, fontSize: "1rem" }}>
-                    {viewerStory.short_text}
-                  </Typography>
-                )}
-                {viewerStory.cta_url && (
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-                    sx={{
-                      alignSelf: "flex-start",
-                      textTransform: "none",
-                      borderRadius: 999,
-                      px: 3,
-                    }}
+                  <Typography
+                    id={dialogTitleId}
+                    variant="h5"
+                    component="h2"
+                    sx={{ fontWeight: 800, lineHeight: 1.2 }}
                   >
-                    {t("stories.viewer.openLink")}
-                  </Button>
-                )}
-              </Stack>
+                    {viewerStory.title}
+                  </Typography>
+                  {viewerStory.short_text && (
+                    <Typography component="p" sx={{ opacity: 0.95, fontSize: "1rem" }}>
+                      {viewerStory.short_text}
+                    </Typography>
+                  )}
+                  {viewerStory.cta_url && (
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      {...(linkPropsFor(viewerStory.cta_url) ?? {})}
+                      sx={{
+                        alignSelf: "flex-start",
+                        textTransform: "none",
+                        borderRadius: 999,
+                        px: 3,
+                      }}
+                    >
+                      {t("stories.viewer.openLink")}
+                    </Button>
+                  )}
+                </Stack>
+              )}
 
               <Stack
                 direction="row"
