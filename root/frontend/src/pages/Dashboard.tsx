@@ -6,9 +6,11 @@ import {
   useRef,
   type KeyboardEvent,
   type CSSProperties,
+  type ElementType,
 } from "react"
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
+import SmartImage from "@/components/SmartImage"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
 import {
@@ -31,6 +33,8 @@ import { cardHoverSx } from "@/constants/cardHover"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
+import type { StoryItem } from "@/types/Story"
+import { fetchStories as fetchStoriesRequest } from "@/api/stories"
 
 type NewsItem = {
   id: number
@@ -216,17 +220,22 @@ export default function Dashboard() {
   const greetingKey = useMemo(() => getGreetingKey(time.getHours()), [time])
   const greeting = t(`dashboard:greeting.${greetingKey}`)
 
+  const [loadingStories, setLoadingStories] = useState(true)
   const [loadingNews, setLoadingNews] = useState(true)
   const [loadingEvents, setLoadingEvents] = useState(true)
   const [loadingSched, setLoadingSched] = useState(true)
 
+  const [stories, setStories] = useState<StoryItem[]>([])
   const [news, setNews] = useState<NewsItem[]>([])
   const [events, setEvents] = useState<EventItem[]>([])
   const [schedule, setSchedule] = useState<Lesson[]>([])
 
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
+  const storiesEtagRef = useRef<string | null>(null)
   const eventsEtagRef = useRef<string | null>(null)
+  const storiesPrefetchedRef = useRef(false)
 
+  const visibleStories = useMemo(() => stories.slice(0, 8), [stories])
   const parity = useMemo(nowParity, [])
   const todayIndex = time.getDay()
 
@@ -291,6 +300,31 @@ export default function Dashboard() {
   }, [events])
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
+
+  const fetchStories = useCallback(async () => {
+    try {
+      const previousTag = storiesEtagRef.current
+      const response = await fetchStoriesRequest(previousTag)
+      const responseTag = response.headers?.etag
+      storiesEtagRef.current = responseTag ?? null
+      if (response.status === 304) {
+        return
+      }
+      const arr = Array.isArray(response.data) ? response.data : []
+      setStories(arr)
+      setCache<StoryItem[]>("dash:stories", arr)
+    } catch {
+      const cached = getCache<StoryItem[]>("dash:stories")
+      if (cached) {
+        setStories(cached)
+      } else {
+        setStories([])
+      }
+      storiesEtagRef.current = null
+    } finally {
+      setLoadingStories(false)
+    }
+  }, [])
 
   const fetchNews = useCallback(async () => {
     try {
@@ -363,6 +397,12 @@ export default function Dashboard() {
   }, [user])
 
   useEffect(() => {
+    const cachedStories = getCache<StoryItem[]>("dash:stories")
+    if (cachedStories) {
+      setStories(cachedStories)
+      setLoadingStories(false)
+    }
+    fetchStories()
     const cachedN = getCache<NewsItem[]>("dash:news")
     if (cachedN) {
       setNews(cachedN)
@@ -375,7 +415,7 @@ export default function Dashboard() {
       setLoadingEvents(false)
     }
     fetchEvents()
-  }, [fetchNews, fetchEvents])
+  }, [fetchStories, fetchNews, fetchEvents])
 
   useEffect(() => {
     fetchSchedule()
@@ -405,7 +445,7 @@ export default function Dashboard() {
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
   const warmSchedulePage = () => import("../pages/Schedule").catch(() => {})
-  const prefetchData = (type: "news" | "events") => {
+  const prefetchData = (type: "news" | "events" | "stories") => {
     if (type === "news")
       axios
         .get("/news")
@@ -416,6 +456,17 @@ export default function Dashboard() {
         .get<PaginatedResponse<EventItem>>("/events", { params: { is_active: true, limit: 20 } })
         .then((r) => setCache("prefetch:events", Array.isArray(r.data?.items) ? r.data.items : []))
         .catch(() => {})
+    if (type === "stories")
+      axios
+        .get<StoryItem[]>("/stories")
+        .then((r) => setCache("prefetch:stories", Array.isArray(r.data) ? r.data : []))
+        .catch(() => {})
+  }
+
+  const triggerStoriesPrefetch = () => {
+    if (storiesPrefetchedRef.current) return
+    storiesPrefetchedRef.current = true
+    prefetchData("stories")
   }
 
   const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
@@ -549,6 +600,136 @@ export default function Dashboard() {
               gap: { xs: 2, md: 3 },
             }}
           >
+            <Box
+              data-fade
+              style={{ "--fade-delay": "120ms" } as CSSProperties}
+              sx={{ ...homeCardSx, gridColumn: "1 / -1" }}
+              aria-busy={loadingStories}
+              onPointerEnter={triggerStoriesPrefetch}
+              onFocusCapture={triggerStoriesPrefetch}
+            >
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+                  {t("dashboard:stories.heading")}
+                </Typography>
+              </Stack>
+              <Divider sx={{ my: 1.5 }} />
+              {loadingStories && (
+                <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6 }}>
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <Stack key={index} spacing={0.9} alignItems="center" sx={{ width: 92 }}>
+                      <Skeleton variant="circular" width={76} height={76} />
+                      <Skeleton width={70} height={18} />
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+              {!loadingStories && visibleStories.length === 0 && (
+                <Typography color="text.secondary">{t("dashboard:stories.empty")}</Typography>
+              )}
+              {!loadingStories && visibleStories.length > 0 && (
+                <Stack
+                  component="ul"
+                  direction="row"
+                  spacing={1.6}
+                  sx={{
+                    p: 0,
+                    m: 0,
+                    listStyle: "none",
+                    flexWrap: "wrap",
+                    rowGap: 1.6,
+                  }}
+                  aria-label={t("dashboard:aria.storiesList")}
+                >
+                  {visibleStories.map((story) => {
+                    const hrefRaw = (story.cta_url ?? "").trim()
+                    const isInternalLink = hrefRaw.startsWith("/")
+                    const isHttpLink = /^https?:/i.test(hrefRaw)
+                    const storyLabel = t("dashboard:aria.storyItem", { title: story.title })
+                    const component = (hrefRaw
+                      ? (isInternalLink ? Link : "a")
+                      : "div") as ElementType
+                    const linkProps = hrefRaw
+                      ? isInternalLink
+                        ? ({ to: hrefRaw } as const)
+                        : ({
+                            href: hrefRaw,
+                            target: isHttpLink ? "_blank" : undefined,
+                            rel: isHttpLink ? "noreferrer" : undefined,
+                          } as const)
+                      : undefined
+                    const tooltipText = story.short_text || story.title
+                    const initials = story.title.slice(0, 2).toUpperCase()
+                    return (
+                      <Stack key={story.id} component="li" spacing={0.9} alignItems="center" sx={{ width: 92 }}>
+                        <Box
+                          component={component}
+                          {...((linkProps ?? {}) as Record<string, unknown>)}
+                          onPointerEnter={triggerStoriesPrefetch}
+                          onFocus={triggerStoriesPrefetch}
+                          sx={{
+                            width: 76,
+                            height: 76,
+                            borderRadius: "50%",
+                            overflow: "hidden",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            textDecoration: "none",
+                            color: "inherit",
+                            border: "2px solid color-mix(in srgb, var(--page-text) 16%, transparent)",
+                            background: story.cover_url
+                              ? "var(--card-bg)"
+                              : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
+                            position: "relative",
+                            transition: "transform .18s, box-shadow .18s",
+                            cursor: hrefRaw ? "pointer" : "default",
+                            "&:hover": {
+                              transform: hrefRaw ? "translateY(-2px)" : undefined,
+                              boxShadow: hrefRaw ? "0 12px 30px rgba(37,99,235,.24)" : undefined,
+                            },
+                            "&:focus-visible": {
+                              outline: "none",
+                              boxShadow: focusRing,
+                            },
+                          }}
+                          aria-label={storyLabel}
+                          role={hrefRaw ? undefined : "img"}
+                        >
+                          {story.cover_url ? (
+                            <SmartImage
+                              srcRaw={story.cover_url}
+                              alt={story.title}
+                              style={{ width: "100%", height: "100%" }}
+                            />
+                          ) : (
+                            <Typography sx={{ color: "#fff", fontWeight: 700, fontSize: "1.05rem" }}>
+                              {initials}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Tooltip title={tooltipText} enterDelay={150}>
+                          <Typography
+                            component="span"
+                            align="center"
+                            sx={{
+                              maxWidth: 84,
+                              fontWeight: 600,
+                              fontSize: ".85rem",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {story.title}
+                          </Typography>
+                        </Tooltip>
+                      </Stack>
+                    )
+                  })}
+                </Stack>
+              )}
+            </Box>
             <Box
               data-fade
               style={{ "--fade-delay": "140ms" } as CSSProperties}

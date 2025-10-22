@@ -11,6 +11,8 @@
     "viewAllNews": "Посмотреть все новости",
     "newsList": "Лента новостей",
     "newsItem": "Новость: {{title}}",
+    "storiesList": "Истории",
+    "storyItem": "История: {{title}}",
     "viewAllEvents": "Посмотреть все события",
     "eventsToday": "События сегодня",
     "eventsWeek": "События на этой неделе",
@@ -24,6 +26,10 @@
   "news": {
     "heading": "Новости",
     "empty": "Пока нет новостей"
+  },
+  "stories": {
+    "heading": "Истории",
+    "empty": "Пока нет историй"
   },
   "events": {
     "heading": "События",
