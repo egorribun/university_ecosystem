@@ -417,7 +417,8 @@ export default function DashboardStories({
             inset: 0,
             zIndex: 0,
             pointerEvents: "none",
-            background: "radial-gradient(circle at top, rgba(9, 14, 28, 0.32), rgba(9, 14, 28, 0.62))",
+            background:
+              "radial-gradient(circle at top, rgba(9, 14, 28, 0.32), rgba(9, 14, 28, 0.62))",
             backdropFilter: "blur(28px) saturate(160%)",
             WebkitBackdropFilter: "blur(28px) saturate(160%)",
           }}
