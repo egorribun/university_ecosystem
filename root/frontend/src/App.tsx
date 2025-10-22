@@ -113,7 +113,10 @@ function AppContent() {
           <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
           <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
-          <Route path="/admin/stories" element={<AdminRoute>{wrap(<StoriesAdmin />)}</AdminRoute>} />
+          <Route
+            path="/admin/stories"
+            element={<AdminRoute>{wrap(<StoriesAdmin />)}</AdminRoute>}
+          />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Suspense>

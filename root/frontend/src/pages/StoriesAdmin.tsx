@@ -22,12 +22,7 @@ import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import type { StoryItem } from "@/types/Story"
-import {
-  createStory,
-  deleteStory,
-  updateStory,
-  uploadStoryCover,
-} from "@/api/stories"
+import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import axios from "@/api/client"
 import { useTranslation } from "react-i18next"
 
@@ -46,7 +41,7 @@ function toIso(date: string) {
 function formatTimeLeft(
   expiresAt: string,
   now: dayjs.Dayjs,
-  t: ReturnType<typeof useTranslation>["t"],
+  t: ReturnType<typeof useTranslation>["t"]
 ) {
   const expires = dayjs(expiresAt)
   if (!expires.isValid()) return t("stories:list.timeLeft.unknown")
@@ -132,10 +127,13 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
         dateStyle: "medium",
         timeStyle: "short",
       }),
-    [locale],
+    [locale]
   )
 
-  const timeLeft = useMemo(() => formatTimeLeft(story.expires_at, now, t), [story.expires_at, now, t])
+  const timeLeft = useMemo(
+    () => formatTimeLeft(story.expires_at, now, t),
+    [story.expires_at, now, t]
+  )
 
   const handleTimeSave = async () => {
     setActionError(null)
@@ -241,16 +239,25 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
           <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="stretch">
             <Box flex={1} minWidth={0}>
               <Typography variant="body2" color="text.secondary">
-                {t("stories:list.details.published", { date: dateFormatter.format(new Date(story.published_at)) })}
+                {t("stories:list.details.published", {
+                  date: dateFormatter.format(new Date(story.published_at)),
+                })}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {t("stories:list.details.expires", { date: dateFormatter.format(new Date(story.expires_at)) })}
+                {t("stories:list.details.expires", {
+                  date: dateFormatter.format(new Date(story.expires_at)),
+                })}
               </Typography>
               <Typography variant="body1" fontWeight={600} color="primary.main" mt={1}>
                 {timeLeft}
               </Typography>
               {story.cta_url && (
-                <Typography variant="body2" color="text.secondary" mt={1} sx={{ wordBreak: "break-all" }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  mt={1}
+                  sx={{ wordBreak: "break-all" }}
+                >
                   {t("stories:list.details.cta")}: {story.cta_url}
                 </Typography>
               )}
@@ -301,7 +308,9 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
                   startIcon={<PhotoCamera />}
                   sx={{ flex: 1 }}
                 >
-                  {coverFile ? t("common:buttons.changePhoto") : t("stories:list.actions.pickCover")}
+                  {coverFile
+                    ? t("common:buttons.changePhoto")
+                    : t("stories:list.actions.pickCover")}
                   <input
                     type="file"
                     accept="image/*"
@@ -327,7 +336,9 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
                 onClick={handleCoverUpdate}
                 fullWidth
               >
-                {updatingCover ? t("common:statuses.uploading") : t("stories:list.actions.updateCover")}
+                {updatingCover
+                  ? t("common:statuses.uploading")
+                  : t("stories:list.actions.updateCover")}
               </Button>
             </Box>
           </Stack>
@@ -648,7 +659,11 @@ export default function StoriesAdmin() {
                         boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
                       }}
                     >
-                      <img src={coverPreview} alt={t("stories:form.previewAlt")} style={{ width: "100%", display: "block" }} />
+                      <img
+                        src={coverPreview}
+                        alt={t("stories:form.previewAlt")}
+                        style={{ width: "100%", display: "block" }}
+                      />
                     </Box>
                   </Box>
                 )}
