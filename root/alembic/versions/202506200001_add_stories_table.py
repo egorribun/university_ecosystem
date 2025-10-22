@@ -61,7 +61,9 @@ def upgrade() -> None:
 
     inspector = sa.inspect(bind)
     if _table_exists(inspector, table_name):
-        existing_indexes = {index["name"] for index in inspector.get_indexes(table_name)}
+        existing_indexes = {
+            index["name"] for index in inspector.get_indexes(table_name)
+        }
     else:
         existing_indexes = set()
 
