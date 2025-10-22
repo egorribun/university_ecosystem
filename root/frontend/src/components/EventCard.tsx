@@ -581,10 +581,14 @@ const EventCardComponent: FC<EventCardProps> = ({
             overflow: "hidden",
             position: "relative",
             background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
-            transition: "transform 0.25s ease",
-            "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
+            transition: "box-shadow 0.25s ease, filter 0.25s ease",
             display: "flex",
             alignItems: "stretch",
+            boxShadow: "0 6px 18px rgba(12,36,99,0.08)",
+            "&:hover": {
+              boxShadow: isMobile ? "0 6px 18px rgba(12,36,99,0.08)" : "0 18px 40px rgba(12,36,99,0.18)",
+              filter: isMobile ? "none" : "brightness(1.03)",
+            },
             "& img": {
               display: "block",
               width: "100%",

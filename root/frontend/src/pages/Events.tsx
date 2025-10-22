@@ -30,15 +30,21 @@ import {
   IconButton,
   Popover,
   Badge,
+  Paper,
+  Chip,
 } from "@mui/material"
 import EventNoteIcon from "@mui/icons-material/EventNote"
 import SearchIcon from "@mui/icons-material/Search"
 import FilterListIcon from "@mui/icons-material/FilterList"
 import ClearIcon from "@mui/icons-material/Clear"
+import EventAvailableIcon from "@mui/icons-material/EventAvailable"
+import EqualizerIcon from "@mui/icons-material/Equalizer"
+import UpcomingIcon from "@mui/icons-material/Upcoming"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import dayjs from "dayjs"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -400,6 +406,21 @@ const Events = () => {
 
   const normalizedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events])
 
+  const { totalEvents, activeEvents, nextEventDate } = useMemo(() => {
+    const total = normalizedEvents.length
+    const activeCount = normalizedEvents.filter((event) => event.is_active).length
+    const upcoming = normalizedEvents
+      .map((event) => dayjs(event.starts_at))
+      .filter((date) => date.isValid() && date.isAfter(dayjs()))
+      .sort((a, b) => a.valueOf() - b.valueOf())
+
+    return {
+      totalEvents: total,
+      activeEvents: activeCount,
+      nextEventDate: upcoming[0] ?? null,
+    }
+  }, [normalizedEvents])
+
   const layoutConfig = useMemo(() => {
     if (isMobile) {
       return {
@@ -472,187 +493,445 @@ const Events = () => {
     )
   }, [cardMaxWidth, gap, gridTemplateColumns, handleRefresh, isMobile, loading, normalizedEvents])
 
+  const numberFormatter = useMemo(
+    () => new Intl.NumberFormat(language === "en" ? "en-US" : "ru-RU"),
+    [language]
+  )
+
+  const summaryCards = useMemo(
+    () => {
+      const nextValue = nextEventDate
+        ? nextEventDate.format("DD.MM.YYYY HH:mm")
+        : t("events:summary.none", { defaultValue: "No upcoming events" })
+
+      return [
+        {
+          key: "total",
+          label: t("events:summary.total", { defaultValue: "Events shown" }),
+          helper: t("events:summary.totalHelper", {
+            defaultValue: "After applying filters",
+          }),
+          value: numberFormatter.format(totalEvents),
+          icon: <EqualizerIcon sx={{ fontSize: 28 }} />,
+        },
+        {
+          key: "active",
+          label: t("events:summary.active", { defaultValue: "Active events" }),
+          helper: t("events:summary.activeHelper", {
+            defaultValue:
+              tab === "archive"
+                ? "Viewing archive"
+                : "Happening right now",
+          }),
+          value: numberFormatter.format(activeEvents),
+          icon: <EventAvailableIcon sx={{ fontSize: 28 }} />,
+        },
+        {
+          key: "next",
+          label: t("events:summary.next", { defaultValue: "Next start" }),
+          helper: t("events:summary.nextHelper", {
+            defaultValue: "Based on visible events",
+          }),
+          value: nextValue,
+          icon: <UpcomingIcon sx={{ fontSize: 28 }} />,
+        },
+      ]
+    },
+    [activeEvents, nextEventDate, numberFormatter, t, tab, totalEvents]
+  )
+
+  const filtersSummaryLabel = useMemo(
+    () =>
+      t("events:summary.results", {
+        count: totalEvents,
+        defaultValue: `${numberFormatter.format(totalEvents)} results`,
+      }),
+    [numberFormatter, t, totalEvents]
+  )
+
   return (
     <Layout>
       <PageFadeIn>
         <Box
           sx={{
-            width: "100vw",
+            position: "relative",
+            width: "100%",
             minHeight: "100vh",
             bgcolor: "var(--page-bg)",
             color: "var(--page-text)",
-            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-            py: { xs: 0.5, sm: 0.5, md: 0.5, lg: 0.5 },
+            overflow: "hidden",
           }}
         >
           <Box
-            data-fade
-            style={{ "--fade-delay": "80ms" } as CSSProperties}
-            display="flex"
-            alignItems="center"
-            gap={2}
-            mb={isMobile ? 1.5 : 3}
-            mt={isMobile ? 1.5 : 3}
-          >
-            <EventNoteIcon color="primary" sx={{ fontSize: 34 }} />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              color="primary.main"
-              sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-            >
-              {t("events:pageTitle")}
-            </Typography>
-          </Box>
+            aria-hidden
+            sx={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(circle at top left, rgba(21,101,192,0.18), transparent 58%), radial-gradient(circle at bottom right, rgba(30,136,229,0.16), transparent 60%)",
+              pointerEvents: "none",
+              opacity: 0.9,
+            }}
+          />
 
-          {(user?.role === "admin" || user?.role === "teacher") && (
+          <Box
+            sx={{
+              position: "relative",
+              maxWidth: 1440,
+              mx: "auto",
+              width: "100%",
+              px: { xs: 2.5, sm: 4, md: 6, lg: 8 },
+              py: { xs: 2, sm: 3, md: 4 },
+            }}
+          >
             <Box
               data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}
-            >
-              <Button
-                variant="contained"
-                sx={{ fontWeight: 600, fontSize: 16, px: 2.5, borderRadius: 2 }}
-                onClick={() => setCreateOpen(true)}
-                disabled={imageUploading || loading}
-              >
-                {t("events:actions.openCreate")}
-              </Button>
-            </Box>
-          )}
-
-          <Tabs
-            data-fade
-            style={{ "--fade-delay": "200ms" } as CSSProperties}
-            value={tab}
-            onChange={handleTabChange}
-            variant={isMobile ? "scrollable" : "standard"}
-            scrollButtons={isMobile ? "auto" : false}
-            sx={{
-              minHeight: 45,
-              "& .MuiTab-root": {
-                color: "var(--page-text)",
-                fontWeight: 600,
-                fontSize: isMobile ? 16 : 20,
-                opacity: 1,
-                minWidth: isMobile ? 85 : 130,
-                textTransform: "none",
-                mr: isMobile ? 0.3 : 1.5,
-                transition: "color 0.2s",
-              },
-              "& .Mui-selected": { color: "var(--nav-link)", fontWeight: 700 },
-              "& .MuiTabs-indicator": {
-                background: "var(--nav-link)",
-                height: 3,
-                borderRadius: 2,
-              },
-            }}
-            TabIndicatorProps={{ style: { height: 3 } }}
-          >
-            {tabs.map((tabItem) => (
-              <Tab
-                key={tabItem.key}
-                value={tabItem.key}
-                label={t(`events:tabs.${tabItem.key}`)}
-                sx={{
-                  minHeight: 45,
-                  fontWeight: 600,
-                  fontSize: isMobile ? 16 : 20,
-                  textTransform: "none",
-                }}
-              />
-            ))}
-          </Tabs>
-
-          <Stack
-            data-fade
-            style={{ "--fade-delay": "240ms" } as CSSProperties}
-            direction="row"
-            spacing={1.5}
-            alignItems="center"
-            mb={isMobile ? 2 : 5}
-            mt={isMobile ? 2 : 3}
-            sx={{ flexWrap: "wrap" }}
-          >
-            <TextField
-              label={t("events:filters.search")}
-              variant="outlined"
-              size="small"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              style={{ "--fade-delay": "80ms" } as CSSProperties}
               sx={{
-                width: { xs: "100%", md: "min(640px, 48vw)" },
-                "& .MuiOutlinedInput-root": {
-                  backgroundColor: "var(--card-bg)",
-                  borderRadius: 2,
-                  "& fieldset": { borderColor: "var(--btn-border)" },
-                  "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                  "&.Mui-focused fieldset": {
-                    borderColor: "var(--nav-link)",
-                    boxShadow: "0 0 0 3px rgba(0,94,162,.18)",
-                  },
-                },
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                mb: { xs: 1.5, md: 2.5 },
               }}
-              InputLabelProps={{
-                sx: {
-                  color: "var(--secondary-text)",
-                  "&.Mui-focused": { color: "var(--nav-link)" },
+            >
+              <EventNoteIcon color="primary" sx={{ fontSize: 36 }} />
+              <Box>
+                <Typography
+                  variant="h4"
+                  fontWeight={700}
+                  color="primary.main"
+                  sx={{ fontSize: "clamp(1.4rem, 4vw, 2.7rem)" }}
+                >
+                  {t("events:pageTitle")}
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{
+                    color: "var(--secondary-text)",
+                    mt: 0.6,
+                    maxWidth: { xs: "100%", md: 640 },
+                  }}
+                >
+                  {t("events:pageSubtitle", {
+                    defaultValue:
+                      "Explore upcoming activities and revisit highlights tailored for our university community.",
+                  })}
+                </Typography>
+              </Box>
+            </Box>
+
+            {(user?.role === "admin" || user?.role === "teacher") && (
+              <Box
+                data-fade
+                style={{ "--fade-delay": "140ms" } as CSSProperties}
+                sx={{
+                  display: "flex",
+                  justifyContent: "flex-start",
+                  mb: { xs: 2, md: 3 },
+                }}
+              >
+                <Button
+                  variant="contained"
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: 16,
+                    px: 2.5,
+                    borderRadius: 2,
+                    boxShadow: "0 18px 40px rgba(0,118,255,0.25)",
+                  }}
+                  onClick={() => setCreateOpen(true)}
+                  disabled={imageUploading || loading}
+                >
+                  {t("events:actions.openCreate")}
+                </Button>
+              </Box>
+            )}
+
+            <Box
+              data-fade
+              style={{ "--fade-delay": "180ms" } as CSSProperties}
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "repeat(auto-fit, minmax(220px, 1fr))",
+                  sm: "repeat(auto-fit, minmax(240px, 1fr))",
                 },
+                gap: { xs: 2, md: 2.5 },
+                mb: { xs: 2.5, md: 4 },
               }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: "var(--secondary-text)" }} fontSize="small" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end" sx={{ gap: 0.5 }}>
-                    {search ? (
-                      <IconButton
-                        aria-label={t("events:aria.clearSearch")}
-                        edge="end"
-                        onClick={() => setSearch("")}
-                        size="small"
-                        sx={{
-                          color: "var(--secondary-text)",
-                          "&:hover": { color: "var(--nav-link)" },
-                        }}
-                      >
-                        <ClearIcon fontSize="small" />
-                      </IconButton>
-                    ) : null}
-                    <IconButton
-                      aria-label={t("events:aria.openFilters")}
-                      edge="end"
-                      onClick={(e) => setFilterAnchor(e.currentTarget)}
-                      size="small"
+            >
+              {summaryCards.map((card) => (
+                <Paper
+                  key={card.key}
+                  elevation={0}
+                  sx={{
+                    p: { xs: 2, sm: 2.5 },
+                    borderRadius: 3,
+                    position: "relative",
+                    overflow: "hidden",
+                    bgcolor: "rgba(13,71,161,0.06)",
+                    border: "1px solid var(--glass-border)",
+                    boxShadow: "0 20px 45px rgba(15,35,80,0.12)",
+                    backdropFilter: "blur(14px)",
+                  }}
+                >
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Box
                       sx={{
-                        color: "var(--secondary-text)",
-                        "&:hover": { color: "var(--nav-link)" },
+                        width: 48,
+                        height: 48,
+                        borderRadius: 3,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        bgcolor: "rgba(25,118,210,0.16)",
+                        color: "var(--nav-link)",
                       }}
                     >
-                      <Badge
-                        color="primary"
-                        variant={filtersActive ? "dot" : "standard"}
-                        overlap="circular"
-                        sx={{
-                          "& .MuiBadge-badge": {
-                            bgcolor: "var(--nav-link)",
-                          },
-                        }}
+                      {card.icon}
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.2 }}>
+                        {card.value}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "var(--secondary-text)", mt: 0.5 }}
                       >
-                        <FilterListIcon fontSize="small" />
-                      </Badge>
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Stack>
+                        {card.label}
+                      </Typography>
+                      {card.helper ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "var(--secondary-text)",
+                            mt: 0.4,
+                            display: "block",
+                          }}
+                        >
+                          {card.helper}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  </Stack>
+                </Paper>
+              ))}
+            </Box>
 
-          <Popover
+            <Paper
+              data-fade
+              style={{ "--fade-delay": "220ms" } as CSSProperties}
+              elevation={0}
+              sx={{
+                mb: { xs: 2, md: 3 },
+                borderRadius: 3,
+                border: "1px solid var(--glass-border)",
+                bgcolor: "rgba(255,255,255,0.06)",
+                boxShadow: "0 20px 45px rgba(12,35,68,0.12)",
+                backdropFilter: "blur(14px)",
+              }}
+            >
+              <Tabs
+                value={tab}
+                onChange={handleTabChange}
+                variant={isMobile ? "scrollable" : "standard"}
+                scrollButtons={isMobile ? "auto" : false}
+                sx={{
+                  minHeight: 50,
+                  px: { xs: 1, sm: 2 },
+                  "& .MuiTab-root": {
+                    color: "var(--page-text)",
+                    fontWeight: 600,
+                    fontSize: isMobile ? 16 : 19,
+                    opacity: 1,
+                    minWidth: isMobile ? 90 : 140,
+                    textTransform: "none",
+                    mr: isMobile ? 0.3 : 1,
+                    transition: "color 0.2s, transform 0.2s",
+                    "&:hover": { color: "var(--nav-link)" },
+                  },
+                  "& .Mui-selected": { color: "var(--nav-link)", fontWeight: 700 },
+                  "& .MuiTabs-indicator": {
+                    background: "var(--nav-link)",
+                    height: 3,
+                    borderRadius: 2,
+                  },
+                }}
+                TabIndicatorProps={{ style: { height: 3 } }}
+              >
+                {tabs.map((tabItem) => (
+                  <Tab
+                    key={tabItem.key}
+                    value={tabItem.key}
+                    label={t(`events:tabs.${tabItem.key}`)}
+                    sx={{
+                      minHeight: 50,
+                      fontWeight: 600,
+                      fontSize: isMobile ? 16 : 19,
+                      textTransform: "none",
+                    }}
+                  />
+                ))}
+              </Tabs>
+            </Paper>
+
+            <Paper
+              data-fade
+              style={{ "--fade-delay": "240ms" } as CSSProperties}
+              elevation={0}
+              sx={{
+                mb: { xs: 2.5, md: 5 },
+                borderRadius: 3,
+                border: "1px solid var(--glass-border)",
+                bgcolor: "rgba(13,71,161,0.05)",
+                boxShadow: "0 18px 40px rgba(12,35,68,0.1)",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={{ xs: 2, md: 3 }}
+                alignItems={{ xs: "stretch", md: "center" }}
+                justifyContent="space-between"
+                sx={{ p: { xs: 2, sm: 2.5 } }}
+              >
+                <Box sx={{ flexGrow: 1, width: "100%" }}>
+                  <TextField
+                    label={t("events:filters.search")}
+                    variant="outlined"
+                    size="small"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    sx={{
+                      width: "100%",
+                      "& .MuiOutlinedInput-root": {
+                        backgroundColor: "var(--card-bg)",
+                        borderRadius: 2,
+                        "& fieldset": { borderColor: "var(--btn-border)" },
+                        "&:hover fieldset": { borderColor: "var(--nav-link)" },
+                        "&.Mui-focused fieldset": {
+                          borderColor: "var(--nav-link)",
+                          boxShadow: "0 0 0 3px rgba(0,94,162,.18)",
+                        },
+                      },
+                    }}
+                    InputLabelProps={{
+                      sx: {
+                        color: "var(--secondary-text)",
+                        "&.Mui-focused": { color: "var(--nav-link)" },
+                      },
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon sx={{ color: "var(--secondary-text)" }} fontSize="small" />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end" sx={{ gap: 0.5 }}>
+                          {search ? (
+                            <IconButton
+                              aria-label={t("events:aria.clearSearch")}
+                              edge="end"
+                              onClick={() => setSearch("")}
+                              size="small"
+                              sx={{
+                                color: "var(--secondary-text)",
+                                "&:hover": { color: "var(--nav-link)" },
+                              }}
+                            >
+                              <ClearIcon fontSize="small" />
+                            </IconButton>
+                          ) : null}
+                          <IconButton
+                            aria-label={t("events:aria.openFilters")}
+                            edge="end"
+                            onClick={(e) => setFilterAnchor(e.currentTarget)}
+                            size="small"
+                            sx={{
+                              color: "var(--secondary-text)",
+                              "&:hover": { color: "var(--nav-link)" },
+                            }}
+                          >
+                            <Badge
+                              color="primary"
+                              variant={filtersActive ? "dot" : "standard"}
+                              overlap="circular"
+                              sx={{
+                                "& .MuiBadge-badge": {
+                                  bgcolor: "var(--nav-link)",
+                                },
+                              }}
+                            >
+                              <FilterListIcon fontSize="small" />
+                            </Badge>
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  flexWrap="wrap"
+                  justifyContent={{ xs: "flex-start", md: "flex-end" }}
+                >
+                  <Chip
+                    icon={<SearchIcon sx={{ fontSize: 18 }} />}
+                    label={filtersSummaryLabel}
+                    color="primary"
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 2,
+                      fontWeight: 600,
+                    }}
+                  />
+                  <Chip
+                    icon={<FilterListIcon sx={{ fontSize: 18 }} />}
+                    label={
+                      filtersActive
+                        ? t("events:summary.filtersActive", {
+                            defaultValue: "Filters active",
+                          })
+                        : t("events:summary.filtersHint", {
+                            defaultValue: "Use filters to refine",
+                          })
+                    }
+                    color={filtersActive ? "primary" : "default"}
+                    variant={filtersActive ? "filled" : "outlined"}
+                    sx={{ borderRadius: 2, fontWeight: 600 }}
+                  />
+                </Stack>
+              </Stack>
+            </Paper>
+
+            {eventsContent}
+
+            {tab !== "my" && pagination?.has_more ? (
+              <Box display="flex" justifyContent="center" mt={4} mb={6}>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  sx={{
+                    px: 3.5,
+                    borderRadius: 2,
+                    fontWeight: 600,
+                  }}
+                >
+                  {loadingMore
+                    ? t("common:statuses.loading")
+                    : t("common:buttons.loadMore", { defaultValue: "Load more" })}
+                </Button>
+              </Box>
+            ) : null}
+          </Box>
+        </Box>
+
+        <Popover
             open={filtersOpen}
             anchorEl={filterAnchor}
             onClose={() => setFilterAnchor(null)}
@@ -715,28 +994,6 @@ const Events = () => {
               </Stack>
             </Stack>
           </Popover>
-
-          {eventsContent}
-
-          {tab !== "my" && pagination?.has_more ? (
-            <Box display="flex" justifyContent="center" mt={4} mb={6}>
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={loadMore}
-                disabled={loadingMore}
-                sx={{
-                  px: 3.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                }}
-              >
-                {loadingMore
-                  ? t("common:statuses.loading")
-                  : t("common:buttons.loadMore", { defaultValue: "Load more" })}
-              </Button>
-            </Box>
-          ) : null}
 
           <Dialog open={createOpen} onClose={closeCreate}>
             <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
@@ -886,7 +1143,6 @@ const Events = () => {
               </Stack>
             </DialogContent>
           </Dialog>
-        </Box>
       </PageFadeIn>
     </Layout>
   )
