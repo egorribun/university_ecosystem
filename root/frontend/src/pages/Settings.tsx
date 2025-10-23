@@ -16,6 +16,8 @@ import {
   Tabs,
   Tab,
   Stack,
+  List,
+  ListItem,
   Typography,
   Button,
   Chip,
@@ -26,10 +28,6 @@ import {
   Radio,
   Divider,
   Avatar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -39,14 +37,11 @@ import {
 } from "@mui/material"
 import dayjs from "dayjs"
 import { useColorScheme, styled, alpha, darken } from "@mui/material/styles"
+import type { PaperProps } from "@mui/material/Paper"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
 import LightModeIcon from "@mui/icons-material/LightMode"
 import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows"
-import LogoutIcon from "@mui/icons-material/Logout"
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera"
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline"
-import ImageIcon from "@mui/icons-material/Image"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import spotifyLogo from "@/assets/spotify_icon.png"
@@ -155,6 +150,36 @@ const ModernSwitch = styled("span")(({ theme }) => {
     },
   }
 })
+
+const SectionCard = styled((props: PaperProps) => <Paper {...props} />)(({ theme }) => ({
+  backgroundColor: "var(--card-bg)",
+  borderRadius: 20,
+  padding: theme.spacing(2.75, 3),
+  border: "1px solid var(--glass-border)",
+  boxShadow: "none",
+  display: "flex",
+  flexDirection: "column",
+  gap: theme.spacing(1.5),
+}))
+
+const SectionTitle = styled(Typography)({
+  fontWeight: 600,
+  color: "var(--page-text)",
+})
+
+const SectionSubtitle = styled(Typography)({
+  color: "color-mix(in srgb, var(--page-text) 72%, transparent)",
+})
+
+const SessionStatus = styled("span")(({ theme }) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: theme.spacing(0.75),
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: 0.3,
+}))
 
 function SwitchControl({
   checked,
@@ -274,6 +299,8 @@ export default function Settings() {
 
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
+  const [recentlyRevokedIds, setRecentlyRevokedIds] = useState<number[]>([])
+  const recentlyRevokedTimeouts = useRef(new Map<number, number>())
 
   const sessionsKey = useMemo(() => ["auth", "sessions", user?.id ?? "me"], [user?.id])
 
@@ -296,6 +323,14 @@ export default function Settings() {
   })
 
   const sessionList = useMemo(() => (Array.isArray(sessions) ? sessions : []), [sessions])
+
+  const visibleSessions = useMemo(
+    () =>
+      sessionList.filter(
+        (session) => !session.revoked_at || recentlyRevokedIds.includes(session.id)
+      ),
+    [recentlyRevokedIds, sessionList]
+  )
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
@@ -559,11 +594,33 @@ export default function Settings() {
     return fallback
   }, [])
 
+  const markSessionRecentlyRevoked = useCallback((sessionId: number) => {
+    setRecentlyRevokedIds((prev) => (prev.includes(sessionId) ? prev : [...prev, sessionId]))
+    const existing = recentlyRevokedTimeouts.current.get(sessionId)
+    if (existing) {
+      window.clearTimeout(existing)
+    }
+    const timeout = window.setTimeout(() => {
+      setRecentlyRevokedIds((prev) => prev.filter((id) => id !== sessionId))
+      recentlyRevokedTimeouts.current.delete(sessionId)
+    }, 6000)
+    recentlyRevokedTimeouts.current.set(sessionId, timeout)
+  }, [])
+
+  useEffect(
+    () => () => {
+      recentlyRevokedTimeouts.current.forEach((timeout) => window.clearTimeout(timeout))
+      recentlyRevokedTimeouts.current.clear()
+    },
+    []
+  )
+
   const handleRevokeSession = useCallback(
     async (sessionId: number) => {
       try {
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
+        markSessionRecentlyRevoked(sessionId)
         await refetchSessions()
         if (result?.is_current) {
           await logout()
@@ -575,7 +632,14 @@ export default function Settings() {
         })
       }
     },
-    [logout, refetchSessions, resolveDetailMessage, revokeSessionMutation, t]
+    [
+      logout,
+      markSessionRecentlyRevoked,
+      refetchSessions,
+      resolveDetailMessage,
+      revokeSessionMutation,
+      t,
+    ]
   )
 
   const formatSessionTimestamp = useCallback(
@@ -658,6 +722,23 @@ export default function Settings() {
     } finally {
       setCoverBusy(false)
       if (coverInputRef.current) coverInputRef.current.value = ""
+    }
+  }
+
+  const removeCover = async () => {
+    try {
+      setCoverBusy(true)
+      await api.delete("/users/me/cover")
+      await refreshMe()
+      setCoverVersion(Date.now())
+      setSnack({ text: t("settings:media.cover.deleted"), sev: "success" })
+    } catch (error) {
+      setSnack({
+        text: resolveDetailMessage(error, t("settings:media.cover.deleteFailed")),
+        sev: "error",
+      })
+    } finally {
+      setCoverBusy(false)
     }
   }
 
@@ -940,39 +1021,34 @@ export default function Settings() {
         )}
 
         {tab === 1 && (
-          <Box sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}>
-            <List dense disablePadding>
-              <ListItem
-                divider
-                secondaryAction={
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      variant="text"
-                      startIcon={<PhotoCameraIcon />}
-                      onClick={triggerAvatarPick}
-                      disabled={avatarBusy}
-                    >
-                      {t("settings:media.avatar.change")}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="text"
-                      color="error"
-                      startIcon={<DeleteOutlineIcon />}
-                      onClick={removeAvatar}
-                      disabled={avatarBusy}
-                    >
-                      {t("settings:media.avatar.delete")}
-                    </Button>
-                  </Stack>
-                }
+          <Stack
+            spacing={2.5}
+            sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
+          >
+            <SectionCard component="section">
+              <List
+                disablePadding
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2.5,
+                  listStyle: "none",
+                }}
               >
-                <ListItemAvatar>
+                <ListItem
+                  disableGutters
+                  sx={{
+                    display: "flex",
+                    flexDirection: { xs: "column", sm: "row" },
+                    alignItems: { xs: "flex-start", sm: "center" },
+                    gap: { xs: 2, sm: 3 },
+                    padding: 0,
+                  }}
+                >
                   <Avatar
                     src={avatarSrc}
                     alt={user?.full_name || "avatar"}
-                    sx={{ width: 48, height: 48 }}
+                    sx={{ width: 72, height: 72 }}
                     imgProps={{
                       onError: handleAvatarError,
                       loading: "lazy",
@@ -980,117 +1056,183 @@ export default function Settings() {
                       referrerPolicy: "no-referrer",
                     }}
                   />
-                </ListItemAvatar>
-                <ListItemText
-                  primary={t("settings:media.avatar.title")}
-                  secondary={t("settings:media.avatar.subtitle")}
-                />
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.currentTarget.files?.[0]
-                    if (f) uploadAvatar(f)
-                  }}
-                />
-              </ListItem>
+                  <Stack spacing={1.25} sx={{ minWidth: 0, width: "100%" }}>
+                    <Stack spacing={0.5}>
+                      <SectionTitle variant="subtitle1">
+                        {t("settings:media.avatar.title")}
+                      </SectionTitle>
+                      <SectionSubtitle variant="body2">
+                        {t("settings:media.avatar.subtitle")}
+                      </SectionSubtitle>
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={triggerAvatarPick}
+                        disabled={avatarBusy}
+                      >
+                        {t("settings:media.avatar.change")}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        onClick={removeAvatar}
+                        disabled={avatarBusy}
+                      >
+                        {t("settings:media.avatar.delete")}
+                      </Button>
+                    </Stack>
+                    <Stack spacing={0.25}>
+                      {!!user?.full_name && (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "var(--page-text)", fontWeight: 600 }}
+                        >
+                          {user.full_name}
+                        </Typography>
+                      )}
+                      {!!user?.email && (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                        >
+                          {user.email}
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Stack>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.currentTarget.files?.[0]
+                      if (f) uploadAvatar(f)
+                    }}
+                  />
+                </ListItem>
 
-              <ListItem
-                divider
-                secondaryAction={
-                  <Button
-                    size="small"
-                    variant="text"
-                    startIcon={<ImageIcon />}
-                    onClick={triggerCoverPick}
-                    disabled={coverBusy}
-                  >
-                    {t("settings:media.cover.change")}
-                  </Button>
-                }
-              >
-                <ListItemAvatar sx={{ mr: 1.25 }}>
+                <ListItem
+                  disableGutters
+                  sx={{
+                    display: "flex",
+                    flexDirection: { xs: "column", sm: "row" },
+                    alignItems: { xs: "flex-start", sm: "center" },
+                    gap: { xs: 2, sm: 3 },
+                    padding: 0,
+                  }}
+                >
                   <Box
                     data-testid="settings-cover-preview"
                     sx={{
-                      width: 120,
-                      height: 52,
+                      width: 160,
+                      height: 72,
                       borderRadius: 1.5,
                       border: "1px solid var(--glass-border)",
                       background: coverSrc
                         ? `url(${coverSrc}) center/cover no-repeat`
-                        : "var(--card-bg)",
+                        : "color-mix(in srgb, var(--page-text) 6%, transparent)",
                     }}
                   />
-                </ListItemAvatar>
-                <ListItemText
-                  primary={t("settings:media.cover.title")}
-                  secondary={t("settings:media.cover.recommendation")}
-                />
-                <input
-                  ref={coverInputRef}
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.currentTarget.files?.[0]
-                    if (f) uploadCover(f)
-                  }}
-                />
-              </ListItem>
+                  <Stack spacing={1} sx={{ minWidth: 0, width: "100%" }}>
+                    <Stack spacing={0.5}>
+                      <SectionTitle variant="subtitle1">
+                        {t("settings:media.cover.title")}
+                      </SectionTitle>
+                      <SectionSubtitle variant="body2">
+                        {t("settings:media.cover.recommendation")}
+                      </SectionSubtitle>
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={triggerCoverPick}
+                        disabled={coverBusy}
+                        sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
+                      >
+                        {t("settings:media.cover.change")}
+                      </Button>
+                      {coverUrl && (
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="error"
+                          onClick={removeCover}
+                          disabled={coverBusy}
+                          sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
+                        >
+                          {t("settings:media.cover.remove")}
+                        </Button>
+                      )}
+                    </Stack>
+                  </Stack>
+                  <input
+                    ref={coverInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.currentTarget.files?.[0]
+                      if (f) uploadCover(f)
+                    }}
+                  />
+                </ListItem>
+              </List>
+            </SectionCard>
 
-              <ListItem
-                divider
-                secondaryAction={
-                  <Button
-                    size="small"
-                    variant="text"
-                    onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
-                  >
-                    {t("common:buttons.edit")}
-                  </Button>
-                }
+            <SectionCard component="section">
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1.5}
+                alignItems={{ sm: "center" }}
+                justifyContent="space-between"
               >
-                <ListItemText
-                  primary={t("settings:account.profile.title")}
-                  secondary={t("settings:account.profile.subtitle")}
-                />
-              </ListItem>
-            </List>
+                <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                  <SectionTitle variant="subtitle1">
+                    {t("settings:account.profile.title")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:account.profile.subtitle")}
+                  </SectionSubtitle>
+                </Stack>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
+                >
+                  {t("common:buttons.edit")}
+                </Button>
+              </Stack>
+            </SectionCard>
 
-            <Divider sx={{ my: 2 }} />
-
-            <Box>
-              <Typography variant="h6" sx={{ color: "var(--page-text)", mb: 0.5 }}>
-                {t("settings:sessions.title")}
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
-              >
-                {t("settings:sessions.subtitle")}
-              </Typography>
+            <SectionCard component="section">
+              <Stack spacing={1}>
+                <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
+                <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
+              </Stack>
 
               {sessionsFetching ? (
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }}>
+                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mt: 1.5 }}>
                   <CircularProgress size={18} />
                   <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                     {t("settings:sessions.loading")}
                   </Typography>
                 </Stack>
               ) : sessionsErrorMessage ? (
-                <Alert severity="error" variant="outlined" sx={{ mt: 2 }}>
+                <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
                   {sessionsErrorMessage}
                 </Alert>
-              ) : sessionList.length === 0 ? (
-                <Typography variant="body2" sx={{ mt: 2, color: "var(--page-text)" }}>
+              ) : visibleSessions.length === 0 ? (
+                <Typography variant="body2" sx={{ mt: 1.5, color: "var(--page-text)" }}>
                   {t("settings:sessions.empty")}
                 </Typography>
               ) : (
-                <List disablePadding sx={{ mt: 1 }}>
-                  {sessionList.map((session) => {
+                <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                  {visibleSessions.map((session) => {
                     const lastSeen = session.last_seen_at ?? session.created_at
                     const lastSeenText = t("settings:sessions.lastSeen.value", {
                       value: formatSessionTimestamp(lastSeen),
@@ -1105,85 +1247,94 @@ export default function Settings() {
                       : session.is_current
                         ? t("settings:sessions.status.current")
                         : t("settings:sessions.status.active")
-                    const statusColor: "default" | "primary" | "success" = revoked
-                      ? "default"
+                    const statusColor = revoked
+                      ? "color-mix(in srgb, var(--page-text) 48%, transparent)"
                       : session.is_current
-                        ? "primary"
-                        : "success"
+                        ? "var(--link-color)"
+                        : "color-mix(in srgb, var(--page-text) 68%, transparent)"
                     const disableRevoke =
                       revoked || session.is_current || revokeSessionMutation.isPending
+
                     return (
-                      <ListItem
+                      <Stack
                         key={session.id}
-                        alignItems="flex-start"
-                        divider
-                        sx={{
-                          opacity: revoked ? 0.6 : 1,
-                        }}
-                        secondaryAction={
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <Chip
-                              size="small"
-                              color={statusColor}
-                              label={statusLabel}
-                              variant={revoked ? "outlined" : "filled"}
-                            />
-                            {!revoked && (
-                              <Button
-                                size="small"
-                                variant="text"
-                                color="error"
-                                disabled={disableRevoke}
-                                onClick={() => void handleRevokeSession(session.id)}
-                              >
-                                {t("settings:sessions.revoke")}
-                              </Button>
-                            )}
-                          </Stack>
-                        }
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={{ xs: 1, sm: 2 }}
+                        alignItems={{ sm: "center" }}
+                        justifyContent="space-between"
+                        sx={{ opacity: revoked ? 0.55 : 1 }}
                       >
-                        <ListItemText
-                          primary={session.user_agent || t("settings:sessions.unknownDevice")}
-                          secondary={details}
-                          primaryTypographyProps={{
-                            sx: {
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
                               color: "var(--page-text)",
                               fontWeight: session.is_current ? 600 : 500,
-                            },
-                          }}
-                          secondaryTypographyProps={{
-                            sx: {
-                              color: "color-mix(in srgb, var(--page-text) 68%, transparent)",
-                            },
-                          }}
-                        />
-                      </ListItem>
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {session.user_agent || t("settings:sessions.unknownDevice")}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "color-mix(in srgb, var(--page-text) 68%, transparent)" }}
+                          >
+                            {details}
+                          </Typography>
+                        </Box>
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <SessionStatus style={{ color: statusColor }}>
+                            <Box
+                              component="span"
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                backgroundColor: statusColor,
+                                display: "inline-block",
+                              }}
+                            />
+                            {statusLabel}
+                          </SessionStatus>
+                          {!session.is_current && !revoked && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              color="error"
+                              disabled={disableRevoke}
+                              onClick={() => void handleRevokeSession(session.id)}
+                            >
+                              {t("settings:sessions.revoke")}
+                            </Button>
+                          )}
+                        </Stack>
+                      </Stack>
                     )
                   })}
-                </List>
+                </Stack>
               )}
-            </Box>
+            </SectionCard>
 
-            <Box sx={{ pt: 1.5, mt: 2, borderTop: "1px solid var(--glass-border)" }}>
-              <List dense disablePadding>
-                <ListItem>
-                  <Button
-                    size="small"
-                    variant="text"
-                    color="error"
-                    startIcon={<LogoutIcon />}
-                    onClick={async () => {
-                      setConfirmLogout(false)
-                      await logout()
-                    }}
-                    sx={{ px: 0 }}
-                  >
-                    {t("settings:account.logout.button")}
-                  </Button>
-                </ListItem>
-              </List>
-            </Box>
-          </Box>
+            <SectionCard component="section">
+              <Stack spacing={1}>
+                <SectionTitle variant="subtitle1">
+                  {t("settings:account.logout.title")}
+                </SectionTitle>
+                <SectionSubtitle variant="body2">
+                  {t("settings:account.logout.subtitle")}
+                </SectionSubtitle>
+              </Stack>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                onClick={() => setConfirmLogout(true)}
+                sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
+              >
+                {t("settings:account.logout.button")}
+              </Button>
+            </SectionCard>
+          </Stack>
         )}
 
         {tab === 2 && (

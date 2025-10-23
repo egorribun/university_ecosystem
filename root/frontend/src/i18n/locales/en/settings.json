@@ -83,7 +83,10 @@
       "recommendation": "Recommended: 1600×400 px or larger",
       "change": "Change",
       "updated": "Cover updated",
-      "uploadFailed": "Couldn't upload cover"
+      "uploadFailed": "Couldn't upload cover",
+      "remove": "Remove",
+      "deleted": "Cover removed",
+      "deleteFailed": "Couldn't remove cover"
     }
   },
   "account": {
@@ -95,7 +98,9 @@
       "button": "Sign out",
       "dialogTitle": "Sign out of your account?",
       "dialogDescription": "You can sign back in anytime. Your data stays safe.",
-      "confirm": "Sign out"
+      "confirm": "Sign out",
+      "title": "Sign out of this device",
+      "subtitle": "End your current session here. You'll stay signed in elsewhere."
     }
   },
   "sessions": {
