@@ -146,16 +146,14 @@ export default function Settings() {
     staleTime: 30_000,
   })
 
-  const sessionList = useMemo(
-    () => (Array.isArray(sessions) ? sessions.filter((session) => !session.revoked_at) : []),
-    [sessions]
-  )
-
-  useEffect(() => {
-    if (!Array.isArray(sessions)) return
-    if (sessions.length === sessionList.length) return
-    queryClient.setQueryData(sessionsKey, sessionList)
-  }, [queryClient, sessionList, sessions, sessionsKey])
+  const visibleSessions = useMemo(() => {
+    if (!Array.isArray(sessions)) return []
+    const cutoff = dayjs().subtract(1, "hour")
+    return sessions.filter((session) => {
+      if (!session.revoked_at) return true
+      return cutoff.isBefore(dayjs(session.revoked_at))
+    })
+  }, [sessions])
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
@@ -717,11 +715,18 @@ export default function Settings() {
   const accountTab = (
     <Stack spacing={3}>
       <SectionCard>
-        <Stack spacing={2.5} divider={<Divider />}>
+        <Stack
+          component="ul"
+          spacing={2.5}
+          divider={<Divider />}
+          sx={{ listStyle: "none", p: 0, m: 0 }}
+        >
           <Stack
+            component="li"
             direction={{ xs: "column", sm: "row" }}
             spacing={2}
             alignItems={{ xs: "flex-start", sm: "center" }}
+            sx={{ listStyle: "none", width: "100%" }}
           >
             <Avatar
               src={avatarSrc}
@@ -766,9 +771,11 @@ export default function Settings() {
           </Stack>
 
           <Stack
+            component="li"
             direction={{ xs: "column", sm: "row" }}
             spacing={2}
             alignItems={{ xs: "flex-start", sm: "center" }}
+            sx={{ listStyle: "none", width: "100%" }}
           >
             <Box
               data-testid="settings-cover-preview"
@@ -804,10 +811,12 @@ export default function Settings() {
           </Stack>
 
           <Stack
+            component="li"
             direction={{ xs: "column", sm: "row" }}
             spacing={1.5}
             alignItems={{ xs: "flex-start", sm: "center" }}
             justifyContent="space-between"
+            sx={{ listStyle: "none", width: "100%" }}
           >
             <Stack spacing={0.5} sx={{ flexGrow: 1 }}>
               <Typography variant="subtitle1" fontWeight={600}>
@@ -867,28 +876,35 @@ export default function Settings() {
             <Alert severity="error" variant="outlined">
               {sessionsErrorMessage}
             </Alert>
-          ) : sessionList.length === 0 ? (
+          ) : visibleSessions.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               {t("settings:sessions.empty")}
             </Typography>
           ) : (
             <Stack spacing={1.5} divider={<Divider />}>
-              {sessionList.map((session) => {
-                const lastSeen = session.last_seen_at ?? session.created_at
+              {visibleSessions.map((session) => {
+                const isRevoked = Boolean(session.revoked_at)
+                const lastRelevantMoment = session.revoked_at ?? session.last_seen_at ?? session.created_at
                 const lastSeenText = t("settings:sessions.lastSeen.value", {
-                  value: formatSessionTimestamp(lastSeen),
+                  value: formatSessionTimestamp(lastRelevantMoment),
                 })
                 const ipLabel = session.ip_address
                   ? t("settings:sessions.ipAddress", { ip: session.ip_address })
                   : t("settings:sessions.ipUnknown")
                 const details = `${ipLabel} • ${lastSeenText}`
-                const statusLabel = session.is_current
-                  ? t("settings:sessions.status.current")
-                  : t("settings:sessions.status.active")
-                const statusColor = session.is_current ? accentColor : mutedTextColor
-                const disableRevoke = session.is_current || revokeSessionMutation.isPending
+                const statusLabel = isRevoked
+                  ? t("settings:sessions.status.revoked")
+                  : session.is_current
+                    ? t("settings:sessions.status.current")
+                    : t("settings:sessions.status.active")
+                const statusColor = isRevoked
+                  ? muiTheme.palette.text.disabled
+                  : session.is_current
+                    ? accentColor
+                    : mutedTextColor
+                const disableRevoke = session.is_current || isRevoked || revokeSessionMutation.isPending
                 return (
-                  <Stack key={session.id} spacing={0.75}>
+                  <Stack key={session.id} spacing={0.75} opacity={isRevoked ? 0.65 : 1}>
                     <Stack direction="row" justifyContent="space-between" alignItems="baseline">
                       <Typography variant="body1" fontWeight={session.is_current ? 600 : 500}>
                         {session.user_agent || t("settings:sessions.unknownDevice")}
@@ -900,7 +916,7 @@ export default function Settings() {
                     <Typography variant="body2" color="text.secondary">
                       {details}
                     </Typography>
-                    {!session.is_current && (
+                    {!session.is_current && !isRevoked && (
                       <Button
                         size="small"
                         variant="text"
