@@ -1085,13 +1085,17 @@ export default function Settings() {
                     alignItems={{ sm: "center" }}
                     justifyContent={{ xs: "flex-start", sm: "flex-start" }}
                     flexWrap="wrap"
+                    sx={{ width: "100%" }}
                   >
                     <Button
                       size="small"
                       variant="contained"
                       onClick={triggerAvatarPick}
                       disabled={avatarBusy}
-                      sx={{ minWidth: 120 }}
+                      sx={{
+                        minWidth: { sm: 140 },
+                        width: { xs: "100%", sm: "auto" },
+                      }}
                     >
                       {t("settings:media.avatar.change")}
                     </Button>
@@ -1101,7 +1105,10 @@ export default function Settings() {
                       color="error"
                       onClick={removeAvatar}
                       disabled={avatarBusy}
-                      sx={{ minWidth: 120 }}
+                      sx={{
+                        minWidth: { sm: 140 },
+                        width: { xs: "100%", sm: "auto" },
+                      }}
                     >
                       {t("settings:media.avatar.delete")}
                     </Button>
@@ -1150,13 +1157,17 @@ export default function Settings() {
                     alignItems={{ sm: "center" }}
                     justifyContent={{ xs: "flex-start", sm: "flex-start" }}
                     flexWrap="wrap"
+                    sx={{ width: "100%" }}
                   >
                     <Button
                       size="small"
-                      variant="outlined"
+                      variant="contained"
                       onClick={triggerCoverPick}
                       disabled={coverBusy}
-                      sx={{ minWidth: 140 }}
+                      sx={{
+                        minWidth: { sm: 140 },
+                        width: { xs: "100%", sm: "auto" },
+                      }}
                     >
                       {t("settings:media.cover.change")}
                     </Button>
@@ -1167,7 +1178,10 @@ export default function Settings() {
                         color="error"
                         onClick={removeCover}
                         disabled={coverBusy}
-                        sx={{ minWidth: 140 }}
+                        sx={{
+                          minWidth: { sm: 140 },
+                          width: { xs: "100%", sm: "auto" },
+                        }}
                       >
                         {t("settings:media.cover.remove")}
                       </Button>
