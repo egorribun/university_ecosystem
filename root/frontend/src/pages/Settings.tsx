@@ -148,6 +148,36 @@ const ModernSwitch = styled("span")(({ theme }) => {
   }
 })
 
+const SectionCard = styled(Paper)(({ theme }) => ({
+  backgroundColor: "var(--card-bg)",
+  borderRadius: 20,
+  padding: theme.spacing(2.75, 3),
+  border: "1px solid var(--glass-border)",
+  boxShadow: "none",
+  display: "flex",
+  flexDirection: "column",
+  gap: theme.spacing(1.5),
+}))
+
+const SectionTitle = styled(Typography)({
+  fontWeight: 600,
+  color: "var(--page-text)",
+})
+
+const SectionSubtitle = styled(Typography)({
+  color: "color-mix(in srgb, var(--page-text) 72%, transparent)",
+})
+
+const SessionStatus = styled("span")(({ theme }) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: theme.spacing(0.75),
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: 0.3,
+}))
+
 function SwitchControl({
   checked,
   disabled,
@@ -289,7 +319,7 @@ export default function Settings() {
 
   const sessionList = useMemo(
     () => (Array.isArray(sessions) ? sessions.filter((session) => !session.revoked_at) : []),
-    [sessions],
+    [sessions]
   )
 
   const revokeSessionMutation = useMutation({
@@ -656,6 +686,23 @@ export default function Settings() {
     }
   }
 
+  const removeCover = async () => {
+    try {
+      setCoverBusy(true)
+      await api.delete("/users/me/cover")
+      await refreshMe()
+      setCoverVersion(Date.now())
+      setSnack({ text: t("settings:media.cover.deleted"), sev: "success" })
+    } catch (error) {
+      setSnack({
+        text: resolveDetailMessage(error, t("settings:media.cover.deleteFailed")),
+        sev: "error",
+      })
+    } finally {
+      setCoverBusy(false)
+    }
+  }
+
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   return (
@@ -936,10 +983,10 @@ export default function Settings() {
 
         {tab === 1 && (
           <Stack
-            spacing={3}
+            spacing={2.5}
             sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
           >
-            <Box component="section">
+            <SectionCard component="section">
               <Stack
                 direction={{ xs: "column", sm: "row" }}
                 spacing={{ xs: 2, sm: 3 }}
@@ -956,22 +1003,19 @@ export default function Settings() {
                     referrerPolicy: "no-referrer",
                   }}
                 />
-                <Stack spacing={1} sx={{ minWidth: 0 }}>
+                <Stack spacing={1.25} sx={{ minWidth: 0, width: "100%" }}>
                   <Stack spacing={0.5}>
-                    <Typography variant="subtitle1" sx={{ color: "var(--page-text)", fontWeight: 600 }}>
+                    <SectionTitle variant="subtitle1">
                       {t("settings:media.avatar.title")}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                    >
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
                       {t("settings:media.avatar.subtitle")}
-                    </Typography>
+                    </SectionSubtitle>
                   </Stack>
-                  <Stack direction="row" spacing={1.5} flexWrap="wrap">
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
                     <Button
                       size="small"
-                      variant="outlined"
+                      variant="contained"
                       onClick={triggerAvatarPick}
                       disabled={avatarBusy}
                     >
@@ -979,13 +1023,29 @@ export default function Settings() {
                     </Button>
                     <Button
                       size="small"
-                      variant="text"
+                      variant="outlined"
                       color="error"
                       onClick={removeAvatar}
                       disabled={avatarBusy}
                     >
                       {t("settings:media.avatar.delete")}
                     </Button>
+                  </Stack>
+                  <Stack spacing={0.25}>
+                    {!!user?.full_name && (
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "var(--page-text)", fontWeight: 600 }}
+                      >
+                        {user.full_name}
+                      </Typography>
+                    )}
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                    >
+                      {user?.username ? `@${user.username}` : user?.email}
+                    </Typography>
                   </Stack>
                 </Stack>
               </Stack>
@@ -999,11 +1059,9 @@ export default function Settings() {
                   if (f) uploadAvatar(f)
                 }}
               />
-            </Box>
+            </SectionCard>
 
-            <Divider sx={{ borderColor: "var(--glass-border)" }} />
-
-            <Box component="section">
+            <SectionCard component="section">
               <Stack
                 direction={{ xs: "column", sm: "row" }}
                 spacing={{ xs: 2, sm: 3 }}
@@ -1018,30 +1076,41 @@ export default function Settings() {
                     border: "1px solid var(--glass-border)",
                     background: coverSrc
                       ? `url(${coverSrc}) center/cover no-repeat`
-                      : "var(--card-bg)",
+                      : "color-mix(in srgb, var(--page-text) 6%, transparent)",
                   }}
                 />
-                <Stack spacing={1} sx={{ minWidth: 0 }}>
+                <Stack spacing={1} sx={{ minWidth: 0, width: "100%" }}>
                   <Stack spacing={0.5}>
-                    <Typography variant="subtitle1" sx={{ color: "var(--page-text)", fontWeight: 600 }}>
+                    <SectionTitle variant="subtitle1">
                       {t("settings:media.cover.title")}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                    >
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
                       {t("settings:media.cover.recommendation")}
-                    </Typography>
+                    </SectionSubtitle>
                   </Stack>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={triggerCoverPick}
-                    disabled={coverBusy}
-                    sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
-                  >
-                    {t("settings:media.cover.change")}
-                  </Button>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={triggerCoverPick}
+                      disabled={coverBusy}
+                      sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
+                    >
+                      {t("settings:media.cover.change")}
+                    </Button>
+                    {coverUrl && (
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="error"
+                        onClick={removeCover}
+                        disabled={coverBusy}
+                        sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
+                      >
+                        {t("settings:media.cover.remove")}
+                      </Button>
+                    )}
+                  </Stack>
                 </Stack>
               </Stack>
               <input
@@ -1054,27 +1123,22 @@ export default function Settings() {
                   if (f) uploadCover(f)
                 }}
               />
-            </Box>
+            </SectionCard>
 
-            <Divider sx={{ borderColor: "var(--glass-border)" }} />
-
-            <Box component="section">
+            <SectionCard component="section">
               <Stack
                 direction={{ xs: "column", sm: "row" }}
                 spacing={1.5}
                 alignItems={{ sm: "center" }}
                 justifyContent="space-between"
               >
-                <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                  <Typography variant="subtitle1" sx={{ color: "var(--page-text)", fontWeight: 600 }}>
+                <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                  <SectionTitle variant="subtitle1">
                     {t("settings:account.profile.title")}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
                     {t("settings:account.profile.subtitle")}
-                  </Typography>
+                  </SectionSubtitle>
                 </Stack>
                 <Button
                   size="small"
@@ -1084,39 +1148,32 @@ export default function Settings() {
                   {t("common:buttons.edit")}
                 </Button>
               </Stack>
-            </Box>
+            </SectionCard>
 
-            <Divider sx={{ borderColor: "var(--glass-border)" }} />
-
-            <Box component="section">
-              <Typography variant="h6" sx={{ color: "var(--page-text)", mb: 0.75 }}>
-                {t("settings:sessions.title")}
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
-              >
-                {t("settings:sessions.subtitle")}
-              </Typography>
+            <SectionCard component="section">
+              <Stack spacing={1}>
+                <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
+                <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
+              </Stack>
 
               {sessionsFetching ? (
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }}>
+                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mt: 1.5 }}>
                   <CircularProgress size={18} />
                   <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
                     {t("settings:sessions.loading")}
                   </Typography>
                 </Stack>
               ) : sessionsErrorMessage ? (
-                <Alert severity="error" variant="outlined" sx={{ mt: 2 }}>
+                <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
                   {sessionsErrorMessage}
                 </Alert>
               ) : sessionList.length === 0 ? (
-                <Typography variant="body2" sx={{ mt: 2, color: "var(--page-text)" }}>
+                <Typography variant="body2" sx={{ mt: 1.5, color: "var(--page-text)" }}>
                   {t("settings:sessions.empty")}
                 </Typography>
               ) : (
-                <Stack spacing={1.75} sx={{ mt: 2 }}>
-                  {sessionList.map((session, index) => {
+                <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                  {sessionList.map((session) => {
                     const lastSeen = session.last_seen_at ?? session.created_at
                     const lastSeenText = t("settings:sessions.lastSeen.value", {
                       value: formatSessionTimestamp(lastSeen),
@@ -1130,7 +1187,7 @@ export default function Settings() {
                       : t("settings:sessions.status.active")
                     const statusColor = session.is_current
                       ? "var(--link-color)"
-                      : "color-mix(in srgb, var(--page-text) 70%, transparent)"
+                      : "color-mix(in srgb, var(--page-text) 68%, transparent)"
                     const disableRevoke = session.is_current || revokeSessionMutation.isPending
 
                     return (
@@ -1140,14 +1197,6 @@ export default function Settings() {
                         spacing={{ xs: 1, sm: 2 }}
                         alignItems={{ sm: "center" }}
                         justifyContent="space-between"
-                        sx={{
-                          borderBottom: "1px solid var(--glass-border)",
-                          pb: 1.5,
-                          mb: 0.5,
-                          ...(index === sessionList.length - 1
-                            ? { borderBottom: "none", pb: 0, mb: 0 }
-                            : {}),
-                        }}
                       >
                         <Box sx={{ minWidth: 0 }}>
                           <Typography
@@ -1167,10 +1216,20 @@ export default function Settings() {
                             {details}
                           </Typography>
                         </Box>
-                        <Stack direction="row" spacing={1.25} alignItems="center">
-                          <Typography variant="caption" sx={{ color: statusColor, fontWeight: 600 }}>
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <SessionStatus style={{ color: statusColor }}>
+                            <Box
+                              component="span"
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                backgroundColor: statusColor,
+                                display: "inline-block",
+                              }}
+                            />
                             {statusLabel}
-                          </Typography>
+                          </SessionStatus>
                           {!session.is_current && (
                             <Button
                               size="small"
@@ -1188,24 +1247,27 @@ export default function Settings() {
                   })}
                 </Stack>
               )}
-            </Box>
+            </SectionCard>
 
-            <Divider sx={{ borderColor: "var(--glass-border)" }} />
-
-            <Box component="section" sx={{ pt: 0.5 }}>
+            <SectionCard component="section">
+              <Stack spacing={1}>
+                <SectionTitle variant="subtitle1">
+                  {t("settings:account.logout.title")}
+                </SectionTitle>
+                <SectionSubtitle variant="body2">
+                  {t("settings:account.logout.subtitle")}
+                </SectionSubtitle>
+              </Stack>
               <Button
                 size="small"
-                variant="text"
+                variant="outlined"
                 color="error"
-                onClick={async () => {
-                  setConfirmLogout(false)
-                  await logout()
-                }}
-                sx={{ px: 0, alignSelf: "flex-start" }}
+                onClick={() => setConfirmLogout(true)}
+                sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
               >
                 {t("settings:account.logout.button")}
               </Button>
-            </Box>
+            </SectionCard>
           </Stack>
         )}
 
