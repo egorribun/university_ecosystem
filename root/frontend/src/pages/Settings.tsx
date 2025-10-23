@@ -1077,29 +1077,13 @@ export default function Settings() {
                       <SectionTitle variant="subtitle1">
                         {t("settings:media.avatar.title")}
                       </SectionTitle>
-                      {!!user?.full_name && (
-                        <Typography
-                          variant="body2"
-                          sx={{ color: "var(--page-text)", fontWeight: 600 }}
-                        >
-                          {user.full_name}
-                        </Typography>
-                      )}
-                      {!!user?.email && (
-                        <Typography
-                          variant="body2"
-                          sx={{ color: "color-mix(in srgb, var(--page-text) 65%, transparent)" }}
-                        >
-                          {user.email}
-                        </Typography>
-                      )}
                     </Stack>
                   </Stack>
                   <Stack
                     direction={{ xs: "column", sm: "row" }}
                     spacing={1}
                     alignItems={{ sm: "center" }}
-                    justifyContent="flex-end"
+                    justifyContent={{ xs: "flex-start", sm: "flex-start" }}
                     flexWrap="wrap"
                   >
                     <Button
@@ -1164,7 +1148,7 @@ export default function Settings() {
                     direction={{ xs: "column", sm: "row" }}
                     spacing={1}
                     alignItems={{ sm: "center" }}
-                    justifyContent="flex-end"
+                    justifyContent={{ xs: "flex-start", sm: "flex-start" }}
                     flexWrap="wrap"
                   >
                     <Button
@@ -1179,7 +1163,7 @@ export default function Settings() {
                     {coverUrl && (
                       <Button
                         size="small"
-                        variant="text"
+                        variant="outlined"
                         color="error"
                         onClick={removeCover}
                         disabled={coverBusy}
