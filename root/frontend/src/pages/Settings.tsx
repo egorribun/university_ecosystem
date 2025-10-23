@@ -1043,7 +1043,11 @@ export default function Settings() {
             sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
           >
             <SectionCard component="section">
-              <Stack component="ul" spacing={2.5} sx={{ width: "100%", listStyle: "none", p: 0, m: 0 }}>
+              <Stack
+                component="ul"
+                spacing={2.5}
+                sx={{ width: "100%", listStyle: "none", p: 0, m: 0 }}
+              >
                 <Stack
                   component="li"
                   direction={{ xs: "column", sm: "row" }}
@@ -1270,7 +1274,8 @@ export default function Settings() {
                       : isRevoked
                         ? t("settings:sessions.status.revoked")
                         : t("settings:sessions.status.active")
-                    const disableRevoke = session.is_current || isRevoked || revokeSessionMutation.isPending
+                    const disableRevoke =
+                      session.is_current || isRevoked || revokeSessionMutation.isPending
 
                     return (
                       <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
