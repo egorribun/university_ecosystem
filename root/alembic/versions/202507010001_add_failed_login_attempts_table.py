@@ -1,8 +1,8 @@
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 revision: str = "202507010001"
 down_revision: Union[str, None] = "202506200001"
@@ -47,8 +47,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index(
-        "ix_failed_login_attempts_email_attempted_at", table_name="failed_login_attempts"
+        "ix_failed_login_attempts_email_attempted_at",
+        table_name="failed_login_attempts",
     )
-    op.drop_index("ix_failed_login_attempts_attempted_at", table_name="failed_login_attempts")
+    op.drop_index(
+        "ix_failed_login_attempts_attempted_at", table_name="failed_login_attempts"
+    )
     op.drop_index("ix_failed_login_attempts_email", table_name="failed_login_attempts")
     op.drop_table("failed_login_attempts")

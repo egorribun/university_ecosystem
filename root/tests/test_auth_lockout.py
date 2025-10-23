@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.localization import translate
 from app.models.models import FailedLoginAttempt
 
-
 pytestmark = pytest.mark.anyio("asyncio")
 
 _HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}

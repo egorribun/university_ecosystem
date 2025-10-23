@@ -154,7 +154,9 @@ def _calculate_lock_until(
             attempt_time = _normalize_timestamp(attempts[-1].attempted_at)
             candidate = attempt_time + timedelta(seconds=seconds)
             if candidate > now:
-                lock_until = candidate if lock_until is None else max(lock_until, candidate)
+                lock_until = (
+                    candidate if lock_until is None else max(lock_until, candidate)
+                )
     return lock_until
 
 
@@ -184,7 +186,9 @@ async def _register_failed_attempt(
     lock_until = _calculate_lock_until(updated, now)
     await db.commit()
     triggered = bool(
-        lock_until and (previous_lock is None or previous_lock <= now) and lock_until > now
+        lock_until
+        and (previous_lock is None or previous_lock <= now)
+        and lock_until > now
     )
     return lock_until, triggered, len(updated)
 
