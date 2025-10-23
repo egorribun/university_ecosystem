@@ -35,6 +35,7 @@ import {
 } from "@mui/material"
 import dayjs from "dayjs"
 import { useColorScheme, styled, alpha, darken } from "@mui/material/styles"
+import type { PaperProps } from "@mui/material/Paper"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
 import LightModeIcon from "@mui/icons-material/LightMode"
@@ -148,7 +149,7 @@ const ModernSwitch = styled("span")(({ theme }) => {
   }
 })
 
-const SectionCard = styled(Paper)(({ theme }) => ({
+const SectionCard = styled((props: PaperProps) => <Paper {...props} />)(({ theme }) => ({
   backgroundColor: "var(--card-bg)",
   borderRadius: 20,
   padding: theme.spacing(2.75, 3),
@@ -1040,12 +1041,14 @@ export default function Settings() {
                         {user.full_name}
                       </Typography>
                     )}
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                    >
-                      {user?.username ? `@${user.username}` : user?.email}
-                    </Typography>
+                    {!!user?.email && (
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                      >
+                        {user.email}
+                      </Typography>
+                    )}
                   </Stack>
                 </Stack>
               </Stack>
