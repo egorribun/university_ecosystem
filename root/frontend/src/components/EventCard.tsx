@@ -492,9 +492,6 @@ const EventCardComponent: FC<EventCardProps> = ({
         overflow: "hidden",
         ...cardHoverSx({
           disabled: editOpen || qrOpen,
-          hoverTransform: null,
-          activeTransform: null,
-          hoverBoxShadow: "0 18px 42px rgba(13,71,161,0.18)",
           extraTransitions: ["max-width 0.25s ease"],
         }),
         "&:focus-visible": {
@@ -584,16 +581,10 @@ const EventCardComponent: FC<EventCardProps> = ({
             overflow: "hidden",
             position: "relative",
             background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
-            transition: "box-shadow 0.25s ease, filter 0.25s ease",
+            transition: "transform 0.25s ease",
+            "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
             display: "flex",
             alignItems: "stretch",
-            boxShadow: "0 6px 18px rgba(12,36,99,0.08)",
-            "&:hover": {
-              boxShadow: isMobile
-                ? "0 6px 18px rgba(12,36,99,0.08)"
-                : "0 18px 40px rgba(12,36,99,0.18)",
-              filter: isMobile ? "none" : "brightness(1.03)",
-            },
             "& img": {
               display: "block",
               width: "100%",
