@@ -194,6 +194,23 @@ const SessionItem = styled("div")(({ theme }) => ({
         ? alpha(theme.palette.primary.main, 0.18)
         : alpha(theme.palette.primary.main, 0.08),
   },
+  '&[data-revoked="true"]': {
+    opacity: 0.72,
+    borderStyle: "dashed",
+    borderColor: alpha(theme.palette.text.primary, 0.18),
+    backgroundColor:
+      theme.palette.mode === "dark"
+        ? alpha(theme.palette.text.primary, 0.06)
+        : alpha(theme.palette.text.primary, 0.04),
+  },
+  '&[data-revoked="true"]:hover': {
+    boxShadow: "none",
+    borderColor: alpha(theme.palette.text.primary, 0.18),
+    backgroundColor:
+      theme.palette.mode === "dark"
+        ? alpha(theme.palette.text.primary, 0.06)
+        : alpha(theme.palette.text.primary, 0.04),
+  },
 }))
 
 function SwitchControl({
@@ -322,17 +339,41 @@ export default function Settings() {
   }, [])
 
   const {
-    data: activeSessions = [],
+    data: sessionsData,
     isFetching: sessionsFetching,
     isError: sessionsIsError,
     error: sessionsError,
-  } = useQuery<ActiveSession[], unknown, ActiveSession[]>({
+  } = useQuery<ActiveSession[], unknown>({
     queryKey: sessionsKey,
     queryFn: fetchSessions,
     enabled: tab === 1 && Boolean(user),
     staleTime: 30_000,
-    select: (data) => data.filter((session) => !session.revoked_at),
   })
+
+  const sessions = Array.isArray(sessionsData) ? sessionsData : []
+
+  const sortedSessions = useMemo(() => {
+    const weight = (session: ActiveSession) => {
+      if (session.is_current) return 0
+      if (session.revoked_at) return 2
+      return 1
+    }
+
+    const timeValue = (session: ActiveSession) => {
+      const source = session.last_seen_at ?? session.created_at ?? null
+      if (!source) return 0
+      const parsed = dayjs(source)
+      return parsed.isValid() ? parsed.valueOf() : 0
+    }
+
+    if (!Array.isArray(sessions)) return []
+
+    return [...sessions].sort((a, b) => {
+      const weightDiff = weight(a) - weight(b)
+      if (weightDiff !== 0) return weightDiff
+      return timeValue(b) - timeValue(a)
+    })
+  }, [sessions])
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
@@ -601,9 +642,10 @@ export default function Settings() {
       try {
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
-        queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (prev) =>
-          Array.isArray(prev) ? prev.filter((session) => session.id !== result.id) : []
-        )
+        queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (prev) => {
+          if (!Array.isArray(prev)) return [result]
+          return prev.map((session) => (session.id === result.id ? result : session))
+        })
         if (result?.is_current) {
           await logout()
         }
@@ -1001,12 +1043,14 @@ export default function Settings() {
             sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
           >
             <SectionCard component="section">
-              <Stack spacing={2.5} sx={{ width: "100%" }}>
+              <Stack component="ul" spacing={2.5} sx={{ width: "100%", listStyle: "none", p: 0, m: 0 }}>
                 <Stack
+                  component="li"
                   direction={{ xs: "column", sm: "row" }}
                   spacing={{ xs: 1.5, sm: 2.5 }}
                   alignItems={{ xs: "flex-start", sm: "center" }}
                   justifyContent="space-between"
+                  sx={{ listStyle: "none" }}
                 >
                   <Stack
                     direction="row"
@@ -1076,13 +1120,19 @@ export default function Settings() {
                   </Stack>
                 </Stack>
 
-                <Divider flexItem sx={{ borderColor: "var(--glass-border)" }} />
+                <Divider
+                  component="li"
+                  flexItem
+                  sx={{ borderColor: "var(--glass-border)", listStyle: "none" }}
+                />
 
                 <Stack
+                  component="li"
                   direction={{ xs: "column", sm: "row" }}
                   spacing={{ xs: 1.5, sm: 2.5 }}
                   alignItems={{ xs: "flex-start", sm: "center" }}
                   justifyContent="space-between"
+                  sx={{ listStyle: "none" }}
                 >
                   <Stack
                     direction="row"
@@ -1196,33 +1246,41 @@ export default function Settings() {
                 <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
                   {sessionsErrorMessage}
                 </Alert>
-              ) : activeSessions.length === 0 ? (
+              ) : sessions.length === 0 ? (
                 <Typography variant="body2" sx={{ mt: 1.5, color: "var(--page-text)" }}>
                   {t("settings:sessions.empty")}
                 </Typography>
               ) : (
                 <Stack spacing={1.5} sx={{ mt: 1.5 }}>
-                  {activeSessions.map((session) => {
+                  {sortedSessions.map((session) => {
+                    const isRevoked = Boolean(session.revoked_at)
                     const lastSeen = session.last_seen_at ?? session.created_at
-                    const lastSeenText = t("settings:sessions.lastSeen.value", {
-                      value: formatSessionTimestamp(lastSeen),
+                    const timelineSource = session.revoked_at ?? lastSeen
+                    const timeline = t("settings:sessions.lastSeen.value", {
+                      value: formatSessionTimestamp(timelineSource),
                     })
                     const ipLabel = session.ip_address
                       ? t("settings:sessions.ipAddress", { ip: session.ip_address })
                       : t("settings:sessions.ipUnknown")
-                    const details = `${ipLabel} • ${lastSeenText}`
+                    const meta = [ipLabel, timeline]
+                    if (isRevoked) meta.push(t("settings:sessions.status.revoked"))
+                    const details = meta.join(" • ")
                     const statusLabel = session.is_current
                       ? t("settings:sessions.status.current")
-                      : t("settings:sessions.status.active")
-                    const disableRevoke = session.is_current || revokeSessionMutation.isPending
+                      : isRevoked
+                        ? t("settings:sessions.status.revoked")
+                        : t("settings:sessions.status.active")
+                    const disableRevoke = session.is_current || isRevoked || revokeSessionMutation.isPending
 
                     return (
-                      <SessionItem key={session.id}>
+                      <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography
                             variant="body2"
                             sx={{
-                              color: "var(--page-text)",
+                              color: isRevoked
+                                ? "color-mix(in srgb, var(--page-text) 65%, transparent)"
+                                : "var(--page-text)",
                               fontWeight: session.is_current ? 600 : 500,
                               wordBreak: "break-word",
                             }}
@@ -1231,7 +1289,12 @@ export default function Settings() {
                           </Typography>
                           <Typography
                             variant="caption"
-                            sx={{ color: "color-mix(in srgb, var(--page-text) 68%, transparent)" }}
+                            sx={{
+                              color: isRevoked
+                                ? "color-mix(in srgb, var(--page-text) 58%, transparent)"
+                                : "color-mix(in srgb, var(--page-text) 68%, transparent)",
+                              fontStyle: isRevoked ? "italic" : "normal",
+                            }}
                           >
                             {details}
                           </Typography>
@@ -1251,18 +1314,24 @@ export default function Settings() {
                               fontWeight: 600,
                               color: session.is_current
                                 ? "var(--link-color)"
-                                : "color-mix(in srgb, var(--page-text) 72%, transparent)",
+                                : isRevoked
+                                  ? "color-mix(in srgb, var(--page-text) 60%, transparent)"
+                                  : "color-mix(in srgb, var(--page-text) 72%, transparent)",
                               backgroundColor: session.is_current
                                 ? alpha(theme.palette.primary.main, 0.12)
-                                : alpha(theme.palette.text.primary, 0.06),
+                                : isRevoked
+                                  ? "transparent"
+                                  : alpha(theme.palette.text.primary, 0.06),
                               border: "1px solid",
                               borderColor: session.is_current
                                 ? alpha(theme.palette.primary.main, 0.32)
-                                : alpha(theme.palette.text.primary, 0.12),
+                                : isRevoked
+                                  ? alpha(theme.palette.text.primary, 0.16)
+                                  : alpha(theme.palette.text.primary, 0.12),
                             })}
                             variant="outlined"
                           />
-                          {!session.is_current && (
+                          {!session.is_current && !isRevoked && (
                             <Button
                               size="small"
                               variant="text"
