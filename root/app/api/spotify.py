@@ -272,14 +272,40 @@ async def now_playing(
             return data
         return Response(status_code=204)
 
+    async def _request(access_token: str) -> httpx.Response:
+        async with httpx.AsyncClient(timeout=15) as client:
+            return await client.get(
+                "https://api.spotify.com/v1/me/player/currently-playing",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+
     token = await _ensure_access_token(db, user, locale=locale)
     if not token:
         return _as_response(_fallback_now_playing(user))
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(
-            "https://api.spotify.com/v1/me/player/currently-playing",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+
+    r = await _request(token)
+    if r.status_code == 401:
+        # Access tokens occasionally expire slightly earlier than advertised or
+        # get invalidated server-side. Instead of forcing the user to reconnect
+        # immediately, attempt a single refresh and retry before giving up.
+        user.spotify_access_token = None
+        user.spotify_token_expires_at = _now_utc() - timedelta(seconds=30)
+        try:
+            refreshed = await _ensure_access_token(db, user, locale=locale)
+        except HTTPException:
+            # ``_ensure_access_token`` already disconnected the user and raised
+            # an appropriate error; propagate it unchanged.
+            raise
+        if not refreshed:
+            return _as_response(_fallback_now_playing(user))
+        r = await _request(refreshed)
+        if r.status_code == 401:
+            _disconnect_user(user, clear_refresh=True)
+            await db.commit()
+            raise HTTPException(
+                status_code=401,
+                detail=translate("errors.spotify.reconnect_required", locale=locale),
+            )
     if r.status_code == 204:
         user.spotify_is_playing = False
         user.spotify_last_checked_at = _now_utc()
