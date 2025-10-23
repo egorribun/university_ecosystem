@@ -430,6 +430,33 @@ const Events = () => {
           gap,
           minHeight: "180px",
           transition: "grid-template-columns 0.28s ease, gap 0.28s ease",
+          position: "relative",
+          pb: { xs: 2, sm: 3 },
+          "& .event-card": {
+            border: "1px solid var(--glass-border)",
+            backdropFilter: "blur(8px)",
+            boxShadow: {
+              xs: "0 18px 40px rgba(15, 23, 42, 0.24) !important",
+              md: "0 26px 55px rgba(15, 23, 42, 0.22) !important",
+            },
+            backgroundImage:
+              "linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(0, 118, 255, 0.08))",
+            transition:
+              "box-shadow 0.28s ease, border-color 0.28s ease, background 0.28s ease !important",
+          },
+          "& .event-card:hover": {
+            transform: "none !important",
+            boxShadow: {
+              xs: "0 24px 52px rgba(15, 23, 42, 0.28) !important",
+              md: "0 32px 60px rgba(15, 23, 42, 0.3) !important",
+            },
+            borderColor: "rgba(0, 118, 255, 0.45)",
+            backgroundImage:
+              "linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(0, 118, 255, 0.12))",
+          },
+          "& .event-card:active": {
+            transform: "none !important",
+          },
         }}
       >
         {loading &&
@@ -477,13 +504,34 @@ const Events = () => {
       <PageFadeIn>
         <Box
           sx={{
+            position: "relative",
             width: "100vw",
             minHeight: "100vh",
             bgcolor: "var(--page-bg)",
             color: "var(--page-text)",
-            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-            py: { xs: 0.5, sm: 0.5, md: 0.5, lg: 0.5 },
+            pl: { xs: 2.5, sm: 4, md: 5.5, lg: 8 },
+            pr: { xs: 3.5, sm: 5.5, md: 6.5, lg: 9 },
+            py: { xs: 1.5, sm: 2, md: 2.5, lg: 3 },
+            overflow: "hidden",
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              inset: "-40% -20% 10% -20%",
+              background:
+                "radial-gradient(60% 60% at 80% 10%, rgba(0, 118, 255, 0.22), transparent), radial-gradient(45% 45% at 10% 80%, rgba(46, 213, 166, 0.18), transparent)",
+              opacity: { xs: 0.55, sm: 0.6 },
+              pointerEvents: "none",
+              zIndex: -2,
+            },
+            "&::after": {
+              content: '""',
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(180deg, rgba(7, 18, 39, 0.22) 0%, rgba(7, 18, 39, 0) 45%), linear-gradient(140deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 55%)",
+              pointerEvents: "none",
+              zIndex: -1,
+            },
           }}
         >
           <Box
@@ -531,7 +579,15 @@ const Events = () => {
             variant={isMobile ? "scrollable" : "standard"}
             scrollButtons={isMobile ? "auto" : false}
             sx={{
+              position: "relative",
               minHeight: 45,
+              px: { xs: 1, md: 1.5 },
+              py: { xs: 0.75, md: 1 },
+              borderRadius: 3,
+              background: "linear-gradient(135deg, rgba(0, 118, 255, 0.12), rgba(0, 118, 255, 0))",
+              boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
+              border: "1px solid var(--glass-border)",
+              backdropFilter: "blur(16px)",
               "& .MuiTab-root": {
                 color: "var(--page-text)",
                 fontWeight: 600,
@@ -574,7 +630,18 @@ const Events = () => {
             alignItems="center"
             mb={isMobile ? 2 : 5}
             mt={isMobile ? 2 : 3}
-            sx={{ flexWrap: "wrap" }}
+            sx={{
+              flexWrap: "wrap",
+              width: "100%",
+              px: { xs: 1.5, sm: 2, md: 2.5 },
+              py: { xs: 1.25, sm: 1.5, md: 1.75 },
+              borderRadius: 3,
+              background:
+                "linear-gradient(135deg, rgba(14, 116, 144, 0.12), rgba(14, 116, 144, 0))",
+              border: "1px solid var(--glass-border)",
+              boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
+              backdropFilter: "blur(14px)",
+            }}
           >
             <TextField
               label={t("events:filters.search")}
