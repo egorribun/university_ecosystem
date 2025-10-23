@@ -584,8 +584,7 @@ const Events = () => {
               px: { xs: 1, md: 1.5 },
               py: { xs: 0.75, md: 1 },
               borderRadius: 3,
-              background:
-                "linear-gradient(135deg, rgba(0, 118, 255, 0.12), rgba(0, 118, 255, 0))",
+              background: "linear-gradient(135deg, rgba(0, 118, 255, 0.12), rgba(0, 118, 255, 0))",
               boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
               border: "1px solid var(--glass-border)",
               backdropFilter: "blur(16px)",
