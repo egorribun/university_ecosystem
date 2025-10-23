@@ -906,11 +906,7 @@ export default function Settings() {
                 const disableRevoke =
                   session.is_current || isRevoked || revokeSessionMutation.isPending
                 return (
-                  <Stack
-                    key={session.id}
-                    spacing={0.75}
-                    sx={{ opacity: isRevoked ? 0.65 : 1 }}
-                  >
+                  <Stack key={session.id} spacing={0.75} sx={{ opacity: isRevoked ? 0.65 : 1 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="baseline">
                       <Typography variant="body1" fontWeight={session.is_current ? 600 : 500}>
                         {session.user_agent || t("settings:sessions.unknownDevice")}
