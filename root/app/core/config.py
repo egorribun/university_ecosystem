@@ -155,6 +155,8 @@ class Settings(BaseSettings):
     notifications_queue_enqueue_timeout_seconds: float = 0.5
     notifications_queue_in_memory_only: bool = False
     session_cleanup_interval_seconds: int = 900
+    password_reset_cleanup_interval_seconds: int = 3_600
+    password_reset_cleanup_retention_minutes: int = 45
     stories_cleanup_enabled: bool = True
     stories_retention_cleanup_interval_seconds: int = 86_400
     event_file_allowed_mime_types: str | list[str] = (

@@ -36,6 +36,11 @@ from app.services.notifications_retention import (
     NotificationsRetentionConfig,
     start_notifications_retention_scheduler,
 )
+from app.services.password_reset_cleanup import (
+    PasswordResetCleanupConfig,
+    cleanup_stale_password_reset_tokens,
+    start_password_reset_cleanup_scheduler,
+)
 from app.services.session_cleanup import (
     SessionCleanupConfig,
     cleanup_expired_sessions,
@@ -63,6 +68,7 @@ async def lifespan(app: FastAPI):
     stop_notifications_retention = None
     stop_session_cleanup = None
     stop_story_cleanup = None
+    stop_password_reset_cleanup = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
             poll_seconds=settings.notifications_scheduler_poll_seconds,
@@ -74,6 +80,9 @@ async def lifespan(app: FastAPI):
     )
     await cleanup_expired_sessions()
     await cleanup_expired_stories()
+    await cleanup_stale_password_reset_tokens(
+        retention_minutes=settings.password_reset_cleanup_retention_minutes
+    )
     if (
         settings.notifications_retention_days > 0
         and settings.notifications_retention_cleanup_interval_seconds > 0
@@ -88,6 +97,13 @@ async def lifespan(app: FastAPI):
         stop_session_cleanup = await start_session_cleanup_scheduler(
             config=SessionCleanupConfig(
                 interval_seconds=settings.session_cleanup_interval_seconds
+            )
+        )
+    if settings.password_reset_cleanup_interval_seconds > 0:
+        stop_password_reset_cleanup = await start_password_reset_cleanup_scheduler(
+            config=PasswordResetCleanupConfig(
+                interval_seconds=settings.password_reset_cleanup_interval_seconds,
+                retention_minutes=settings.password_reset_cleanup_retention_minutes,
             )
         )
     if (
@@ -110,6 +126,8 @@ async def lifespan(app: FastAPI):
             await stop_session_cleanup()
         if stop_story_cleanup is not None:
             await stop_story_cleanup()
+        if stop_password_reset_cleanup is not None:
+            await stop_password_reset_cleanup()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
