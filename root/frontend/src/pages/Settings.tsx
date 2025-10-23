@@ -1083,9 +1083,9 @@ export default function Settings() {
                     direction={{ xs: "column", sm: "row" }}
                     spacing={1}
                     alignItems={{ sm: "center" }}
-                    justifyContent={{ xs: "flex-start", sm: "flex-start" }}
+                    justifyContent={{ xs: "flex-start", sm: "flex-end" }}
                     flexWrap="wrap"
-                    sx={{ width: "100%" }}
+                    sx={{ width: { xs: "100%", sm: "auto" } }}
                   >
                     <Button
                       size="small"
@@ -1155,9 +1155,9 @@ export default function Settings() {
                     direction={{ xs: "column", sm: "row" }}
                     spacing={1}
                     alignItems={{ sm: "center" }}
-                    justifyContent={{ xs: "flex-start", sm: "flex-start" }}
+                    justifyContent={{ xs: "flex-start", sm: "flex-end" }}
                     flexWrap="wrap"
-                    sx={{ width: "100%" }}
+                    sx={{ width: { xs: "100%", sm: "auto" } }}
                   >
                     <Button
                       size="small"
