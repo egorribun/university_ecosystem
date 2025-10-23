@@ -16,8 +16,6 @@ import {
   Tabs,
   Tab,
   Stack,
-  List,
-  ListItem,
   Typography,
   Button,
   Chip,
@@ -171,14 +169,22 @@ const SectionSubtitle = styled(Typography)({
   color: "color-mix(in srgb, var(--page-text) 72%, transparent)",
 })
 
-const SessionStatus = styled("span")(({ theme }) => ({
-  display: "inline-flex",
+const SessionItem = styled("div")(({ theme }) => ({
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: theme.spacing(1.5),
+  padding: theme.spacing(1.5),
+  borderRadius: 18,
+  border: "1px solid var(--glass-border)",
+  backgroundColor:
+    theme.palette.mode === "dark"
+      ? alpha("#fff", 0.035)
+      : alpha("#000", 0.035),
   alignItems: "center",
-  gap: theme.spacing(0.75),
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: 0.3,
+  [theme.breakpoints.down("sm")]: {
+    gridTemplateColumns: "1fr",
+    alignItems: "flex-start",
+  },
 }))
 
 function SwitchControl({
@@ -299,9 +305,6 @@ export default function Settings() {
 
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const [recentlyRevokedIds, setRecentlyRevokedIds] = useState<number[]>([])
-  const recentlyRevokedTimeouts = useRef(new Map<number, number>())
-
   const sessionsKey = useMemo(() => ["auth", "sessions", user?.id ?? "me"], [user?.id])
 
   const fetchSessions = useCallback(async () => {
@@ -325,11 +328,8 @@ export default function Settings() {
   const sessionList = useMemo(() => (Array.isArray(sessions) ? sessions : []), [sessions])
 
   const visibleSessions = useMemo(
-    () =>
-      sessionList.filter(
-        (session) => !session.revoked_at || recentlyRevokedIds.includes(session.id)
-      ),
-    [recentlyRevokedIds, sessionList]
+    () => sessionList.filter((session) => !session.revoked_at),
+    [sessionList]
   )
 
   const revokeSessionMutation = useMutation({
@@ -594,33 +594,11 @@ export default function Settings() {
     return fallback
   }, [])
 
-  const markSessionRecentlyRevoked = useCallback((sessionId: number) => {
-    setRecentlyRevokedIds((prev) => (prev.includes(sessionId) ? prev : [...prev, sessionId]))
-    const existing = recentlyRevokedTimeouts.current.get(sessionId)
-    if (existing) {
-      window.clearTimeout(existing)
-    }
-    const timeout = window.setTimeout(() => {
-      setRecentlyRevokedIds((prev) => prev.filter((id) => id !== sessionId))
-      recentlyRevokedTimeouts.current.delete(sessionId)
-    }, 6000)
-    recentlyRevokedTimeouts.current.set(sessionId, timeout)
-  }, [])
-
-  useEffect(
-    () => () => {
-      recentlyRevokedTimeouts.current.forEach((timeout) => window.clearTimeout(timeout))
-      recentlyRevokedTimeouts.current.clear()
-    },
-    []
-  )
-
   const handleRevokeSession = useCallback(
     async (sessionId: number) => {
       try {
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
-        markSessionRecentlyRevoked(sessionId)
         await refetchSessions()
         if (result?.is_current) {
           await logout()
@@ -632,14 +610,7 @@ export default function Settings() {
         })
       }
     },
-    [
-      logout,
-      markSessionRecentlyRevoked,
-      refetchSessions,
-      resolveDetailMessage,
-      revokeSessionMutation,
-      t,
-    ]
+    [logout, refetchSessions, resolveDetailMessage, revokeSessionMutation, t]
   )
 
   const formatSessionTimestamp = useCallback(
@@ -1026,24 +997,11 @@ export default function Settings() {
             sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
           >
             <SectionCard component="section">
-              <List
-                disablePadding
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2.5,
-                  listStyle: "none",
-                }}
-              >
-                <ListItem
-                  disableGutters
-                  sx={{
-                    display: "flex",
-                    flexDirection: { xs: "column", sm: "row" },
-                    alignItems: { xs: "flex-start", sm: "center" },
-                    gap: { xs: 2, sm: 3 },
-                    padding: 0,
-                  }}
+              <Stack spacing={2} sx={{ width: "100%" }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={{ xs: 1.5, sm: 2.5 }}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
                 >
                   <Avatar
                     src={avatarSrc}
@@ -1056,74 +1014,68 @@ export default function Settings() {
                       referrerPolicy: "no-referrer",
                     }}
                   />
-                  <Stack spacing={1.25} sx={{ minWidth: 0, width: "100%" }}>
-                    <Stack spacing={0.5}>
-                      <SectionTitle variant="subtitle1">
-                        {t("settings:media.avatar.title")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:media.avatar.subtitle")}
-                      </SectionSubtitle>
-                    </Stack>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={triggerAvatarPick}
-                        disabled={avatarBusy}
+                  <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                    <SectionTitle variant="subtitle1">
+                      {t("settings:media.avatar.title")}
+                    </SectionTitle>
+                    {!!user?.full_name && (
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "var(--page-text)", fontWeight: 600 }}
                       >
-                        {t("settings:media.avatar.change")}
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={removeAvatar}
-                        disabled={avatarBusy}
+                        {user.full_name}
+                      </Typography>
+                    )}
+                    {!!user?.email && (
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "color-mix(in srgb, var(--page-text) 65%, transparent)" }}
                       >
-                        {t("settings:media.avatar.delete")}
-                      </Button>
-                    </Stack>
-                    <Stack spacing={0.25}>
-                      {!!user?.full_name && (
-                        <Typography
-                          variant="body2"
-                          sx={{ color: "var(--page-text)", fontWeight: 600 }}
-                        >
-                          {user.full_name}
-                        </Typography>
-                      )}
-                      {!!user?.email && (
-                        <Typography
-                          variant="body2"
-                          sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                        >
-                          {user.email}
-                        </Typography>
-                      )}
-                    </Stack>
+                        {user.email}
+                      </Typography>
+                    )}
                   </Stack>
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => {
-                      const f = e.currentTarget.files?.[0]
-                      if (f) uploadAvatar(f)
-                    }}
-                  />
-                </ListItem>
+                </Stack>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={triggerAvatarPick}
+                    disabled={avatarBusy}
+                    sx={{ minWidth: 120 }}
+                  >
+                    {t("settings:media.avatar.change")}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    onClick={removeAvatar}
+                    disabled={avatarBusy}
+                    sx={{ minWidth: 120 }}
+                  >
+                    {t("settings:media.avatar.delete")}
+                  </Button>
+                </Stack>
+              </Stack>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const f = e.currentTarget.files?.[0]
+                  if (f) uploadAvatar(f)
+                }}
+              />
+            </SectionCard>
 
-                <ListItem
-                  disableGutters
-                  sx={{
-                    display: "flex",
-                    flexDirection: { xs: "column", sm: "row" },
-                    alignItems: { xs: "flex-start", sm: "center" },
-                    gap: { xs: 2, sm: 3 },
-                    padding: 0,
-                  }}
+            <SectionCard component="section">
+              <Stack spacing={2} sx={{ width: "100%" }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={{ xs: 1.5, sm: 2.5 }}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
                 >
                   <Box
                     data-testid="settings-cover-preview"
@@ -1137,51 +1089,46 @@ export default function Settings() {
                         : "color-mix(in srgb, var(--page-text) 6%, transparent)",
                     }}
                   />
-                  <Stack spacing={1} sx={{ minWidth: 0, width: "100%" }}>
-                    <Stack spacing={0.5}>
-                      <SectionTitle variant="subtitle1">
-                        {t("settings:media.cover.title")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:media.cover.recommendation")}
-                      </SectionSubtitle>
-                    </Stack>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={triggerCoverPick}
-                        disabled={coverBusy}
-                        sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
-                      >
-                        {t("settings:media.cover.change")}
-                      </Button>
-                      {coverUrl && (
-                        <Button
-                          size="small"
-                          variant="text"
-                          color="error"
-                          onClick={removeCover}
-                          disabled={coverBusy}
-                          sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
-                        >
-                          {t("settings:media.cover.remove")}
-                        </Button>
-                      )}
-                    </Stack>
+                  <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                    <SectionTitle variant="subtitle1">
+                      {t("settings:media.cover.title")}
+                    </SectionTitle>
                   </Stack>
-                  <input
-                    ref={coverInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => {
-                      const f = e.currentTarget.files?.[0]
-                      if (f) uploadCover(f)
-                    }}
-                  />
-                </ListItem>
-              </List>
+                </Stack>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={triggerCoverPick}
+                    disabled={coverBusy}
+                    sx={{ minWidth: 140 }}
+                  >
+                    {t("settings:media.cover.change")}
+                  </Button>
+                  {coverUrl && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="error"
+                      onClick={removeCover}
+                      disabled={coverBusy}
+                      sx={{ minWidth: 140 }}
+                    >
+                      {t("settings:media.cover.remove")}
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const f = e.currentTarget.files?.[0]
+                  if (f) uploadCover(f)
+                }}
+              />
             </SectionCard>
 
             <SectionCard component="section">
@@ -1191,14 +1138,9 @@ export default function Settings() {
                 alignItems={{ sm: "center" }}
                 justifyContent="space-between"
               >
-                <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-                  <SectionTitle variant="subtitle1">
-                    {t("settings:account.profile.title")}
-                  </SectionTitle>
-                  <SectionSubtitle variant="body2">
-                    {t("settings:account.profile.subtitle")}
-                  </SectionSubtitle>
-                </Stack>
+                <SectionTitle variant="subtitle1" sx={{ minWidth: 0 }}>
+                  {t("settings:account.profile.title")}
+                </SectionTitle>
                 <Button
                   size="small"
                   variant="outlined"
@@ -1241,29 +1183,13 @@ export default function Settings() {
                       ? t("settings:sessions.ipAddress", { ip: session.ip_address })
                       : t("settings:sessions.ipUnknown")
                     const details = `${ipLabel} • ${lastSeenText}`
-                    const revoked = Boolean(session.revoked_at)
-                    const statusLabel = revoked
-                      ? t("settings:sessions.status.revoked")
-                      : session.is_current
-                        ? t("settings:sessions.status.current")
-                        : t("settings:sessions.status.active")
-                    const statusColor = revoked
-                      ? "color-mix(in srgb, var(--page-text) 48%, transparent)"
-                      : session.is_current
-                        ? "var(--link-color)"
-                        : "color-mix(in srgb, var(--page-text) 68%, transparent)"
-                    const disableRevoke =
-                      revoked || session.is_current || revokeSessionMutation.isPending
+                    const statusLabel = session.is_current
+                      ? t("settings:sessions.status.current")
+                      : t("settings:sessions.status.active")
+                    const disableRevoke = session.is_current || revokeSessionMutation.isPending
 
                     return (
-                      <Stack
-                        key={session.id}
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={{ xs: 1, sm: 2 }}
-                        alignItems={{ sm: "center" }}
-                        justifyContent="space-between"
-                        sx={{ opacity: revoked ? 0.55 : 1 }}
-                      >
+                      <SessionItem key={session.id}>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography
                             variant="body2"
@@ -1282,21 +1208,33 @@ export default function Settings() {
                             {details}
                           </Typography>
                         </Box>
-                        <Stack direction="row" spacing={1.5} alignItems="center">
-                          <SessionStatus style={{ color: statusColor }}>
-                            <Box
-                              component="span"
-                              sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: "50%",
-                                backgroundColor: statusColor,
-                                display: "inline-block",
-                              }}
-                            />
-                            {statusLabel}
-                          </SessionStatus>
-                          {!session.is_current && !revoked && (
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          alignItems="center"
+                          justifyContent="flex-end"
+                          sx={{ width: "100%", flexWrap: "wrap", rowGap: 0.75 }}
+                        >
+                          <Chip
+                            size="small"
+                            label={statusLabel}
+                            sx={(theme) => ({
+                              borderRadius: 999,
+                              fontWeight: 600,
+                              color: session.is_current
+                                ? "var(--link-color)"
+                                : "color-mix(in srgb, var(--page-text) 72%, transparent)",
+                              backgroundColor: session.is_current
+                                ? alpha(theme.palette.primary.main, 0.12)
+                                : alpha(theme.palette.text.primary, 0.06),
+                              border: "1px solid",
+                              borderColor: session.is_current
+                                ? alpha(theme.palette.primary.main, 0.32)
+                                : alpha(theme.palette.text.primary, 0.12),
+                            })}
+                            variant="outlined"
+                          />
+                          {!session.is_current && (
                             <Button
                               size="small"
                               variant="text"
@@ -1308,7 +1246,7 @@ export default function Settings() {
                             </Button>
                           )}
                         </Stack>
-                      </Stack>
+                      </SessionItem>
                     )
                   })}
                 </Stack>
