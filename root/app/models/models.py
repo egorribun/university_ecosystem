@@ -190,6 +190,33 @@ class ActiveSession(Base):
     user = relationship("User", back_populates="sessions")
 
 
+class FailedLoginAttempt(Base):
+    __tablename__ = "failed_login_attempts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    email = Column(String, nullable=False, index=True)
+    attempted_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_failed_login_attempts_email_attempted_at",
+            "email",
+            "attempted_at",
+        ),
+    )
+
+
 class EventAttendance(Base):
     __tablename__ = "event_attendance"
 

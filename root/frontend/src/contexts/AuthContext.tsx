@@ -13,6 +13,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
@@ -77,6 +78,28 @@ type ProfileBroadcastMessage = { type: "unauthorized" }
 type HandleUnauthorizedOptions = {
   broadcast?: boolean
   persist?: boolean
+}
+
+const formatLockoutDuration = (
+  seconds: number | null | undefined,
+  t: TFunction<"auth">
+): string | null => {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return null
+  }
+
+  if (seconds < 60) {
+    const value = Math.max(1, Math.ceil(seconds))
+    return t("login.duration.seconds", { count: value })
+  }
+
+  if (seconds < 3600) {
+    const value = Math.max(1, Math.ceil(seconds / 60))
+    return t("login.duration.minutes", { count: value })
+  }
+
+  const value = Math.max(1, Math.ceil(seconds / 3600))
+  return t("login.duration.hours", { count: value })
 }
 
 const encodeBase64 = (value: string): string => {
@@ -488,6 +511,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (isAxiosError(error)) {
+          if (error.response?.status === 423) {
+            const retryAfterHeader = error.response.headers?.["retry-after"]
+            const retryValue = Array.isArray(retryAfterHeader)
+              ? retryAfterHeader[0]
+              : retryAfterHeader
+            const parsedSeconds = typeof retryValue === "string"
+              ? Number.parseInt(retryValue, 10)
+              : Number.NaN
+
+            let detail =
+              typeof error.response.data?.detail === "string"
+                ? error.response.data.detail
+                : t("login.locked")
+
+            const durationText = formatLockoutDuration(parsedSeconds, t)
+            if (durationText) {
+              const retryText = t("login.lockedRetry", { duration: durationText })
+              if (!detail.includes(retryText)) {
+                detail = `${detail} ${retryText}`.trim()
+              }
+            }
+
+            throw new Error(detail)
+          }
+
           const message =
             typeof error.response?.data?.detail === "string"
               ? error.response.data.detail
