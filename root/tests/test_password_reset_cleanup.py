@@ -53,9 +53,7 @@ async def test_cleanup_stale_password_reset_tokens_respects_retention(db_session
     db_session.add_all([expired, used_old, used_recent, active])
     await db_session.commit()
 
-    removed = await cleanup_stale_password_reset_tokens(
-        now=now, retention_minutes=30
-    )
+    removed = await cleanup_stale_password_reset_tokens(now=now, retention_minutes=30)
     assert removed == 2
 
     remaining_tokens = await db_session.execute(select(PasswordResetToken.token_hash))

@@ -100,12 +100,10 @@ async def lifespan(app: FastAPI):
             )
         )
     if settings.password_reset_cleanup_interval_seconds > 0:
-        stop_password_reset_cleanup = (
-            await start_password_reset_cleanup_scheduler(
-                config=PasswordResetCleanupConfig(
-                    interval_seconds=settings.password_reset_cleanup_interval_seconds,
-                    retention_minutes=settings.password_reset_cleanup_retention_minutes,
-                )
+        stop_password_reset_cleanup = await start_password_reset_cleanup_scheduler(
+            config=PasswordResetCleanupConfig(
+                interval_seconds=settings.password_reset_cleanup_interval_seconds,
+                retention_minutes=settings.password_reset_cleanup_retention_minutes,
             )
         )
     if (
