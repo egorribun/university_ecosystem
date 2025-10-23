@@ -34,7 +34,7 @@ import {
   CircularProgress,
 } from "@mui/material"
 import dayjs from "dayjs"
-import { useColorScheme, styled, alpha, darken } from "@mui/material/styles"
+import { useColorScheme, styled, alpha } from "@mui/material/styles"
 import type { PaperProps } from "@mui/material/Paper"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
@@ -170,20 +170,29 @@ const SectionSubtitle = styled(Typography)({
 })
 
 const SessionItem = styled("div")(({ theme }) => ({
-  display: "grid",
-  gridTemplateColumns: "1fr auto",
+  display: "flex",
+  alignItems: "stretch",
+  justifyContent: "space-between",
   gap: theme.spacing(1.5),
   padding: theme.spacing(1.5),
   borderRadius: 18,
   border: "1px solid var(--glass-border)",
-  backgroundColor:
-    theme.palette.mode === "dark"
-      ? alpha("#fff", 0.035)
-      : alpha("#000", 0.035),
-  alignItems: "center",
+  backgroundColor: theme.palette.mode === "dark" ? alpha("#fff", 0.04) : alpha("#000", 0.03),
+  transition: "border-color .2s ease, box-shadow .2s ease, background-color .2s ease",
   [theme.breakpoints.down("sm")]: {
-    gridTemplateColumns: "1fr",
+    flexDirection: "column",
     alignItems: "flex-start",
+  },
+  "&:hover": {
+    borderColor: alpha(theme.palette.primary.main, 0.35),
+    boxShadow:
+      theme.palette.mode === "dark"
+        ? "0 12px 28px rgba(0,0,0,.35)"
+        : "0 12px 24px rgba(15,23,42,.12)",
+    backgroundColor:
+      theme.palette.mode === "dark"
+        ? alpha(theme.palette.primary.main, 0.18)
+        : alpha(theme.palette.primary.main, 0.08),
   },
 }))
 
@@ -313,24 +322,17 @@ export default function Settings() {
   }, [])
 
   const {
-    data: sessions = [],
+    data: activeSessions = [],
     isFetching: sessionsFetching,
     isError: sessionsIsError,
     error: sessionsError,
-    refetch: refetchSessions,
-  } = useQuery<ActiveSession[]>({
+  } = useQuery<ActiveSession[], unknown, ActiveSession[]>({
     queryKey: sessionsKey,
     queryFn: fetchSessions,
     enabled: tab === 1 && Boolean(user),
     staleTime: 30_000,
+    select: (data) => data.filter((session) => !session.revoked_at),
   })
-
-  const sessionList = useMemo(() => (Array.isArray(sessions) ? sessions : []), [sessions])
-
-  const visibleSessions = useMemo(
-    () => sessionList.filter((session) => !session.revoked_at),
-    [sessionList]
-  )
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
@@ -599,7 +601,9 @@ export default function Settings() {
       try {
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
-        await refetchSessions()
+        queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (prev) =>
+          Array.isArray(prev) ? prev.filter((session) => session.id !== result.id) : []
+        )
         if (result?.is_current) {
           await logout()
         }
@@ -610,7 +614,7 @@ export default function Settings() {
         })
       }
     },
-    [logout, refetchSessions, resolveDetailMessage, revokeSessionMutation, t]
+    [logout, queryClient, resolveDetailMessage, revokeSessionMutation, sessionsKey, t]
   )
 
   const formatSessionTimestamp = useCallback(
@@ -997,65 +1001,140 @@ export default function Settings() {
             sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
           >
             <SectionCard component="section">
-              <Stack spacing={2} sx={{ width: "100%" }}>
+              <Stack spacing={2.5} sx={{ width: "100%" }}>
                 <Stack
                   direction={{ xs: "column", sm: "row" }}
                   spacing={{ xs: 1.5, sm: 2.5 }}
                   alignItems={{ xs: "flex-start", sm: "center" }}
+                  justifyContent="space-between"
                 >
-                  <Avatar
-                    src={avatarSrc}
-                    alt={user?.full_name || "avatar"}
-                    sx={{ width: 72, height: 72 }}
-                    imgProps={{
-                      onError: handleAvatarError,
-                      loading: "lazy",
-                      decoding: "async",
-                      referrerPolicy: "no-referrer",
-                    }}
-                  />
-                  <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                    <SectionTitle variant="subtitle1">
-                      {t("settings:media.avatar.title")}
-                    </SectionTitle>
-                    {!!user?.full_name && (
-                      <Typography
-                        variant="body2"
-                        sx={{ color: "var(--page-text)", fontWeight: 600 }}
-                      >
-                        {user.full_name}
-                      </Typography>
-                    )}
-                    {!!user?.email && (
-                      <Typography
-                        variant="body2"
-                        sx={{ color: "color-mix(in srgb, var(--page-text) 65%, transparent)" }}
-                      >
-                        {user.email}
-                      </Typography>
-                    )}
+                  <Stack
+                    direction="row"
+                    spacing={{ xs: 1.5, sm: 2.5 }}
+                    alignItems="center"
+                    sx={{ minWidth: 0, flex: 1 }}
+                  >
+                    <Avatar
+                      src={avatarSrc}
+                      alt={user?.full_name || "avatar"}
+                      sx={{ width: 72, height: 72 }}
+                      imgProps={{
+                        onError: handleAvatarError,
+                        loading: "lazy",
+                        decoding: "async",
+                        referrerPolicy: "no-referrer",
+                      }}
+                    />
+                    <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                      <SectionTitle variant="subtitle1">
+                        {t("settings:media.avatar.title")}
+                      </SectionTitle>
+                      {!!user?.full_name && (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "var(--page-text)", fontWeight: 600 }}
+                        >
+                          {user.full_name}
+                        </Typography>
+                      )}
+                      {!!user?.email && (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "color-mix(in srgb, var(--page-text) 65%, transparent)" }}
+                        >
+                          {user.email}
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Stack>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1}
+                    alignItems={{ sm: "center" }}
+                    justifyContent="flex-end"
+                    flexWrap="wrap"
+                  >
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={triggerAvatarPick}
+                      disabled={avatarBusy}
+                      sx={{ minWidth: 120 }}
+                    >
+                      {t("settings:media.avatar.change")}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      onClick={removeAvatar}
+                      disabled={avatarBusy}
+                      sx={{ minWidth: 120 }}
+                    >
+                      {t("settings:media.avatar.delete")}
+                    </Button>
                   </Stack>
                 </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={triggerAvatarPick}
-                    disabled={avatarBusy}
-                    sx={{ minWidth: 120 }}
+
+                <Divider flexItem sx={{ borderColor: "var(--glass-border)" }} />
+
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={{ xs: 1.5, sm: 2.5 }}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                  justifyContent="space-between"
+                >
+                  <Stack
+                    direction="row"
+                    spacing={{ xs: 1.5, sm: 2.5 }}
+                    alignItems="center"
+                    sx={{ minWidth: 0, flex: 1 }}
                   >
-                    {t("settings:media.avatar.change")}
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="error"
-                    onClick={removeAvatar}
-                    disabled={avatarBusy}
-                    sx={{ minWidth: 120 }}
+                    <Box
+                      data-testid="settings-cover-preview"
+                      sx={{
+                        width: 160,
+                        height: 72,
+                        borderRadius: 1.5,
+                        border: "1px solid var(--glass-border)",
+                        background: coverSrc
+                          ? `url(${coverSrc}) center/cover no-repeat`
+                          : "color-mix(in srgb, var(--page-text) 6%, transparent)",
+                      }}
+                    />
+                    <SectionTitle variant="subtitle1">
+                      {t("settings:media.cover.title")}
+                    </SectionTitle>
+                  </Stack>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1}
+                    alignItems={{ sm: "center" }}
+                    justifyContent="flex-end"
+                    flexWrap="wrap"
                   >
-                    {t("settings:media.avatar.delete")}
-                  </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={triggerCoverPick}
+                      disabled={coverBusy}
+                      sx={{ minWidth: 140 }}
+                    >
+                      {t("settings:media.cover.change")}
+                    </Button>
+                    {coverUrl && (
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="error"
+                        onClick={removeCover}
+                        disabled={coverBusy}
+                        sx={{ minWidth: 140 }}
+                      >
+                        {t("settings:media.cover.remove")}
+                      </Button>
+                    )}
+                  </Stack>
                 </Stack>
               </Stack>
               <input
@@ -1068,57 +1147,6 @@ export default function Settings() {
                   if (f) uploadAvatar(f)
                 }}
               />
-            </SectionCard>
-
-            <SectionCard component="section">
-              <Stack spacing={2} sx={{ width: "100%" }}>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={{ xs: 1.5, sm: 2.5 }}
-                  alignItems={{ xs: "flex-start", sm: "center" }}
-                >
-                  <Box
-                    data-testid="settings-cover-preview"
-                    sx={{
-                      width: 160,
-                      height: 72,
-                      borderRadius: 1.5,
-                      border: "1px solid var(--glass-border)",
-                      background: coverSrc
-                        ? `url(${coverSrc}) center/cover no-repeat`
-                        : "color-mix(in srgb, var(--page-text) 6%, transparent)",
-                    }}
-                  />
-                  <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                    <SectionTitle variant="subtitle1">
-                      {t("settings:media.cover.title")}
-                    </SectionTitle>
-                  </Stack>
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={triggerCoverPick}
-                    disabled={coverBusy}
-                    sx={{ minWidth: 140 }}
-                  >
-                    {t("settings:media.cover.change")}
-                  </Button>
-                  {coverUrl && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      color="error"
-                      onClick={removeCover}
-                      disabled={coverBusy}
-                      sx={{ minWidth: 140 }}
-                    >
-                      {t("settings:media.cover.remove")}
-                    </Button>
-                  )}
-                </Stack>
-              </Stack>
               <input
                 ref={coverInputRef}
                 type="file"
@@ -1168,13 +1196,13 @@ export default function Settings() {
                 <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
                   {sessionsErrorMessage}
                 </Alert>
-              ) : visibleSessions.length === 0 ? (
+              ) : activeSessions.length === 0 ? (
                 <Typography variant="body2" sx={{ mt: 1.5, color: "var(--page-text)" }}>
                   {t("settings:sessions.empty")}
                 </Typography>
               ) : (
                 <Stack spacing={1.5} sx={{ mt: 1.5 }}>
-                  {visibleSessions.map((session) => {
+                  {activeSessions.map((session) => {
                     const lastSeen = session.last_seen_at ?? session.created_at
                     const lastSeenText = t("settings:sessions.lastSeen.value", {
                       value: formatSessionTimestamp(lastSeen),
@@ -1212,8 +1240,8 @@ export default function Settings() {
                           direction="row"
                           spacing={1}
                           alignItems="center"
-                          justifyContent="flex-end"
-                          sx={{ width: "100%", flexWrap: "wrap", rowGap: 0.75 }}
+                          justifyContent={{ xs: "flex-start", sm: "flex-end" }}
+                          sx={{ flexWrap: "wrap", rowGap: 0.75, flexShrink: 0 }}
                         >
                           <Chip
                             size="small"
