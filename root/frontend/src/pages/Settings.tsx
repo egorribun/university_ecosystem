@@ -884,7 +884,8 @@ export default function Settings() {
             <Stack spacing={1.5} divider={<Divider />}>
               {visibleSessions.map((session) => {
                 const isRevoked = Boolean(session.revoked_at)
-                const lastRelevantMoment = session.revoked_at ?? session.last_seen_at ?? session.created_at
+                const lastRelevantMoment =
+                  session.revoked_at ?? session.last_seen_at ?? session.created_at
                 const lastSeenText = t("settings:sessions.lastSeen.value", {
                   value: formatSessionTimestamp(lastRelevantMoment),
                 })
@@ -902,7 +903,8 @@ export default function Settings() {
                   : session.is_current
                     ? accentColor
                     : mutedTextColor
-                const disableRevoke = session.is_current || isRevoked || revokeSessionMutation.isPending
+                const disableRevoke =
+                  session.is_current || isRevoked || revokeSessionMutation.isPending
                 return (
                   <Stack key={session.id} spacing={0.75} opacity={isRevoked ? 0.65 : 1}>
                     <Stack direction="row" justifyContent="space-between" alignItems="baseline">
