@@ -1223,7 +1223,7 @@ export default function Settings() {
                 <Button
                   variant="contained"
                   onClick={connectSpotify}
-                  sx={{ alignSelf: "lex-start" }}
+                  sx={{ alignSelf: "flex-start" }}
                 >
                   {t("settings:integrations.spotify.connect")}
                 </Button>
