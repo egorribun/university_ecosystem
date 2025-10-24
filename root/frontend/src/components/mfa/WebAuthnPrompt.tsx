@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Alert, Button, Stack, Typography } from "@mui/material"
 import { startAuthentication } from "@simplewebauthn/browser"
-import type { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser"
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from "@simplewebauthn/browser"
 import { useTranslation } from "react-i18next"
 
 type WebAuthnPromptProps = {
@@ -69,7 +72,10 @@ export const WebAuthnPrompt = ({
       <Typography variant="h6" fontWeight={600} sx={{ color: "var(--page-text)" }}>
         {t("mfa.webauthn.heading")}
       </Typography>
-      <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+      <Typography
+        variant="body2"
+        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+      >
         {t("mfa.webauthn.instructions")}
       </Typography>
       <Button

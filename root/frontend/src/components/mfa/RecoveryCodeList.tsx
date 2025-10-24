@@ -60,7 +60,10 @@ export const RecoveryCodeList = ({ codes, allowCopy = true }: RecoveryCodeListPr
           </Button>
         ) : null}
       </Stack>
-      <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+      <Typography
+        variant="body2"
+        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+      >
         {t("mfa.recovery.instructions")}
       </Typography>
       <Box

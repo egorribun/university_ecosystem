@@ -109,9 +109,7 @@ const Login = () => {
   )
   const [mfaBusy, setMfaBusy] = useState(false)
   const [mfaError, setMfaError] = useState<string | null>(null)
-  const [mfaErrorSource, setMfaErrorSource] = useState<
-    "totp" | "webauthn" | "general" | null
-  >(null)
+  const [mfaErrorSource, setMfaErrorSource] = useState<"totp" | "webauthn" | "general" | null>(null)
 
   const loginChallenge = useMemo(
     () => (pendingMfa?.reason === "login" ? pendingMfa : null),
@@ -353,7 +351,7 @@ const Login = () => {
                 options={webAuthnChallenge.options ?? null}
                 autoStart
                 loading={mfaBusy}
-                error={mfaErrorSource === "webauthn" ? mfaError ?? undefined : undefined}
+                error={mfaErrorSource === "webauthn" ? (mfaError ?? undefined) : undefined}
                 onResolve={handleWebAuthnVerify}
               />
             ) : null}

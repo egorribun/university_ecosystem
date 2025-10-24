@@ -38,7 +38,10 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
         {t("mfa.totp.scanHeading")}
       </Typography>
       {label ? (
-        <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}>
+        <Typography
+          variant="body2"
+          sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
+        >
           {t("mfa.totp.accountLabel", { label })}
         </Typography>
       ) : null}
@@ -86,7 +89,10 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           </span>
         </Tooltip>
       </Stack>
-      <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+      <Typography
+        variant="body2"
+        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+      >
         {t("mfa.totp.instructions")}
       </Typography>
     </Stack>

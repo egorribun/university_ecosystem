@@ -27,7 +27,12 @@ import {
 } from "@simplewebauthn/browser"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
-import type { MfaMethod, MfaTotpEnrollment, MfaWebAuthnCredential, TotpEnrollmentStartResponse } from "@/types/Mfa"
+import type {
+  MfaMethod,
+  MfaTotpEnrollment,
+  MfaWebAuthnCredential,
+  TotpEnrollmentStartResponse,
+} from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
 import {
   Box,
@@ -1613,8 +1618,12 @@ export default function Settings() {
 
               <Stack spacing={2.5} sx={{ mt: 1.5 }}>
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">{t("settings:security.method.totp")}</SectionTitle>
-                  <SectionSubtitle variant="body2">{t("settings:security.totp.description")}</SectionSubtitle>
+                  <SectionTitle variant="subtitle2">
+                    {t("settings:security.method.totp")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.totp.description")}
+                  </SectionSubtitle>
                 </Stack>
 
                 {totpDraft ? (
@@ -1622,7 +1631,10 @@ export default function Settings() {
                     <Typography variant="subtitle2" fontWeight={600}>
                       {t("settings:security.totp.pendingTitle")}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                    >
                       {t("settings:security.totp.pendingDescription")}
                     </Typography>
                     <TotpQrDisplay
@@ -1636,7 +1648,12 @@ export default function Settings() {
                       error={totpError}
                       onSubmit={handleConfirmTotp}
                     />
-                    <Button variant="text" color="inherit" disabled={totpBusy} onClick={handleCancelTotp}>
+                    <Button
+                      variant="text"
+                      color="inherit"
+                      disabled={totpBusy}
+                      onClick={handleCancelTotp}
+                    >
                       {t("settings:security.totp.cancel")}
                     </Button>
                   </Stack>
@@ -1659,11 +1676,14 @@ export default function Settings() {
                           >
                             <Stack spacing={0.5} sx={{ minWidth: 0 }}>
                               <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
-                                {enrollment.label || t("settings:security.totp.unnamed", { index: index + 1 })}
+                                {enrollment.label ||
+                                  t("settings:security.totp.unnamed", { index: index + 1 })}
                               </Typography>
                               <Typography
                                 variant="body2"
-                                sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                                sx={{
+                                  color: "color-mix(in srgb, var(--page-text) 70%, transparent)",
+                                }}
                               >
                                 {t("settings:security.totp.added", {
                                   value: formatDateTime(enrollment.created_at) ?? "—",
@@ -1682,11 +1702,18 @@ export default function Settings() {
                         ))}
                       </Stack>
                     ) : (
-                      <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                      >
                         {t("settings:security.totp.empty")}
                       </Typography>
                     )}
-                    <Button variant="contained" onClick={() => void handleStartTotp()} disabled={totpBusy}>
+                    <Button
+                      variant="contained"
+                      onClick={() => void handleStartTotp()}
+                      disabled={totpBusy}
+                    >
                       {t("settings:security.totp.add")}
                     </Button>
                   </Stack>
@@ -1695,8 +1722,12 @@ export default function Settings() {
                 <Divider sx={{ my: 1 }} />
 
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">{t("settings:security.method.webauthn")}</SectionTitle>
-                  <SectionSubtitle variant="body2">{t("settings:security.webauthn.description")}</SectionSubtitle>
+                  <SectionTitle variant="subtitle2">
+                    {t("settings:security.method.webauthn")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.webauthn.description")}
+                  </SectionSubtitle>
                 </Stack>
 
                 <Stack
@@ -1744,11 +1775,14 @@ export default function Settings() {
                         >
                           <Stack spacing={0.5} sx={{ minWidth: 0 }}>
                             <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
-                              {credential.device_name || t("settings:security.webauthn.unnamed", { index: index + 1 })}
+                              {credential.device_name ||
+                                t("settings:security.webauthn.unnamed", { index: index + 1 })}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                              sx={{
+                                color: "color-mix(in srgb, var(--page-text) 70%, transparent)",
+                              }}
                             >
                               {added
                                 ? t("settings:security.webauthn.added", { value: added })
@@ -1757,7 +1791,9 @@ export default function Settings() {
                             {lastUsed ? (
                               <Typography
                                 variant="body2"
-                                sx={{ color: "color-mix(in srgb, var(--page-text) 60%, transparent)" }}
+                                sx={{
+                                  color: "color-mix(in srgb, var(--page-text) 60%, transparent)",
+                                }}
                               >
                                 {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
                               </Typography>
@@ -1776,7 +1812,10 @@ export default function Settings() {
                     })}
                   </Stack>
                 ) : (
-                  <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                  >
                     {t("settings:security.webauthn.empty")}
                   </Typography>
                 )}
@@ -1784,11 +1823,19 @@ export default function Settings() {
                 <Divider sx={{ my: 1 }} />
 
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">{t("settings:security.method.recovery")}</SectionTitle>
-                  <SectionSubtitle variant="body2">{t("settings:security.recovery.description")}</SectionSubtitle>
+                  <SectionTitle variant="subtitle2">
+                    {t("settings:security.method.recovery")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.recovery.description")}
+                  </SectionSubtitle>
                 </Stack>
 
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.5}
+                  alignItems={{ sm: "center" }}
+                >
                   <Button
                     variant="outlined"
                     onClick={handleGenerateRecoveryCodes}
@@ -1798,7 +1845,10 @@ export default function Settings() {
                       ? t("settings:security.recovery.generating")
                       : t("settings:security.recovery.generate")}
                   </Button>
-                  <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                  >
                     {recoveryStatusText}
                   </Typography>
                 </Stack>

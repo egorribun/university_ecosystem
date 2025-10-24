@@ -56,15 +56,21 @@ export const OtpEntry = ({
     await onSubmit(activeMethod, trimmed)
   }
 
-  const placeholders = useMemo(() => ({
-    totp: t("mfa.otp.placeholders.totp"),
-    recovery: t("mfa.otp.placeholders.recovery"),
-  }), [t])
+  const placeholders = useMemo(
+    () => ({
+      totp: t("mfa.otp.placeholders.totp"),
+      recovery: t("mfa.otp.placeholders.recovery"),
+    }),
+    [t]
+  )
 
-  const titles = useMemo(() => ({
-    totp: t("mfa.otp.methods.totp"),
-    recovery: t("mfa.otp.methods.recovery"),
-  }), [t])
+  const titles = useMemo(
+    () => ({
+      totp: t("mfa.otp.methods.totp"),
+      recovery: t("mfa.otp.methods.recovery"),
+    }),
+    [t]
+  )
 
   const description = useMemo(() => {
     if (activeMethod === "recovery") {
@@ -93,18 +99,30 @@ export const OtpEntry = ({
             fullWidth
           >
             {availableMethods.map((method) => (
-              <ToggleButton key={method} value={method} sx={{ textTransform: "none", fontWeight: 600 }}>
+              <ToggleButton
+                key={method}
+                value={method}
+                sx={{ textTransform: "none", fontWeight: 600 }}
+              >
                 {titles[method]}
               </ToggleButton>
             ))}
           </ToggleButtonGroup>
         ) : (
-          <Typography variant="subtitle1" fontWeight={600} align="center" sx={{ color: "var(--page-text)" }}>
+          <Typography
+            variant="subtitle1"
+            fontWeight={600}
+            align="center"
+            sx={{ color: "var(--page-text)" }}
+          >
             {titles[activeMethod]}
           </Typography>
         )}
 
-        <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}>
+        <Typography
+          variant="body2"
+          sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
+        >
           {description}
         </Typography>
 

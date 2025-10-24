@@ -25,10 +25,15 @@ type StepUpDialogProps = {
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 
-const resolveMethods = (pending: PendingMfaState | null) =>
-  pending?.methods ?? []
+const resolveMethods = (pending: PendingMfaState | null) => pending?.methods ?? []
 
-export const StepUpDialog = ({ open, onClose, title, description, onCompleted }: StepUpDialogProps) => {
+export const StepUpDialog = ({
+  open,
+  onClose,
+  title,
+  description,
+  onCompleted,
+}: StepUpDialogProps) => {
   const { t } = useTranslation(["auth", "common"])
   const { requireMfa, submitMfaChallenge } = useAuth()
   const [pending, setPending] = useState<PendingMfaState | null>(null)
@@ -119,7 +124,10 @@ export const StepUpDialog = ({ open, onClose, title, description, onCompleted }:
       <DialogTitle>{title ?? t("mfa.stepUp.title")}</DialogTitle>
       <DialogContent>
         <Stack spacing={3} sx={{ mt: 1 }}>
-          <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}>
+          <Typography
+            variant="body2"
+            sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
+          >
             {description ?? t("mfa.stepUp.description")}
           </Typography>
           {otpMethods.length ? (
