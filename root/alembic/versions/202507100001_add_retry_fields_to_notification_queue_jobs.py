@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column(
             "dead_lettered",
             sa.Boolean(),
-            server_default=sa.text("0"),
+            server_default=sa.false(),
             nullable=False,
         ),
     )
