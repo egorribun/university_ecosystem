@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "202507300001"
@@ -77,8 +78,9 @@ def upgrade() -> None:
                 ),
             )
 
-        if "ix_users_mfa_required" not in user_indexes and "mfa_required" in _column_names(
-            sa.inspect(bind), _USERS_TABLE
+        if (
+            "ix_users_mfa_required" not in user_indexes
+            and "mfa_required" in _column_names(sa.inspect(bind), _USERS_TABLE)
         ):
             op.create_index("ix_users_mfa_required", _USERS_TABLE, ["mfa_required"])
         if (
@@ -131,8 +133,10 @@ def upgrade() -> None:
                 sa.Column("mfa_method", sa.String(length=64), nullable=True),
             )
 
-        if "ix_active_sessions_mfa_required" not in session_indexes and "mfa_required" in _column_names(
-            sa.inspect(bind), _ACTIVE_SESSIONS_TABLE
+        if (
+            "ix_active_sessions_mfa_required" not in session_indexes
+            and "mfa_required"
+            in _column_names(sa.inspect(bind), _ACTIVE_SESSIONS_TABLE)
         ):
             op.create_index(
                 "ix_active_sessions_mfa_required",
@@ -200,7 +204,9 @@ def upgrade() -> None:
                 sa.ForeignKey(f"{_USERS_TABLE}.id", ondelete="CASCADE"),
                 nullable=False,
             ),
-            sa.Column("credential_id", sa.String(length=255), nullable=False, unique=True),
+            sa.Column(
+                "credential_id", sa.String(length=255), nullable=False, unique=True
+            ),
             sa.Column("public_key", sa.Text(), nullable=False),
             sa.Column(
                 "sign_count",
@@ -241,9 +247,15 @@ def upgrade() -> None:
         op.alter_column(_WEBAUTHN_TABLE, "clone_warning", server_default=None)
         op.alter_column(_WEBAUTHN_TABLE, "is_active", server_default=None)
         op.create_index(f"ix_{_WEBAUTHN_TABLE}_user_id", _WEBAUTHN_TABLE, ["user_id"])
-        op.create_index(f"ix_{_WEBAUTHN_TABLE}_is_active", _WEBAUTHN_TABLE, ["is_active"])
-        op.create_index(f"ix_{_WEBAUTHN_TABLE}_backed_up", _WEBAUTHN_TABLE, ["backed_up"])
-        op.create_index(f"ix_{_WEBAUTHN_TABLE}_last_used_at", _WEBAUTHN_TABLE, ["last_used_at"])
+        op.create_index(
+            f"ix_{_WEBAUTHN_TABLE}_is_active", _WEBAUTHN_TABLE, ["is_active"]
+        )
+        op.create_index(
+            f"ix_{_WEBAUTHN_TABLE}_backed_up", _WEBAUTHN_TABLE, ["backed_up"]
+        )
+        op.create_index(
+            f"ix_{_WEBAUTHN_TABLE}_last_used_at", _WEBAUTHN_TABLE, ["last_used_at"]
+        )
         op.create_index(
             "ix_mfa_webauthn_user_active",
             _WEBAUTHN_TABLE,
@@ -269,7 +281,9 @@ def upgrade() -> None:
                 server_default=sa.func.now(),
             ),
             sa.Column("label", sa.String(length=255), nullable=True),
-            sa.UniqueConstraint("user_id", "code_hash", name="uq_mfa_recovery_codes_hash"),
+            sa.UniqueConstraint(
+                "user_id", "code_hash", name="uq_mfa_recovery_codes_hash"
+            ),
         )
         op.create_index(f"ix_{_RECOVERY_TABLE}_user_id", _RECOVERY_TABLE, ["user_id"])
         op.create_index(f"ix_{_RECOVERY_TABLE}_used_at", _RECOVERY_TABLE, ["used_at"])
@@ -302,16 +316,28 @@ def upgrade() -> None:
             ),
             sa.Column("payload", sa.JSON(), nullable=True),
         )
-        op.create_index(f"ix_{_CHALLENGES_TABLE}_user_id", _CHALLENGES_TABLE, ["user_id"])
-        op.create_index(f"ix_{_CHALLENGES_TABLE}_session_id", _CHALLENGES_TABLE, ["session_id"])
+        op.create_index(
+            f"ix_{_CHALLENGES_TABLE}_user_id", _CHALLENGES_TABLE, ["user_id"]
+        )
+        op.create_index(
+            f"ix_{_CHALLENGES_TABLE}_session_id", _CHALLENGES_TABLE, ["session_id"]
+        )
         op.create_index(
             "ix_mfa_challenges_user_expires",
             _CHALLENGES_TABLE,
             ["user_id", "expires_at"],
         )
-        op.create_index(f"ix_{_CHALLENGES_TABLE}_challenge_type", _CHALLENGES_TABLE, ["challenge_type"])
-        op.create_index(f"ix_{_CHALLENGES_TABLE}_expires_at", _CHALLENGES_TABLE, ["expires_at"])
-        op.create_index(f"ix_{_CHALLENGES_TABLE}_consumed_at", _CHALLENGES_TABLE, ["consumed_at"])
+        op.create_index(
+            f"ix_{_CHALLENGES_TABLE}_challenge_type",
+            _CHALLENGES_TABLE,
+            ["challenge_type"],
+        )
+        op.create_index(
+            f"ix_{_CHALLENGES_TABLE}_expires_at", _CHALLENGES_TABLE, ["expires_at"]
+        )
+        op.create_index(
+            f"ix_{_CHALLENGES_TABLE}_consumed_at", _CHALLENGES_TABLE, ["consumed_at"]
+        )
 
 
 def downgrade() -> None:
