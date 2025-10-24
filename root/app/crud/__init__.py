@@ -12,11 +12,11 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.localization import localized_text, normalize_locale, translate
 from app.models import models
+from app.models.enums import UserRole
 from app.models.user_loaders import (
     USER_MFA_LOAD_OPTIONS,
     ensure_mfa_relationships_loaded,
 )
-from app.models.enums import UserRole
 from app.schemas import schemas
 
 
