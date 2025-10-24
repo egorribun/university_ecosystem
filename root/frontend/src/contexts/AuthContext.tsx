@@ -345,8 +345,8 @@ const initializeCachedUser = (): UserState => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
   const { t } = useTranslation("auth")
-  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(
-    () => readStoredSessionSigningKey()
+  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(() =>
+    readStoredSessionSigningKey()
   )
   const [userState, setUserState] = useState<UserState>(initializeCachedUser)
   const cachedUserRef = useRef<UserState>(userState)
@@ -371,9 +371,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const promise = (async () => {
       try {
-        const response = await api.get<SessionSigningKeyResponse>(
-          "/auth/session/signing-key"
-        )
+        const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key")
         const key = response.data.signing_key
         updateSessionSigningKey(key)
         return key
@@ -666,9 +664,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const retryValue = Array.isArray(retryAfterHeader)
               ? retryAfterHeader[0]
               : retryAfterHeader
-            const parsedSeconds = typeof retryValue === "string"
-              ? Number.parseInt(retryValue, 10)
-              : Number.NaN
+            const parsedSeconds =
+              typeof retryValue === "string" ? Number.parseInt(retryValue, 10) : Number.NaN
 
             let detail =
               typeof error.response.data?.detail === "string"
