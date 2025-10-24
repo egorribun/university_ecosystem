@@ -4,6 +4,14 @@ import sqlalchemy as sa
 
 from alembic import op
 
+
+TABLE_NAME = "failed_login_attempts"
+INDEX_DEFINITIONS = {
+    "ix_failed_login_attempts_email": ["email"],
+    "ix_failed_login_attempts_attempted_at": ["attempted_at"],
+    "ix_failed_login_attempts_email_attempted_at": ["email", "attempted_at"],
+}
+
 revision: str = "202507010001"
 down_revision: Union[str, None] = "202506200001"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -11,8 +19,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if bind is not None:
+        inspector = sa.inspect(bind)
+        if TABLE_NAME in inspector.get_table_names():
+            existing_indexes = {index["name"] for index in inspector.get_indexes(TABLE_NAME)}
+            for index_name, columns in INDEX_DEFINITIONS.items():
+                if index_name not in existing_indexes:
+                    op.create_index(index_name, TABLE_NAME, columns)
+            return
+
     op.create_table(
-        "failed_login_attempts",
+        TABLE_NAME,
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
             "user_id",
@@ -28,30 +46,17 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
     )
-    op.create_index(
-        "ix_failed_login_attempts_email",
-        "failed_login_attempts",
-        ["email"],
-    )
-    op.create_index(
-        "ix_failed_login_attempts_attempted_at",
-        "failed_login_attempts",
-        ["attempted_at"],
-    )
-    op.create_index(
-        "ix_failed_login_attempts_email_attempted_at",
-        "failed_login_attempts",
-        ["email", "attempted_at"],
-    )
+    for index_name, columns in INDEX_DEFINITIONS.items():
+        op.create_index(index_name, TABLE_NAME, columns)
 
 
 def downgrade() -> None:
     op.drop_index(
         "ix_failed_login_attempts_email_attempted_at",
-        table_name="failed_login_attempts",
+        table_name=TABLE_NAME,
     )
     op.drop_index(
-        "ix_failed_login_attempts_attempted_at", table_name="failed_login_attempts"
+        "ix_failed_login_attempts_attempted_at", table_name=TABLE_NAME
     )
-    op.drop_index("ix_failed_login_attempts_email", table_name="failed_login_attempts")
-    op.drop_table("failed_login_attempts")
+    op.drop_index("ix_failed_login_attempts_email", table_name=TABLE_NAME)
+    op.drop_table(TABLE_NAME)
