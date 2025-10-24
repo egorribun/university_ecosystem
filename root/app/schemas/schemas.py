@@ -390,6 +390,10 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class SessionSigningKeyOut(BaseModel):
+    signing_key: str
+
+
 class ActiveSessionOut(OrmModel):
     id: int
     user_id: int

@@ -1,3 +1,9 @@
+import base64
+import hashlib
+import hmac
+import json
+from datetime import UTC, datetime
+
 import pytest
 from fastapi import status
 from sqlalchemy import select
@@ -129,6 +135,87 @@ async def test_token_reuse_after_logout_rejected(
 
     rejected = await async_client.get("/users/me", headers=headers)
     assert rejected.status_code == 401
+
+
+async def test_profile_cache_envelope_validation(async_client, user_factory):
+    password = "EnvelopePass123!"
+    user = await _create_active_user(user_factory, password)
+
+    login_response = await _login(async_client, user.email, password)
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    signing_key_response = await async_client.get(
+        "/auth/session/signing-key", headers=headers
+    )
+    assert signing_key_response.status_code == 200
+    signing_key = signing_key_response.json()["signing_key"]
+
+    payload = {
+        "version": 2,
+        "expiresAt": int(datetime.now(UTC).timestamp() * 1000) + 60_000,
+        "data": {"id": user.id, "full_name": user.full_name, "avatar_url": None},
+    }
+
+    payload_json = json.dumps(payload, separators=(",", ":"))
+    signature = base64.b64encode(
+        hmac.new(
+            signing_key.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256
+        ).digest()
+    ).decode("ascii")
+    envelope = {**payload, "signature": signature}
+
+    ok_response = await async_client.get(
+        "/users/me",
+        headers={**headers, "X-Profile-Cache-Envelope": json.dumps(envelope)},
+    )
+    assert ok_response.status_code == 200
+
+    forged = {**envelope, "signature": "invalid-signature"}
+    rejected = await async_client.get(
+        "/users/me",
+        headers={**headers, "X-Profile-Cache-Envelope": json.dumps(forged)},
+    )
+    assert rejected.status_code == 400
+
+    forged_data = {**envelope, "data": {**envelope["data"], "full_name": "Forged"}}
+    rejected_data = await async_client.get(
+        "/users/me",
+        headers={**headers, "X-Profile-Cache-Envelope": json.dumps(forged_data)},
+    )
+    assert rejected_data.status_code == 400
+
+
+async def test_logout_rotates_session_signing_key(
+    async_client, user_factory, db_session
+):
+    password = "RotateKeyPass123!"
+    user = await _create_active_user(user_factory, password)
+
+    login_response = await _login(async_client, user.email, password)
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+    payload = decode_token(token)
+    assert payload is not None
+    jti = payload.get("jti")
+    assert jti
+
+    result = await db_session.execute(
+        select(ActiveSession).where(ActiveSession.jti == jti)
+    )
+    session = result.scalars().first()
+    assert session is not None
+    original_key = session.signing_key
+    assert original_key
+
+    headers = {"Authorization": f"Bearer {token}"}
+    logout_response = await async_client.post("/auth/logout", headers=headers)
+    assert logout_response.status_code == 200
+
+    await db_session.refresh(session)
+    assert session.signing_key
+    assert session.signing_key != original_key
 
 
 @pytest.mark.anyio

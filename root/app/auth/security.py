@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 from uuid import uuid4
@@ -128,6 +129,7 @@ async def create_access_token(
                 "sub must be an integer when persisting sessions"
             ) from None
         session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
+        session.signing_key = secrets.token_urlsafe(32)
         if session_metadata:
             ip_address = session_metadata.get("ip_address")
             user_agent = session_metadata.get("user_agent")

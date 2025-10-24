@@ -167,6 +167,10 @@ class Event(Base):
     )
 
 
+def _generate_session_signing_key() -> str:
+    return secrets.token_urlsafe(32)
+
+
 class ActiveSession(Base):
     __tablename__ = "active_sessions"
 
@@ -186,6 +190,7 @@ class ActiveSession(Base):
     ip_address = Column(String(64))
     user_agent = Column(String(512))
     last_seen_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    signing_key = Column(String, nullable=False, default=_generate_session_signing_key)
 
     user = relationship("User", back_populates="sessions")
 

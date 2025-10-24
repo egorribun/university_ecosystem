@@ -15,6 +15,7 @@ import api from "@/api/client"
 describe("AuthProvider caching", () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     vi.spyOn(api, "post").mockResolvedValue({ data: {} } as any)
   })
 
@@ -85,6 +86,37 @@ describe("AuthProvider caching", () => {
     })
 
     await waitFor(() => expect(result.current.user).toBeNull())
+    expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+
+    queryClient.clear()
+  })
+
+  it("discards tampered cached envelopes", async () => {
+    localStorage.setItem("token", "token-tamper")
+    const { queryClient, wrapper } = setup()
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    await waitFor(() => expect(result.current.user).toBeTruthy())
+
+    const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    expect(cachedEnvelope).toBeTruthy()
+    const parsed = JSON.parse(cachedEnvelope!)
+    parsed.data.full_name = "Forged Name"
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(parsed))
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          oldValue: cachedEnvelope,
+          newValue: JSON.stringify(parsed),
+          storageArea: localStorage,
+        })
+      )
+    })
+
+    await waitFor(() => expect(result.current.user).toBeNull())
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()

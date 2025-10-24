@@ -1,4 +1,6 @@
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import secrets
@@ -43,6 +45,72 @@ router = APIRouter()
 password_router = APIRouter(prefix="/password", tags=["password"])
 users_router = APIRouter(prefix="/users", tags=["users"])
 groups_router = APIRouter(prefix="/groups", tags=["groups"])
+
+PROFILE_CACHE_HEADER = "x-profile-cache-envelope"
+
+
+def _enforce_profile_cache_integrity(request: Request) -> None:
+    raw_envelope = request.headers.get(PROFILE_CACHE_HEADER)
+    if not raw_envelope:
+        return
+
+    session = getattr(request.state, "active_session", None)
+    if session is None or not getattr(session, "signing_key", None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Active session is missing profile signing key",
+        )
+
+    try:
+        candidate = json.loads(raw_envelope)
+    except json.JSONDecodeError as exc:  # pragma: no cover - invalid client input
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid profile cache envelope",
+        ) from exc
+
+    if not isinstance(candidate, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid profile cache envelope",
+        )
+
+    signature = candidate.get("signature")
+    if not isinstance(signature, str) or not signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid profile cache envelope signature",
+        )
+
+    payload = {
+        "version": candidate.get("version"),
+        "expiresAt": candidate.get("expiresAt"),
+        "data": candidate.get("data"),
+    }
+
+    if (
+        payload["version"] is None
+        or payload["expiresAt"] is None
+        or payload["data"] is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid profile cache envelope",
+        )
+
+    payload_json = json.dumps(payload, separators=(",", ":"))
+    digest = hmac.new(
+        session.signing_key.encode("utf-8"),
+        payload_json.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    expected_signature = base64.b64encode(digest).decode("ascii")
+
+    if not hmac.compare_digest(signature, expected_signature):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid profile cache envelope signature",
+        )
 
 
 def _hash_token(token: str) -> str:
@@ -201,7 +269,8 @@ async def reset_password(
 
 
 @users_router.get("/me", response_model=schemas.UserOut)
-async def me(user: models.User = Depends(get_current_user)):
+async def me(request: Request, user: models.User = Depends(get_current_user)):
+    _enforce_profile_cache_integrity(request)
     return user
 
 
