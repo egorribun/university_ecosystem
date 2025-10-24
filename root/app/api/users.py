@@ -445,7 +445,9 @@ async def update_user_admin(
             detail=translate("errors.forbidden", locale=locale),
         )
     updated_user, reset_stats = await crud.admin_update_user(db, user_id, data)
-    _audit_log("users.admin_update", request, user_id=updated_user.id, reason="admin_update")
+    _audit_log(
+        "users.admin_update", request, user_id=updated_user.id, reason="admin_update"
+    )
     reset_requested = bool(getattr(data, "reset_mfa", False))
     if reset_stats is not None:
         if reset_stats.changed:

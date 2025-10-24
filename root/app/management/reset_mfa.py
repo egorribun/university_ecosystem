@@ -42,14 +42,23 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _audit_cli(event: str, *, user_id: int, reason: str, extra: dict[str, Any] | None = None) -> None:
-    payload: dict[str, Any] = {"event": event, "user_id": str(user_id), "reason": reason, "source": "management"}
+def _audit_cli(
+    event: str, *, user_id: int, reason: str, extra: dict[str, Any] | None = None
+) -> None:
+    payload: dict[str, Any] = {
+        "event": event,
+        "user_id": str(user_id),
+        "reason": reason,
+        "source": "management",
+    }
     if extra:
         payload.update(extra)
     audit_logger.info(json.dumps(payload, ensure_ascii=False))
 
 
-async def _load_user(session, *, user_id: int | None, email: str | None) -> models.User | None:
+async def _load_user(
+    session, *, user_id: int | None, email: str | None
+) -> models.User | None:
     if user_id is not None:
         return await session.get(models.User, user_id)
     if email is None:
