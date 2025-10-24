@@ -79,6 +79,7 @@ from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
 from app.models import models
+from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.services import notification_queue
 from app.utils import ratelimit as ratelimit_module
 
@@ -278,6 +279,7 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
         db_session.add(user)
         await db_session.commit()
         await db_session.refresh(user)
+        await ensure_mfa_relationships_loaded(db_session, user)
         return user
 
     return _factory

@@ -71,6 +71,14 @@ const {
     dnd_start: null,
     dnd_end: null,
     is_active: true,
+    mfa_required: false,
+    mfa_default_method: null,
+    mfa_last_verified_at: null,
+    mfa_recovery_codes_generated_at: null,
+    totp_enrollments: [],
+    webauthn_credentials: [],
+    recovery_codes: [],
+    mfa_challenges: [],
   }
 
   const scheduleGroups = [{ id: 1, name: "IU5-21" }]

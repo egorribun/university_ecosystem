@@ -1,3 +1,11 @@
+import type {
+  MfaChallenge,
+  MfaMethod,
+  MfaRecoveryCode,
+  MfaTotpEnrollment,
+  MfaWebAuthnCredential,
+} from "./Mfa"
+
 export interface User {
   id: number
   email: string
@@ -25,4 +33,12 @@ export interface User {
   dnd_start: string | null
   dnd_end: string | null
   is_active: boolean
+  mfa_required: boolean
+  mfa_default_method: MfaMethod | null
+  mfa_last_verified_at: string | null
+  mfa_recovery_codes_generated_at: string | null
+  totp_enrollments: MfaTotpEnrollment[]
+  webauthn_credentials: MfaWebAuthnCredential[]
+  recovery_codes: MfaRecoveryCode[]
+  mfa_challenges: MfaChallenge[]
 }
