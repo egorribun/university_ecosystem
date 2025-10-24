@@ -1,8 +1,25 @@
 import { expect, type Page } from "@playwright/test"
+import type {
+  MfaTotpEnrollment,
+  PendingMfaResponse,
+  TotpEnrollmentStartResponse,
+} from "../../src/types/Mfa"
+import type { User } from "../../src/types/User"
 
 type NewsLogEntry = {
   header: string | undefined
   status: number
+}
+
+type TotpState = {
+  pending: TotpEnrollmentStartResponse | null
+  enrollments: MfaTotpEnrollment[]
+  nextId: number
+}
+
+type MfaState = {
+  loginChallenge: PendingMfaResponse | null
+  stepUpChallenge: PendingMfaResponse | null
 }
 
 type MockState = {
@@ -11,6 +28,9 @@ type MockState = {
   offline: boolean
   newsLog: NewsLogEntry[]
   sessions: SessionMock[]
+  profile: User
+  totp: TotpState
+  mfa: MfaState
 }
 
 type SessionMock = {
@@ -25,12 +45,42 @@ type SessionMock = {
   last_seen_at: string
 }
 
-const mockUser = {
+const createBaseProfile = (): User => ({
   id: 1,
+  email: "student@example.com",
   full_name: "Иван Иванов",
   role: "student",
-  group_id: "iu-21",
-}
+  group_id: null,
+  avatar_url: null,
+  cover_url: null,
+  about: null,
+  record_book_number: "IU-21-123",
+  status: "active",
+  institute: "ИТ",
+  course: "2",
+  education_level: "bachelor",
+  track: null,
+  program: null,
+  telegram: "@ivan",
+  achievements: null,
+  department: "ИТ",
+  position: "Student",
+  spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: false,
+  dnd_enabled: false,
+  dnd_start: null,
+  dnd_end: null,
+  is_active: true,
+  mfa_required: false,
+  mfa_default_method: null,
+  mfa_last_verified_at: null,
+  mfa_recovery_codes_generated_at: null,
+  totp_enrollments: [],
+  webauthn_credentials: [],
+  recovery_codes: [],
+  mfa_challenges: [],
+})
 
 const mockNews = [
   {
@@ -129,6 +179,68 @@ const createMockSessions = (): SessionMock[] => {
   ]
 }
 
+const challengeExpiresAt = () => new Date(Date.now() + 5 * 60 * 1000).toISOString()
+
+const createMfaChallenge = ({
+  includeTotp = true,
+  includeRecovery = false,
+  includeWebAuthn = false,
+  defaultMethod = includeTotp ? "totp" : includeWebAuthn ? "webauthn" : null,
+  sessionId = 1,
+}: {
+  includeTotp?: boolean
+  includeRecovery?: boolean
+  includeWebAuthn?: boolean
+  defaultMethod?: PendingMfaResponse["default_method"]
+  sessionId?: number
+} = {}): PendingMfaResponse => {
+  const methods: PendingMfaResponse["methods"] = []
+  if (includeTotp) {
+    methods.push({
+      method: "totp",
+      challenge_token: "totp-challenge-token",
+      challenge_expires_at: challengeExpiresAt(),
+      options: null,
+    })
+  }
+  if (includeRecovery) {
+    methods.push({
+      method: "recovery",
+      challenge_token: "recovery-challenge-token",
+      challenge_expires_at: challengeExpiresAt(),
+      options: null,
+    })
+  }
+  if (includeWebAuthn) {
+    methods.push({
+      method: "webauthn",
+      challenge_token: "webauthn-challenge-token",
+      challenge_expires_at: challengeExpiresAt(),
+      options: {
+        challenge: "c2FtcGxlLXdlYmF1dGhu",
+        timeout: 60_000,
+        rpId: "localhost",
+        allowCredentials: [
+          {
+            type: "public-key",
+            id: "credential-id",
+            transports: ["internal"],
+          },
+        ],
+        userVerification: "preferred",
+      },
+    })
+  }
+
+  return {
+    status: "mfa_required",
+    user_id: 1,
+    session_id: sessionId,
+    default_method: defaultMethod,
+    methods,
+  }
+}
+
 export async function useMockApi(page: Page) {
   const state: MockState = {
     loggedIn: false,
@@ -136,6 +248,21 @@ export async function useMockApi(page: Page) {
     offline: false,
     newsLog: [],
     sessions: createMockSessions(),
+    profile: createBaseProfile(),
+    totp: {
+      pending: null,
+      enrollments: [],
+      nextId: 1,
+    },
+    mfa: {
+      loginChallenge: null,
+      stepUpChallenge: createMfaChallenge({
+        includeTotp: true,
+        includeRecovery: true,
+        includeWebAuthn: true,
+        sessionId: 42,
+      }),
+    },
   }
 
   await page.addInitScript(() => {
@@ -198,6 +325,42 @@ export async function useMockApi(page: Page) {
         return
       }
 
+      if (username === "mfa@example.com" && password === "Password123") {
+        const challenge = createMfaChallenge({
+          includeTotp: true,
+          includeRecovery: true,
+          defaultMethod: "totp",
+          sessionId: 84,
+        })
+        state.profile.mfa_required = true
+        state.profile.mfa_default_method = "totp"
+        state.mfa.loginChallenge = challenge
+        await route.fulfill({
+          status: 202,
+          contentType: "application/json",
+          body: JSON.stringify(challenge),
+        })
+        return
+      }
+
+      if (username === "webauthn@example.com" && password === "Password123") {
+        const challenge = createMfaChallenge({
+          includeTotp: false,
+          includeWebAuthn: true,
+          defaultMethod: "webauthn",
+          sessionId: 96,
+        })
+        state.profile.mfa_required = true
+        state.profile.mfa_default_method = "webauthn"
+        state.mfa.loginChallenge = challenge
+        await route.fulfill({
+          status: 202,
+          contentType: "application/json",
+          body: JSON.stringify(challenge),
+        })
+        return
+      }
+
       await route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -223,10 +386,15 @@ export async function useMockApi(page: Page) {
       const auth = route.request().headers()["authorization"]
       console.log(`[mock] /users/me -> loggedIn=${state.loggedIn} auth=${auth ?? "none"}`)
       if (state.loggedIn || auth?.includes("mock-token")) {
+        const profile: User = {
+          ...state.profile,
+          totp_enrollments: state.totp.enrollments.map((entry) => ({ ...entry })),
+        }
+        state.profile.totp_enrollments = profile.totp_enrollments
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(mockUser),
+          body: JSON.stringify(profile),
         })
       } else {
         await route.fulfill({
@@ -255,6 +423,255 @@ export async function useMockApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(sessions),
+      })
+      return
+    }
+
+    if (pathname === "api/auth/mfa/totp/start") {
+      if (!state.loggedIn) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+
+      let payload: { label?: string } = {}
+      try {
+        payload = JSON.parse(route.request().postData() ?? "{}")
+      } catch {
+        payload = {}
+      }
+
+      const enrollment: MfaTotpEnrollment = {
+        id: state.totp.nextId++,
+        user_id: state.profile.id,
+        label: typeof payload.label === "string" ? payload.label : null,
+        is_active: false,
+        confirmed_at: null,
+        revoked_at: null,
+        created_at: new Date().toISOString(),
+      }
+
+      const secret = "JBSW Y3DP EHJK"
+      state.totp.pending = {
+        enrollment,
+        secret,
+        otpauth_url: `otpauth://totp/University:user?secret=${secret.replace(/\s+/g, "")}&issuer=University`,
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(state.totp.pending),
+      })
+      return
+    }
+
+    if (pathname === "api/auth/mfa/totp/confirm") {
+      if (!state.loggedIn) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+
+      const raw = route.request().postData() ?? "{}"
+      let body: { enrollment_id?: number; code?: string }
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        body = {}
+      }
+
+      if (!state.totp.pending || body.enrollment_id !== state.totp.pending.enrollment.id) {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Enrollment not found" }),
+        })
+        return
+      }
+
+      const code = String(body.code ?? "").replace(/\s+/g, "")
+      if (code !== "123456") {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Invalid verification code" }),
+        })
+        return
+      }
+
+      const confirmed: MfaTotpEnrollment = {
+        ...state.totp.pending.enrollment,
+        is_active: true,
+        confirmed_at: new Date().toISOString(),
+      }
+      state.totp.enrollments = [confirmed]
+      state.totp.pending = null
+      state.profile.totp_enrollments = [confirmed]
+      state.profile.mfa_default_method = "totp"
+      state.profile.mfa_last_verified_at = confirmed.confirmed_at
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(confirmed),
+      })
+      return
+    }
+
+    if (pathname === "api/auth/mfa/totp") {
+      if (!state.loggedIn) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(state.totp.enrollments),
+      })
+      return
+    }
+
+    const totpDeleteMatch = pathname.match(/^api\/auth\/mfa\/totp\/(\d+)$/)
+    if (totpDeleteMatch) {
+      if (!state.loggedIn) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+      const id = Number.parseInt(totpDeleteMatch[1] ?? "", 10)
+      const index = state.totp.enrollments.findIndex((entry) => entry.id === id)
+      if (index === -1) {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Enrollment not found" }),
+        })
+        return
+      }
+      state.totp.enrollments.splice(index, 1)
+      state.profile.totp_enrollments = [...state.totp.enrollments]
+      if (!state.totp.enrollments.length && state.profile.mfa_default_method === "totp") {
+        state.profile.mfa_default_method = null
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ disabled: true }),
+      })
+      return
+    }
+
+    if (pathname === "api/auth/mfa/step-up") {
+      const challenge =
+        state.mfa.stepUpChallenge ??
+        createMfaChallenge({ includeTotp: true, includeRecovery: true, includeWebAuthn: true, sessionId: 42 })
+      state.mfa.stepUpChallenge = challenge
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify(challenge),
+      })
+      return
+    }
+
+    if (pathname === "api/auth/mfa/verify") {
+      const raw = route.request().postData() ?? "{}"
+      let payload: {
+        method?: string
+        code?: string
+        credential?: unknown
+        challenge_token?: string
+      }
+      try {
+        payload = JSON.parse(raw)
+      } catch {
+        payload = {}
+      }
+
+      const challengeToken = payload.challenge_token
+      const method = payload.method as PendingMfaResponse["methods"][number]["method"] | undefined
+      if (!challengeToken || !method) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Invalid payload" }),
+        })
+        return
+      }
+
+      const matches = (challenge: PendingMfaResponse | null) =>
+        Boolean(challenge?.methods.some((entry) => entry.method === method && entry.challenge_token === challengeToken))
+
+      const matchedLogin = matches(state.mfa.loginChallenge)
+      const matchedStepUp = matches(state.mfa.stepUpChallenge)
+
+      if (!matchedLogin && !matchedStepUp) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Challenge expired" }),
+        })
+        return
+      }
+
+      if (method === "webauthn") {
+        if (!payload.credential || typeof payload.credential !== "object") {
+          await route.fulfill({
+            status: 400,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Invalid credential" }),
+          })
+          return
+        }
+      } else {
+        const code = String(payload.code ?? "").replace(/\s+/g, "")
+        if (code !== "123456" && !(method === "recovery" && code === "RECOVERY-1")) {
+          await route.fulfill({
+            status: 400,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Invalid verification code" }),
+          })
+          return
+        }
+      }
+
+      state.profile.mfa_last_verified_at = new Date().toISOString()
+      state.profile.mfa_required = false
+      if (method !== "recovery") {
+        state.profile.mfa_default_method = method
+      }
+
+      if (matchedLogin) {
+        state.loggedIn = true
+        state.mfa.loginChallenge = null
+      }
+      if (matchedStepUp) {
+        state.mfa.stepUpChallenge = createMfaChallenge({
+          includeTotp: true,
+          includeRecovery: true,
+          includeWebAuthn: true,
+          sessionId: 42,
+        })
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ access_token: "mock-token", token_type: "bearer" }),
       })
       return
     }
