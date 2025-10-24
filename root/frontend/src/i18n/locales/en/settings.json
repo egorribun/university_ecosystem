@@ -127,6 +127,69 @@
       "failed": "Couldn't revoke session"
     }
   },
+  "security": {
+    "title": "Security & MFA",
+    "subtitle": "Manage two-factor authentication methods, recovery codes, and trusted devices.",
+    "method": {
+      "totp": "Authenticator app",
+      "webauthn": "Security key",
+      "recovery": "Recovery codes"
+    },
+    "status": {
+      "defaultMethod": "Default method: {{method}}",
+      "noDefault": "Default method: none",
+      "lastVerified": "Last verified {{value}}",
+      "notVerified": "Not verified yet"
+    },
+    "totp": {
+      "description": "Generate one-time codes using apps like Google Authenticator or 1Password.",
+      "empty": "No authenticator apps connected.",
+      "add": "Set up authenticator app",
+      "cancel": "Cancel setup",
+      "confirm": "Confirm setup",
+      "pendingTitle": "Finish setup",
+      "pendingDescription": "Scan the QR code and enter the verification code to activate.",
+      "added": "Added on {{value}}",
+      "remove": "Remove",
+      "unnamed": "Authenticator {{index}}"
+    },
+    "webauthn": {
+      "description": "Use hardware keys or built-in authenticators for passwordless sign-in.",
+      "empty": "No security keys connected.",
+      "nameLabel": "Device name",
+      "namePlaceholder": "e.g. Work laptop key",
+      "cta": "Register security key",
+      "registering": "Waiting for security key…",
+      "added": "Added on {{value}}",
+      "lastUsed": "Last used {{value}}",
+      "remove": "Remove",
+      "unnamed": "Security key {{index}}"
+    },
+    "recovery": {
+      "description": "Use recovery codes when you can't access your authenticator or security key.",
+      "generate": "Generate new codes",
+      "generatedAt": "Last generated {{value}}",
+      "neverGenerated": "Codes not generated yet.",
+      "generating": "Generating…"
+    },
+    "snackbar": {
+      "totpStartFailed": "Couldn't start authenticator setup",
+      "totpEnabled": "Authenticator app connected",
+      "totpConfirmFailed": "Couldn't confirm authenticator code",
+      "totpDisabled": "Authenticator app removed",
+      "totpDisableFailed": "Couldn't remove authenticator app",
+      "webauthnAdded": "Security key registered",
+      "webauthnAddFailed": "Couldn't register security key",
+      "webauthnCancelled": "Security key verification cancelled",
+      "webauthnRemoved": "Security key removed",
+      "webauthnRemoveFailed": "Couldn't remove security key",
+      "recoveryGenerated": "New recovery codes generated",
+      "recoveryFailed": "Couldn't generate recovery codes"
+    },
+    "stepUp": {
+      "description": "Complete multi-factor authentication to continue."
+    }
+  },
   "integrations": {
     "spotify": {
       "title": "Spotify",

@@ -42,7 +42,7 @@ export type SubmitMfaChallengePayload =
 
 type AuthContextType = {
   isAuth: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<PendingMfaState | null>
   logout: () => Promise<void>
   user: UserState
   loading: boolean
@@ -61,7 +61,7 @@ const noopSetUser: Dispatch<SetUserArg> = (_value) => {
 
 export const AuthContext = createContext<AuthContextType>({
   isAuth: false,
-  login: async () => {},
+  login: async () => null,
   logout: async () => {},
   user: null,
   loading: false,
@@ -658,7 +658,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         setUser(profile)
       } catch (error) {
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted) return null
         if (isAxiosError(error) && error.response?.status === 401) {
           handleUnauthorized()
           return
@@ -778,7 +778,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string): Promise<PendingMfaState | null> => {
       const payload = new URLSearchParams()
       payload.append("username", email.trim())
       payload.append("password", password)
@@ -799,17 +799,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
         )
 
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted) return null
 
         if (response.status === 202) {
           const data = response.data as PendingMfaResponse
           const challenge: PendingMfaState = { ...data, reason: "login" }
           updatePendingMfa(challenge)
-          return
+          return challenge
         }
 
         updatePendingMfa(null)
         await finalizeAuthenticatedSession(controller)
+        return null
       } catch (error) {
         if (!controller.signal.aborted) {
           handleUnauthorized()

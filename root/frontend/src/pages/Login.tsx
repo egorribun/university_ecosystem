@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 import {
@@ -16,10 +16,15 @@ import {
   FormControlLabel,
   Chip,
   Tooltip,
+  Alert,
 } from "@mui/material"
 import Visibility from "@mui/icons-material/Visibility"
 import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import { useTranslation } from "react-i18next"
+import OtpEntry, { type OtpMethod } from "@/components/mfa/OtpEntry"
+import WebAuthnPrompt from "@/components/mfa/WebAuthnPrompt"
+import type { MfaMethod } from "@/types/Mfa"
+import type { AuthenticationResponseJSON } from "@simplewebauthn/browser"
 
 function levenshtein(a: string, b: string) {
   const m = a.length,
@@ -87,7 +92,7 @@ const Login = () => {
   const [emailMirror, setEmailMirror] = useState(savedEmail.current)
 
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, pendingMfa, submitMfaChallenge } = useAuth()
   const isMobile = useMediaQuery("(max-width:600px)")
 
   const emailRef = useRef<HTMLInputElement | null>(null)
@@ -98,6 +103,53 @@ const Login = () => {
     () => currentEmail.length === 0 || emailRe.test(currentEmail),
     [currentEmail]
   )
+
+  const [pendingEmail, setPendingEmail] = useState<string | null>(
+    savedEmail.current ? savedEmail.current : null
+  )
+  const [mfaBusy, setMfaBusy] = useState(false)
+  const [mfaError, setMfaError] = useState<string | null>(null)
+  const [mfaErrorSource, setMfaErrorSource] = useState<
+    "totp" | "webauthn" | "general" | null
+  >(null)
+
+  const loginChallenge = useMemo(
+    () => (pendingMfa?.reason === "login" ? pendingMfa : null),
+    [pendingMfa]
+  )
+
+  const otpMethods = useMemo<OtpMethod[]>(() => {
+    if (!loginChallenge) return []
+    const set = new Set<OtpMethod>()
+    for (const entry of loginChallenge.methods) {
+      if (entry.method === "totp" || entry.method === "recovery") {
+        set.add(entry.method)
+      }
+    }
+    return Array.from(set)
+  }, [loginChallenge])
+
+  const otpDefaultMethod = useMemo(() => {
+    if (!loginChallenge) return null
+    const preferred = loginChallenge.default_method
+    if (preferred === "totp" || preferred === "recovery") return preferred
+    if (otpMethods.includes("totp")) return "totp"
+    if (otpMethods.includes("recovery")) return "recovery"
+    return null
+  }, [loginChallenge, otpMethods])
+
+  const webAuthnChallenge = useMemo(
+    () => loginChallenge?.methods.find((entry) => entry.method === "webauthn") ?? null,
+    [loginChallenge]
+  )
+
+  useEffect(() => {
+    if (!loginChallenge) {
+      setMfaBusy(false)
+      setMfaError(null)
+      setMfaErrorSource(null)
+    }
+  }, [loginChallenge])
 
   useEffect(() => {
     const t1 = setTimeout(() => {
@@ -151,14 +203,22 @@ const Login = () => {
 
     setSubmitError(null)
     setSubmitting(true)
+    setPendingEmail(username)
     try {
-      await login(username, passwordValue)
+      const challenge = await login(username, passwordValue)
 
       if (remember) {
         localStorage.setItem("auth:lastEmail", username)
         savedEmail.current = username
       }
       localStorage.setItem("auth:remember", remember ? "1" : "0")
+
+      if (challenge) {
+        setMfaError(null)
+        setMfaErrorSource(null)
+        return
+      }
+
       navigate("/dashboard")
     } catch (err) {
       const message = err instanceof Error && err.message ? err.message : t("auth:login.error")
@@ -166,6 +226,154 @@ const Login = () => {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleOtpVerify = useCallback(
+    async (method: Extract<MfaMethod, "totp" | "recovery">, code: string) => {
+      if (!loginChallenge) {
+        setMfaError(t("auth:mfa.errors.expired"))
+        setMfaErrorSource("general")
+        return
+      }
+      const challenge = loginChallenge.methods.find((entry) => entry.method === method)
+      if (!challenge) {
+        setMfaError(t("auth:mfa.errors.missingChallenge"))
+        setMfaErrorSource("general")
+        return
+      }
+
+      setMfaBusy(true)
+      setMfaError(null)
+      setMfaErrorSource(null)
+
+      try {
+        await submitMfaChallenge({
+          method,
+          code,
+          challengeToken: challenge.challenge_token,
+        })
+        navigate("/dashboard")
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
+        setMfaError(message)
+        setMfaErrorSource("totp")
+      } finally {
+        setMfaBusy(false)
+      }
+    },
+    [loginChallenge, navigate, submitMfaChallenge, t]
+  )
+
+  const handleWebAuthnVerify = useCallback(
+    async (credential: AuthenticationResponseJSON) => {
+      if (!loginChallenge || !webAuthnChallenge) {
+        setMfaError(t("auth:mfa.errors.expired"))
+        setMfaErrorSource("general")
+        return
+      }
+      setMfaBusy(true)
+      setMfaError(null)
+      setMfaErrorSource(null)
+      try {
+        await submitMfaChallenge({
+          method: "webauthn",
+          credential: credential as unknown as Record<string, unknown>,
+          challengeToken: webAuthnChallenge.challenge_token,
+        })
+        navigate("/dashboard")
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
+        setMfaError(message)
+        setMfaErrorSource("webauthn")
+      } finally {
+        setMfaBusy(false)
+      }
+    },
+    [loginChallenge, navigate, submitMfaChallenge, t, webAuthnChallenge]
+  )
+
+  const activeEmail = pendingEmail || currentEmail || savedEmail.current || ""
+  const generalMfaError = mfaErrorSource === "general" ? mfaError : null
+
+  if (loginChallenge) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100dvh",
+          bgcolor: "var(--page-bg)",
+          color: "var(--page-text)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          px: 1,
+        }}
+      >
+        <Paper
+          elevation={7}
+          sx={{
+            width: "100%",
+            maxWidth: 440,
+            p: { xs: 2, sm: 4 },
+            borderRadius: { xs: 3, sm: 5 },
+            boxShadow: 8,
+            bgcolor: "var(--card-bg)",
+            transition: "background 0.22s, box-shadow 0.22s",
+          }}
+        >
+          <Stack spacing={2.5}>
+            <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center">
+              {t("auth:mfa.verifyTitle")}
+            </Typography>
+            <Typography
+              variant="body2"
+              align="center"
+              sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
+            >
+              {t("auth:mfa.verifySubtitle", { email: activeEmail || t("auth:mfa.unknownEmail") })}
+            </Typography>
+            {generalMfaError ? (
+              <Alert severity="error" variant="outlined">
+                {generalMfaError}
+              </Alert>
+            ) : null}
+            {otpMethods.length ? (
+              <OtpEntry
+                availableMethods={otpMethods}
+                defaultMethod={otpDefaultMethod ?? undefined}
+                loading={mfaBusy}
+                error={mfaErrorSource === "totp" ? mfaError : null}
+                helperText={t("auth:mfa.otpHint")}
+                onSubmit={handleOtpVerify}
+              />
+            ) : null}
+            {webAuthnChallenge ? (
+              <WebAuthnPrompt
+                options={webAuthnChallenge.options ?? null}
+                autoStart
+                loading={mfaBusy}
+                error={mfaErrorSource === "webauthn" ? mfaError ?? undefined : undefined}
+                onResolve={handleWebAuthnVerify}
+              />
+            ) : null}
+            {!otpMethods.length && !webAuthnChallenge ? (
+              <Alert severity="warning" variant="outlined">
+                {t("auth:mfa.noMethods")}
+              </Alert>
+            ) : null}
+            <Button
+              variant="text"
+              color="inherit"
+              onClick={() => window.location.reload()}
+              sx={{ mt: 1 }}
+            >
+              {t("auth:mfa.startOver")}
+            </Button>
+          </Stack>
+        </Paper>
+      </Box>
+    )
   }
 
   return (

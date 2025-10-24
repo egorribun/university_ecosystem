@@ -7,8 +7,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
 import api from "../api/client"
+import {
+  startTotpEnrollment,
+  confirmTotpEnrollment,
+  deleteTotpEnrollment,
+  startWebAuthnAttestation,
+  finishWebAuthnAttestation,
+  deleteWebAuthnCredential,
+  regenerateRecoveryCodes,
+} from "@/api/mfa"
+import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
+import OtpEntry from "@/components/mfa/OtpEntry"
+import RecoveryCodeList from "@/components/mfa/RecoveryCodeList"
+import StepUpDialog from "@/components/mfa/StepUpDialog"
+import {
+  startRegistration,
+  type PublicKeyCredentialCreationOptionsJSON,
+  type RegistrationResponseJSON,
+} from "@simplewebauthn/browser"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
+import type { MfaMethod, MfaTotpEnrollment, MfaWebAuthnCredential, TotpEnrollmentStartResponse } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
 import {
   Box,
@@ -47,6 +66,17 @@ import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 
 type ThemeMode = "system" | "light" | "dark"
+
+const isCreationOptions = (
+  value: Record<string, unknown> | PublicKeyCredentialCreationOptionsJSON | null | undefined
+): value is PublicKeyCredentialCreationOptionsJSON => {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as {
+    challenge?: unknown
+    pubKeyCredParams?: unknown
+  }
+  return typeof candidate.challenge === "string" && Array.isArray(candidate.pubKeyCredParams)
+}
 
 const DEFAULT_DND_START = "22:00"
 const DEFAULT_DND_END = "07:00"
@@ -618,6 +648,16 @@ export default function Settings() {
     return fresh
   }, [queryClient, setUser])
 
+  const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStartResponse | null>(null)
+  const [totpBusy, setTotpBusy] = useState(false)
+  const [totpError, setTotpError] = useState<string | null>(null)
+  const [webAuthnBusy, setWebAuthnBusy] = useState(false)
+  const [webAuthnName, setWebAuthnName] = useState("")
+  const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[]>([])
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [stepUpOpen, setStepUpOpen] = useState(false)
+  const stepUpActionRef = useRef<(() => Promise<void>) | null>(null)
+
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
       const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
@@ -635,6 +675,78 @@ export default function Settings() {
       }
     }
     return fallback
+  }, [])
+
+  const methodLabels = useMemo<Record<MfaMethod, string>>(
+    () => ({
+      totp: t("settings:security.method.totp"),
+      webauthn: t("settings:security.method.webauthn"),
+      recovery: t("settings:security.method.recovery"),
+    }),
+    [t]
+  )
+
+  const formatDateTime = useCallback((value: string | null) => {
+    if (!value) return null
+    const parsed = dayjs(value)
+    if (!parsed.isValid()) return null
+    return parsed.format("DD MMM YYYY HH:mm")
+  }, [])
+
+  const activeTotp = useMemo(
+    () => (user?.totp_enrollments ?? []).filter((entry) => entry.is_active),
+    [user?.totp_enrollments]
+  )
+
+  const activeWebAuthn = useMemo(
+    () => (user?.webauthn_credentials ?? []).filter((entry) => entry.is_active),
+    [user?.webauthn_credentials]
+  )
+
+  const defaultMethodText = useMemo(() => {
+    const key = user?.mfa_default_method
+    if (!key) return t("settings:security.status.noDefault")
+    return t("settings:security.status.defaultMethod", { method: methodLabels[key] })
+  }, [methodLabels, t, user?.mfa_default_method])
+
+  const lastVerifiedText = useMemo(() => {
+    if (!user?.mfa_last_verified_at) {
+      return t("settings:security.status.notVerified")
+    }
+    const formatted = formatDateTime(user.mfa_last_verified_at)
+    return formatted
+      ? t("settings:security.status.lastVerified", { value: formatted })
+      : t("settings:security.status.notVerified")
+  }, [formatDateTime, t, user?.mfa_last_verified_at])
+
+  const recoveryStatusText = useMemo(() => {
+    const generatedAt = user?.mfa_recovery_codes_generated_at
+    if (!generatedAt) {
+      return t("settings:security.recovery.neverGenerated")
+    }
+    const formatted = formatDateTime(generatedAt)
+    return formatted
+      ? t("settings:security.recovery.generatedAt", { value: formatted })
+      : t("settings:security.recovery.neverGenerated")
+  }, [formatDateTime, t, user?.mfa_recovery_codes_generated_at])
+
+  const openStepUpFor = useCallback((action: () => Promise<void>) => {
+    stepUpActionRef.current = action
+    setStepUpOpen(true)
+  }, [])
+
+  const handleStepUpClose = useCallback(() => {
+    setStepUpOpen(false)
+    stepUpActionRef.current = null
+  }, [])
+
+  const handleStepUpCompleted = useCallback(async () => {
+    const action = stepUpActionRef.current
+    stepUpActionRef.current = null
+    setStepUpOpen(false)
+    if (action) {
+      await action()
+    }
   }, [])
 
   const handleRevokeSession = useCallback(
@@ -658,6 +770,141 @@ export default function Settings() {
     },
     [logout, queryClient, resolveDetailMessage, revokeSessionMutation, sessionsKey, t]
   )
+
+  const handleStartTotp = useCallback(async () => {
+    if (totpBusy) return
+    setTotpBusy(true)
+    setTotpError(null)
+    try {
+      const { data } = await startTotpEnrollment()
+      setTotpDraft(data)
+    } catch (error) {
+      setSnack({
+        text: resolveDetailMessage(error, t("settings:security.snackbar.totpStartFailed")),
+        sev: "error",
+      })
+    } finally {
+      setTotpBusy(false)
+    }
+  }, [resolveDetailMessage, setSnack, t, totpBusy])
+
+  const handleConfirmTotp = useCallback(
+    async (_method: Extract<MfaMethod, "totp" | "recovery">, code: string) => {
+      if (!totpDraft) return
+      setTotpBusy(true)
+      setTotpError(null)
+      try {
+        await confirmTotpEnrollment({ enrollment_id: totpDraft.enrollment.id, code })
+        setTotpDraft(null)
+        setGeneratedRecoveryCodes([])
+        await refreshMe()
+        setSnack({ text: t("settings:security.snackbar.totpEnabled"), sev: "success" })
+      } catch (error) {
+        setTotpError(resolveDetailMessage(error, t("settings:security.snackbar.totpConfirmFailed")))
+      } finally {
+        setTotpBusy(false)
+      }
+    },
+    [refreshMe, resolveDetailMessage, t, totpDraft, setSnack]
+  )
+
+  const handleCancelTotp = useCallback(() => {
+    setTotpDraft(null)
+    setTotpError(null)
+  }, [])
+
+  const handleDisableTotp = useCallback(
+    (enrollmentId: number) => {
+      const action = async () => {
+        try {
+          await deleteTotpEnrollment(enrollmentId)
+          await refreshMe()
+          setSnack({ text: t("settings:security.snackbar.totpDisabled"), sev: "success" })
+        } catch (error) {
+          setSnack({
+            text: resolveDetailMessage(error, t("settings:security.snackbar.totpDisableFailed")),
+            sev: "error",
+          })
+        }
+      }
+      openStepUpFor(action)
+    },
+    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, t]
+  )
+
+  const handleRegisterWebAuthn = useCallback(async () => {
+    if (webAuthnBusy) return
+    setWebAuthnBusy(true)
+    try {
+      const { data } = await startWebAuthnAttestation()
+      const rawOptions = data.options ?? null
+      if (!isCreationOptions(rawOptions)) {
+        throw new Error("Invalid WebAuthn attestation options")
+      }
+      const credential: RegistrationResponseJSON = await startRegistration({
+        optionsJSON: rawOptions,
+      })
+      await finishWebAuthnAttestation({
+        challenge_token: data.challenge_token,
+        credential: credential as unknown as Record<string, unknown>,
+        device_name: webAuthnName.trim() || undefined,
+      })
+      setWebAuthnName("")
+      await refreshMe()
+      setSnack({ text: t("settings:security.snackbar.webauthnAdded"), sev: "success" })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        setSnack({ text: t("settings:security.snackbar.webauthnCancelled"), sev: "info" })
+      } else {
+        setSnack({
+          text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnAddFailed")),
+          sev: "error",
+        })
+      }
+    } finally {
+      setWebAuthnBusy(false)
+    }
+  }, [refreshMe, resolveDetailMessage, setSnack, t, webAuthnBusy, webAuthnName])
+
+  const handleRemoveWebAuthn = useCallback(
+    (credentialId: string) => {
+      const action = async () => {
+        try {
+          await deleteWebAuthnCredential(credentialId)
+          await refreshMe()
+          setSnack({ text: t("settings:security.snackbar.webauthnRemoved"), sev: "success" })
+        } catch (error) {
+          setSnack({
+            text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnRemoveFailed")),
+            sev: "error",
+          })
+        }
+      }
+      openStepUpFor(action)
+    },
+    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, t]
+  )
+
+  const handleGenerateRecoveryCodes = useCallback(() => {
+    const action = async () => {
+      setRecoveryBusy(true)
+      try {
+        const { data } = await regenerateRecoveryCodes()
+        const codes = Array.isArray(data?.codes) ? data.codes.map((code) => String(code)) : []
+        setGeneratedRecoveryCodes(codes)
+        await refreshMe()
+        setSnack({ text: t("settings:security.snackbar.recoveryGenerated"), sev: "success" })
+      } catch (error) {
+        setSnack({
+          text: resolveDetailMessage(error, t("settings:security.snackbar.recoveryFailed")),
+          sev: "error",
+        })
+      } finally {
+        setRecoveryBusy(false)
+      }
+    }
+    openStepUpFor(action)
+  }, [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, t])
 
   const formatSessionTimestamp = useCallback(
     (value: string | null) => {
@@ -1354,6 +1601,218 @@ export default function Settings() {
             </SectionCard>
 
             <SectionCard component="section">
+              <Stack spacing={1} sx={{ mb: 1.5 }}>
+                <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
+                <SectionSubtitle variant="body2">{t("settings:security.subtitle")}</SectionSubtitle>
+              </Stack>
+
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
+                <Chip size="small" label={defaultMethodText} sx={{ fontWeight: 600 }} />
+                <Chip size="small" label={lastVerifiedText} sx={{ fontWeight: 600 }} />
+              </Stack>
+
+              <Stack spacing={2.5} sx={{ mt: 1.5 }}>
+                <Stack spacing={1}>
+                  <SectionTitle variant="subtitle2">{t("settings:security.method.totp")}</SectionTitle>
+                  <SectionSubtitle variant="body2">{t("settings:security.totp.description")}</SectionSubtitle>
+                </Stack>
+
+                {totpDraft ? (
+                  <Stack spacing={2}>
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      {t("settings:security.totp.pendingTitle")}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                      {t("settings:security.totp.pendingDescription")}
+                    </Typography>
+                    <TotpQrDisplay
+                      otpauthUrl={totpDraft.otpauth_url}
+                      secret={totpDraft.secret}
+                      label={totpDraft.enrollment.label}
+                    />
+                    <OtpEntry
+                      availableMethods={["totp"]}
+                      loading={totpBusy}
+                      error={totpError}
+                      onSubmit={handleConfirmTotp}
+                    />
+                    <Button variant="text" color="inherit" disabled={totpBusy} onClick={handleCancelTotp}>
+                      {t("settings:security.totp.cancel")}
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {activeTotp.length ? (
+                      <Stack spacing={1.25}>
+                        {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
+                          <Stack
+                            key={enrollment.id}
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.25}
+                            alignItems={{ sm: "center" }}
+                            justifyContent="space-between"
+                            sx={{
+                              border: "1px solid var(--glass-border)",
+                              borderRadius: 2,
+                              padding: 1.5,
+                            }}
+                          >
+                            <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                              <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
+                                {enrollment.label || t("settings:security.totp.unnamed", { index: index + 1 })}
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                              >
+                                {t("settings:security.totp.added", {
+                                  value: formatDateTime(enrollment.created_at) ?? "—",
+                                })}
+                              </Typography>
+                            </Stack>
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              onClick={() => handleDisableTotp(enrollment.id)}
+                            >
+                              {t("settings:security.totp.remove")}
+                            </Button>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                        {t("settings:security.totp.empty")}
+                      </Typography>
+                    )}
+                    <Button variant="contained" onClick={() => void handleStartTotp()} disabled={totpBusy}>
+                      {t("settings:security.totp.add")}
+                    </Button>
+                  </Stack>
+                )}
+
+                <Divider sx={{ my: 1 }} />
+
+                <Stack spacing={1}>
+                  <SectionTitle variant="subtitle2">{t("settings:security.method.webauthn")}</SectionTitle>
+                  <SectionSubtitle variant="body2">{t("settings:security.webauthn.description")}</SectionSubtitle>
+                </Stack>
+
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.5}
+                  alignItems={{ sm: "center" }}
+                  sx={{ maxWidth: 420 }}
+                >
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label={t("settings:security.webauthn.nameLabel")}
+                    placeholder={t("settings:security.webauthn.namePlaceholder")}
+                    value={webAuthnName}
+                    onChange={(event) => setWebAuthnName(event.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={() => void handleRegisterWebAuthn()}
+                    disabled={webAuthnBusy}
+                  >
+                    {webAuthnBusy
+                      ? t("settings:security.webauthn.registering")
+                      : t("settings:security.webauthn.cta")}
+                  </Button>
+                </Stack>
+
+                {activeWebAuthn.length ? (
+                  <Stack spacing={1.25}>
+                    {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
+                      const added = formatDateTime(credential.created_at)
+                      const lastUsed = formatDateTime(credential.last_used_at)
+                      return (
+                        <Stack
+                          key={credential.credential_id}
+                          direction={{ xs: "column", sm: "row" }}
+                          spacing={1.25}
+                          alignItems={{ sm: "center" }}
+                          justifyContent="space-between"
+                          sx={{
+                            border: "1px solid var(--glass-border)",
+                            borderRadius: 2,
+                            padding: 1.5,
+                          }}
+                        >
+                          <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                            <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
+                              {credential.device_name || t("settings:security.webauthn.unnamed", { index: index + 1 })}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                            >
+                              {added
+                                ? t("settings:security.webauthn.added", { value: added })
+                                : null}
+                            </Typography>
+                            {lastUsed ? (
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "color-mix(in srgb, var(--page-text) 60%, transparent)" }}
+                              >
+                                {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
+                              </Typography>
+                            ) : null}
+                          </Stack>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            onClick={() => handleRemoveWebAuthn(credential.credential_id)}
+                          >
+                            {t("settings:security.webauthn.remove")}
+                          </Button>
+                        </Stack>
+                      )
+                    })}
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                    {t("settings:security.webauthn.empty")}
+                  </Typography>
+                )}
+
+                <Divider sx={{ my: 1 }} />
+
+                <Stack spacing={1}>
+                  <SectionTitle variant="subtitle2">{t("settings:security.method.recovery")}</SectionTitle>
+                  <SectionSubtitle variant="body2">{t("settings:security.recovery.description")}</SectionSubtitle>
+                </Stack>
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleGenerateRecoveryCodes}
+                    disabled={recoveryBusy}
+                  >
+                    {recoveryBusy
+                      ? t("settings:security.recovery.generating")
+                      : t("settings:security.recovery.generate")}
+                  </Button>
+                  <Typography variant="body2" sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}>
+                    {recoveryStatusText}
+                  </Typography>
+                </Stack>
+
+                {generatedRecoveryCodes.length ? (
+                  <RecoveryCodeList
+                    codes={generatedRecoveryCodes.map((code) => ({ code }))}
+                    allowCopy
+                  />
+                ) : null}
+              </Stack>
+            </SectionCard>
+
+            <SectionCard component="section">
               <Stack spacing={1}>
                 <SectionTitle variant="subtitle1">
                   {t("settings:account.logout.title")}
@@ -1449,6 +1908,13 @@ export default function Settings() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <StepUpDialog
+        open={stepUpOpen}
+        onClose={handleStepUpClose}
+        onCompleted={handleStepUpCompleted}
+        description={t("settings:security.stepUp.description")}
+      />
 
       <Snackbar
         open={!!snack}
