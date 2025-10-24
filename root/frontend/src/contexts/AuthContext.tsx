@@ -352,7 +352,14 @@ type FetchCurrentUserOptions = {
 
 export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {}) => {
   const cachedEnvelope = getCachedEnvelopeHeader()
-  const headers = cachedEnvelope ? { [PROFILE_CACHE_HEADER]: cachedEnvelope } : undefined
+  let headers: Record<string, string> | undefined
+  if (cachedEnvelope) {
+    if (/^[\x00-\x7F]*$/.test(cachedEnvelope)) {
+      headers = { [PROFILE_CACHE_HEADER]: cachedEnvelope }
+    } else {
+      clearProfileCacheStorage()
+    }
+  }
   try {
     const response = await api.get<User>("/users/me", { signal, headers })
     return response.data
