@@ -549,9 +549,7 @@ async def _acknowledge_persistent_job(
                     max_attempts = int(settings.notifications_queue_max_attempts)
                     record.last_error = error_message
                     record.claimed_at = None
-                    should_dead_letter = (
-                        max_attempts > 0 and attempts >= max_attempts
-                    )
+                    should_dead_letter = max_attempts > 0 and attempts >= max_attempts
                     if should_dead_letter:
                         record.dead_lettered = True
                         record.next_retry_at = None
@@ -581,7 +579,9 @@ async def _acknowledge_persistent_job(
                                 "job": job,
                                 "queue_id": job.queue_id,
                                 "attempt": attempts,
-                                "max_attempts": max_attempts if max_attempts > 0 else None,
+                                "max_attempts": (
+                                    max_attempts if max_attempts > 0 else None
+                                ),
                                 "next_retry_at": next_retry.isoformat(),
                                 "error": error_message,
                             },
