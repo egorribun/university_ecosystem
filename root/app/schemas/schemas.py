@@ -459,6 +459,7 @@ class ActiveSessionOut(OrmModel):
     mfa_required: bool = False
     mfa_completed_at: datetime | None = None
     mfa_method: str | None = None
+    mfa_verified_at: datetime | None = None
     is_current: bool = False
 
 

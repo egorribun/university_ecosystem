@@ -156,6 +156,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Повторите попытку через {duration}.",
         "en": "Try again in {duration}.",
     },
+    "errors.auth.mfa_step_up_required": {
+        "ru": "Требуется дополнительное подтверждение входа.",
+        "en": "Additional verification is required to continue.",
+    },
     "errors.auth.user_deactivated": {
         "ru": "Пользователь деактивирован",
         "en": "User account is deactivated",

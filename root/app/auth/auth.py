@@ -3,15 +3,19 @@ import logging
 import math
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any, Mapping, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import jwt
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import uuid4
 
 from app.api.deps import get_current_user
+from app.auth import mfa
 from app.auth.security import (
     create_access_token,
     decode_token,
@@ -22,8 +26,21 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
-from app.models.models import ActiveSession, FailedLoginAttempt, User
-from app.schemas.schemas import SessionSigningKeyOut, Token, UserCreate
+from app.models.models import (
+    ActiveSession,
+    FailedLoginAttempt,
+    MfaRecoveryCode,
+    MfaTotpEnrollment,
+    MfaWebAuthnCredential,
+    User,
+)
+from app.schemas.schemas import (
+    MfaTotpEnrollmentOut,
+    MfaWebAuthnCredentialOut,
+    SessionSigningKeyOut,
+    Token,
+    UserCreate,
+)
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
@@ -35,6 +52,69 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
+
+class MfaMethodChallengeOut(BaseModel):
+    method: Literal[
+        mfa.MFA_METHOD_TOTP,
+        mfa.MFA_METHOD_WEBAUTHN,
+        mfa.MFA_METHOD_RECOVERY,
+    ]
+    challenge_token: str
+    challenge_expires_at: datetime
+    options: dict[str, Any] | None = None
+
+
+class PendingMfaResponse(BaseModel):
+    status: Literal["mfa_required"] = "mfa_required"
+    user_id: int
+    session_id: int | None = None
+    default_method: str | None = None
+    methods: list[MfaMethodChallengeOut]
+
+
+class TotpEnrollmentStartIn(BaseModel):
+    label: str | None = None
+
+
+class TotpEnrollmentStartOut(BaseModel):
+    enrollment: MfaTotpEnrollmentOut
+    secret: str
+    otpauth_url: str
+
+
+class TotpEnrollmentConfirmIn(BaseModel):
+    enrollment_id: int
+    code: str
+
+
+class WebAuthnAttestationStartOut(BaseModel):
+    options: dict[str, Any]
+    challenge_token: str
+    challenge_expires_at: datetime
+
+
+class WebAuthnAttestationFinishIn(BaseModel):
+    challenge_token: str
+    credential: dict[str, Any]
+    device_name: str | None = None
+
+
+class WebAuthnAssertionStartOut(BaseModel):
+    options: dict[str, Any]
+    challenge_token: str
+    challenge_expires_at: datetime
+
+
+class MfaVerifyIn(BaseModel):
+    method: Literal[
+        mfa.MFA_METHOD_TOTP,
+        mfa.MFA_METHOD_WEBAUTHN,
+        mfa.MFA_METHOD_RECOVERY,
+    ]
+    challenge_token: str
+    code: str | None = None
+    credential: dict[str, Any] | None = None
 
 
 def _token_cookie_expiration() -> tuple[int | None, datetime | None]:
@@ -70,6 +150,165 @@ def _clear_access_token_cookie(response: Response) -> None:
         secure=settings.cookie_secure,
         samesite="strict",
     )
+
+
+def _access_token_lifetime_minutes() -> int:
+    try:
+        minutes = int(settings.access_token_expire_minutes)
+    except (TypeError, ValueError):
+        return 60
+    return minutes if minutes > 0 else 60
+
+
+def _extract_client_info(request: Request) -> tuple[str | None, str | None]:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip() or None
+    else:
+        client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return client_ip, user_agent
+
+
+def _create_session_for_user(user: User, request: Request) -> ActiveSession:
+    client_ip, user_agent = _extract_client_info(request)
+    now = datetime.now(UTC)
+    session = ActiveSession(
+        user_id=user.id,
+        jti=str(uuid4()),
+        expires_at=now,
+        last_seen_at=now,
+        signing_key=secrets.token_urlsafe(32),
+        mfa_required=False,
+    )
+    if client_ip:
+        session.ip_address = client_ip[:64]
+    if user_agent:
+        session.user_agent = user_agent[:512]
+    return session
+
+
+async def _mint_access_token(
+    db: AsyncSession,
+    session: ActiveSession,
+    *,
+    extra: Mapping[str, Any] | None = None,
+) -> str:
+    minutes = _access_token_lifetime_minutes()
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=minutes)
+    session.expires_at = expires_at
+    session.last_seen_at = now
+    payload = {
+        "sub": str(session.user_id),
+        "iat": now,
+        "nbf": now,
+        "exp": expires_at,
+        "jti": session.jti,
+    }
+    if extra:
+        for key, value in extra.items():
+            payload[key] = value
+    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    await db.commit()
+    return token
+
+
+async def _resolve_mfa_capabilities(
+    db: AsyncSession, *, user: User
+) -> dict[str, bool]:
+    totp_stmt = (
+        select(MfaTotpEnrollment.id)
+        .where(MfaTotpEnrollment.user_id == user.id)
+        .where(MfaTotpEnrollment.is_active.is_(True))
+        .where(MfaTotpEnrollment.revoked_at.is_(None))
+        .where(MfaTotpEnrollment.confirmed_at.is_not(None))
+        .limit(1)
+    )
+    totp_available = bool((await db.execute(totp_stmt)).scalars().first())
+
+    webauthn_stmt = (
+        select(MfaWebAuthnCredential.id)
+        .where(MfaWebAuthnCredential.user_id == user.id)
+        .where(MfaWebAuthnCredential.is_active.is_(True))
+        .limit(1)
+    )
+    webauthn_available = bool((await db.execute(webauthn_stmt)).scalars().first())
+
+    recovery_stmt = (
+        select(MfaRecoveryCode.id)
+        .where(MfaRecoveryCode.user_id == user.id)
+        .where(MfaRecoveryCode.used_at.is_(None))
+        .limit(1)
+    )
+    recovery_available = bool((await db.execute(recovery_stmt)).scalars().first())
+
+    return {
+        mfa.MFA_METHOD_TOTP: totp_available,
+        mfa.MFA_METHOD_WEBAUTHN: webauthn_available,
+        mfa.MFA_METHOD_RECOVERY: recovery_available,
+    }
+
+
+async def _collect_mfa_challenges(
+    db: AsyncSession,
+    *,
+    user: User,
+    locale: str,
+    capabilities: Mapping[str, bool],
+    session: ActiveSession | None = None,
+) -> list[MfaMethodChallengeOut]:
+    methods: list[MfaMethodChallengeOut] = []
+    if capabilities.get(mfa.MFA_METHOD_TOTP):
+        challenge = await mfa.start_totp_verification(
+            db,
+            user=user,
+            session=session,
+            locale=locale,
+        )
+        methods.append(
+            MfaMethodChallengeOut(
+                method=mfa.MFA_METHOD_TOTP,
+                challenge_token=challenge.token,
+                challenge_expires_at=challenge.expires_at,
+            )
+        )
+    if capabilities.get(mfa.MFA_METHOD_WEBAUTHN):
+        try:
+            options, challenge = await mfa.start_webauthn_assertion(
+                db,
+                user=user,
+                session=session,
+                locale=locale,
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_400_BAD_REQUEST:
+                raise
+        else:
+            methods.append(
+                MfaMethodChallengeOut(
+                    method=mfa.MFA_METHOD_WEBAUTHN,
+                    challenge_token=challenge.token,
+                    challenge_expires_at=challenge.expires_at,
+                    options=options,
+                )
+            )
+    if capabilities.get(mfa.MFA_METHOD_RECOVERY):
+        challenge = await mfa.issue_challenge(
+            db,
+            user_id=user.id,
+            session_id=session.id if session else None,
+            challenge_type=mfa.CHALLENGE_TYPE_RECOVERY,
+            locale=locale,
+        )
+        methods.append(
+            MfaMethodChallengeOut(
+                method=mfa.MFA_METHOD_RECOVERY,
+                challenge_token=challenge.token,
+                challenge_expires_at=challenge.expires_at,
+            )
+        )
+    return methods
 
 
 def _lockout_rules() -> list[tuple[int, int]]:
@@ -275,7 +514,7 @@ async def _perform_login(
     request: Request,
     response: Response,
     db: AsyncSession,
-) -> dict[str, str]:
+) -> dict[str, str] | JSONResponse:
     normalized_email = email.strip().lower()
     base_locale = resolve_locale(request=request)
 
@@ -401,12 +640,48 @@ async def _perform_login(
     if new_hash:
         await db.refresh(user)
 
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-    else:
-        client_ip = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
+    capabilities = await _resolve_mfa_capabilities(db, user=user)
+    available_methods = [
+        method for method, enabled in capabilities.items() if enabled
+    ]
+    require_mfa = bool(available_methods) and (
+        bool(settings.mfa_enabled) or bool(user.mfa_required)
+    )
+    if user.mfa_required and not available_methods:
+        _audit_log(
+            "auth.login.mfa_missing",
+            request,
+            level=logging.WARNING,
+            user_id=user.id,
+            reason="no_methods",
+        )
+    if require_mfa:
+        methods = await _collect_mfa_challenges(
+            db,
+            user=user,
+            locale=locale,
+            capabilities=capabilities,
+        )
+        if methods:
+            await db.commit()
+            payload = PendingMfaResponse(
+                user_id=user.id,
+                default_method=user.mfa_default_method,
+                methods=methods,
+            )
+            _audit_log(
+                "auth.login.mfa_required",
+                request,
+                user_id=user.id,
+                reason="challenge_issued",
+                extra={"methods": [entry.method for entry in methods]},
+            )
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content=payload.model_dump(),
+            )
+
+    client_ip, user_agent = _extract_client_info(request)
     now = datetime.now(UTC)
     token = await create_access_token(
         str(user.id),
@@ -415,8 +690,10 @@ async def _perform_login(
             "ip_address": client_ip,
             "user_agent": user_agent,
             "last_seen_at": now,
-            "mfa_required": user.mfa_required,
+            "mfa_required": bool(user.mfa_required),
             "mfa_method": user.mfa_default_method,
+            "mfa_completed_at": now,
+            "mfa_verified_at": now,
         },
     )
     _set_access_token_cookie(response, token)
@@ -432,6 +709,7 @@ async def _perform_login(
 @router.post(
     "/login",
     response_model=Token,
+    responses={status.HTTP_202_ACCEPTED: {"model": PendingMfaResponse}},
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def login(
@@ -452,6 +730,7 @@ async def login(
 @router.post(
     "/login-json",
     response_model=Token,
+    responses={status.HTTP_202_ACCEPTED: {"model": PendingMfaResponse}},
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def login_json(
@@ -466,6 +745,475 @@ async def login_json(
         request,
         response,
         db,
+    )
+
+
+@router.post("/mfa/totp/start", response_model=TotpEnrollmentStartOut)
+async def start_totp_enrollment_endpoint(
+    payload: TotpEnrollmentStartIn | None = None,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    label = payload.label if payload else None
+    enrollment, secret, otpauth_url = await mfa.start_totp_enrollment(
+        db,
+        user=user,
+        label=label,
+    )
+    await db.commit()
+    await db.refresh(enrollment)
+    _audit_log(
+        "auth.mfa.totp.enroll_start",
+        request,
+        user_id=user.id,
+        reason="issued",
+        extra={"enrollment_id": enrollment.id, "label": label},
+    )
+    return TotpEnrollmentStartOut(
+        enrollment=MfaTotpEnrollmentOut.model_validate(enrollment),
+        secret=secret,
+        otpauth_url=otpauth_url,
+    )
+
+
+@router.post("/mfa/totp/confirm", response_model=MfaTotpEnrollmentOut)
+async def confirm_totp_enrollment(
+    payload: TotpEnrollmentConfirmIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    enrollment = await db.get(MfaTotpEnrollment, payload.enrollment_id)
+    if not enrollment or enrollment.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
+    try:
+        updated = await mfa.complete_totp_enrollment(
+            db, enrollment=enrollment, code=payload.code
+        )
+    except HTTPException as exc:
+        _audit_log(
+            "auth.mfa.totp.enroll_failure",
+            request,
+            user_id=user.id,
+            reason="invalid_code",
+            extra={"enrollment_id": payload.enrollment_id},
+        )
+        raise
+    if not user.mfa_default_method:
+        user.mfa_default_method = mfa.MFA_METHOD_TOTP
+    await db.commit()
+    await db.refresh(updated)
+    _audit_log(
+        "auth.mfa.totp.enroll_complete",
+        request,
+        user_id=user.id,
+        reason="confirmed",
+        extra={"enrollment_id": updated.id},
+    )
+    return MfaTotpEnrollmentOut.model_validate(updated)
+
+
+@router.get("/mfa/totp", response_model=list[MfaTotpEnrollmentOut])
+async def list_totp_enrollments(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(MfaTotpEnrollment)
+        .where(MfaTotpEnrollment.user_id == user.id)
+        .order_by(MfaTotpEnrollment.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [
+        MfaTotpEnrollmentOut.model_validate(enrollment)
+        for enrollment in result.scalars()
+    ]
+
+
+@router.delete("/mfa/totp/{enrollment_id}")
+async def delete_totp_enrollment(
+    enrollment_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    disabled = await mfa.disable_totp(
+        db, user=user, enrollment_id=enrollment_id
+    )
+    await db.commit()
+    _audit_log(
+        "auth.mfa.totp.disabled",
+        request,
+        user_id=user.id,
+        reason="revoked",
+        extra={"disabled": disabled, "enrollment_id": enrollment_id},
+    )
+    return {"disabled": disabled}
+
+
+@router.get("/mfa/webauthn", response_model=list[MfaWebAuthnCredentialOut])
+async def list_webauthn_credentials(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(MfaWebAuthnCredential)
+        .where(MfaWebAuthnCredential.user_id == user.id)
+        .order_by(MfaWebAuthnCredential.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [
+        MfaWebAuthnCredentialOut.model_validate(credential)
+        for credential in result.scalars()
+    ]
+
+
+@router.delete("/mfa/webauthn/{credential_id}")
+async def delete_webauthn_credential(
+    credential_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    disabled = await mfa.disable_webauthn_credential(
+        db, user=user, credential_id=credential_id
+    )
+    await db.commit()
+    _audit_log(
+        "auth.mfa.webauthn.disabled",
+        request,
+        user_id=user.id,
+        reason="revoked",
+        extra={"disabled": disabled, "credential_id": credential_id},
+    )
+    return {"disabled": disabled}
+
+
+@router.post("/mfa/webauthn/attestation/start", response_model=WebAuthnAttestationStartOut)
+async def start_webauthn_attestation(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    locale = resolve_locale(request=request, user=user)
+    options, challenge = await mfa.start_webauthn_enrollment(
+        db,
+        user=user,
+        session=getattr(request.state, "active_session", None),
+        locale=locale,
+    )
+    await db.commit()
+    _audit_log(
+        "auth.mfa.webauthn.enroll_start",
+        request,
+        user_id=user.id,
+        reason="issued",
+        extra={"challenge_id": challenge.id},
+    )
+    return WebAuthnAttestationStartOut(
+        options=options,
+        challenge_token=challenge.token,
+        challenge_expires_at=challenge.expires_at,
+    )
+
+
+@router.post(
+    "/mfa/webauthn/attestation/finish",
+    response_model=MfaWebAuthnCredentialOut,
+)
+async def finish_webauthn_attestation(
+    payload: WebAuthnAttestationFinishIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        record = await mfa.complete_webauthn_enrollment(
+            db,
+            user=user,
+            credential=payload.credential,
+            challenge_token=payload.challenge_token,
+            device_name=payload.device_name,
+        )
+    except HTTPException as exc:
+        _audit_log(
+            "auth.mfa.webauthn.enroll_failure",
+            request,
+            user_id=user.id,
+            reason="verification_failed",
+            extra={"status_code": exc.status_code},
+        )
+        raise
+    if not user.mfa_default_method:
+        user.mfa_default_method = mfa.MFA_METHOD_WEBAUTHN
+    await db.commit()
+    await db.refresh(record)
+    _audit_log(
+        "auth.mfa.webauthn.enroll_complete",
+        request,
+        user_id=user.id,
+        reason="confirmed",
+        extra={"credential_id": record.credential_id},
+    )
+    return MfaWebAuthnCredentialOut.model_validate(record)
+
+
+@router.post(
+    "/mfa/webauthn/assertion/start",
+    response_model=WebAuthnAssertionStartOut,
+)
+async def start_webauthn_assertion_endpoint(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = getattr(request.state, "active_session", None)
+    if session is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Active session required")
+    locale = resolve_locale(request=request, user=user)
+    options, challenge = await mfa.start_webauthn_assertion(
+        db,
+        user=user,
+        session=session,
+        locale=locale,
+    )
+    await db.commit()
+    _audit_log(
+        "auth.mfa.webauthn.assertion_start",
+        request,
+        user_id=user.id,
+        reason="issued",
+        extra={"challenge_id": challenge.id, "session_id": session.id},
+    )
+    return WebAuthnAssertionStartOut(
+        options=options,
+        challenge_token=challenge.token,
+        challenge_expires_at=challenge.expires_at,
+    )
+
+
+@router.post("/mfa/verify", response_model=Token)
+async def verify_mfa_challenge(
+    payload: MfaVerifyIn,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    locale = resolve_locale(request=request)
+    challenge_types = {
+        mfa.MFA_METHOD_TOTP: mfa.CHALLENGE_TYPE_TOTP_VERIFY,
+        mfa.MFA_METHOD_WEBAUTHN: mfa.CHALLENGE_TYPE_WEBAUTHN_ASSERT,
+        mfa.MFA_METHOD_RECOVERY: mfa.CHALLENGE_TYPE_RECOVERY,
+    }
+    expected_type = challenge_types[payload.method]
+    try:
+        challenge = await mfa.get_challenge(
+            db,
+            token=payload.challenge_token,
+            challenge_type=expected_type,
+            consume=False,
+        )
+    except HTTPException as exc:
+        _audit_log(
+            "auth.mfa.verify.failure",
+            request,
+            reason="challenge_lookup",
+            extra={"method": payload.method, "status_code": exc.status_code},
+        )
+        raise
+    user = await db.get(User, challenge.user_id)
+    if not user or not user.is_active:
+        _audit_log(
+            "auth.mfa.verify.failure",
+            request,
+            user_id=challenge.user_id,
+            reason="user_unavailable",
+        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Challenge user unavailable")
+    locale = resolve_locale(request=request, user=user)
+    session: ActiveSession | None = None
+    now = datetime.now(UTC)
+    if challenge.session_id is not None:
+        session = await db.get(ActiveSession, challenge.session_id)
+        if not session or session.user_id != user.id:
+            _audit_log(
+                "auth.mfa.verify.failure",
+                request,
+                user_id=user.id,
+                reason="session_invalid",
+                extra={"session_id": challenge.session_id},
+            )
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Associated session is invalid"
+            )
+        if session.revoked_at is not None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Associated session has been revoked"
+            )
+        expires_at = session.expires_at
+        if expires_at is not None:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Associated session has expired"
+                )
+    _audit_log(
+        "auth.mfa.verify.attempt",
+        request,
+        user_id=user.id,
+        reason=payload.method,
+        extra={
+            "challenge_type": challenge.challenge_type,
+            "session_id": challenge.session_id,
+        },
+    )
+    try:
+        if payload.method == mfa.MFA_METHOD_TOTP:
+            if not payload.code:
+                _audit_log(
+                    "auth.mfa.verify.failure",
+                    request,
+                    user_id=user.id,
+                    reason="missing_code",
+                )
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Verification code required"
+                )
+            await mfa.verify_totp_for_user(
+                db,
+                user=user,
+                code=payload.code,
+                challenge=challenge,
+                session_id=challenge.session_id,
+            )
+        elif payload.method == mfa.MFA_METHOD_WEBAUTHN:
+            if payload.credential is None:
+                _audit_log(
+                    "auth.mfa.verify.failure",
+                    request,
+                    user_id=user.id,
+                    reason="missing_credential",
+                )
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Credential payload required"
+                )
+            await mfa.verify_webauthn_assertion(
+                db,
+                user=user,
+                credential=payload.credential,
+                challenge_token=payload.challenge_token,
+                session_id=challenge.session_id,
+            )
+        else:
+            if not payload.code:
+                _audit_log(
+                    "auth.mfa.verify.failure",
+                    request,
+                    user_id=user.id,
+                    reason="missing_code",
+                )
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Recovery code required"
+                )
+            await mfa.use_recovery_code(
+                db,
+                user=user,
+                code=payload.code,
+                challenge_token=payload.challenge_token,
+                session_id=challenge.session_id,
+            )
+    except HTTPException as exc:
+        _audit_log(
+            "auth.mfa.verify.failure",
+            request,
+            user_id=user.id,
+            reason=payload.method,
+            extra={"status_code": exc.status_code},
+        )
+        raise
+    if session is None:
+        session = _create_session_for_user(user, request)
+        db.add(session)
+        await db.flush()
+    request.state.active_session = session
+    await mfa.record_mfa_success(
+        db, user=user, session=session, method=payload.method
+    )
+    token = await _mint_access_token(db, session)
+    _set_access_token_cookie(response, token)
+    _audit_log(
+        "auth.mfa.verify.success",
+        request,
+        user_id=user.id,
+        reason=payload.method,
+        extra={
+            "session_id": session.id,
+            "challenge_type": challenge.challenge_type,
+        },
+    )
+    if challenge.session_id is None:
+        _audit_log(
+            "auth.login.success",
+            request,
+            user_id=user.id,
+            reason="authenticated",
+        )
+    else:
+        _audit_log(
+            "auth.mfa.step_up.completed",
+            request,
+            user_id=user.id,
+            reason="verified",
+            extra={"session_id": session.id},
+        )
+    return Token(access_token=token, token_type="bearer")
+
+
+@router.post(
+    "/mfa/step-up",
+    response_model=PendingMfaResponse,
+    responses={status.HTTP_202_ACCEPTED: {"model": PendingMfaResponse}},
+)
+async def request_step_up(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = getattr(request.state, "active_session", None)
+    if session is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Active session required")
+    locale = resolve_locale(request=request, user=user)
+    capabilities = await _resolve_mfa_capabilities(db, user=user)
+    methods = await _collect_mfa_challenges(
+        db,
+        user=user,
+        locale=locale,
+        capabilities=capabilities,
+        session=session,
+    )
+    if not methods:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "No MFA methods available for step-up"
+        )
+    await db.commit()
+    payload = PendingMfaResponse(
+        user_id=user.id,
+        session_id=session.id,
+        default_method=user.mfa_default_method,
+        methods=methods,
+    )
+    _audit_log(
+        "auth.mfa.step_up.requested",
+        request,
+        user_id=user.id,
+        reason="challenge_issued",
+        extra={"session_id": session.id, "methods": [m.method for m in methods]},
+    )
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=payload.model_dump(),
     )
 
 

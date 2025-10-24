@@ -137,6 +137,7 @@ async def create_access_token(
             mfa_required = session_metadata.get("mfa_required")
             mfa_method = session_metadata.get("mfa_method")
             mfa_completed_at = session_metadata.get("mfa_completed_at")
+            mfa_verified_at = session_metadata.get("mfa_verified_at")
             if ip_address:
                 session.ip_address = str(ip_address)[:64]
             if user_agent:
@@ -150,6 +151,8 @@ async def create_access_token(
                 session.mfa_method = method_text[:64] if method_text else None
             if mfa_completed_at is not None:
                 session.mfa_completed_at = mfa_completed_at
+            if mfa_verified_at is not None:
+                session.mfa_verified_at = mfa_verified_at
         db.add(session)
         await db.commit()
     return token

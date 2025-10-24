@@ -224,6 +224,7 @@ class ActiveSession(Base):
     mfa_required = Column(Boolean, default=False, nullable=False, index=True)
     mfa_completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     mfa_method = Column(String(64))
+    mfa_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     user = relationship("User", back_populates="sessions")
     challenges = relationship(

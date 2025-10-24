@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import decode_token
+from app.core.config import settings
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
@@ -70,3 +71,40 @@ async def get_current_user(
         session.last_seen_at = now
         await db.commit()
     return user
+
+
+def require_fresh_mfa(request: Request) -> None:
+    session: ActiveSession | None = getattr(request.state, "active_session", None)
+    locale = resolve_locale(request=request)
+    if session is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail=translate("errors.forbidden", locale=locale),
+        )
+    verified_at = session.mfa_verified_at
+    if verified_at is None:
+        message = translate("errors.auth.mfa_step_up_required", locale=locale)
+        raise HTTPException(
+            status.HTTP_428_PRECONDITION_REQUIRED,
+            detail={
+                "error": "mfa_step_up_required",
+                "message": message,
+                "session_id": session.id,
+            },
+        )
+    if verified_at.tzinfo is None:
+        verified_at = verified_at.replace(tzinfo=UTC)
+    ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
+    if ttl == 0:
+        return
+    now = datetime.now(UTC)
+    if now - verified_at > timedelta(seconds=ttl):
+        message = translate("errors.auth.mfa_step_up_required", locale=locale)
+        raise HTTPException(
+            status.HTTP_428_PRECONDITION_REQUIRED,
+            detail={
+                "error": "mfa_step_up_required",
+                "message": message,
+                "session_id": session.id,
+            },
+        )
