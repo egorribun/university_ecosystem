@@ -12,6 +12,10 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.localization import localized_text, normalize_locale, translate
 from app.models import models
+from app.models.user_loaders import (
+    USER_MFA_LOAD_OPTIONS,
+    ensure_mfa_relationships_loaded,
+)
 from app.models.enums import UserRole
 from app.schemas import schemas
 
@@ -114,6 +118,8 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         code.used_by_user_id = db_user.id
         db.add(code)
         await db.commit()
+
+    await ensure_mfa_relationships_loaded(db, db_user)
 
     return db_user
 
@@ -726,7 +732,7 @@ async def get_users(
     full_name: Optional[str] = None,
     role: Optional[str] = None,
 ) -> List[models.User]:
-    stmt = select(models.User)
+    stmt = select(models.User).options(*USER_MFA_LOAD_OPTIONS)
     if group_id:
         stmt = stmt.where(models.User.group_id == group_id)
     if full_name:
@@ -752,15 +758,7 @@ async def admin_update_user(
         reset_stats = await mfa.reset_user_mfa(db, user=user)
     await db.commit()
     await db.refresh(user)
-    await db.refresh(
-        user,
-        attribute_names=[
-            "totp_enrollments",
-            "webauthn_credentials",
-            "recovery_codes",
-            "mfa_challenges",
-        ],
-    )
+    await ensure_mfa_relationships_loaded(db, user)
     return user, reset_stats
 
 

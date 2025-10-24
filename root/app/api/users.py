@@ -32,6 +32,10 @@ from app.core.database import get_db
 from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models import models
+from app.models.user_loaders import (
+    USER_MFA_LOAD_OPTIONS,
+    ensure_mfa_relationships_loaded,
+)
 from app.schemas import schemas
 from app.services.notifications import create_notifications_for_users
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
@@ -282,7 +286,7 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    db_user = await db.get(models.User, user.id)
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
     update_fields = data.model_dump(exclude_unset=True)
     locale = resolve_locale(request=request, user=user)
 
@@ -317,6 +321,7 @@ async def update_me(
         setattr(db_user, field, value)
     await db.commit()
     await db.refresh(db_user)
+    await ensure_mfa_relationships_loaded(db, db_user)
     return db_user
 
 
@@ -330,7 +335,7 @@ async def upload_avatar(
 ):
     locale = resolve_locale(request=request, user=user)
     url = await save_upload(file, "avatars", f"user_{user.id}_avatar", locale=locale)
-    db_user = await db.get(models.User, user.id)
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
     previous_url = db_user.avatar_url
     db_user.avatar_url = url
     try:
@@ -342,6 +347,7 @@ async def upload_avatar(
         raise
     try:
         await db.refresh(db_user)
+        await ensure_mfa_relationships_loaded(db, db_user)
     except Exception:
         db_user.avatar_url = previous_url
         await delete_static_file(url)
@@ -359,7 +365,7 @@ async def upload_cover(
 ):
     locale = resolve_locale(request=request, user=user)
     url = await save_upload(file, "covers", f"user_{user.id}_cover", locale=locale)
-    db_user = await db.get(models.User, user.id)
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
     previous_url = db_user.cover_url
     db_user.cover_url = url
     try:
@@ -371,6 +377,7 @@ async def upload_cover(
         raise
     try:
         await db.refresh(db_user)
+        await ensure_mfa_relationships_loaded(db, db_user)
     except Exception:
         db_user.cover_url = previous_url
         await delete_static_file(url)
@@ -539,12 +546,13 @@ async def get_user_mfa_methods(
 async def delete_avatar(
     db: AsyncSession = Depends(get_db), user: models.User = Depends(get_current_user)
 ):
-    db_user = await db.get(models.User, user.id)
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
     if db_user.avatar_url:
         await delete_static_file(db_user.avatar_url)
     db_user.avatar_url = None
     await db.commit()
     await db.refresh(db_user)
+    await ensure_mfa_relationships_loaded(db, db_user)
     return db_user
 
 

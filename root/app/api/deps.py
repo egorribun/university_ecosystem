@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
+from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -38,7 +39,7 @@ async def get_current_user(
         user_id = int(sub)
     except (TypeError, ValueError):
         raise credentials_exception
-    user = await db.get(User, user_id)
+    user = await db.get(User, user_id, options=USER_MFA_LOAD_OPTIONS)
     if not user or not user.is_active:
         raise credentials_exception
     if not jti:
