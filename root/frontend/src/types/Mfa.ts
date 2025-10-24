@@ -105,4 +105,3 @@ export type MfaVerifyPayload =
       credential: Record<string, unknown>
       code?: never
     }
-

@@ -23,8 +23,7 @@ export const listTotpEnrollments = () => api.get<MfaTotpEnrollment[]>("/auth/mfa
 export const deleteTotpEnrollment = (enrollmentId: number) =>
   api.delete<{ disabled: boolean }>(`/auth/mfa/totp/${enrollmentId}`)
 
-export const listWebAuthnCredentials = () =>
-  api.get<MfaWebAuthnCredential[]>("/auth/mfa/webauthn")
+export const listWebAuthnCredentials = () => api.get<MfaWebAuthnCredential[]>("/auth/mfa/webauthn")
 
 export const deleteWebAuthnCredential = (credentialId: string) =>
   api.delete<{ disabled: boolean }>(`/auth/mfa/webauthn/${credentialId}`)
@@ -41,5 +40,4 @@ export const startWebAuthnAssertion = () =>
 export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
   api.post<{ access_token: string; token_type: string }>("/auth/mfa/verify", payload)
 
-export const requestStepUpChallenge = () =>
-  api.post<PendingMfaResponse>("/auth/mfa/step-up")
+export const requestStepUpChallenge = () => api.post<PendingMfaResponse>("/auth/mfa/step-up")

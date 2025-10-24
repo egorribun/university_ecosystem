@@ -96,8 +96,7 @@ const isAscii = (value: string) => {
   return true
 }
 
-type CachedUserSnapshot =
-  Pick<User, "id" | "full_name" | "avatar_url"> &
+type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url"> &
   Partial<
     Pick<
       User,
