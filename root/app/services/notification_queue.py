@@ -6,11 +6,11 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, cast
 from weakref import WeakKeyDictionary
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -127,12 +127,14 @@ async def _worker_loop(state: _LoopState) -> None:
                     metrics.queue_size.set(state.queue.qsize())
             started = time.perf_counter()
             success = False
+            error: BaseException | None = None
             try:
                 await _process_job(job)
                 success = True
             except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
                 raise
-            except Exception:  # pragma: no cover - defensive guard
+            except Exception as exc:  # pragma: no cover - defensive guard
+                error = exc
                 logger.exception(
                     "Failed to process notification job", extra={"job": job}
                 )
@@ -142,7 +144,11 @@ async def _worker_loop(state: _LoopState) -> None:
                     metrics.processing_latency_seconds.observe(elapsed)
                 if _use_persistent_backend():
                     await _acknowledge_persistent_job(
-                        job, success=success, state=state, metrics=metrics
+                        job,
+                        success=success,
+                        error=error,
+                        state=state,
+                        metrics=metrics,
                     )
                 else:
                     state.queue.task_done()
@@ -394,7 +400,10 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
             result = await session.execute(
                 select(func.count())
                 .select_from(NotificationQueueJob)
-                .where(NotificationQueueJob.claimed_at.is_(None))
+                .where(
+                    NotificationQueueJob.claimed_at.is_(None),
+                    NotificationQueueJob.dead_lettered.is_(False),
+                )
             )
             metrics.queue_size.set(int(result.scalar_one()))
     except Exception:  # pragma: no cover - defensive guard
@@ -406,7 +415,10 @@ async def _pending_persistent_jobs() -> int:
         result = await session.execute(
             select(func.count())
             .select_from(NotificationQueueJob)
-            .where(NotificationQueueJob.claimed_at.is_(None))
+            .where(
+                NotificationQueueJob.claimed_at.is_(None),
+                NotificationQueueJob.dead_lettered.is_(False),
+            )
         )
         return int(result.scalar_one())
 
@@ -453,18 +465,34 @@ async def _dequeue_persistent_job(state: _LoopState) -> NotificationJob:
 async def _claim_next_persistent_job() -> NotificationJob | None:
     async with async_session() as session:
         async with session.begin():
+            now = datetime.now(timezone.utc)
             result = await session.execute(
                 select(NotificationQueueJob)
-                .where(NotificationQueueJob.claimed_at.is_(None))
-                .order_by(NotificationQueueJob.enqueued_at, NotificationQueueJob.id)
+                .where(
+                    NotificationQueueJob.claimed_at.is_(None),
+                    NotificationQueueJob.dead_lettered.is_(False),
+                    or_(
+                        NotificationQueueJob.next_retry_at.is_(None),
+                        NotificationQueueJob.next_retry_at <= now,
+                    ),
+                )
+                .order_by(
+                    func.coalesce(
+                        NotificationQueueJob.next_retry_at,
+                        NotificationQueueJob.enqueued_at,
+                    ),
+                    NotificationQueueJob.enqueued_at,
+                    NotificationQueueJob.id,
+                )
                 .with_for_update(skip_locked=True)
                 .limit(1)
             )
             row = result.scalar_one_or_none()
             if row is None:
                 return None
-            row.claimed_at = datetime.now(timezone.utc)
+            row.claimed_at = now
             row.attempts = (row.attempts or 0) + 1
+            row.next_retry_at = None
             job = NotificationJob(
                 kind=cast(JobKind, row.kind),
                 record_id=row.record_id,
@@ -477,30 +505,87 @@ async def _claim_next_persistent_job() -> NotificationJob | None:
     return job
 
 
+def _format_job_error(error: BaseException | None) -> str:
+    if error is None:
+        return "Unknown error"
+    message = str(error).strip()
+    if not message:
+        message = error.__class__.__name__
+    if len(message) > 1024:
+        return f"{message[:1021]}..."
+    return message
+
+
 async def _acknowledge_persistent_job(
     job: NotificationJob,
     *,
     success: bool,
+    error: BaseException | None,
     state: _LoopState,
     metrics: NotificationQueueMetrics | None,
 ) -> None:
     if job.queue_id is None:
         return
+    wake_delay = 0.0
     try:
         async with async_session() as session:
             async with session.begin():
+                result = await session.execute(
+                    select(NotificationQueueJob)
+                    .where(NotificationQueueJob.id == job.queue_id)
+                    .with_for_update()
+                )
+                record = result.scalar_one_or_none()
+                if record is None:
+                    return
                 if success:
-                    await session.execute(
-                        delete(NotificationQueueJob).where(
-                            NotificationQueueJob.id == job.queue_id
-                        )
-                    )
+                    await session.delete(record)
                 else:
-                    await session.execute(
-                        update(NotificationQueueJob)
-                        .where(NotificationQueueJob.id == job.queue_id)
-                        .values(claimed_at=None)
+                    error_message = _format_job_error(error)
+                    attempts = record.attempts or 0
+                    base_delay = max(
+                        float(settings.notifications_queue_retry_base_seconds), 0.0
                     )
+                    max_attempts = int(settings.notifications_queue_max_attempts)
+                    record.last_error = error_message
+                    record.claimed_at = None
+                    should_dead_letter = max_attempts > 0 and attempts >= max_attempts
+                    if should_dead_letter:
+                        record.dead_lettered = True
+                        record.next_retry_at = None
+                        if metrics is not None:
+                            metrics.failed_jobs_total.inc()
+                        logger.error(
+                            "Notification job exhausted retries; moving to dead-letter queue",
+                            extra={
+                                "job": job,
+                                "queue_id": job.queue_id,
+                                "attempt": attempts,
+                                "max_attempts": max_attempts,
+                                "error": error_message,
+                            },
+                        )
+                    else:
+                        delay_seconds = base_delay * (2 ** max(attempts - 1, 0))
+                        wake_delay = max(delay_seconds, 0.0)
+                        next_retry = datetime.now(timezone.utc) + timedelta(
+                            seconds=wake_delay
+                        )
+                        record.dead_lettered = False
+                        record.next_retry_at = next_retry
+                        logger.warning(
+                            "Notification job failed; scheduling retry",
+                            extra={
+                                "job": job,
+                                "queue_id": job.queue_id,
+                                "attempt": attempts,
+                                "max_attempts": (
+                                    max_attempts if max_attempts > 0 else None
+                                ),
+                                "next_retry_at": next_retry.isoformat(),
+                                "error": error_message,
+                            },
+                        )
     except Exception:
         logger.exception(
             "Failed to acknowledge persistent notification job",
@@ -508,6 +593,14 @@ async def _acknowledge_persistent_job(
         )
     else:
         if not success:
-            state.job_event.set()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:  # pragma: no cover - defensive guard
+                state.job_event.set()
+            else:
+                if wake_delay <= 0:
+                    state.job_event.set()
+                else:
+                    loop.call_later(wake_delay, state.job_event.set)
     if metrics is not None:
         await _refresh_persistent_queue_size(metrics)

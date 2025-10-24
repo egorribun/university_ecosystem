@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 from prometheus_client import REGISTRY
@@ -210,6 +211,13 @@ async def test_persistent_queue_retries_failed_jobs(monkeypatch: pytest.MonkeyPa
     metrics.reset()
     notification_queue._loop_states.clear()
 
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_retry_base_seconds",
+        0.0,
+        raising=False,
+    )
+
     attempts: list[int] = []
     processed_event = asyncio.Event()
 
@@ -227,5 +235,131 @@ async def test_persistent_queue_retries_failed_jobs(monkeypatch: pytest.MonkeyPa
     await notification_queue.wait_for_all_jobs(timeout=1.0)
 
     assert attempts == [303, 303]
+
+    notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_persistent_queue_applies_exponential_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+    notification_queue._loop_states.clear()
+
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_retry_base_seconds",
+        0.05,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_max_attempts",
+        3,
+        raising=False,
+    )
+
+    attempt_times: list[float] = []
+    first_attempt = asyncio.Event()
+    processed_event = asyncio.Event()
+
+    async def _process(job):
+        attempt_times.append(asyncio.get_running_loop().time())
+        if len(attempt_times) == 1:
+            first_attempt.set()
+            raise RuntimeError("boom")
+        processed_event.set()
+
+    monkeypatch.setattr(notification_queue, "_process_job", _process)
+
+    await notification_queue.enqueue_event_notification(404)
+
+    await asyncio.wait_for(first_attempt.wait(), timeout=1.0)
+    await asyncio.sleep(0.01)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(NotificationQueueJob).where(NotificationQueueJob.record_id == 404)
+        )
+        record = result.scalar_one()
+        assert record.next_retry_at is not None
+        now = datetime.now(timezone.utc)
+        next_retry = record.next_retry_at
+        if next_retry.tzinfo is None:
+            next_retry = next_retry.replace(tzinfo=timezone.utc)
+        assert next_retry > now
+        assert record.last_error == "boom"
+        assert not record.dead_lettered
+
+    await asyncio.wait_for(processed_event.wait(), timeout=1.0)
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+
+    assert len(attempt_times) == 2
+    interval = attempt_times[1] - attempt_times[0]
+    assert interval >= 0.04
+    assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(0.0)
+
+    notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_persistent_queue_dead_letters_poison_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+    notification_queue._loop_states.clear()
+
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_retry_base_seconds",
+        0.01,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_max_attempts",
+        3,
+        raising=False,
+    )
+
+    attempts: list[int] = []
+
+    async def _process(job):
+        attempts.append(job.record_id)
+        raise RuntimeError("poison pill")
+
+    monkeypatch.setattr(notification_queue, "_process_job", _process)
+
+    await notification_queue.enqueue_event_notification(505)
+
+    async def _wait_for_dead_lettered() -> NotificationQueueJob:
+        while True:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(NotificationQueueJob).where(
+                        NotificationQueueJob.record_id == 505
+                    )
+                )
+                record = result.scalar_one_or_none()
+            if record and record.dead_lettered:
+                return record
+            await asyncio.sleep(0.01)
+
+    record = await asyncio.wait_for(_wait_for_dead_lettered(), timeout=2.0)
+
+    assert record.dead_lettered is True
+    assert record.attempts == 3
+    assert record.next_retry_at is None
+    assert record.last_error == "poison pill"
+    assert len(attempts) == 3
+
+    await asyncio.sleep(0.05)
+    assert len(attempts) == 3
+
+    assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(1.0)
+
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
 
     notification_queue._loop_states.clear()
