@@ -6,6 +6,7 @@ import base64
 import hashlib
 import secrets
 from collections.abc import Mapping, MutableMapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -67,6 +68,27 @@ CHALLENGE_TYPE_RECOVERY = "recovery-code"
 MFA_METHOD_TOTP = "totp"
 MFA_METHOD_WEBAUTHN = "webauthn"
 MFA_METHOD_RECOVERY = "recovery"
+
+
+@dataclass(slots=True)
+class MfaResetStats:
+    totp_deleted: int = 0
+    webauthn_deleted: int = 0
+    recovery_codes_deleted: int = 0
+    challenges_revoked: int = 0
+    fields_cleared: bool = False
+
+    @property
+    def changed(self) -> bool:
+        return any(
+            (
+                self.totp_deleted,
+                self.webauthn_deleted,
+                self.recovery_codes_deleted,
+                self.challenges_revoked,
+                self.fields_cleared,
+            )
+        )
 
 
 def _utcnow() -> datetime:
@@ -690,6 +712,46 @@ async def disable_webauthn_credential(
             count += 1
     await db.flush()
     return count
+
+
+async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
+    """Remove MFA factors, revoke challenges, and clear MFA state for a user."""
+
+    stats = MfaResetStats()
+
+    totp_result = await db.execute(
+        delete(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
+    )
+    webauthn_result = await db.execute(
+        delete(MfaWebAuthnCredential).where(MfaWebAuthnCredential.user_id == user.id)
+    )
+    recovery_result = await db.execute(
+        delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == user.id)
+    )
+    challenge_result = await db.execute(
+        delete(MfaChallenge).where(MfaChallenge.user_id == user.id)
+    )
+
+    stats.totp_deleted = int(totp_result.rowcount or 0)
+    stats.webauthn_deleted = int(webauthn_result.rowcount or 0)
+    stats.recovery_codes_deleted = int(recovery_result.rowcount or 0)
+    stats.challenges_revoked = int(challenge_result.rowcount or 0)
+
+    if user.mfa_required:
+        user.mfa_required = False
+        stats.fields_cleared = True
+    if user.mfa_default_method:
+        user.mfa_default_method = None
+        stats.fields_cleared = True
+    if user.mfa_last_verified_at is not None:
+        user.mfa_last_verified_at = None
+        stats.fields_cleared = True
+    if user.mfa_recovery_codes_generated_at is not None:
+        user.mfa_recovery_codes_generated_at = None
+        stats.fields_cleared = True
+
+    await db.flush()
+    return stats
 
 
 async def record_mfa_success(

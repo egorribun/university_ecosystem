@@ -33,6 +33,7 @@ from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
+from app.services.notifications import create_notifications_for_users
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
 from app.utils.files import delete_static_file
 from app.utils.ratelimit import sensitive_route_limit
@@ -443,7 +444,95 @@ async def update_user_admin(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    return await crud.admin_update_user(db, user_id, data)
+    updated_user, reset_stats = await crud.admin_update_user(db, user_id, data)
+    _audit_log(
+        "users.admin_update", request, user_id=updated_user.id, reason="admin_update"
+    )
+    reset_requested = bool(getattr(data, "reset_mfa", False))
+    if reset_stats is not None:
+        if reset_stats.changed:
+            target_locale = resolve_locale(request=request, user=updated_user)
+            title = translate("notifications.mfa.reset.title", locale=target_locale)
+            body = translate("notifications.mfa.reset.body", locale=target_locale)
+            await create_notifications_for_users(
+                db,
+                title=title,
+                body=body,
+                type="security",
+                user_ids=[updated_user.id],
+            )
+            _audit_log(
+                "users.mfa.reset",
+                request,
+                user_id=updated_user.id,
+                reason="admin_reset",
+            )
+        else:
+            _audit_log(
+                "users.mfa.reset",
+                request,
+                user_id=updated_user.id,
+                reason="admin_reset_noop",
+            )
+    elif reset_requested:
+        _audit_log(
+            "users.mfa.reset",
+            request,
+            user_id=updated_user.id,
+            reason="admin_reset_requested_noop",
+        )
+    return updated_user
+
+
+@users_router.get("/{user_id}/mfa", response_model=schemas.UserMfaMethodsOut)
+async def get_user_mfa_methods(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
+    target_user = await db.get(models.User, user_id)
+    if target_user is None:
+        raise HTTPException(
+            status_code=404,
+            detail=translate("errors.users.not_found", locale=locale),
+        )
+    totp_rows = await db.execute(
+        select(models.MfaTotpEnrollment)
+        .where(models.MfaTotpEnrollment.user_id == user_id)
+        .where(models.MfaTotpEnrollment.is_active.is_(True))
+        .order_by(models.MfaTotpEnrollment.created_at)
+    )
+    webauthn_rows = await db.execute(
+        select(models.MfaWebAuthnCredential)
+        .where(models.MfaWebAuthnCredential.user_id == user_id)
+        .where(models.MfaWebAuthnCredential.is_active.is_(True))
+        .order_by(models.MfaWebAuthnCredential.created_at)
+    )
+    recovery_rows = await db.execute(
+        select(models.MfaRecoveryCode)
+        .where(models.MfaRecoveryCode.user_id == user_id)
+        .order_by(models.MfaRecoveryCode.created_at)
+    )
+    challenge_rows = await db.execute(
+        select(models.MfaChallenge)
+        .where(models.MfaChallenge.user_id == user_id)
+        .where(models.MfaChallenge.consumed_at.is_(None))
+        .order_by(models.MfaChallenge.created_at)
+    )
+    _audit_log("users.mfa.inspect", request, user_id=user_id, reason="admin_view")
+    return schemas.UserMfaMethodsOut(
+        totp_enrollments=list(totp_rows.scalars().all()),
+        webauthn_credentials=list(webauthn_rows.scalars().all()),
+        recovery_codes=list(recovery_rows.scalars().all()),
+        pending_challenges=list(challenge_rows.scalars().all()),
+    )
 
 
 @users_router.delete("/me/avatar", response_model=schemas.UserOut)

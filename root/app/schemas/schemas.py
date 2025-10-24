@@ -128,6 +128,14 @@ class UserAdminUpdate(BaseModel):
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None
     group_id: Optional[int] = None
+    reset_mfa: Optional[bool] = None
+
+
+class UserMfaMethodsOut(BaseModel):
+    totp_enrollments: List[MfaTotpEnrollmentOut] = Field(default_factory=list)
+    webauthn_credentials: List[MfaWebAuthnCredentialOut] = Field(default_factory=list)
+    recovery_codes: List[MfaRecoveryCodeOut] = Field(default_factory=list)
+    pending_challenges: List[MfaChallengeOut] = Field(default_factory=list)
 
 
 class UserProfileUpdate(BaseModel):

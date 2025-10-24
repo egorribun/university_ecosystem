@@ -7,6 +7,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.localization import localized_text, normalize_locale, translate
@@ -738,15 +739,20 @@ async def get_users(
 
 async def admin_update_user(
     db: AsyncSession, user_id: int, data: schemas.UserAdminUpdate
-) -> models.User:
+) -> tuple[models.User, mfa.MfaResetStats | None]:
     user = await db.get(models.User, user_id)
     if not user:
         raise ValueError(translate("errors.users.not_found"))
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    reset_requested = bool(payload.pop("reset_mfa", False))
+    for field, value in payload.items():
         setattr(user, field, value)
+    reset_stats: mfa.MfaResetStats | None = None
+    if reset_requested:
+        reset_stats = await mfa.reset_user_mfa(db, user=user)
     await db.commit()
     await db.refresh(user)
-    return user
+    return user, reset_stats
 
 
 async def delete_user(db: AsyncSession, user_id: int):
