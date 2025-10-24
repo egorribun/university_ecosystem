@@ -190,7 +190,9 @@ async def test_totp_challenge_expiry_blocks_verification(
 
 
 @pytest.mark.anyio
-async def test_recovery_code_login_flow(async_client, user_factory, db_session, monkeypatch):
+async def test_recovery_code_login_flow(
+    async_client, user_factory, db_session, monkeypatch
+):
     password = "RecoveryLoginPass123!"
     user = await user_factory(
         email="mfa-recovery@example.com",
@@ -328,10 +330,18 @@ async def test_webauthn_attestation_and_assertion_flow(
             credential_backed_up=True,
         )
 
-    monkeypatch.setattr(mfa, "generate_registration_options", fake_generate_registration_options)
-    monkeypatch.setattr(mfa, "verify_registration_response", fake_verify_registration_response)
-    monkeypatch.setattr(mfa, "generate_authentication_options", fake_generate_authentication_options)
-    monkeypatch.setattr(mfa, "verify_authentication_response", fake_verify_authentication_response)
+    monkeypatch.setattr(
+        mfa, "generate_registration_options", fake_generate_registration_options
+    )
+    monkeypatch.setattr(
+        mfa, "verify_registration_response", fake_verify_registration_response
+    )
+    monkeypatch.setattr(
+        mfa, "generate_authentication_options", fake_generate_authentication_options
+    )
+    monkeypatch.setattr(
+        mfa, "verify_authentication_response", fake_verify_authentication_response
+    )
 
     token = await _login_for_token(async_client, user.email, password)
     headers = {"Authorization": f"Bearer {token}"}
@@ -475,7 +485,9 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     assert response.status_code == status.HTTP_200_OK
 
     result = await db_session.execute(
-        select(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == target.id)
+        select(models.MfaTotpEnrollment).where(
+            models.MfaTotpEnrollment.user_id == target.id
+        )
     )
     assert result.scalars().all() == []
 
@@ -487,7 +499,9 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     assert result.scalars().all() == []
 
     result = await db_session.execute(
-        select(models.MfaRecoveryCode).where(models.MfaRecoveryCode.user_id == target.id)
+        select(models.MfaRecoveryCode).where(
+            models.MfaRecoveryCode.user_id == target.id
+        )
     )
     assert result.scalars().all() == []
 
@@ -568,7 +582,9 @@ async def test_reset_mfa_command_resets_state(
     assert stats.changed is True
 
     result = await db_session.execute(
-        select(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == user.id)
+        select(models.MfaTotpEnrollment).where(
+            models.MfaTotpEnrollment.user_id == user.id
+        )
     )
     assert result.scalars().all() == []
     result = await db_session.execute(

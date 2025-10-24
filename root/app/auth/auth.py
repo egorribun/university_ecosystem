@@ -4,6 +4,7 @@ import math
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Mapping, Sequence
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -12,7 +13,6 @@ from jose import jwt
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import uuid4
 
 from app.api.deps import get_current_user
 from app.auth import mfa
@@ -214,9 +214,7 @@ async def _mint_access_token(
     return token
 
 
-async def _resolve_mfa_capabilities(
-    db: AsyncSession, *, user: User
-) -> dict[str, bool]:
+async def _resolve_mfa_capabilities(db: AsyncSession, *, user: User) -> dict[str, bool]:
     totp_stmt = (
         select(MfaTotpEnrollment.id)
         .where(MfaTotpEnrollment.user_id == user.id)
@@ -641,9 +639,7 @@ async def _perform_login(
         await db.refresh(user)
 
     capabilities = await _resolve_mfa_capabilities(db, user=user)
-    available_methods = [
-        method for method, enabled in capabilities.items() if enabled
-    ]
+    available_methods = [method for method, enabled in capabilities.items() if enabled]
     require_mfa = bool(available_methods) and (
         bool(settings.mfa_enabled) or bool(user.mfa_required)
     )
@@ -838,9 +834,7 @@ async def delete_totp_enrollment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    disabled = await mfa.disable_totp(
-        db, user=user, enrollment_id=enrollment_id
-    )
+    disabled = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
     await db.commit()
     _audit_log(
         "auth.mfa.totp.disabled",
@@ -890,7 +884,9 @@ async def delete_webauthn_credential(
     return {"disabled": disabled}
 
 
-@router.post("/mfa/webauthn/attestation/start", response_model=WebAuthnAttestationStartOut)
+@router.post(
+    "/mfa/webauthn/attestation/start", response_model=WebAuthnAttestationStartOut
+)
 async def start_webauthn_attestation(
     request: Request,
     user: User = Depends(get_current_user),
@@ -1138,9 +1134,7 @@ async def verify_mfa_challenge(
         db.add(session)
         await db.flush()
     request.state.active_session = session
-    await mfa.record_mfa_success(
-        db, user=user, session=session, method=payload.method
-    )
+    await mfa.record_mfa_success(db, user=user, session=session, method=payload.method)
     token = await _mint_access_token(db, session)
     _set_access_token_cookie(response, token)
     _audit_log(
