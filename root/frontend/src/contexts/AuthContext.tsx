@@ -121,11 +121,16 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
     typeof maybeBuffer === "function" &&
     typeof (maybeBuffer as { from?: unknown }).from === "function"
   ) {
-    return (maybeBuffer as {
-      from: (input: Uint8Array | string, encoding?: string) => {
-        toString: (encoding: string) => string
+    return (
+      maybeBuffer as {
+        from: (
+          input: Uint8Array | string,
+          encoding?: string
+        ) => {
+          toString: (encoding: string) => string
+        }
       }
-    })
+    )
       .from(bytes)
       .toString("base64")
   }
@@ -144,11 +149,16 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
     typeof maybeBuffer === "function" &&
     typeof (maybeBuffer as { from?: unknown }).from === "function"
   ) {
-    return (maybeBuffer as {
-      from: (input: Uint8Array | string, encoding?: string) => {
-        toString: (encoding: string) => string
+    return (
+      maybeBuffer as {
+        from: (
+          input: Uint8Array | string,
+          encoding?: string
+        ) => {
+          toString: (encoding: string) => string
+        }
       }
-    })
+    )
       .from(binary, "binary")
       .toString("base64")
   }
