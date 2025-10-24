@@ -65,6 +65,16 @@ const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
 const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
 
+const isAscii = (value: string) => {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > 0x7f) {
+      return false
+    }
+  }
+
+  return true
+}
+
 type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
 
 type CachedProfileEnvelope = {
@@ -354,7 +364,7 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
   const cachedEnvelope = getCachedEnvelopeHeader()
   let headers: Record<string, string> | undefined
   if (cachedEnvelope) {
-    if (/^[\x00-\x7F]*$/.test(cachedEnvelope)) {
+    if (isAscii(cachedEnvelope)) {
       headers = { [PROFILE_CACHE_HEADER]: cachedEnvelope }
     } else {
       clearProfileCacheStorage()
