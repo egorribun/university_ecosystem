@@ -752,6 +752,15 @@ async def admin_update_user(
         reset_stats = await mfa.reset_user_mfa(db, user=user)
     await db.commit()
     await db.refresh(user)
+    await db.refresh(
+        user,
+        attribute_names=[
+            "totp_enrollments",
+            "webauthn_credentials",
+            "recovery_codes",
+            "mfa_challenges",
+        ],
+    )
     return user, reset_stats
 
 

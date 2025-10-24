@@ -254,7 +254,13 @@ async def get_challenge(
     if not challenge:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
     now = _utcnow()
-    if challenge.consumed_at is not None or challenge.expires_at <= now:
+    expires_at = challenge.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    consumed_at = challenge.consumed_at
+    if consumed_at is not None and consumed_at.tzinfo is None:
+        consumed_at = consumed_at.replace(tzinfo=UTC)
+    if consumed_at is not None or (expires_at is not None and expires_at <= now):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
     if consume:
         challenge.consumed_at = now
