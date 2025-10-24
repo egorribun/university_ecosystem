@@ -6,6 +6,7 @@ import secrets
 from typing import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -57,7 +58,9 @@ def upgrade() -> None:
     )
     rows = result.fetchall()
     for row in rows:
-        bind.execute(update_stmt, {"id": row.id, "signing_key": secrets.token_urlsafe(32)})
+        bind.execute(
+            update_stmt, {"id": row.id, "signing_key": secrets.token_urlsafe(32)}
+        )
 
     op.alter_column(
         _TABLE_NAME,

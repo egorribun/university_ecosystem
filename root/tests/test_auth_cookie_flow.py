@@ -11,7 +11,6 @@ from sqlalchemy import select
 from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
 from app.localization import translate
-
 from app.models.models import ActiveSession
 
 pytestmark = pytest.mark.anyio("asyncio")
@@ -161,7 +160,9 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
 
     payload_json = json.dumps(payload, separators=(",", ":"))
     signature = base64.b64encode(
-        hmac.new(signing_key.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256).digest()
+        hmac.new(
+            signing_key.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256
+        ).digest()
     ).decode("ascii")
     envelope = {**payload, "signature": signature}
 
@@ -186,7 +187,9 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
     assert rejected_data.status_code == 400
 
 
-async def test_logout_rotates_session_signing_key(async_client, user_factory, db_session):
+async def test_logout_rotates_session_signing_key(
+    async_client, user_factory, db_session
+):
     password = "RotateKeyPass123!"
     user = await _create_active_user(user_factory, password)
 
@@ -213,6 +216,7 @@ async def test_logout_rotates_session_signing_key(async_client, user_factory, db
     await db_session.refresh(session)
     assert session.signing_key
     assert session.signing_key != original_key
+
 
 @pytest.mark.anyio
 async def test_register_rate_limit(async_client):
