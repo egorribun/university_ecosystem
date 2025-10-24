@@ -4,7 +4,7 @@ import type { FutureConfig as RouterDataFutureConfig } from "@remix-run/router"
 import type { FutureConfig as RouterComponentFutureConfig } from "react-router"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
-import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
+import { AuthProvider, currentUserQueryKey } from "./contexts/AuthContext"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import { LanguageProvider, useLanguage } from "./contexts/LanguageContext"
@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { useTranslation } from "react-i18next"
 import { AppShellProvider } from "./contexts/AppShellContext"
+import { AdminRoute, PrivateRoute } from "./components/RouteGuards"
 
 const PageTransition = lazy(() => import("./components/PageTransition"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))
@@ -37,22 +38,6 @@ const StoriesAdmin = lazy(() => import("./pages/StoriesAdmin"))
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
 const ResetPassword = lazy(() => import("./pages/ResetPassword"))
 const Settings = lazy(() => import("./pages/Settings"))
-
-type RouteGuardProps = { children: ReactElement }
-
-function PrivateRoute({ children }: RouteGuardProps) {
-  const { isAuth, loading } = useAuth()
-  if (loading) return null
-  return isAuth ? children : <Navigate to="/login" />
-}
-
-function AdminRoute({ children }: RouteGuardProps) {
-  const { isAuth, user, loading } = useAuth()
-  if (loading) return null
-  if (!isAuth) return <Navigate to="/login" />
-  if (!user || user.role !== "admin") return <Navigate to="/dashboard" />
-  return children
-}
 
 function AppContent() {
   const location = useLocation()

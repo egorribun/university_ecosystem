@@ -62,12 +62,12 @@ def upgrade() -> None:
             update_stmt, {"id": row.id, "signing_key": secrets.token_urlsafe(32)}
         )
 
-    op.alter_column(
-        _TABLE_NAME,
-        _COLUMN_NAME,
-        existing_type=sa.String(),
-        nullable=False,
-    )
+    with op.batch_alter_table(_TABLE_NAME) as batch_op:
+        batch_op.alter_column(
+            _COLUMN_NAME,
+            existing_type=sa.String(),
+            nullable=False,
+        )
 
 
 def downgrade() -> None:

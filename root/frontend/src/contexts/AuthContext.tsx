@@ -65,6 +65,16 @@ const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
 const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
 
+const isAscii = (value: string) => {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > 0x7f) {
+      return false
+    }
+  }
+
+  return true
+}
+
 type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
 
 type CachedProfileEnvelope = {
@@ -110,8 +120,29 @@ const formatLockoutDuration = (
 }
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64")
+  const maybeBuffer =
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
+      : undefined
+
+  if (
+    maybeBuffer &&
+    typeof maybeBuffer === "function" &&
+    typeof (maybeBuffer as { from?: unknown }).from === "function"
+  ) {
+    return (
+      maybeBuffer as {
+        from: (
+          input: Uint8Array | string,
+          encoding?: string
+        ) => {
+          toString: (encoding: string) => string
+        }
+      }
+    )
+      .from(bytes)
+      .toString("base64")
   }
 
   let binary = ""
@@ -123,8 +154,23 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
     return globalThis.btoa(binary)
   }
 
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(binary, "binary").toString("base64")
+  if (
+    maybeBuffer &&
+    typeof maybeBuffer === "function" &&
+    typeof (maybeBuffer as { from?: unknown }).from === "function"
+  ) {
+    return (
+      maybeBuffer as {
+        from: (
+          input: Uint8Array | string,
+          encoding?: string
+        ) => {
+          toString: (encoding: string) => string
+        }
+      }
+    )
+      .from(binary, "binary")
+      .toString("base64")
   }
 
   return binary
@@ -316,7 +362,14 @@ type FetchCurrentUserOptions = {
 
 export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {}) => {
   const cachedEnvelope = getCachedEnvelopeHeader()
-  const headers = cachedEnvelope ? { [PROFILE_CACHE_HEADER]: cachedEnvelope } : undefined
+  let headers: Record<string, string> | undefined
+  if (cachedEnvelope) {
+    if (isAscii(cachedEnvelope)) {
+      headers = { [PROFILE_CACHE_HEADER]: cachedEnvelope }
+    } else {
+      clearProfileCacheStorage()
+    }
+  }
   try {
     const response = await api.get<User>("/users/me", { signal, headers })
     return response.data
@@ -345,8 +398,8 @@ const initializeCachedUser = (): UserState => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
   const { t } = useTranslation("auth")
-  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(
-    () => readStoredSessionSigningKey()
+  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(() =>
+    readStoredSessionSigningKey()
   )
   const [userState, setUserState] = useState<UserState>(initializeCachedUser)
   const cachedUserRef = useRef<UserState>(userState)
@@ -371,9 +424,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const promise = (async () => {
       try {
-        const response = await api.get<SessionSigningKeyResponse>(
-          "/auth/session/signing-key"
-        )
+        const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key")
         const key = response.data.signing_key
         updateSessionSigningKey(key)
         return key
@@ -666,9 +717,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const retryValue = Array.isArray(retryAfterHeader)
               ? retryAfterHeader[0]
               : retryAfterHeader
-            const parsedSeconds = typeof retryValue === "string"
-              ? Number.parseInt(retryValue, 10)
-              : Number.NaN
+            const parsedSeconds =
+              typeof retryValue === "string" ? Number.parseInt(retryValue, 10) : Number.NaN
 
             let detail =
               typeof error.response.data?.detail === "string"

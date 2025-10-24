@@ -162,8 +162,9 @@ describe("Login page", () => {
     )
     await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
 
-    const message = await screen.findByText((content) =>
-      content.includes("temporarily locked") && content.includes("Try again in 2 minutes")
+    const message = await screen.findByText(
+      (content) =>
+        content.includes("temporarily locked") && content.includes("Try again in 2 minutes")
     )
     expect(message).toBeInTheDocument()
   })
