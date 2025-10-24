@@ -472,8 +472,7 @@ async def start_webauthn_enrollment(
     )
     result = await db.execute(stmt)
     exclude = [
-        _credential_descriptor_from_db(credential)
-        for credential in result.scalars()
+        _credential_descriptor_from_db(credential) for credential in result.scalars()
     ]
     options = generate_registration_options(
         rp_id=settings.mfa_webauthn_rp_id,
@@ -570,8 +569,7 @@ async def start_webauthn_assertion(
             "No active WebAuthn credentials",
         )
     allow_credentials = [
-        _credential_descriptor_from_db(credential)
-        for credential in credentials
+        _credential_descriptor_from_db(credential) for credential in credentials
     ]
     options = generate_authentication_options(
         rp_id=settings.mfa_webauthn_rp_id,
