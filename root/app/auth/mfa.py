@@ -413,11 +413,17 @@ async def verify_totp_for_user(
         )
     if loaded_challenge is not None:
         if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
         if loaded_challenge.user_id != user.id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
         if session_id is not None and loaded_challenge.session_id != session_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
     for enrollment in enrollments:
         if verify_totp(enrollment.secret, code):
             if loaded_challenge is not None:
