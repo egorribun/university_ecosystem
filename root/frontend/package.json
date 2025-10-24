@@ -30,6 +30,7 @@
     "node": ">=20.19"
   },
   "dependencies": {
+    "@noble/hashes": "^1.4.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.1.0",

@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping, Sequence
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
 from app.auth.security import (
     create_access_token,
     decode_token,
@@ -21,7 +23,7 @@ from app.core.database import get_db
 from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models.models import ActiveSession, FailedLoginAttempt, User
-from app.schemas.schemas import Token, UserCreate
+from app.schemas.schemas import SessionSigningKeyOut, Token, UserCreate
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
@@ -465,6 +467,19 @@ async def login_json(
     )
 
 
+@router.get("/session/signing-key", response_model=SessionSigningKeyOut)
+async def get_session_signing_key(
+    request: Request, _: User = Depends(get_current_user)
+):
+    session = getattr(request.state, "active_session", None)
+    if session is None or not getattr(session, "signing_key", None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Active session missing signing key",
+        )
+    return SessionSigningKeyOut(signing_key=session.signing_key)
+
+
 @router.post("/register", dependencies=[Depends(sensitive_route_limit())])
 async def register(
     user: UserCreate,
@@ -520,6 +535,7 @@ async def logout(
         session = res.scalars().first()
         if session and session.revoked_at is None:
             session.revoked_at = datetime.now(UTC)
+            session.signing_key = secrets.token_urlsafe(32)
             await db.commit()
             _audit_log(
                 "auth.logout.revoked",

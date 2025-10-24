@@ -126,6 +126,9 @@ export const resetTestEvents = () => {
 }
 
 export const handlers = [
+  http.get("*/auth/session/signing-key", () =>
+    HttpResponse.json({ signing_key: "test-session-signing-key" })
+  ),
   http.get("*/users/me", () => HttpResponse.json(testUser)),
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
   http.delete("*/auth/sessions/:id", ({ params }) => {

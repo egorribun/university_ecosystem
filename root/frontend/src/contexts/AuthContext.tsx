@@ -14,6 +14,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
+import { hmac } from "@noble/hashes/hmac"
+import { sha256 } from "@noble/hashes/sha256"
 import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
@@ -59,8 +61,9 @@ export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_C
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
-const PROFILE_CACHE_SIGNING_SALT = "ecosystem-profile-cache-salt"
 const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
+const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
+const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
 
 type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
 
@@ -72,6 +75,10 @@ type CachedProfileEnvelope = {
 }
 
 type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
+
+type SessionSigningKeyResponse = {
+  signing_key: string
+}
 
 type ProfileBroadcastMessage = { type: "unauthorized" }
 
@@ -102,23 +109,55 @@ const formatLockoutDuration = (
   return t("login.duration.hours", { count: value })
 }
 
-const encodeBase64 = (value: string): string => {
-  if (typeof globalThis === "undefined") return value
-  const encoder = globalThis.btoa
-  if (typeof encoder !== "function") return value
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes).toString("base64")
+  }
+
+  let binary = ""
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+
+  if (typeof globalThis !== "undefined" && typeof globalThis.btoa === "function") {
+    return globalThis.btoa(binary)
+  }
+
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(binary, "binary").toString("base64")
+  }
+
+  return binary
+}
+
+const utf8 = new TextEncoder()
+
+const signSnapshot = (payload: CacheSignaturePayload, key: string): string => {
+  const json = JSON.stringify(payload)
+  const signature = hmac(sha256, utf8.encode(key), utf8.encode(json))
+  return bytesToBase64(signature)
+}
+
+const readStoredSessionSigningKey = (): string | null => {
+  if (typeof sessionStorage === "undefined") return null
   try {
-    const utf8 = encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_, hex) =>
-      String.fromCharCode(Number.parseInt(hex, 16))
-    )
-    return encoder(utf8)
+    return sessionStorage.getItem(SESSION_SIGNING_KEY_STORAGE_KEY)
   } catch {
-    return value
+    return null
   }
 }
 
-const signSnapshot = (payload: CacheSignaturePayload): string => {
-  const json = JSON.stringify(payload)
-  return encodeBase64(`${PROFILE_CACHE_SIGNING_SALT}:${json}`)
+const persistSessionSigningKey = (value: string | null) => {
+  if (typeof sessionStorage === "undefined") return
+  try {
+    if (value) {
+      sessionStorage.setItem(SESSION_SIGNING_KEY_STORAGE_KEY, value)
+    } else {
+      sessionStorage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 const migrateProfileCache = () => {
@@ -169,56 +208,84 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   is_active: false,
 })
 
-const readCachedUser = (): User | undefined => {
+const clearProfileCacheStorage = () => {
+  if (typeof localStorage === "undefined") return
+  try {
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   if (typeof localStorage === "undefined") return undefined
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
-    const parsed = JSON.parse(raw) as CachedProfileEnvelope | unknown
+    const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== "object") return undefined
-    const candidate = parsed as Partial<CachedProfileEnvelope>
-    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      return undefined
-    }
-    if (
-      typeof candidate.expiresAt !== "number" ||
-      !candidate.data ||
-      typeof candidate.signature !== "string"
-    ) {
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      return undefined
-    }
-    if (candidate.expiresAt <= Date.now()) {
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      return undefined
-    }
-    const payload: CacheSignaturePayload = {
-      version: candidate.version,
-      expiresAt: candidate.expiresAt,
-      data: candidate.data as CachedUserSnapshot,
-    }
-    const expectedSignature = signSnapshot(payload)
-    if (candidate.signature !== expectedSignature) {
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      return undefined
-    }
-    const snapshot = candidate.data as CachedUserSnapshot
-    if (!snapshot || typeof snapshot.id !== "number") {
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      return undefined
-    }
-    return createOptimisticUser(snapshot)
+    return parsed as CachedProfileEnvelope
   } catch {
-    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    clearProfileCacheStorage()
     return undefined
   }
 }
 
-const persistUserToCache = (value: User | null) => {
+const getCachedEnvelopeHeader = (): string | null => {
+  if (typeof localStorage === "undefined") return null
+  try {
+    return localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+const readCachedUser = (signingKey: string | null): User | undefined => {
+  if (!signingKey) {
+    clearProfileCacheStorage()
+    return undefined
+  }
+  const candidate = readCachedEnvelope()
+  if (!candidate) return undefined
+  if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
+    clearProfileCacheStorage()
+    return undefined
+  }
+  if (
+    typeof candidate.expiresAt !== "number" ||
+    !candidate.data ||
+    typeof candidate.signature !== "string"
+  ) {
+    clearProfileCacheStorage()
+    return undefined
+  }
+  if (candidate.expiresAt <= Date.now()) {
+    clearProfileCacheStorage()
+    return undefined
+  }
+  const payload: CacheSignaturePayload = {
+    version: candidate.version,
+    expiresAt: candidate.expiresAt,
+    data: candidate.data as CachedUserSnapshot,
+  }
+  const expectedSignature = signSnapshot(payload, signingKey)
+  if (candidate.signature !== expectedSignature) {
+    clearProfileCacheStorage()
+    return undefined
+  }
+  const snapshot = candidate.data as CachedUserSnapshot
+  if (!snapshot || typeof snapshot.id !== "number") {
+    clearProfileCacheStorage()
+    return undefined
+  }
+  return createOptimisticUser(snapshot)
+}
+
+const persistUserToCache = (value: User | null, signingKey: string | null) => {
   if (typeof localStorage === "undefined") return
   try {
-    if (value != null) {
+    if (value != null && signingKey) {
       const snapshot: CachedUserSnapshot = {
         id: value.id,
         full_name: value.full_name,
@@ -231,13 +298,12 @@ const persistUserToCache = (value: User | null) => {
       }
       const envelope: CachedProfileEnvelope = {
         ...payload,
-        signature: signSnapshot(payload),
+        signature: signSnapshot(payload, signingKey),
       }
       localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
       localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
     } else {
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+      clearProfileCacheStorage()
     }
   } catch {
     /* ignore */
@@ -249,24 +315,75 @@ type FetchCurrentUserOptions = {
 }
 
 export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {}) => {
-  const response = await api.get<User>("/users/me", { signal })
-  return response.data
+  const cachedEnvelope = getCachedEnvelopeHeader()
+  const headers = cachedEnvelope ? { [PROFILE_CACHE_HEADER]: cachedEnvelope } : undefined
+  try {
+    const response = await api.get<User>("/users/me", { signal, headers })
+    return response.data
+  } catch (error) {
+    if (
+      cachedEnvelope &&
+      isAxiosError(error) &&
+      error.response?.status === 400 &&
+      !signal?.aborted
+    ) {
+      clearProfileCacheStorage()
+      const retry = await api.get<User>("/users/me", { signal })
+      return retry.data
+    }
+    throw error
+  }
 }
 
 const initializeCachedUser = (): UserState => {
   if (typeof window === "undefined") return null
   migrateProfileCache()
-  return readCachedUser() ?? null
+  const signingKey = readStoredSessionSigningKey()
+  return readCachedUser(signingKey) ?? null
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
   const { t } = useTranslation("auth")
+  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(
+    () => readStoredSessionSigningKey()
+  )
   const [userState, setUserState] = useState<UserState>(initializeCachedUser)
   const cachedUserRef = useRef<UserState>(userState)
+  const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
+  const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
   const [initializing, setInitializing] = useState<boolean>(true)
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
+
+  const updateSessionSigningKey = useCallback((value: string | null) => {
+    sessionSigningKeyRef.current = value
+    setSessionSigningKeyState(value)
+    persistSessionSigningKey(value)
+  }, [])
+
+  const ensureSessionSigningKey = useCallback(async () => {
+    if (sessionSigningKeyRef.current) {
+      return sessionSigningKeyRef.current
+    }
+    if (sessionSigningKeyPromiseRef.current) {
+      return sessionSigningKeyPromiseRef.current
+    }
+    const promise = (async () => {
+      try {
+        const response = await api.get<SessionSigningKeyResponse>(
+          "/auth/session/signing-key"
+        )
+        const key = response.data.signing_key
+        updateSessionSigningKey(key)
+        return key
+      } finally {
+        sessionSigningKeyPromiseRef.current = null
+      }
+    })()
+    sessionSigningKeyPromiseRef.current = promise
+    return promise
+  }, [updateSessionSigningKey])
 
   const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
     if (typeof window === "undefined") return
@@ -289,7 +406,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
         if (persist) {
-          persistUserToCache(normalized)
+          persistUserToCache(normalized, sessionSigningKeyRef.current)
         }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
@@ -304,6 +421,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     },
     [applyUserState]
   )
+
+  useEffect(() => {
+    if (sessionSigningKeyRef.current !== sessionSigningKey) {
+      sessionSigningKeyRef.current = sessionSigningKey
+    }
+    if (sessionSigningKey && userState) {
+      persistUserToCache(userState, sessionSigningKey)
+    }
+  }, [sessionSigningKey, userState])
 
   useEffect(() => {
     if (cachedUserRef.current !== null) {
@@ -325,6 +451,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const handleUnauthorized = useCallback(
     ({ broadcast = true, persist = true }: HandleUnauthorizedOptions = {}) => {
+      sessionSigningKeyPromiseRef.current = null
+      updateSessionSigningKey(null)
       clearProfile({ persist })
       setAuthOperation(false)
       setInitializing(false)
@@ -332,14 +460,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         broadcastProfileEvent({ type: "unauthorized" })
       }
     },
-    [broadcastProfileEvent, clearProfile]
+    [broadcastProfileEvent, clearProfile, updateSessionSigningKey]
   )
 
   useEffect(() => {
     if (typeof window === "undefined") return
 
     const syncFromCache = () => {
-      applyUserState(() => readCachedUser() ?? null, { persist: false })
+      applyUserState(() => readCachedUser(sessionSigningKeyRef.current) ?? null, { persist: false })
     }
 
     const onStorage = (event: StorageEvent) => {
@@ -396,6 +524,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
+        try {
+          await ensureSessionSigningKey()
+        } catch (error) {
+          if (!controller.signal.aborted && import.meta.env.DEV) {
+            console.warn("Failed to obtain session signing key", error)
+          }
+        }
         setUser(profile)
       } catch (error) {
         if (controller.signal.aborted) return
@@ -417,7 +552,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       controller.abort()
     }
-  }, [handleUnauthorized, setUser])
+  }, [ensureSessionSigningKey, handleUnauthorized, setUser])
 
   const refresh = useCallback(async () => {
     const controller = new AbortController()
@@ -427,6 +562,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setInitializing(true)
       const profile = await fetchCurrentUser({ signal: controller.signal })
+      try {
+        await ensureSessionSigningKey()
+      } catch (error) {
+        if (!controller.signal.aborted && import.meta.env.DEV) {
+          console.warn("Failed to obtain session signing key", error)
+        }
+      }
       setUser(profile)
     } catch (error) {
       if (controller.signal.aborted) return
@@ -443,7 +585,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setInitializing(false)
       }
     }
-  }, [handleUnauthorized, setUser])
+  }, [ensureSessionSigningKey, handleUnauthorized, setUser])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -491,7 +633,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (controller.signal.aborted) return
 
+        const signingKeyPromise = ensureSessionSigningKey()
         const profile = await fetchCurrentUser({ signal: controller.signal })
+        try {
+          await signingKeyPromise
+        } catch (error) {
+          if (!controller.signal.aborted && import.meta.env.DEV) {
+            console.warn("Failed to obtain session signing key", error)
+          }
+        }
         setUser(profile)
 
         if (typeof window !== "undefined" && typeof Notification !== "undefined") {
@@ -558,7 +708,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     },
-    [handleUnauthorized, setUser, t]
+    [ensureSessionSigningKey, handleUnauthorized, setUser, t]
   )
 
   const logout = useCallback(async () => {

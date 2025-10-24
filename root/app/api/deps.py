@@ -65,6 +65,7 @@ async def get_current_user(
             last_seen_at = last_seen_at.replace(tzinfo=UTC)
         if now - last_seen_at >= timedelta(seconds=30):
             update_last_seen = True
+    request.state.active_session = session
     if update_last_seen:
         session.last_seen_at = now
         await db.commit()
