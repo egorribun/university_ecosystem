@@ -523,6 +523,7 @@ class NotificationQueueMetrics:
 
     queue_size: Gauge
     dropped_jobs_total: Counter
+    failed_jobs_total: Counter
     processing_latency_seconds: Histogram
 
     def reset(self) -> None:
@@ -532,6 +533,7 @@ class NotificationQueueMetrics:
         # The internals below are implementation details of prometheus_client,
         # hence the type: ignore annotations.
         self.dropped_jobs_total._value.set(0)  # type: ignore[attr-defined]
+        self.failed_jobs_total._value.set(0)  # type: ignore[attr-defined]
         self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
         for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
             bucket.set(0)
@@ -555,6 +557,10 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
             dropped_jobs_total=Counter(
                 "notification_queue_dropped_jobs_total",
                 "Total notification jobs dropped due to queue saturation",
+            ),
+            failed_jobs_total=Counter(
+                "notification_queue_failed_jobs_total",
+                "Total notification jobs permanently failed or dead-lettered",
             ),
             processing_latency_seconds=Histogram(
                 "notification_queue_processing_latency_seconds",

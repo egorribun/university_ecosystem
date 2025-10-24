@@ -410,6 +410,9 @@ class NotificationQueueJob(Base):
     )
     claimed_at = Column(DateTime(timezone=True), index=True)
     attempts = Column(Integer, nullable=False, server_default=text("0"))
+    last_error = Column(Text)
+    next_retry_at = Column(DateTime(timezone=True), index=True)
+    dead_lettered = Column(Boolean, nullable=False, server_default=text("0"), index=True)
 
     __table_args__ = (
         CheckConstraint(
