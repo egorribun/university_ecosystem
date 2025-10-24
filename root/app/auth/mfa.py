@@ -279,7 +279,8 @@ async def use_recovery_code(
     user: User,
     code: str,
     challenge_token: str | None = None,
-) -> MfaRecoveryCode:
+    session_id: int | None = None,
+) -> tuple[MfaRecoveryCode, MfaChallenge | None]:
     normalized_hash = hash_recovery_code(code)
     stmt = (
         select(MfaRecoveryCode)
@@ -290,17 +291,19 @@ async def use_recovery_code(
     record = result.scalars().first()
     if not record or record.used_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid recovery code")
+    challenge: MfaChallenge | None = None
     if challenge_token:
         challenge = await get_challenge(
             db,
             token=challenge_token,
             challenge_type=CHALLENGE_TYPE_RECOVERY,
             user_id=user.id,
+            session_id=session_id,
         )
         await consume_challenge(db, challenge)
     record.used_at = _utcnow()
     await db.flush()
-    return record
+    return record, challenge
 
 
 async def start_totp_enrollment(
@@ -366,6 +369,7 @@ async def start_totp_verification(
     user: User,
     session: ActiveSession | None = None,
     locale: str | None = None,
+    payload: MutableMapping[str, Any] | None = None,
 ) -> MfaChallenge:
     challenge = await issue_challenge(
         db,
@@ -373,6 +377,7 @@ async def start_totp_verification(
         session_id=session.id if session else None,
         challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         locale=locale,
+        payload=dict(payload or {}),
     )
     return challenge
 
@@ -383,7 +388,9 @@ async def verify_totp_for_user(
     user: User,
     code: str,
     challenge_token: str | None = None,
-) -> MfaTotpEnrollment:
+    challenge: MfaChallenge | None = None,
+    session_id: int | None = None,
+) -> tuple[MfaTotpEnrollment, MfaChallenge | None]:
     stmt = (
         select(MfaTotpEnrollment)
         .where(MfaTotpEnrollment.user_id == user.id)
@@ -395,20 +402,33 @@ async def verify_totp_for_user(
     enrollments = list(result.scalars())
     if not enrollments:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No active TOTP enrollment")
-    if challenge_token:
-        challenge = await get_challenge(
+    loaded_challenge = challenge
+    if challenge_token and loaded_challenge is None:
+        loaded_challenge = await get_challenge(
             db,
             token=challenge_token,
             challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
             user_id=user.id,
+            session_id=session_id,
         )
-    else:
-        challenge = None
+    if loaded_challenge is not None:
+        if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
+        if loaded_challenge.user_id != user.id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
+        if session_id is not None and loaded_challenge.session_id != session_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
     for enrollment in enrollments:
         if verify_totp(enrollment.secret, code):
-            if challenge is not None:
-                await consume_challenge(db, challenge)
-            return enrollment
+            if loaded_challenge is not None:
+                await consume_challenge(db, loaded_challenge)
+            return enrollment, loaded_challenge
     raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code")
 
 
@@ -555,6 +575,7 @@ async def start_webauthn_assertion(
     user: User,
     session: ActiveSession | None = None,
     locale: str | None = None,
+    payload: MutableMapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], MfaChallenge]:
     stmt = (
         select(MfaWebAuthnCredential)
@@ -577,12 +598,14 @@ async def start_webauthn_assertion(
         user_verification=UserVerificationRequirement.PREFERRED,
     )
     challenge_payload = {"challenge": _base64url_encode(options.challenge)}
+    merged_payload = dict(payload or {})
+    merged_payload.update(challenge_payload)
     challenge = await issue_challenge(
         db,
         user_id=user.id,
         session_id=session.id if session else None,
         challenge_type=CHALLENGE_TYPE_WEBAUTHN_ASSERT,
-        payload=challenge_payload,
+        payload=merged_payload,
         locale=locale,
     )
     return _serialize_authentication_options(options), challenge
@@ -594,13 +617,15 @@ async def verify_webauthn_assertion(
     user: User,
     credential: AuthenticationCredential | Mapping[str, Any],
     challenge_token: str,
-) -> MfaWebAuthnCredential:
+    session_id: int | None = None,
+) -> tuple[MfaWebAuthnCredential, MfaChallenge]:
     challenge = await get_challenge(
         db,
         token=challenge_token,
         challenge_type=CHALLENGE_TYPE_WEBAUTHN_ASSERT,
         user_id=user.id,
-        consume=True,
+        session_id=session_id,
+        consume=False,
     )
     stored_challenge = challenge.payload.get("challenge") if challenge.payload else None
     if not stored_challenge:
@@ -644,7 +669,8 @@ async def verify_webauthn_assertion(
     record.last_used_at = _utcnow()
     record.backed_up = verified.credential_backed_up
     await db.flush()
-    return record
+    await consume_challenge(db, challenge)
+    return record, challenge
 
 
 async def disable_webauthn_credential(
@@ -679,4 +705,5 @@ async def record_mfa_success(
         session.mfa_completed_at = now
         session.mfa_required = False
         session.mfa_method = method[:64]
+        session.mfa_verified_at = now
     await db.flush()

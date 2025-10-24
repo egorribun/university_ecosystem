@@ -8,5 +8,9 @@ export interface ActiveSession {
   ip_address: string | null
   user_agent: string | null
   last_seen_at: string | null
+  mfa_required: boolean
+  mfa_completed_at: string | null
+  mfa_method: string | null
+  mfa_verified_at: string | null
   is_current: boolean
 }

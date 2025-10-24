@@ -153,6 +153,7 @@ class Settings(BaseSettings):
     mfa_webauthn_rp_id: str = "localhost"
     mfa_webauthn_rp_name: str = "University Ecosystem"
     mfa_webauthn_origin: str = "http://localhost:5173"
+    mfa_step_up_ttl_seconds: int = 300
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
@@ -253,7 +254,11 @@ class Settings(BaseSettings):
     def _validate_mfa_webauthn_origin(cls, value: str) -> str:
         return _validate_webauthn_origin(value)
 
-    @field_validator("mfa_challenge_ttl_seconds", "mfa_challenge_max_attempts")
+    @field_validator(
+        "mfa_challenge_ttl_seconds",
+        "mfa_challenge_max_attempts",
+        "mfa_step_up_ttl_seconds",
+    )
     @classmethod
     def _validate_positive_mfa_values(cls, value: int, info):
         return _validate_positive_int(value, label=info.field_name.upper())
