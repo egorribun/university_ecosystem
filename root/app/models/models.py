@@ -44,6 +44,12 @@ class User(Base):
     role = Column(String, nullable=False, default=UserRole.STUDENT.value, index=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
     is_active = Column(Boolean, default=True, index=True)
+    mfa_required = Column(Boolean, default=False, nullable=False, index=True)
+    mfa_default_method = Column(String(64))
+    mfa_last_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    mfa_recovery_codes_generated_at = Column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     avatar_url = Column(String)
     cover_url = Column(String)
@@ -95,6 +101,30 @@ class User(Base):
     )
     sessions = relationship(
         "ActiveSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    totp_enrollments = relationship(
+        "MfaTotpEnrollment",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    webauthn_credentials = relationship(
+        "MfaWebAuthnCredential",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    recovery_codes = relationship(
+        "MfaRecoveryCode",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    mfa_challenges = relationship(
+        "MfaChallenge",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -191,8 +221,109 @@ class ActiveSession(Base):
     user_agent = Column(String(512))
     last_seen_at = Column(DateTime(timezone=True), nullable=True, index=True)
     signing_key = Column(String, nullable=False, default=_generate_session_signing_key)
+    mfa_required = Column(Boolean, default=False, nullable=False, index=True)
+    mfa_completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    mfa_method = Column(String(64))
 
     user = relationship("User", back_populates="sessions")
+    challenges = relationship(
+        "MfaChallenge",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class MfaTotpEnrollment(Base):
+    __tablename__ = "mfa_totp_enrollments"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    secret = Column(EncryptedString(), nullable=False)
+    label = Column(String(255))
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user = relationship("User", back_populates="totp_enrollments")
+
+    __table_args__ = (Index("ix_mfa_totp_enrollments_active", "user_id", "is_active"),)
+
+
+class MfaWebAuthnCredential(Base):
+    __tablename__ = "mfa_webauthn_credentials"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    credential_id = Column(String(255), nullable=False, unique=True)
+    public_key = Column(Text, nullable=False)
+    sign_count = Column(Integer, nullable=False, default=0)
+    transports = Column(JSON, nullable=True)
+    device_name = Column(String(255))
+    backed_up = Column(Boolean, nullable=False, default=False, index=True)
+    clone_warning = Column(Boolean, nullable=False, default=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+
+    user = relationship("User", back_populates="webauthn_credentials")
+
+    __table_args__ = (Index("ix_mfa_webauthn_user_active", "user_id", "is_active"),)
+
+
+class MfaRecoveryCode(Base):
+    __tablename__ = "mfa_recovery_codes"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    code_hash = Column(String(255), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    label = Column(String(255))
+
+    user = relationship("User", back_populates="recovery_codes")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "code_hash", name="uq_mfa_recovery_codes_hash"),
+    )
+
+
+class MfaChallenge(Base):
+    __tablename__ = "mfa_challenges"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    session_id = Column(
+        Integer, ForeignKey("active_sessions.id", ondelete="CASCADE"), nullable=True
+    )
+    challenge_type = Column(String(64), nullable=False, index=True)
+    token = Column(String(255), nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    payload = Column(JSON, nullable=True)
+
+    user = relationship("User", back_populates="mfa_challenges")
+    session = relationship("ActiveSession", back_populates="challenges")
+
+    __table_args__ = (Index("ix_mfa_challenges_user_expires", "user_id", "expires_at"),)
 
 
 class FailedLoginAttempt(Base):

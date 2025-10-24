@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.localization import localized_text, normalize_locale, translate
 from app.models import models
 from app.models.enums import UserRole
@@ -94,6 +95,8 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         achievements=getattr(user_in, "achievements", None),
         department=getattr(user_in, "department", None),
         position=getattr(user_in, "position", None),
+        mfa_required=settings.mfa_enabled,
+        mfa_default_method=settings.mfa_default_method,
     )
     db.add(db_user)
     try:
