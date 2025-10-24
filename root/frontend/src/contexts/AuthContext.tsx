@@ -110,8 +110,24 @@ const formatLockoutDuration = (
 }
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64")
+  const maybeBuffer =
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
+      : undefined
+
+  if (
+    maybeBuffer &&
+    typeof maybeBuffer === "function" &&
+    typeof (maybeBuffer as { from?: unknown }).from === "function"
+  ) {
+    return (maybeBuffer as {
+      from: (input: Uint8Array | string, encoding?: string) => {
+        toString: (encoding: string) => string
+      }
+    })
+      .from(bytes)
+      .toString("base64")
   }
 
   let binary = ""
@@ -123,8 +139,18 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
     return globalThis.btoa(binary)
   }
 
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(binary, "binary").toString("base64")
+  if (
+    maybeBuffer &&
+    typeof maybeBuffer === "function" &&
+    typeof (maybeBuffer as { from?: unknown }).from === "function"
+  ) {
+    return (maybeBuffer as {
+      from: (input: Uint8Array | string, encoding?: string) => {
+        toString: (encoding: string) => string
+      }
+    })
+      .from(binary, "binary")
+      .toString("base64")
   }
 
   return binary
