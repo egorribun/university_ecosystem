@@ -578,7 +578,12 @@ export async function useMockApi(page: Page) {
     if (pathname === "api/auth/mfa/step-up") {
       const challenge =
         state.mfa.stepUpChallenge ??
-        createMfaChallenge({ includeTotp: true, includeRecovery: true, includeWebAuthn: true, sessionId: 42 })
+        createMfaChallenge({
+          includeTotp: true,
+          includeRecovery: true,
+          includeWebAuthn: true,
+          sessionId: 42,
+        })
       state.mfa.stepUpChallenge = challenge
       await route.fulfill({
         status: 202,
@@ -614,7 +619,11 @@ export async function useMockApi(page: Page) {
       }
 
       const matches = (challenge: PendingMfaResponse | null) =>
-        Boolean(challenge?.methods.some((entry) => entry.method === method && entry.challenge_token === challengeToken))
+        Boolean(
+          challenge?.methods.some(
+            (entry) => entry.method === method && entry.challenge_token === challengeToken
+          )
+        )
 
       const matchedLogin = matches(state.mfa.loginChallenge)
       const matchedStepUp = matches(state.mfa.stepUpChallenge)

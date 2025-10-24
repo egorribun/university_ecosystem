@@ -115,11 +115,13 @@ describe("Settings TOTP enrollment", () => {
     await user.type(otpInput, "123456")
     await user.click(screen.getByRole("button", { name: matchTotpSubmit }))
 
-    await waitFor(() => expect(screen.getByText(/Authenticator app connected|Приложение-аутентификатор подключено/i)).toBeVisible())
-
     await waitFor(() =>
-      expect(screen.getByText(/Authenticator 1|Аутентификатор 1/i)).toBeVisible()
+      expect(
+        screen.getByText(/Authenticator app connected|Приложение-аутентификатор подключено/i)
+      ).toBeVisible()
     )
+
+    await waitFor(() => expect(screen.getByText(/Authenticator 1|Аутентификатор 1/i)).toBeVisible())
   })
 
   it("surfaces server errors when confirmation fails", async () => {

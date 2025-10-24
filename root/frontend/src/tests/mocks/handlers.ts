@@ -279,7 +279,9 @@ export const handlers = [
     }
 
     const label =
-      payload && typeof payload === "object" && typeof (payload as { label?: unknown }).label === "string"
+      payload &&
+      typeof payload === "object" &&
+      typeof (payload as { label?: unknown }).label === "string"
         ? ((payload as { label?: string }).label as string)
         : null
 
@@ -298,9 +300,10 @@ export const handlers = [
       return HttpResponse.json({ detail: "No pending enrollment" }, { status: 400 })
     }
 
-    const body = (await request.json().catch(() => null)) as
-      | { enrollment_id?: number; code?: string }
-      | null
+    const body = (await request.json().catch(() => null)) as {
+      enrollment_id?: number
+      code?: string
+    } | null
 
     if (!body || body.enrollment_id !== totpDraft.enrollment.id) {
       return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })

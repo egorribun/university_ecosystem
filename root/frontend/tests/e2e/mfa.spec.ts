@@ -122,7 +122,9 @@ test.describe("Multi-factor authentication flows", () => {
     await page.locator('input[name="password"]').fill("Password123")
     await page.getByRole("button", { name: /Sign in|Войти/i }).click()
 
-    await expect(page.getByText(/Use your security key|Используйте ключ безопасности/i)).toBeVisible()
+    await expect(
+      page.getByText(/Use your security key|Используйте ключ безопасности/i)
+    ).toBeVisible()
 
     await expect(page).toHaveURL(/\/dashboard$/)
   })
