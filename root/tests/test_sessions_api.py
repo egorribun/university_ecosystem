@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Dict
 
 import pytest
+from fastapi import status
 from httpx import AsyncClient
 
 from app.auth.security import get_password_hash
@@ -27,6 +28,10 @@ async def _login(
         data={"username": email, "password": password},
         headers=headers,
     )
+    if response.status_code == status.HTTP_202_ACCEPTED:
+        pytest.fail(
+            "Login returned an MFA challenge; this helper expects a non-MFA user"
+        )
     assert response.status_code == 200
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}", "User-Agent": user_agent}

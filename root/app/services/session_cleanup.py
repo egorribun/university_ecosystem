@@ -9,11 +9,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Awaitable, Callable
 
-from sqlalchemy import delete, or_
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
-from app.models.models import ActiveSession
+from app.models.models import ActiveSession, MfaChallenge
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +34,20 @@ async def cleanup_expired_sessions(
         async with async_session() as session:
             return await cleanup_expired_sessions(db=session, now=now)
 
-    stmt = delete(ActiveSession).where(
+    target_sessions_stmt = select(ActiveSession.id).where(
         or_(ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now)
     )
-    result = await db.execute(stmt)
+    result = await db.execute(target_sessions_stmt)
+    session_ids = [row[0] for row in result]
+    deleted = 0
+    if session_ids:
+        await db.execute(
+            delete(MfaChallenge).where(MfaChallenge.session_id.in_(session_ids))
+        )
+        delete_stmt = delete(ActiveSession).where(ActiveSession.id.in_(session_ids))
+        delete_result = await db.execute(delete_stmt)
+        deleted = int(delete_result.rowcount or 0)
     await db.commit()
-    deleted = int(result.rowcount or 0)
     if deleted:
         logger.info("Removed %s expired sessions", deleted)
     return deleted

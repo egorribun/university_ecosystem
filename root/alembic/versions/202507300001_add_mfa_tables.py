@@ -38,6 +38,8 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     tables = _table_names(inspector)
+    dialect_name = bind.dialect.name
+    is_sqlite = dialect_name == "sqlite"
 
     if _USERS_TABLE in tables:
         user_columns = _column_names(inspector, _USERS_TABLE)
@@ -53,7 +55,8 @@ def upgrade() -> None:
                     server_default=sa.false(),
                 ),
             )
-            op.alter_column(_USERS_TABLE, "mfa_required", server_default=None)
+            if not is_sqlite:
+                op.alter_column(_USERS_TABLE, "mfa_required", server_default=None)
         if "mfa_default_method" not in user_columns:
             op.add_column(
                 _USERS_TABLE,
@@ -117,7 +120,12 @@ def upgrade() -> None:
                     server_default=sa.false(),
                 ),
             )
-            op.alter_column(_ACTIVE_SESSIONS_TABLE, "mfa_required", server_default=None)
+            if not is_sqlite:
+                op.alter_column(
+                    _ACTIVE_SESSIONS_TABLE,
+                    "mfa_required",
+                    server_default=None,
+                )
         if "mfa_completed_at" not in session_columns:
             op.add_column(
                 _ACTIVE_SESSIONS_TABLE,
@@ -183,7 +191,8 @@ def upgrade() -> None:
                 server_default=sa.func.now(),
             ),
         )
-        op.alter_column(_TOTP_TABLE, "is_active", server_default=None)
+        if not is_sqlite:
+            op.alter_column(_TOTP_TABLE, "is_active", server_default=None)
         op.create_index(f"ix_{_TOTP_TABLE}_user_id", _TOTP_TABLE, ["user_id"])
         op.create_index(f"ix_{_TOTP_TABLE}_is_active", _TOTP_TABLE, ["is_active"])
         op.create_index(f"ix_{_TOTP_TABLE}_confirmed_at", _TOTP_TABLE, ["confirmed_at"])
@@ -242,10 +251,11 @@ def upgrade() -> None:
                 server_default=sa.true(),
             ),
         )
-        op.alter_column(_WEBAUTHN_TABLE, "sign_count", server_default=None)
-        op.alter_column(_WEBAUTHN_TABLE, "backed_up", server_default=None)
-        op.alter_column(_WEBAUTHN_TABLE, "clone_warning", server_default=None)
-        op.alter_column(_WEBAUTHN_TABLE, "is_active", server_default=None)
+        if not is_sqlite:
+            op.alter_column(_WEBAUTHN_TABLE, "sign_count", server_default=None)
+            op.alter_column(_WEBAUTHN_TABLE, "backed_up", server_default=None)
+            op.alter_column(_WEBAUTHN_TABLE, "clone_warning", server_default=None)
+            op.alter_column(_WEBAUTHN_TABLE, "is_active", server_default=None)
         op.create_index(f"ix_{_WEBAUTHN_TABLE}_user_id", _WEBAUTHN_TABLE, ["user_id"])
         op.create_index(
             f"ix_{_WEBAUTHN_TABLE}_is_active", _WEBAUTHN_TABLE, ["is_active"]

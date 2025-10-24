@@ -678,7 +678,7 @@ async def _perform_login(
             )
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
-                content=payload.model_dump(),
+                content=payload.model_dump(mode="json"),
             )
 
     client_ip, user_agent = _extract_client_info(request)
@@ -750,8 +750,8 @@ async def login_json(
 
 @router.post("/mfa/totp/start", response_model=TotpEnrollmentStartOut)
 async def start_totp_enrollment_endpoint(
-    payload: TotpEnrollmentStartIn | None = None,
     request: Request,
+    payload: TotpEnrollmentStartIn | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1213,7 +1213,7 @@ async def request_step_up(
     )
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
-        content=payload.model_dump(),
+        content=payload.model_dump(mode="json"),
     )
 
 
