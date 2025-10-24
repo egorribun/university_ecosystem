@@ -19,11 +19,26 @@ import { sha256 } from "@noble/hashes/sha256"
 import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import type { PendingMfaResponse, MfaMethod, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
 
 type UserState = User | null
 
 type SetUserArg = SetStateAction<UserState>
+
+export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up" }
+
+export type SubmitMfaChallengePayload =
+  | {
+      method: Extract<MfaMethod, "totp" | "recovery">
+      code: string
+      challengeToken?: string
+    }
+  | {
+      method: Extract<MfaMethod, "webauthn">
+      credential: Record<string, unknown>
+      challengeToken?: string
+    }
 
 type AuthContextType = {
   isAuth: boolean
@@ -33,6 +48,9 @@ type AuthContextType = {
   loading: boolean
   setUser: Dispatch<SetUserArg>
   refresh: () => Promise<void>
+  pendingMfa: PendingMfaState | null
+  submitMfaChallenge: (payload: SubmitMfaChallengePayload) => Promise<void>
+  requireMfa: () => Promise<PendingMfaState | null>
 }
 
 const noopSetUser: Dispatch<SetUserArg> = (_value) => {
@@ -49,6 +67,9 @@ export const AuthContext = createContext<AuthContextType>({
   loading: false,
   setUser: noopSetUser,
   refresh: async () => {},
+  pendingMfa: null,
+  submitMfaChallenge: async () => {},
+  requireMfa: async () => null,
 })
 
 export const useAuth = () => useContext(AuthContext)
@@ -75,7 +96,17 @@ const isAscii = (value: string) => {
   return true
 }
 
-type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url">
+type CachedUserSnapshot =
+  Pick<User, "id" | "full_name" | "avatar_url"> &
+  Partial<
+    Pick<
+      User,
+      | "mfa_required"
+      | "mfa_default_method"
+      | "mfa_last_verified_at"
+      | "mfa_recovery_codes_generated_at"
+    >
+  >
 
 type CachedProfileEnvelope = {
   version: number
@@ -90,7 +121,10 @@ type SessionSigningKeyResponse = {
   signing_key: string
 }
 
-type ProfileBroadcastMessage = { type: "unauthorized" }
+type ProfileBroadcastMessage =
+  | { type: "unauthorized" }
+  | { type: "mfa-pending"; payload: PendingMfaState }
+  | { type: "mfa-cleared" }
 
 type HandleUnauthorizedOptions = {
   broadcast?: boolean
@@ -252,6 +286,14 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   dnd_start: null,
   dnd_end: null,
   is_active: false,
+  mfa_required: Boolean(snapshot.mfa_required),
+  mfa_default_method: snapshot.mfa_default_method ?? null,
+  mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
+  mfa_recovery_codes_generated_at: snapshot.mfa_recovery_codes_generated_at ?? null,
+  totp_enrollments: [],
+  webauthn_credentials: [],
+  recovery_codes: [],
+  mfa_challenges: [],
 })
 
 const clearProfileCacheStorage = () => {
@@ -336,6 +378,10 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         id: value.id,
         full_name: value.full_name,
         avatar_url: value.avatar_url,
+        mfa_required: value.mfa_required,
+        mfa_default_method: value.mfa_default_method,
+        mfa_last_verified_at: value.mfa_last_verified_at,
+        mfa_recovery_codes_generated_at: value.mfa_recovery_codes_generated_at,
       }
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -402,9 +448,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     readStoredSessionSigningKey()
   )
   const [userState, setUserState] = useState<UserState>(initializeCachedUser)
+  const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
+  const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
   const [initializing, setInitializing] = useState<boolean>(true)
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
@@ -449,6 +497,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     }
   }, [])
+
+  const updatePendingMfa = useCallback(
+    (value: PendingMfaState | null, { broadcast = true }: { broadcast?: boolean } = {}) => {
+      const previous = pendingMfaRef.current
+      pendingMfaRef.current = value
+      setPendingMfaState(value)
+      if (!broadcast) return
+      if (!previous && !value) return
+      if (value) {
+        broadcastProfileEvent({ type: "mfa-pending", payload: value })
+      } else {
+        broadcastProfileEvent({ type: "mfa-cleared" })
+      }
+    },
+    [broadcastProfileEvent]
+  )
 
   const applyUserState = useCallback(
     (value: SetUserArg, { persist }: { persist: boolean }) => {
@@ -505,13 +569,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       sessionSigningKeyPromiseRef.current = null
       updateSessionSigningKey(null)
       clearProfile({ persist })
+      updatePendingMfa(null, { broadcast })
       setAuthOperation(false)
       setInitializing(false)
       if (broadcast) {
         broadcastProfileEvent({ type: "unauthorized" })
       }
     },
-    [broadcastProfileEvent, clearProfile, updateSessionSigningKey]
+    [broadcastProfileEvent, clearProfile, updatePendingMfa, updateSessionSigningKey]
   )
 
   useEffect(() => {
@@ -539,6 +604,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (data.type === "unauthorized") {
         handleUnauthorized({ broadcast: false, persist: false })
+        return
+      }
+
+      if (data.type === "mfa-pending" && data.payload) {
+        updatePendingMfa(data.payload, { broadcast: false })
+        return
+      }
+
+      if (data.type === "mfa-cleared") {
+        updatePendingMfa(null, { broadcast: false })
       }
     }
 
@@ -560,7 +635,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         channel.close()
       }
     }
-  }, [applyUserState, handleUnauthorized])
+  }, [applyUserState, handleUnauthorized, updatePendingMfa])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -606,6 +681,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [ensureSessionSigningKey, handleUnauthorized, setUser])
 
   const refresh = useCallback(async () => {
+    if (pendingMfaRef.current) {
+      return
+    }
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
@@ -636,7 +714,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setInitializing(false)
       }
     }
-  }, [ensureSessionSigningKey, handleUnauthorized, setUser])
+  }, [ensureSessionSigningKey, handleUnauthorized, pendingMfaRef, setUser])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -664,6 +742,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => window.removeEventListener(SPOTIFY_REAUTH_EVENT, onSpotifyReauth as EventListener)
   }, [queryClient, setUser])
 
+  const finalizeAuthenticatedSession = useCallback(
+    async (
+      controller: AbortController,
+      { skipPushSync = false }: { skipPushSync?: boolean } = {}
+    ) => {
+      const signingKeyPromise = ensureSessionSigningKey()
+      const profile = await fetchCurrentUser({ signal: controller.signal })
+      try {
+        await signingKeyPromise
+      } catch (error) {
+        if (!controller.signal.aborted && import.meta.env.DEV) {
+          console.warn("Failed to obtain session signing key", error)
+        }
+      }
+
+      if (controller.signal.aborted) {
+        return
+      }
+
+      setUser(profile)
+
+      if (!skipPushSync && typeof window !== "undefined" && typeof Notification !== "undefined") {
+        if (Notification.permission === "granted" && hasPushConsent()) {
+          void (async () => {
+            try {
+              await softSyncPushSubscription()
+            } catch (error) {
+              console.warn("Failed to sync push subscription", error)
+            }
+          })()
+        }
+      }
+    },
+    [ensureSessionSigningKey, setUser]
+  )
+
   const login = useCallback(
     async (email: string, password: string) => {
       const payload = new URLSearchParams()
@@ -677,35 +791,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         setAuthOperation(true)
         setInitializing(true)
-        await api.post("/auth/login", payload, {
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          signal: controller.signal,
-        })
+        const response = await api.post<PendingMfaResponse | { access_token?: string }>(
+          "/auth/login",
+          payload,
+          {
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: controller.signal,
+          }
+        )
 
         if (controller.signal.aborted) return
 
-        const signingKeyPromise = ensureSessionSigningKey()
-        const profile = await fetchCurrentUser({ signal: controller.signal })
-        try {
-          await signingKeyPromise
-        } catch (error) {
-          if (!controller.signal.aborted && import.meta.env.DEV) {
-            console.warn("Failed to obtain session signing key", error)
-          }
+        if (response.status === 202) {
+          const data = response.data as PendingMfaResponse
+          const challenge: PendingMfaState = { ...data, reason: "login" }
+          updatePendingMfa(challenge)
+          return
         }
-        setUser(profile)
 
-        if (typeof window !== "undefined" && typeof Notification !== "undefined") {
-          if (Notification.permission === "granted" && hasPushConsent()) {
-            void (async () => {
-              try {
-                await softSyncPushSubscription()
-              } catch (error) {
-                console.warn("Failed to sync push subscription", error)
-              }
-            })()
-          }
-        }
+        updatePendingMfa(null)
+        await finalizeAuthenticatedSession(controller)
       } catch (error) {
         if (!controller.signal.aborted) {
           handleUnauthorized()
@@ -758,8 +863,148 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     },
-    [ensureSessionSigningKey, handleUnauthorized, setUser, t]
+    [finalizeAuthenticatedSession, handleUnauthorized, t, updatePendingMfa]
   )
+
+  const submitMfaChallenge = useCallback(
+    async (payload: SubmitMfaChallengePayload) => {
+      const pending = pendingMfaRef.current
+      if (!pending) {
+        throw new Error(t("login.error"))
+      }
+
+      const controller = new AbortController()
+      activeRequestRef.current?.abort()
+      activeRequestRef.current = controller
+
+      const shouldToggleInitializing = pending.reason === "login"
+
+      try {
+        setAuthOperation(true)
+        if (shouldToggleInitializing) {
+          setInitializing(true)
+        }
+
+        const token =
+          payload.challengeToken ??
+          pending.methods.find((entry) => entry.method === (payload.method as MfaMethod))
+            ?.challenge_token
+
+        if (!token) {
+          throw new Error(t("login.error"))
+        }
+
+        let requestPayload: MfaVerifyPayload
+        if (payload.method === "webauthn") {
+          requestPayload = {
+            method: payload.method,
+            challenge_token: token,
+            credential: payload.credential,
+          }
+        } else {
+          requestPayload = {
+            method: payload.method,
+            challenge_token: token,
+            code: payload.code,
+          }
+        }
+
+        const skipPushSync = Boolean(pending.session_id)
+        await api.post("/auth/mfa/verify", requestPayload, { signal: controller.signal })
+
+        if (controller.signal.aborted) {
+          return
+        }
+
+        updatePendingMfa(null)
+        await finalizeAuthenticatedSession(controller, {
+          skipPushSync,
+        })
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return
+        }
+
+        if (isAxiosError(error)) {
+          if (error.response?.status === 401) {
+            handleUnauthorized()
+            return
+          }
+          const message =
+            typeof error.response?.data?.detail === "string"
+              ? error.response.data.detail
+              : t("login.error")
+          throw new Error(message)
+        }
+
+        if (error instanceof Error) {
+          throw error
+        }
+
+        throw new Error(t("login.error"))
+      } finally {
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null
+        }
+        setAuthOperation(false)
+        if (shouldToggleInitializing && !controller.signal.aborted) {
+          setInitializing(false)
+        }
+      }
+    },
+    [finalizeAuthenticatedSession, handleUnauthorized, pendingMfaRef, t, updatePendingMfa]
+  )
+
+  const requireMfa = useCallback(async (): Promise<PendingMfaState | null> => {
+    const controller = new AbortController()
+    activeRequestRef.current?.abort()
+    activeRequestRef.current = controller
+
+    try {
+      const response = await api.post<PendingMfaResponse>("/auth/mfa/step-up", undefined, {
+        signal: controller.signal,
+      })
+
+      if (controller.signal.aborted) {
+        return null
+      }
+
+      if (response.status === 202) {
+        const challenge: PendingMfaState = { ...response.data, reason: "step-up" }
+        updatePendingMfa(challenge)
+        return challenge
+      }
+
+      updatePendingMfa(null)
+      return null
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return null
+      }
+
+      if (isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          handleUnauthorized()
+          return null
+        }
+        const message =
+          typeof error.response?.data?.detail === "string"
+            ? error.response.data.detail
+            : t("login.error")
+        throw new Error(message)
+      }
+
+      if (error instanceof Error) {
+        throw error
+      }
+
+      throw new Error(t("login.error"))
+    } finally {
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null
+      }
+    }
+  }, [handleUnauthorized, t, updatePendingMfa])
 
   const logout = useCallback(async () => {
     activeRequestRef.current?.abort()
@@ -786,10 +1031,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const user = userState
   const isAuth = Boolean(user)
   const loading = initializing || authOperation
+  const pendingMfa = pendingMfaState
 
   const value = useMemo(
-    () => ({ isAuth, login, logout, user, loading, setUser, refresh }),
-    [isAuth, login, logout, user, loading, setUser, refresh]
+    () => ({
+      isAuth,
+      login,
+      logout,
+      user,
+      loading,
+      setUser,
+      refresh,
+      pendingMfa,
+      submitMfaChallenge,
+      requireMfa,
+    }),
+    [
+      isAuth,
+      login,
+      logout,
+      user,
+      loading,
+      setUser,
+      refresh,
+      pendingMfa,
+      submitMfaChallenge,
+      requireMfa,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

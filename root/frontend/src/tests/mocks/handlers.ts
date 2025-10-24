@@ -40,6 +40,14 @@ export const testUser: User = {
   dnd_start: null,
   dnd_end: null,
   is_active: true,
+  mfa_required: false,
+  mfa_default_method: null,
+  mfa_last_verified_at: null,
+  mfa_recovery_codes_generated_at: null,
+  totp_enrollments: [],
+  webauthn_credentials: [],
+  recovery_codes: [],
+  mfa_challenges: [],
 }
 
 const createBaseSessions = (): ActiveSession[] => {
@@ -56,6 +64,10 @@ const createBaseSessions = (): ActiveSession[] => {
       ip_address: "198.51.100.10",
       user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X)",
       last_seen_at: currentIso,
+      mfa_required: false,
+      mfa_completed_at: currentIso,
+      mfa_method: null,
+      mfa_verified_at: currentIso,
       is_current: true,
     },
     {
@@ -68,6 +80,10 @@ const createBaseSessions = (): ActiveSession[] => {
       ip_address: "203.0.113.42",
       user_agent: "Safari/17.3 (iPhone; CPU iPhone OS)",
       last_seen_at: new Date(now - 10 * 60 * 1000).toISOString(),
+      mfa_required: false,
+      mfa_completed_at: currentIso,
+      mfa_method: null,
+      mfa_verified_at: currentIso,
       is_current: false,
     },
   ]
