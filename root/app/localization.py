@@ -136,6 +136,14 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Системное сообщение",
         "en": "System message",
     },
+    "notifications.mfa.reset.title": {
+        "ru": "Многофакторная аутентификация сброшена",
+        "en": "Multi-factor authentication was reset",
+    },
+    "notifications.mfa.reset.body": {
+        "ru": "Администратор отключил ваши MFA-методы. Настройте защиту повторно при следующем входе.",
+        "en": "An administrator removed your MFA methods. Please set them up again on your next sign-in.",
+    },
     "notifications.actions.open_schedule": {
         "ru": "Открыть расписание",
         "en": "Open schedule",
