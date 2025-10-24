@@ -4,7 +4,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-
 TABLE_NAME = "failed_login_attempts"
 INDEX_DEFINITIONS = {
     "ix_failed_login_attempts_email": ["email"],
@@ -23,7 +22,9 @@ def upgrade() -> None:
     if bind is not None:
         inspector = sa.inspect(bind)
         if TABLE_NAME in inspector.get_table_names():
-            existing_indexes = {index["name"] for index in inspector.get_indexes(TABLE_NAME)}
+            existing_indexes = {
+                index["name"] for index in inspector.get_indexes(TABLE_NAME)
+            }
             for index_name, columns in INDEX_DEFINITIONS.items():
                 if index_name not in existing_indexes:
                     op.create_index(index_name, TABLE_NAME, columns)
@@ -55,8 +56,6 @@ def downgrade() -> None:
         "ix_failed_login_attempts_email_attempted_at",
         table_name=TABLE_NAME,
     )
-    op.drop_index(
-        "ix_failed_login_attempts_attempted_at", table_name=TABLE_NAME
-    )
+    op.drop_index("ix_failed_login_attempts_attempted_at", table_name=TABLE_NAME)
     op.drop_index("ix_failed_login_attempts_email", table_name=TABLE_NAME)
     op.drop_table(TABLE_NAME)
