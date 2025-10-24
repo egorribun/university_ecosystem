@@ -148,6 +148,14 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Не удалось подтвердить учётные данные",
         "en": "Could not validate credentials",
     },
+    "errors.auth.account_locked": {
+        "ru": "Слишком много неудачных попыток входа. Аккаунт временно заблокирован.",
+        "en": "Too many failed attempts. Your account is temporarily locked.",
+    },
+    "errors.auth.account_locked_retry": {
+        "ru": "Повторите попытку через {duration}.",
+        "en": "Try again in {duration}.",
+    },
     "errors.auth.user_deactivated": {
         "ru": "Пользователь деактивирован",
         "en": "User account is deactivated",

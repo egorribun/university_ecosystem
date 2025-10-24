@@ -111,6 +111,8 @@ class Settings(BaseSettings):
     rate_limit_storage_backend: str = "memory"
     rate_limit_storage_uri: str = "memory://"
     rate_limit_headers_enabled: bool = True
+    auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
+    auth_lockout_history_minutes: int = 1_440
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (

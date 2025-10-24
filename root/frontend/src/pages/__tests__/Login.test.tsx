@@ -134,6 +134,40 @@ describe("Login page", () => {
     expect(await screen.findByText(tAuth("login.error"))).toBeInTheDocument()
   })
 
+  it("shows lockout messaging with retry information", async () => {
+    server.use(
+      http.post("*/auth/login", () =>
+        HttpResponse.json(
+          {
+            detail: "Too many failed attempts. Your account is temporarily locked.",
+          },
+          { status: 423, headers: { "Retry-After": "120" } }
+        )
+      )
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
+      selector: 'input[type="email"]',
+    })
+
+    await user.type(emailInput, "user@example.com")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.password")), {
+        selector: 'input[type="password"]',
+      }),
+      "secret123"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
+
+    const message = await screen.findByText((content) =>
+      content.includes("temporarily locked") && content.includes("Try again in 2 minutes")
+    )
+    expect(message).toBeInTheDocument()
+  })
+
   it("meets basic accessibility requirements", async () => {
     const { container } = renderLogin()
     const results = await axe(container)
