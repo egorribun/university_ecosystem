@@ -26,6 +26,8 @@ slowapi>=0.1.9
 redis>=5
 aiosqlite>=0.19
 prometheus-client>=0.20
+pyotp>=2.9
+webauthn>=1.11
 
 opentelemetry-api==1.38.0
 opentelemetry-sdk==1.38.0

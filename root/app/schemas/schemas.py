@@ -65,10 +65,62 @@ class UserCreate(UserBase):
     invite_code: Optional[str] = None
 
 
+class MfaTotpEnrollmentOut(OrmModel):
+    id: int
+    user_id: int
+    label: Optional[str] = None
+    is_active: bool
+    confirmed_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class MfaWebAuthnCredentialOut(OrmModel):
+    id: int
+    user_id: int
+    credential_id: str
+    device_name: Optional[str] = None
+    sign_count: int
+    transports: Optional[list[str]] = None
+    backed_up: bool
+    clone_warning: bool
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+    is_active: bool
+
+
+class MfaRecoveryCodeOut(OrmModel):
+    id: int
+    user_id: int
+    used_at: Optional[datetime] = None
+    created_at: datetime
+    label: Optional[str] = None
+
+
+class MfaChallengeOut(OrmModel):
+    id: int
+    user_id: int
+    session_id: Optional[int] = None
+    challenge_type: str
+    token: str
+    expires_at: datetime
+    consumed_at: Optional[datetime] = None
+    created_at: datetime
+    payload: Optional[dict[str, Any]] = None
+
+
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool
     spotify_is_connected: Optional[bool] = None
+    mfa_required: bool = False
+    mfa_default_method: Optional[str] = None
+    mfa_last_verified_at: Optional[datetime] = None
+    mfa_recovery_codes_generated_at: Optional[datetime] = None
+    totp_enrollments: List[MfaTotpEnrollmentOut] = Field(default_factory=list)
+    webauthn_credentials: List[MfaWebAuthnCredentialOut] = Field(default_factory=list)
+    recovery_codes: List[MfaRecoveryCodeOut] = Field(default_factory=list)
+    mfa_challenges: List[MfaChallengeOut] = Field(default_factory=list)
 
 
 class UserAdminUpdate(BaseModel):
@@ -404,6 +456,9 @@ class ActiveSessionOut(OrmModel):
     ip_address: str | None = None
     user_agent: str | None = None
     last_seen_at: datetime | None = None
+    mfa_required: bool = False
+    mfa_completed_at: datetime | None = None
+    mfa_method: str | None = None
     is_current: bool = False
 
 

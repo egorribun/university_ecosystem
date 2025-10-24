@@ -415,6 +415,8 @@ async def _perform_login(
             "ip_address": client_ip,
             "user_agent": user_agent,
             "last_seen_at": now,
+            "mfa_required": user.mfa_required,
+            "mfa_method": user.mfa_default_method,
         },
     )
     _set_access_token_cookie(response, token)

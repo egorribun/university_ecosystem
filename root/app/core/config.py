@@ -59,6 +59,37 @@ def _validate_webpush_subject(value: str) -> str:
     return normalized
 
 
+def _validate_non_empty(value: str, *, label: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{label} must not be empty")
+    return normalized
+
+
+def _validate_positive_int(value: int, *, label: str) -> int:
+    if value <= 0:
+        raise ValueError(f"{label} must be greater than zero")
+    return value
+
+
+def _validate_webauthn_origin(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("MFA_WEBAUTHN_ORIGIN must not be empty")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"https", "http"}:
+        raise ValueError("MFA_WEBAUTHN_ORIGIN must use http or https")
+    if not parsed.netloc:
+        raise ValueError("MFA_WEBAUTHN_ORIGIN must include a host")
+    if parsed.scheme == "http":
+        host = (parsed.hostname or "").lower()
+        if host not in {"localhost", "127.0.0.1"}:
+            raise ValueError(
+                "Insecure MFA_WEBAUTHN_ORIGIN http scheme is only allowed for localhost"
+            )
+    return normalized
+
+
 class Settings(BaseSettings):
     database_url: str
     secret_key: str
@@ -113,6 +144,15 @@ class Settings(BaseSettings):
     rate_limit_headers_enabled: bool = True
     auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
     auth_lockout_history_minutes: int = 1_440
+    mfa_enabled: bool = False
+    mfa_default_method: str | None = None
+    mfa_totp_issuer: str = "University Ecosystem"
+    mfa_totp_initial_skew_windows: int = 1
+    mfa_challenge_ttl_seconds: int = 300
+    mfa_challenge_max_attempts: int = 5
+    mfa_webauthn_rp_id: str = "localhost"
+    mfa_webauthn_rp_name: str = "University Ecosystem"
+    mfa_webauthn_origin: str = "http://localhost:5173"
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
@@ -197,6 +237,33 @@ class Settings(BaseSettings):
         if normalized not in {"memory", "redis"}:
             raise ValueError("RATE_LIMIT_STORAGE_BACKEND must be 'memory' or 'redis'")
         return normalized
+
+    @field_validator("mfa_totp_issuer")
+    @classmethod
+    def _validate_mfa_totp_issuer(cls, value: str) -> str:
+        return _validate_non_empty(value, label="MFA_TOTP_ISSUER")
+
+    @field_validator("mfa_webauthn_rp_id")
+    @classmethod
+    def _validate_mfa_webauthn_rp_id(cls, value: str) -> str:
+        return _validate_non_empty(value, label="MFA_WEBAUTHN_RP_ID")
+
+    @field_validator("mfa_webauthn_origin")
+    @classmethod
+    def _validate_mfa_webauthn_origin(cls, value: str) -> str:
+        return _validate_webauthn_origin(value)
+
+    @field_validator("mfa_challenge_ttl_seconds", "mfa_challenge_max_attempts")
+    @classmethod
+    def _validate_positive_mfa_values(cls, value: int, info):
+        return _validate_positive_int(value, label=info.field_name.upper())
+
+    @field_validator("mfa_totp_initial_skew_windows")
+    @classmethod
+    def _validate_totp_skew(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("MFA_TOTP_INITIAL_SKEW_WINDOWS must be zero or positive")
+        return value
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
