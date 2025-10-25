@@ -187,6 +187,15 @@ def configure_metrics(app: FastAPI) -> None:
         return
 
     app.add_middleware(PrometheusRequestMetricsMiddleware)
+    try:
+        from app.core.observability import get_notification_queue_metrics
+    except Exception:  # pragma: no cover - defensive guard
+        get_notification_queue_metrics = None  # type: ignore[assignment]
+    if get_notification_queue_metrics is not None:
+        try:
+            get_notification_queue_metrics()
+        except RuntimeError:  # pragma: no cover - optional dependency guard
+            pass
     app.add_api_route(
         "/metrics",
         metrics_endpoint,

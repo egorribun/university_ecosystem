@@ -525,6 +525,8 @@ class NotificationQueueMetrics:
     dropped_jobs_total: Counter
     failed_jobs_total: Counter
     processing_latency_seconds: Histogram
+    dead_lettered_jobs: Gauge
+    oldest_dead_letter_age_seconds: Histogram | None
 
     def reset(self) -> None:
         """Best-effort helper used by tests to zero recorded values."""
@@ -537,6 +539,12 @@ class NotificationQueueMetrics:
         self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
         for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
             bucket.set(0)
+        self.dead_lettered_jobs.set(0)
+        histogram = self.oldest_dead_letter_age_seconds
+        if histogram is not None:
+            histogram._sum.set(0)  # type: ignore[attr-defined]
+            for bucket in getattr(histogram, "_buckets", []):  # type: ignore[attr-defined]
+                bucket.set(0)
 
 
 def get_notification_queue_metrics() -> NotificationQueueMetrics:
@@ -576,6 +584,27 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
                     10.0,
                 ),
             ),
+            dead_lettered_jobs=Gauge(
+                "notification_queue_dead_lettered_jobs",
+                "Number of notification jobs in the dead-letter queue",
+            ),
+            oldest_dead_letter_age_seconds=Histogram(
+                "notification_queue_oldest_dead_letter_age_seconds",
+                "Age in seconds of the oldest dead-lettered notification job",
+                buckets=(
+                    1.0,
+                    5.0,
+                    10.0,
+                    30.0,
+                    60.0,
+                    300.0,
+                    600.0,
+                    1800.0,
+                    3600.0,
+                ),
+            ),
         )
+        _notification_queue_metrics.queue_size.set(0)
+        _notification_queue_metrics.dead_lettered_jobs.set(0)
 
     return _notification_queue_metrics

@@ -68,6 +68,13 @@ def _get_metrics() -> NotificationQueueMetrics | None:
     return _queue_metrics
 
 
+def _update_in_memory_metrics(
+    metrics: NotificationQueueMetrics, queue: asyncio.Queue[NotificationJob]
+) -> None:
+    metrics.queue_size.set(queue.qsize())
+    metrics.dead_lettered_jobs.set(0)
+
+
 def _use_persistent_backend() -> bool:
     return not getattr(settings, "notifications_queue_in_memory_only", False)
 
@@ -88,7 +95,7 @@ def _get_loop_state() -> _LoopState:
         if _use_persistent_backend():
             loop.create_task(_refresh_persistent_queue_size(metrics))
         else:
-            metrics.queue_size.set(state.queue.qsize())
+            _update_in_memory_metrics(metrics, state.queue)
     return state
 
 
@@ -124,7 +131,7 @@ async def _worker_loop(state: _LoopState) -> None:
                 job = await state.queue.get()
                 state.active_jobs += 1
                 if metrics is not None:
-                    metrics.queue_size.set(state.queue.qsize())
+                    _update_in_memory_metrics(metrics, state.queue)
             started = time.perf_counter()
             success = False
             error: BaseException | None = None
@@ -187,7 +194,7 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
         evicted = _evict_oldest(queue)
         if metrics is not None:
             metrics.dropped_jobs_total.inc()
-            metrics.queue_size.set(queue.qsize())
+            _update_in_memory_metrics(metrics, queue)
         logger.warning(
             "Notification queue full; dropped oldest job",
             extra={"dropped_job": evicted, "job": job},
@@ -199,7 +206,7 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
             except asyncio.TimeoutError:
                 if metrics is not None:
                     metrics.dropped_jobs_total.inc()
-                    metrics.queue_size.set(queue.qsize())
+                    _update_in_memory_metrics(metrics, queue)
                 logger.warning(
                     "Notification queue saturated; dropping job after timeout",
                     extra={"job": job},
@@ -207,7 +214,7 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
                 return
         else:
             if metrics is not None:
-                metrics.queue_size.set(queue.qsize())
+                _update_in_memory_metrics(metrics, queue)
             logger.warning(
                 "Notification queue saturated; dropping job without timeout",
                 extra={"job": job},
@@ -216,7 +223,7 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
     else:
         enqueued = True
     if metrics is not None:
-        metrics.queue_size.set(queue.qsize())
+        _update_in_memory_metrics(metrics, queue)
     if enqueued:
         await _ensure_worker()
 
@@ -355,7 +362,7 @@ async def reset_testing_state() -> None:
         if _use_persistent_backend():
             await _refresh_persistent_queue_size(metrics)
         else:
-            metrics.queue_size.set(queue.qsize())
+            _update_in_memory_metrics(metrics, queue)
 
 
 async def shutdown_notification_queue() -> None:
@@ -389,7 +396,7 @@ async def shutdown_notification_queue() -> None:
         if _use_persistent_backend():
             await _refresh_persistent_queue_size(metrics)
         else:
-            metrics.queue_size.set(queue.qsize())
+            _update_in_memory_metrics(metrics, queue)
 
 
 async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> None:
@@ -397,7 +404,7 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
 
     try:
         async with async_session() as session:
-            result = await session.execute(
+            pending_result = await session.execute(
                 select(func.count())
                 .select_from(NotificationQueueJob)
                 .where(
@@ -405,7 +412,25 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
                     NotificationQueueJob.dead_lettered.is_(False),
                 )
             )
-            metrics.queue_size.set(int(result.scalar_one()))
+            metrics.queue_size.set(int(pending_result.scalar_one()))
+
+            dead_letter_result = await session.execute(
+                select(
+                    func.count(NotificationQueueJob.id),
+                    func.min(NotificationQueueJob.enqueued_at),
+                ).where(NotificationQueueJob.dead_lettered.is_(True))
+            )
+            dead_letter_count, oldest_enqueued = dead_letter_result.one()
+            metrics.dead_lettered_jobs.set(int(dead_letter_count or 0))
+
+            histogram = metrics.oldest_dead_letter_age_seconds
+            if histogram is not None and oldest_enqueued is not None:
+                oldest = oldest_enqueued
+                if oldest.tzinfo is None:
+                    oldest = oldest.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                age_seconds = max((now - oldest).total_seconds(), 0.0)
+                histogram.observe(age_seconds)
     except Exception:  # pragma: no cover - defensive guard
         logger.exception("Failed to refresh persistent queue size metric")
 
@@ -502,6 +527,7 @@ async def _claim_next_persistent_job() -> NotificationJob | None:
     metrics = _get_metrics()
     if metrics is not None:
         await _refresh_persistent_queue_size(metrics)
+    return job
 
 
 async def list_dead_lettered_jobs(

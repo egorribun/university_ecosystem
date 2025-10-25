@@ -306,9 +306,7 @@ export async function useMockApi(page: Page) {
 
   const mutateDeadLetterJobs = (jobIds: unknown): number => {
     const ids = Array.isArray(jobIds)
-      ? jobIds
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value) && value > 0)
+      ? jobIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
       : []
     if (!ids.length) return 0
     const before = state.deadLetterJobs.length
@@ -989,10 +987,7 @@ export async function useMockApi(page: Page) {
       return
     }
 
-    if (
-      pathname === "api/notifications/admin/dead-letter/retry" &&
-      method === "POST"
-    ) {
+    if (pathname === "api/notifications/admin/dead-letter/retry" && method === "POST") {
       if (!state.loggedIn || state.profile.role !== "admin") {
         await route.fulfill({
           status: 403,
@@ -1017,10 +1012,7 @@ export async function useMockApi(page: Page) {
       return
     }
 
-    if (
-      pathname === "api/notifications/admin/dead-letter/purge" &&
-      method === "POST"
-    ) {
+    if (pathname === "api/notifications/admin/dead-letter/purge" && method === "POST") {
       if (!state.loggedIn || state.profile.role !== "admin") {
         await route.fulfill({
           status: 403,

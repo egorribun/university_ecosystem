@@ -6,12 +6,14 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
 
-import fakeredis.aioredis
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+REPO_ROOT = PROJECT_ROOT.parent
+for candidate in (REPO_ROOT, PROJECT_ROOT):
+    path_str = str(candidate)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
+import fakeredis.aioredis
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
