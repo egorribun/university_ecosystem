@@ -172,7 +172,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                 key={point.key}
                 role="option"
                 aria-selected={isActive}
-                ref={(node) => {
+                ref={(node: HTMLDivElement | null) => {
                   itemRefs.current[index] = node
                 }}
                 tabIndex={isActive ? 0 : -1}
