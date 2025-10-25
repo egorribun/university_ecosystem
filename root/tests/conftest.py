@@ -13,6 +13,8 @@ for candidate in (REPO_ROOT, PROJECT_ROOT):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
+import inspect
+
 import fakeredis.aioredis
 import httpx
 import pytest
@@ -87,12 +89,47 @@ from app.services import notification_queue
 from app.utils import ratelimit as ratelimit_module
 
 
+_ASYNCIO_PLUGIN_ACTIVE = False
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    global _ASYNCIO_PLUGIN_ACTIVE
+    _ASYNCIO_PLUGIN_ACTIVE = config.pluginmanager.hasplugin("asyncio")
+    if _ASYNCIO_PLUGIN_ACTIVE:
+        current_mode = getattr(config.option, "asyncio_mode", None)
+        if not current_mode or current_mode.lower() == "strict":
+            config.option.asyncio_mode = "auto"
+    if not _ASYNCIO_PLUGIN_ACTIVE:
+        config.addinivalue_line(
+            "markers",
+            "asyncio: mark test to execute as a coroutine using the event loop fixture",
+        )
+
+
+def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
+    if _ASYNCIO_PLUGIN_ACTIVE:
+        return None
+    if not inspect.iscoroutinefunction(pyfuncitem.obj):
+        return None
+    if not pyfuncitem.get_closest_marker("asyncio"):
+        return None
+    loop: asyncio.AbstractEventLoop | None = pyfuncitem.funcargs.get("event_loop")
+    if loop is None:
+        loop = asyncio.get_event_loop()
+    argnames = pyfuncitem._fixtureinfo.argnames  # pylint: disable=protected-access
+    kwargs = {name: pyfuncitem.funcargs[name] for name in argnames}
+    loop.run_until_complete(pyfuncitem.obj(**kwargs))
+    return True
+
+
 @pytest.fixture(scope="session")
 def event_loop() -> AsyncIterator[asyncio.AbstractEventLoop]:
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         yield loop
     finally:
+        asyncio.set_event_loop(None)
         loop.close()
 
 

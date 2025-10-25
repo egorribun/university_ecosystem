@@ -381,7 +381,7 @@ export default function Settings() {
   } = useQuery<ActiveSession[], unknown>({
     queryKey: sessionsKey,
     queryFn: fetchSessions,
-    enabled: tab === 1 && Boolean(user),
+    enabled: tab === 2 && Boolean(user),
     staleTime: 30_000,
   })
 
@@ -413,6 +413,13 @@ export default function Settings() {
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
       const { data } = await api.delete<ActiveSession>(`/auth/sessions/${sessionId}`)
+      return data
+    },
+  })
+
+  const revokeAllSessionsMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ revoked: number }>("/auth/sessions/revoke-others")
       return data
     },
   })
@@ -653,6 +660,10 @@ export default function Settings() {
     return fresh
   }, [queryClient, setUser])
 
+  useEffect(() => {
+    setEmailValue(user?.email ?? "")
+  }, [user?.email])
+
   const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStartResponse | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
@@ -660,6 +671,17 @@ export default function Settings() {
   const [webAuthnName, setWebAuthnName] = useState("")
   const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[]>([])
   const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [emailValue, setEmailValue] = useState(user?.email ?? "")
+  const [emailPassword, setEmailPassword] = useState("")
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [emailPasswordError, setEmailPasswordError] = useState<string | null>(null)
+  const [currentPasswordValue, setCurrentPasswordValue] = useState("")
+  const [newPasswordValue, setNewPasswordValue] = useState("")
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState("")
+  const [passwordBusy, setPasswordBusy] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [currentPasswordError, setCurrentPasswordError] = useState<string | null>(null)
   const [stepUpOpen, setStepUpOpen] = useState(false)
   const stepUpActionRef = useRef<(() => Promise<void>) | null>(null)
 
@@ -681,6 +703,11 @@ export default function Settings() {
     }
     return fallback
   }, [])
+
+  const isStepUpError = useCallback(
+    (error: unknown) => isAxiosError(error) && error.response?.status === 428,
+    []
+  )
 
   const methodLabels = useMemo<Record<MfaMethod, string>>(
     () => ({
@@ -740,6 +767,27 @@ export default function Settings() {
       : t("settings:security.recovery.neverGenerated")
   }, [formatDateTime, t, user?.mfa_recovery_codes_generated_at])
 
+  const isNewPasswordError = useMemo(() => {
+    if (!passwordError) return false
+    return [
+      t("settings:security.password.errors.newRequired"),
+      t("settings:security.password.errors.same"),
+    ].includes(passwordError)
+  }, [passwordError, t])
+
+  const confirmPasswordMessage = useMemo(() => {
+    if (!passwordError) return null
+    if (
+      [
+        t("settings:security.password.errors.newRequired"),
+        t("settings:security.password.errors.same"),
+      ].includes(passwordError)
+    ) {
+      return null
+    }
+    return passwordError
+  }, [passwordError, t])
+
   const openStepUpFor = useCallback((action: () => Promise<void>) => {
     stepUpActionRef.current = action
     setStepUpOpen(true)
@@ -760,7 +808,7 @@ export default function Settings() {
   }, [])
 
   const handleRevokeSession = useCallback(
-    async (sessionId: number) => {
+    async (sessionId: number, options?: { skipStepUp?: boolean }) => {
       try {
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
@@ -772,13 +820,238 @@ export default function Settings() {
           await logout()
         }
       } catch (error) {
+        if (!options?.skipStepUp && isStepUpError(error)) {
+          openStepUpFor(async () => {
+            await handleRevokeSession(sessionId, { skipStepUp: true })
+          })
+          return
+        }
         setSnack({
           text: resolveDetailMessage(error, t("settings:sessions.snackbar.failed")),
           sev: "error",
         })
       }
     },
-    [logout, queryClient, resolveDetailMessage, revokeSessionMutation, sessionsKey, t]
+    [
+      isStepUpError,
+      logout,
+      openStepUpFor,
+      queryClient,
+      resolveDetailMessage,
+      revokeSessionMutation,
+      sessionsKey,
+      t,
+    ]
+  )
+
+  const handleRevokeAllSessions = useCallback(
+    async (options?: { skipStepUp?: boolean }) => {
+      try {
+        const result = await revokeAllSessionsMutation.mutateAsync()
+        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+        setSnack({
+          text: t("settings:sessions.snackbar.revokedAll", {
+            count: result?.revoked ?? 0,
+          }),
+          sev: "success",
+        })
+      } catch (error) {
+        if (!options?.skipStepUp && isStepUpError(error)) {
+          openStepUpFor(async () => {
+            await handleRevokeAllSessions({ skipStepUp: true })
+          })
+          return
+        }
+        setSnack({
+          text: resolveDetailMessage(
+            error,
+            t("settings:sessions.snackbar.revokeAllFailed")
+          ),
+          sev: "error",
+        })
+      }
+    },
+    [
+      isStepUpError,
+      openStepUpFor,
+      queryClient,
+      resolveDetailMessage,
+      revokeAllSessionsMutation,
+      sessionsKey,
+      t,
+    ]
+  )
+
+  const handleEmailSubmit = useCallback(
+    async (options?: { skipStepUp?: boolean }) => {
+      if (emailBusy) return
+      let hasError = false
+      const trimmedEmail = emailValue.trim()
+      setEmailError(null)
+      setEmailPasswordError(null)
+      if (!trimmedEmail) {
+        setEmailError(t("settings:security.email.errors.required"))
+        hasError = true
+      } else if (user?.email && trimmedEmail.toLowerCase() === user.email.toLowerCase()) {
+        setEmailError(t("settings:security.email.noChange"))
+        hasError = true
+      }
+      if (!emailPassword) {
+        setEmailPasswordError(t("settings:security.email.errors.passwordRequired"))
+        hasError = true
+      }
+      if (hasError) return
+
+      setEmailBusy(true)
+      try {
+        await api.post<User>("/users/me/email", {
+          email: trimmedEmail,
+          password: emailPassword,
+        })
+        await refreshMe()
+        setEmailPassword("")
+        setSnack({ text: t("settings:security.email.updated"), sev: "success" })
+      } catch (error) {
+        if (!options?.skipStepUp && isStepUpError(error)) {
+          openStepUpFor(async () => {
+            await handleEmailSubmit({ skipStepUp: true })
+          })
+          return
+        }
+        let handled = false
+        if (isAxiosError(error)) {
+          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+          if (typeof detail === "string") {
+            if (detail === t("settings:security.email.errors.invalidPassword")) {
+              setEmailPasswordError(detail)
+              handled = true
+            } else {
+              setEmailError(detail)
+              handled = true
+            }
+          }
+        }
+        if (!handled) {
+          const message = resolveDetailMessage(
+            error,
+            t("settings:security.email.failed")
+          )
+          setEmailError(message)
+          setSnack({ text: message, sev: "error" })
+        }
+      } finally {
+        setEmailBusy(false)
+      }
+    },
+    [
+      emailBusy,
+      emailPassword,
+      emailValue,
+      isStepUpError,
+      openStepUpFor,
+      refreshMe,
+      resolveDetailMessage,
+      setSnack,
+      t,
+      user?.email,
+    ]
+  )
+
+  const handlePasswordSubmit = useCallback(
+    async (options?: { skipStepUp?: boolean }) => {
+      if (passwordBusy) return
+      setCurrentPasswordError(null)
+      setPasswordError(null)
+      let hasError = false
+      if (!currentPasswordValue) {
+        setCurrentPasswordError(
+          t("settings:security.password.errors.currentRequired")
+        )
+        hasError = true
+      }
+      let derivedError: string | null = null
+      if (!newPasswordValue) {
+        derivedError = t("settings:security.password.errors.newRequired")
+      } else if (!confirmPasswordValue) {
+        derivedError = t("settings:security.password.errors.confirmRequired")
+      } else if (newPasswordValue !== confirmPasswordValue) {
+        derivedError = t("settings:security.password.errors.mismatch")
+      }
+      if (derivedError) {
+        setPasswordError(derivedError)
+        hasError = true
+      }
+      if (hasError) return
+
+      setPasswordBusy(true)
+      try {
+        const { data } = await api.post<{
+          ok: boolean
+          revoked_sessions: number
+        }>("/users/me/password", {
+          current_password: currentPasswordValue,
+          new_password: newPasswordValue,
+        })
+        if (data?.ok) {
+          setSnack({
+            text: t("settings:security.password.updated", {
+              count: data.revoked_sessions ?? 0,
+            }),
+            sev: "success",
+          })
+        }
+        setCurrentPasswordValue("")
+        setNewPasswordValue("")
+        setConfirmPasswordValue("")
+        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+      } catch (error) {
+        if (!options?.skipStepUp && isStepUpError(error)) {
+          openStepUpFor(async () => {
+            await handlePasswordSubmit({ skipStepUp: true })
+          })
+          return
+        }
+        const message = resolveDetailMessage(
+          error,
+          t("settings:security.password.failed")
+        )
+        let handled = false
+        if (isAxiosError(error)) {
+          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+          if (typeof detail === "string") {
+            if (detail === t("settings:security.password.errors.currentInvalid")) {
+              setCurrentPasswordError(detail)
+              handled = true
+            } else if (detail === t("settings:security.password.errors.same")) {
+              setPasswordError(detail)
+              handled = true
+            } else {
+              setPasswordError(detail)
+              handled = true
+            }
+          }
+        }
+        if (!handled) {
+          setPasswordError(message)
+          setSnack({ text: message, sev: "error" })
+        }
+      } finally {
+        setPasswordBusy(false)
+      }
+    },
+    [
+      confirmPasswordValue,
+      currentPasswordValue,
+      isStepUpError,
+      newPasswordValue,
+      openStepUpFor,
+      passwordBusy,
+      queryClient,
+      resolveDetailMessage,
+      sessionsKey,
+      setSnack,
+      t,
+    ]
   )
 
   const handleStartTotp = useCallback(async () => {
@@ -1060,6 +1333,7 @@ export default function Settings() {
           >
             <Tab label={t("settings:tabs.general")} />
             <Tab label={t("settings:tabs.account")} />
+            <Tab label={t("settings:tabs.security")} />
             <Tab label={t("settings:tabs.integrations")} />
           </Tabs>
         </Paper>
@@ -1490,8 +1764,232 @@ export default function Settings() {
 
             <SectionCard component="section">
               <Stack spacing={1}>
+                <SectionTitle variant="subtitle1">
+                  {t("settings:account.logout.title")}
+                </SectionTitle>
+                <SectionSubtitle variant="body2">
+                  {t("settings:account.logout.subtitle")}
+                </SectionSubtitle>
+              </Stack>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                onClick={() => setConfirmLogout(true)}
+                sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
+              >
+                {t("settings:account.logout.button")}
+              </Button>
+            </SectionCard>
+
+          </Stack>
+        )}
+
+        {tab === 2 && (
+          <Stack
+            spacing={2.5}
+            sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
+          >
+            <SectionCard component="section">
+              <Stack spacing={1}>
+                <SectionTitle variant="subtitle1">
+                  {t("settings:security.account.title")}
+                </SectionTitle>
+                <SectionSubtitle variant="body2">
+                  {t("settings:security.account.subtitle")}
+                </SectionSubtitle>
+              </Stack>
+
+              <Stack
+                component="form"
+                spacing={1.5}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handleEmailSubmit()
+                }}
+                sx={{ mt: 2 }}
+              >
+                <Stack spacing={1}>
+                  <SectionTitle variant="subtitle2">
+                    {t("settings:security.email.title")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.email.subtitle")}
+                  </SectionSubtitle>
+                </Stack>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.2}
+                  alignItems={{ sm: "flex-end" }}
+                >
+                  <TextField
+                    fullWidth
+                    type="email"
+                    size="small"
+                    label={t("settings:security.email.label")}
+                    value={emailValue}
+                    onChange={(event) => {
+                      setEmailValue(event.target.value)
+                      setEmailError(null)
+                    }}
+                    error={Boolean(emailError)}
+                    helperText={emailError ?? undefined}
+                    autoComplete="email"
+                  />
+                  <TextField
+                    fullWidth
+                    type="password"
+                    size="small"
+                    label={t("settings:security.email.passwordLabel")}
+                    value={emailPassword}
+                    onChange={(event) => {
+                      setEmailPassword(event.target.value)
+                      setEmailPasswordError(null)
+                    }}
+                    error={Boolean(emailPasswordError)}
+                    helperText={emailPasswordError ?? undefined}
+                    autoComplete="current-password"
+                  />
+                </Stack>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.2}
+                  alignItems={{ sm: "center" }}
+                >
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={emailBusy}
+                    startIcon={
+                      emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                    }
+                  >
+                    {t("settings:security.email.updateButton")}
+                  </Button>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                  >
+                    {t("settings:security.email.helper")}
+                  </Typography>
+                </Stack>
+              </Stack>
+
+              <Divider sx={{ my: 2.5 }} />
+
+              <Stack
+                component="form"
+                spacing={1.5}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handlePasswordSubmit()
+                }}
+              >
+                <Stack spacing={1}>
+                  <SectionTitle variant="subtitle2">
+                    {t("settings:security.password.title")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.password.subtitle")}
+                  </SectionSubtitle>
+                </Stack>
+                <Stack spacing={1.2} direction={{ xs: "column", sm: "row" }}>
+                  <TextField
+                    fullWidth
+                    type="password"
+                    size="small"
+                    label={t("settings:security.password.currentLabel")}
+                    value={currentPasswordValue}
+                    onChange={(event) => {
+                      setCurrentPasswordValue(event.target.value)
+                      setCurrentPasswordError(null)
+                    }}
+                    error={Boolean(currentPasswordError)}
+                    helperText={currentPasswordError ?? undefined}
+                    autoComplete="current-password"
+                  />
+                  <TextField
+                    fullWidth
+                    type="password"
+                    size="small"
+                    label={t("settings:security.password.newLabel")}
+                    value={newPasswordValue}
+                    onChange={(event) => {
+                      setNewPasswordValue(event.target.value)
+                      if (passwordError) setPasswordError(null)
+                    }}
+                    error={isNewPasswordError}
+                    helperText={isNewPasswordError ? passwordError ?? undefined : undefined}
+                    autoComplete="new-password"
+                  />
+                </Stack>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.2}
+                  alignItems={{ sm: "center" }}
+                >
+                  <TextField
+                    fullWidth
+                    type="password"
+                    size="small"
+                    label={t("settings:security.password.confirmLabel")}
+                    value={confirmPasswordValue}
+                    onChange={(event) => {
+                      setConfirmPasswordValue(event.target.value)
+                      if (passwordError) setPasswordError(null)
+                    }}
+                    error={Boolean(confirmPasswordMessage)}
+                    helperText={confirmPasswordMessage ?? undefined}
+                    autoComplete="new-password"
+                  />
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={passwordBusy}
+                    startIcon={
+                      passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                    }
+                  >
+                    {passwordBusy
+                      ? t("settings:security.password.updating")
+                      : t("settings:security.password.updateButton")}
+                  </Button>
+                </Stack>
+              </Stack>
+            </SectionCard>
+
+            <SectionCard component="section">
+              <Stack spacing={1}>
                 <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
                 <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
+              </Stack>
+
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1.2}
+                alignItems={{ sm: "center" }}
+                justifyContent={{ sm: "space-between" }}
+                sx={{ mt: 1.5 }}
+              >
+                <Button
+                  variant="outlined"
+                  color="error"
+                  disabled={revokeAllSessionsMutation.isPending}
+                  onClick={() => void handleRevokeAllSessions()}
+                  startIcon={
+                    revokeAllSessionsMutation.isPending ? (
+                      <CircularProgress size={18} color="inherit" />
+                    ) : undefined
+                  }
+                >
+                  {t("settings:sessions.revokeAll")}
+                </Button>
+                <Typography
+                  variant="body2"
+                  sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
+                >
+                  {t("settings:sessions.revokeAllHint")}
+                </Typography>
               </Stack>
 
               {sessionsFetching ? (
@@ -1866,30 +2364,10 @@ export default function Settings() {
                 ) : null}
               </Stack>
             </SectionCard>
-
-            <SectionCard component="section">
-              <Stack spacing={1}>
-                <SectionTitle variant="subtitle1">
-                  {t("settings:account.logout.title")}
-                </SectionTitle>
-                <SectionSubtitle variant="body2">
-                  {t("settings:account.logout.subtitle")}
-                </SectionSubtitle>
-              </Stack>
-              <Button
-                size="small"
-                variant="outlined"
-                color="error"
-                onClick={() => setConfirmLogout(true)}
-                sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
-              >
-                {t("settings:account.logout.button")}
-              </Button>
-            </SectionCard>
           </Stack>
         )}
 
-        {tab === 2 && (
+        {tab === 3 && (
           <Stack spacing={3}>
             <Stack spacing={2}>
               <Stack direction="row" alignItems="center" spacing={1}>

@@ -74,7 +74,10 @@ async def get_current_user(
     return user
 
 
-def require_fresh_mfa(request: Request) -> None:
+def require_fresh_mfa(
+    request: Request,
+    _: Annotated[User, Depends(get_current_user)],
+) -> None:
     session: ActiveSession | None = getattr(request.state, "active_session", None)
     locale = resolve_locale(request=request)
     if session is None:

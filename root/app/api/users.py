@@ -24,9 +24,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_fresh_mfa
 from app.api.utils import save_upload
-from app.auth.security import get_password_hash
+from app.auth.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.observability import get_request_id
@@ -323,6 +323,122 @@ async def update_me(
     await db.refresh(db_user)
     await ensure_mfa_relationships_loaded(db, db_user)
     return db_user
+
+
+@users_router.post("/me/email", response_model=schemas.UserOut)
+async def change_email(
+    payload: schemas.UserEmailChangeIn,
+    request: Request,
+    _: None = Depends(require_fresh_mfa),
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    if not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.invalid_password", locale=locale),
+        )
+
+    normalized_email = str(payload.email).strip().lower()
+    adapter = TypeAdapter(EmailStr)
+    try:
+        validated_email = adapter.validate_python(normalized_email)
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.invalid_email", locale=locale),
+        ) from exc
+
+    if validated_email == user.email:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.email_same", locale=locale),
+        )
+
+    existing = await db.execute(
+        select(models.User.id).where(
+            models.User.email == validated_email,
+            models.User.id != user.id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.email_in_use", locale=locale),
+        )
+
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+    db_user.email = validated_email
+    await db.commit()
+    await db.refresh(db_user)
+    await ensure_mfa_relationships_loaded(db, db_user)
+    user.email = validated_email
+    _audit_log(
+        "users.email.changed",
+        request,
+        user_id=user.id,
+        reason="user_update",
+        extra={"email": validated_email},
+    )
+    return db_user
+
+
+@users_router.post("/me/password", response_model=schemas.PasswordChangeOut)
+async def change_password(
+    payload: schemas.UserPasswordChangeIn,
+    request: Request,
+    _: None = Depends(require_fresh_mfa),
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.invalid_password", locale=locale),
+        )
+    if verify_password(payload.new_password, user.hashed_password):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.password_same", locale=locale),
+        )
+    try:
+        hashed_password = get_password_hash(payload.new_password, locale=locale)
+    except ValueError as exc:  # pragma: no cover - policy should raise ValueError
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+    db_user.hashed_password = hashed_password
+
+    active_session: models.ActiveSession | None = getattr(
+        request.state, "active_session", None
+    )
+    current_session_id = active_session.id if active_session else None
+    now = datetime.now(timezone.utc)
+    stmt = (
+        update(models.ActiveSession)
+        .where(models.ActiveSession.user_id == user.id)
+        .where(models.ActiveSession.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    if current_session_id is not None:
+        stmt = stmt.where(models.ActiveSession.id != current_session_id)
+    result = await db.execute(stmt)
+    revoked = int(result.rowcount or 0)
+
+    await db.commit()
+    await db.refresh(db_user)
+    await ensure_mfa_relationships_loaded(db, db_user)
+    user.hashed_password = hashed_password
+    _audit_log(
+        "users.password.changed",
+        request,
+        user_id=user.id,
+        reason="user_update",
+        extra={"revoked_sessions": revoked},
+    )
+    return schemas.PasswordChangeOut(ok=True, revoked_sessions=revoked)
 
 
 @users_router.post("/me/avatar", response_model=schemas.UserOut)

@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_fresh_mfa
 from app.auth.security import decode_token
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
@@ -97,6 +97,7 @@ async def list_sessions(
 async def revoke_session(
     session_id: int,
     request: Request,
+    _: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> schemas.ActiveSessionOut:
@@ -116,3 +117,34 @@ async def revoke_session(
     return schemas.ActiveSessionOut.model_validate(session).model_copy(
         update={"is_current": session.jti == current_jti}
     )
+
+
+@router.post("/revoke-others", response_model=schemas.SessionBulkRevokeOut)
+async def revoke_other_sessions(
+    request: Request,
+    _: Annotated[None, Depends(require_fresh_mfa)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user_id: int | None = None,
+) -> schemas.SessionBulkRevokeOut:
+    locale = resolve_locale(request=request, user=current_user)
+    target_user_id, _ = await _resolve_target_user(
+        db=db,
+        current_user=current_user,
+        requested_user_id=user_id,
+        locale=locale,
+    )
+    now = datetime.now(UTC)
+    current_jti = _extract_jti(request)
+    stmt = (
+        update(ActiveSession)
+        .where(ActiveSession.user_id == target_user_id)
+        .where(ActiveSession.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    if current_jti:
+        stmt = stmt.where(ActiveSession.jti != current_jti)
+    result = await db.execute(stmt)
+    await db.commit()
+    revoked = int(result.rowcount or 0)
+    return schemas.SessionBulkRevokeOut(revoked=revoked)
