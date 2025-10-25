@@ -148,10 +148,10 @@ async def test_event_detail_returns_qr_code_after_registration(
         "/events/attendance", headers=headers, json={"event_id": event.id}
     )
     assert attend_response.status_code == 200
-    qr_code = attend_response.json()["qr_code"]
-    assert qr_code
+    qr_token = attend_response.json()["qr_token"]
+    assert qr_token
 
     detail_response = await async_client.get(f"/events/{event.id}", headers=headers)
     assert detail_response.status_code == 200
     payload = detail_response.json()
-    assert payload["my_qr_code"] == qr_code
+    assert payload["my_qr_token"] == qr_token

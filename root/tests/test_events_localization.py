@@ -6,6 +6,7 @@ from fastapi import status
 from app import crud
 from app.auth.security import get_password_hash
 from app.models import models
+from app.services import attendance_tokens
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -147,10 +148,12 @@ async def test_events_etag_and_not_modified(async_client, db_session, user_facto
     await db_session.commit()
     await db_session.refresh(event)
 
+    secret = attendance_tokens.generate_secret()
     attendance = models.EventAttendance(
         event_id=event.id,
         user_id=student.id,
-        qr_code="qr-test",
+        qr_secret=secret,
+        qr_hmac=attendance_tokens.compute_secret_hmac(secret),
     )
     db_session.add(attendance)
     await db_session.commit()

@@ -370,7 +370,8 @@ class EventAttendance(Base):
     registered_at = Column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-    qr_code = Column(String)
+    qr_secret = Column(String, nullable=False)
+    qr_hmac = Column(String, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("user_id", "event_id", name="uq_event_attendance_user_event"),

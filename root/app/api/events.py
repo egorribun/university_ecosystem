@@ -1,7 +1,6 @@
 import hashlib
 import json
 import logging
-import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, List, Tuple
@@ -31,7 +30,7 @@ from app.deps.cache import etag_matches, format_etag
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
-from app.services import notification_queue
+from app.services import attendance_tokens, notification_queue
 from app.utils.files import delete_static_file, save_attachment
 
 logger = logging.getLogger(__name__)
@@ -406,10 +405,13 @@ async def get_event(
             )
         )
     ).scalar_one_or_none()
-    if attendance and not attendance.qr_code:
-        attendance.qr_code = str(uuid.uuid4())
-        await db.commit()
-        await db.refresh(attendance)
+    attendance_token: str | None = None
+    if attendance:
+        if attendance_tokens.ensure_secret_material(attendance):
+            db.add(attendance)
+            await db.commit()
+            await db.refresh(attendance)
+        attendance_token = attendance_tokens.issue_token(attendance)
     files = (
         (
             await db.execute(
@@ -432,7 +434,7 @@ async def get_event(
         participant_count=participant_count,
         files=files,
         is_registered=attendance is not None,
-        my_qr_code=attendance.qr_code if attendance else None,
+        my_qr_token=attendance_token,
     )
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
