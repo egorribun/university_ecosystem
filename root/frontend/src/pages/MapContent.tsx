@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Box,
   Paper,
@@ -20,6 +20,7 @@ import TrafficIcon from "@mui/icons-material/Traffic"
 import RestartAltIcon from "@mui/icons-material/RestartAlt"
 import "../assets/themes.css"
 import { useTranslation } from "react-i18next"
+import MapFallback from "@/components/MapFallback"
 
 type LayerMode = "map" | "hybrid"
 
@@ -27,6 +28,26 @@ const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57
 const CAMPUS = { lat: 55.71392, lon: 37.81474 }
 const Z_DEFAULT = 16
 const LOAD_TIMEOUT_MS = 12000
+
+const detectEmbedOptOut = (): boolean => {
+  if (typeof window === "undefined") return false
+  try {
+    const navigatorWithPrivacy = window.navigator as Navigator & {
+      globalPrivacyControl?: boolean
+      msDoNotTrack?: string | null
+    }
+    if (typeof navigatorWithPrivacy.globalPrivacyControl === "boolean") {
+      if (navigatorWithPrivacy.globalPrivacyControl) return true
+    }
+    const doNotTrack =
+      navigatorWithPrivacy.doNotTrack ??
+      navigatorWithPrivacy.msDoNotTrack ??
+      (window as typeof window & { doNotTrack?: string }).doNotTrack
+    return doNotTrack === "1" || doNotTrack === "yes"
+  } catch {
+    return false
+  }
+}
 
 export default function MapContent() {
   const theme = useTheme()
@@ -40,6 +61,9 @@ export default function MapContent() {
   const loadSeq = useRef(0)
   const loadTimer = useRef<number | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const iframeLoadedRef = useRef(false)
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const [privacyBlocksEmbeds, setPrivacyBlocksEmbeds] = useState(() => detectEmbedOptOut())
   const toggleBaseColor =
     theme.palette.mode === "dark"
       ? alpha(theme.palette.common.white, 0.88)
@@ -85,7 +109,13 @@ export default function MapContent() {
     return `https://yandex.ru/map-widget/v1/?ll=${ll}&z=${Z_DEFAULT}&l=${encodeURIComponent(lParam)}`
   }, [layer, traffic, lParam])
 
-  const forceReload = () => {
+  const disableEmbeds = prefersReducedMotion || privacyBlocksEmbeds
+  const showFallback = loadError || disableEmbeds
+  const fallbackReason = loadError ? "load-error" : disableEmbeds ? "preferences" : null
+
+  const forceReload = useCallback(() => {
+    if (disableEmbeds) return
+    iframeLoadedRef.current = false
     setIframeLoaded(false)
     setLoadError(false)
     setFrameKey((k) => k + 1)
@@ -93,16 +123,36 @@ export default function MapContent() {
     if (loadTimer.current) window.clearTimeout(loadTimer.current)
     const seqNow = loadSeq.current
     loadTimer.current = window.setTimeout(() => {
-      if (seqNow === loadSeq.current && !iframeLoaded) setLoadError(true)
+      if (seqNow === loadSeq.current && !iframeLoadedRef.current) setLoadError(true)
     }, LOAD_TIMEOUT_MS)
-  }
+  }, [disableEmbeds])
 
   useEffect(() => {
+    if (disableEmbeds) {
+      iframeLoadedRef.current = false
+      setIframeLoaded(false)
+      setLoadError(false)
+      if (loadTimer.current) window.clearTimeout(loadTimer.current)
+      return
+    }
     forceReload()
     return () => {
       if (loadTimer.current) window.clearTimeout(loadTimer.current)
     }
-  }, [mapSrc])
+  }, [mapSrc, disableEmbeds, forceReload])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const handleOptOutChange = () => {
+      setPrivacyBlocksEmbeds(detectEmbedOptOut())
+    }
+    window.addEventListener("focus", handleOptOutChange)
+    window.addEventListener("storage", handleOptOutChange)
+    return () => {
+      window.removeEventListener("focus", handleOptOutChange)
+      window.removeEventListener("storage", handleOptOutChange)
+    }
+  }, [])
 
   useEffect(() => {
     const computeTop = () => {
@@ -142,6 +192,7 @@ export default function MapContent() {
 
   const reset = () => {
     setTraffic(false)
+    if (disableEmbeds) return
     forceReload()
   }
 
@@ -204,23 +255,26 @@ export default function MapContent() {
             </Stack>
           </Box>
 
-          <iframe
-            key={`${frameKey}`}
-            src={mapSrc}
-            title={t("map.iframeTitle")}
-            width="100%"
-            height="100%"
-            style={{ border: 0, position: "absolute", inset: 0, display: "block" }}
-            allowFullScreen
-            loading="lazy"
-            onLoad={() => {
-              setIframeLoaded(true)
-              setLoadError(false)
-              if (loadTimer.current) window.clearTimeout(loadTimer.current)
-            }}
-          />
+          {!disableEmbeds && (
+            <iframe
+              key={`${frameKey}`}
+              src={mapSrc}
+              title={t("map.iframeTitle")}
+              width="100%"
+              height="100%"
+              style={{ border: 0, position: "absolute", inset: 0, display: "block" }}
+              allowFullScreen
+              loading="lazy"
+              onLoad={() => {
+                iframeLoadedRef.current = true
+                setIframeLoaded(true)
+                setLoadError(false)
+                if (loadTimer.current) window.clearTimeout(loadTimer.current)
+              }}
+            />
+          )}
 
-          {(!iframeLoaded || loadError) && (
+          {(!iframeLoaded || loadError) && !disableEmbeds && (
             <Box
               sx={{
                 position: "absolute",
@@ -250,6 +304,7 @@ export default function MapContent() {
                     color="primary"
                     onClick={() => {
                       setLoadError(false)
+                      iframeLoadedRef.current = false
                       setIframeLoaded(false)
                       setFrameKey((k) => k + 1)
                     }}
@@ -259,6 +314,13 @@ export default function MapContent() {
                 </Stack>
               )}
             </Box>
+          )}
+
+          {showFallback && fallbackReason && (
+            <MapFallback
+              reason={fallbackReason}
+              onRetry={fallbackReason === "load-error" ? forceReload : undefined}
+            />
           )}
 
           <Box className="map-controls-shield" />

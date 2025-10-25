@@ -477,14 +477,38 @@ describe("page translations", () => {
   })
 
   it("switches map controls translations", async () => {
-    const { user } = renderWithProviders(<MapContent />, { initialPath: "/map" })
+    const matchMediaSpy = vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }))
 
-    expect(await screen.findByRole("heading", { name: "Campus map" })).toBeInTheDocument()
+    try {
+      const { user } = renderWithProviders(<MapContent />, { initialPath: "/map" })
 
-    await user.click(screen.getByTestId("lang-toggle"))
+      expect(await screen.findByRole("heading", { name: "Campus map" })).toBeInTheDocument()
+      expect(
+        await screen.findByText(
+          "Interactive maps are disabled to respect your privacy or reduced motion settings."
+        )
+      ).toBeInTheDocument()
 
-    expect(await screen.findByRole("heading", { name: "Карта кампуса" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Сбросить" })).toBeInTheDocument()
+      await user.click(screen.getByTestId("lang-toggle"))
+
+      expect(await screen.findByRole("heading", { name: "Карта кампуса" })).toBeInTheDocument()
+      expect(
+        await screen.findByText(
+          "Интерактивная карта отключена согласно настройкам приватности или уменьшения анимации."
+        )
+      ).toBeInTheDocument()
+    } finally {
+      matchMediaSpy.mockRestore()
+    }
   })
 
   it("switches admin users page translations", async () => {
