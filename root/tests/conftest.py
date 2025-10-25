@@ -88,7 +88,6 @@ from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.services import notification_queue
 from app.utils import ratelimit as ratelimit_module
 
-
 _ASYNCIO_PLUGIN_ACTIVE = False
 
 

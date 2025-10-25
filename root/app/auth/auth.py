@@ -1004,10 +1004,7 @@ async def list_recovery_codes(
         .order_by(MfaRecoveryCode.created_at.desc())
     )
     result = await db.execute(stmt)
-    return [
-        MfaRecoveryCodeOut.model_validate(record)
-        for record in result.scalars()
-    ]
+    return [MfaRecoveryCodeOut.model_validate(record) for record in result.scalars()]
 
 
 @router.post("/mfa/recovery/regenerate")
@@ -1025,9 +1022,7 @@ async def regenerate_recovery_codes(
         request,
         user_id=user.id,
         reason="issued",
-        extra={
-            "generated_at": getattr(user, "mfa_recovery_codes_generated_at", None)
-        },
+        extra={"generated_at": getattr(user, "mfa_recovery_codes_generated_at", None)},
     )
     return {
         "codes": codes,
