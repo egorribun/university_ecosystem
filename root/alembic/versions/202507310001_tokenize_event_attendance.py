@@ -131,7 +131,11 @@ def downgrade() -> None:
             .values(qr_code=row.qr_secret)
         )
 
-    if "qr_hmac" in existing_columns or "qr_hmac" in _table_columns(connection, "event_attendance"):
+    if "qr_hmac" in existing_columns or "qr_hmac" in _table_columns(
+        connection, "event_attendance"
+    ):
         op.drop_column("event_attendance", "qr_hmac")
-    if "qr_secret" in existing_columns or "qr_secret" in _table_columns(connection, "event_attendance"):
+    if "qr_secret" in existing_columns or "qr_secret" in _table_columns(
+        connection, "event_attendance"
+    ):
         op.drop_column("event_attendance", "qr_secret")
