@@ -1,11 +1,13 @@
 import type { components, paths } from "@/api/generated/schema"
 import axios from "./client"
 
-type StoriesListResponse = paths["/stories"]["get"]["responses"]["200"]["content"]["application/json"]
+type StoriesListResponse =
+  paths["/stories"]["get"]["responses"]["200"]["content"]["application/json"]
 export type StoryCreatePayload = components["schemas"]["StoryCreate"]
 export type StoryUpdatePayload = components["schemas"]["StoryUpdate"]
 type StoryResponse = components["schemas"]["StoryOut"]
-type DeleteStoryResponse = paths["/stories/{story_id}"]["delete"]["responses"]["200"]["content"]["application/json"]
+type DeleteStoryResponse =
+  paths["/stories/{story_id}"]["delete"]["responses"]["200"]["content"]["application/json"]
 
 export function fetchStories(ifNoneMatch?: string | null) {
   return axios.get<StoriesListResponse>("/stories", {

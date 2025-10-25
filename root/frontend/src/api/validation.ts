@@ -3,7 +3,10 @@ import { ZodError, type ZodType } from "zod"
 export class ApiResponseValidationError extends Error {
   override readonly name = "ApiResponseValidationError"
 
-  constructor(public readonly details: ZodError, context?: string) {
+  constructor(
+    public readonly details: ZodError,
+    context?: string
+  ) {
     super(context ? `Invalid API response for ${context}` : "Invalid API response")
   }
 }

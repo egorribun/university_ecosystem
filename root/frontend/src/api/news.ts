@@ -25,7 +25,8 @@ const newsItemSchema: z.ZodType<NewsItem> = z.object({
 
 const newsListSchema = z.array(newsItemSchema)
 
-export const parseNewsList = (data: unknown) => ensureValidResponse(newsListSchema, data, "GET /news")
+export const parseNewsList = (data: unknown) =>
+  ensureValidResponse(newsListSchema, data, "GET /news")
 
 export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
   api.get<NewsListResponse>("/news", {

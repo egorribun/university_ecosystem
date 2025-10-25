@@ -7,7 +7,8 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, "..", "..")
 
-const defaultOrigin = process.env.API_ORIGIN || process.env.BACKEND_ORIGIN || "http://localhost:8000"
+const defaultOrigin =
+  process.env.API_ORIGIN || process.env.BACKEND_ORIGIN || "http://localhost:8000"
 const configuredPath = process.env.OPENAPI_PATH
 
 let source = process.env.OPENAPI_URL
@@ -24,7 +25,9 @@ async function loadSchema(input) {
     console.log(`[generate-api-types] Fetching schema from ${input}`)
     const response = await fetch(input)
     if (!response.ok) {
-      throw new Error(`Failed to download OpenAPI schema: ${response.status} ${response.statusText}`)
+      throw new Error(
+        `Failed to download OpenAPI schema: ${response.status} ${response.statusText}`
+      )
     }
     return response.json()
   }
