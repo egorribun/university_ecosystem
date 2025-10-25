@@ -7,7 +7,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal, cast
+from typing import Iterable, Literal, Sequence, cast
 from weakref import WeakKeyDictionary
 
 from sqlalchemy import delete, func, or_, select
@@ -502,7 +502,134 @@ async def _claim_next_persistent_job() -> NotificationJob | None:
     metrics = _get_metrics()
     if metrics is not None:
         await _refresh_persistent_queue_size(metrics)
-    return job
+
+
+async def list_dead_lettered_jobs(
+    *, limit: int = 100, offset: int = 0
+) -> tuple[list[NotificationQueueJob], int]:
+    """Return dead-lettered jobs along with the total count."""
+
+    if not _use_persistent_backend():
+        return [], 0
+
+    safe_limit = max(int(limit), 0)
+    safe_offset = max(int(offset), 0)
+
+    async with async_session() as session:
+        total_result = await session.execute(
+            select(func.count())
+            .select_from(NotificationQueueJob)
+            .where(NotificationQueueJob.dead_lettered.is_(True))
+        )
+        total = int(total_result.scalar_one())
+
+        if safe_limit == 0:
+            return [], total
+
+        stmt = (
+            select(NotificationQueueJob)
+            .where(NotificationQueueJob.dead_lettered.is_(True))
+            .order_by(NotificationQueueJob.enqueued_at.asc(), NotificationQueueJob.id.asc())
+            .offset(safe_offset)
+            .limit(safe_limit)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+    return rows, total
+
+
+def _coerce_job_ids(job_ids: Iterable[int]) -> list[int]:
+    unique_ids: set[int] = set()
+    for raw_id in job_ids:
+        try:
+            parsed = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            unique_ids.add(parsed)
+    return sorted(unique_ids)
+
+
+async def retry_dead_lettered_jobs(job_ids: Sequence[int]) -> int:
+    """Move dead-lettered jobs back into the active queue."""
+
+    if not _use_persistent_backend():
+        return 0
+
+    ids = _coerce_job_ids(job_ids)
+    if not ids:
+        return 0
+
+    retried = 0
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(NotificationQueueJob)
+                .where(
+                    NotificationQueueJob.id.in_(ids),
+                    NotificationQueueJob.dead_lettered.is_(True),
+                )
+                .with_for_update()
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                row.dead_lettered = False
+                row.claimed_at = None
+                row.next_retry_at = None
+                row.last_error = None
+                row.attempts = 0
+                retried += 1
+
+    if retried:
+        await _ensure_worker()
+        state = _get_loop_state()
+        state.job_event.set()
+    metrics = _get_metrics()
+    if metrics is not None:
+        await _refresh_persistent_queue_size(metrics)
+    return retried
+
+
+async def delete_dead_lettered_jobs(job_ids: Sequence[int]) -> int:
+    """Delete dead-lettered jobs permanently."""
+
+    if not _use_persistent_backend():
+        return 0
+
+    ids = _coerce_job_ids(job_ids)
+    if not ids:
+        return 0
+
+    deleted = 0
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(NotificationQueueJob.id)
+                .where(
+                    NotificationQueueJob.id.in_(ids),
+                    NotificationQueueJob.dead_lettered.is_(True),
+                )
+                .with_for_update()
+            )
+            targets = result.scalars().all()
+            if targets:
+                await session.execute(
+                    delete(NotificationQueueJob).where(
+                        NotificationQueueJob.id.in_(targets)
+                    )
+                )
+                deleted = len(targets)
+
+    if deleted:
+        metrics = _get_metrics()
+        if metrics is not None:
+            await _refresh_persistent_queue_size(metrics)
+        state = _get_loop_state()
+        state.job_event.set()
+    else:
+        metrics = _get_metrics()
+        if metrics is not None:
+            await _refresh_persistent_queue_size(metrics)
+    return deleted
 
 
 def _format_job_error(error: BaseException | None) -> str:

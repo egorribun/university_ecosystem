@@ -25,10 +25,22 @@ from app.core.database import get_db
 from app.crud import sanitize_optional_text
 from app.localization import localized_text, resolve_locale, translate
 from app.models.models import Notification, Schedule, User
-from app.schemas.schemas import NotificationOut, NotificationsListOut
+from app.schemas.schemas import (
+    NotificationDeadLetterJobOut,
+    NotificationDeadLetterListOut,
+    NotificationDeadLetterPurgeIn,
+    NotificationDeadLetterReplayIn,
+    NotificationOut,
+    NotificationsListOut,
+)
 from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
+)
+from app.services.notification_queue import (
+    delete_dead_lettered_jobs,
+    list_dead_lettered_jobs,
+    retry_dead_lettered_jobs,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +53,12 @@ _MISSING_COLUMN_MARKERS = (
     "does not exist",
     "undefined column",
 )
+
+
+async def _require_admin_user(user: User = Depends(get_current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return user
 
 
 def _is_missing_column_error(exc: SQLAlchemyError) -> bool:
@@ -564,3 +582,37 @@ async def check_schedule_and_generate(
         limit=20,
         cursor=None,
     )
+
+
+@router.get(
+    "/admin/dead-letter",
+    response_model=NotificationDeadLetterListOut,
+)
+async def list_dead_letter_queue(
+    _: User = Depends(_require_admin_user),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> NotificationDeadLetterListOut:
+    jobs, total = await list_dead_lettered_jobs(limit=limit, offset=offset)
+    return NotificationDeadLetterListOut(
+        items=[NotificationDeadLetterJobOut.from_orm(job) for job in jobs],
+        total=total,
+    )
+
+
+@router.post("/admin/dead-letter/retry")
+async def retry_dead_letter_queue(
+    payload: NotificationDeadLetterReplayIn,
+    _: User = Depends(_require_admin_user),
+):
+    retried = await retry_dead_lettered_jobs(payload.job_ids)
+    return {"retried": retried}
+
+
+@router.post("/admin/dead-letter/purge")
+async def purge_dead_letter_queue(
+    payload: NotificationDeadLetterPurgeIn,
+    _: User = Depends(_require_admin_user),
+):
+    deleted = await delete_dead_lettered_jobs(payload.job_ids)
+    return {"deleted": deleted}

@@ -35,6 +35,7 @@ const Login = lazy(() => import("./pages/Login"))
 const Register = lazy(() => import("./pages/Register"))
 const AdminUsers = lazy(() => import("./pages/AdminUsers"))
 const StoriesAdmin = lazy(() => import("./pages/StoriesAdmin"))
+const AdminNotifications = lazy(() => import("./pages/AdminNotifications"))
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
 const ResetPassword = lazy(() => import("./pages/ResetPassword"))
 const Settings = lazy(() => import("./pages/Settings"))
@@ -98,6 +99,10 @@ function AppContent() {
           <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
           <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
+          <Route
+            path="/admin/notifications"
+            element={<AdminRoute>{wrap(<AdminNotifications />)}</AdminRoute>}
+          />
           <Route
             path="/admin/stories"
             element={<AdminRoute>{wrap(<StoriesAdmin />)}</AdminRoute>}

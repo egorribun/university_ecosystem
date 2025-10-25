@@ -21,5 +21,43 @@
       "group": "Group",
       "actions": "Actions"
     }
+  },
+  "notifications": {
+    "title": "Notification queue",
+    "subtitle": "Retry or purge notifications that landed in the dead-letter queue.",
+    "total": "Total jobs: {{count}}",
+    "empty": "No dead-lettered jobs at the moment.",
+    "errors": {
+      "fetch": "Failed to load the dead-letter queue.",
+      "action": "Unable to update the queue."
+    },
+    "actions": {
+      "retrySelected": "Retry selected",
+      "purgeSelected": "Delete selected",
+      "retry": "Retry",
+      "purge": "Delete",
+      "retryJob": "Retry job {{id}}",
+      "purgeJob": "Delete job {{id}}"
+    },
+    "table": {
+      "aria": "Dead-letter queue",
+      "selectAll": "Select all jobs",
+      "selectRow": "Select job {{id}}",
+      "columns": {
+        "kind": "Type",
+        "record": "Record ID",
+        "locale": "Locale",
+        "enqueued": "Enqueued at",
+        "attempts": "Attempts",
+        "lastError": "Last error",
+        "actions": "Actions"
+      },
+      "noError": "No error recorded",
+      "localeFallback": "Any"
+    },
+    "kinds": {
+      "event": "Event",
+      "news": "News"
+    }
   }
 }

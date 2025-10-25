@@ -5,7 +5,12 @@ import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
 import { toHaveNoViolations } from "jest-axe"
 import { server } from "./tests/mocks/server"
-import { resetTestEvents, resetTestMfa, resetTestSessions } from "./tests/mocks/handlers"
+import {
+  resetAdminDeadLetterJobs,
+  resetTestEvents,
+  resetTestMfa,
+  resetTestSessions,
+} from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
 
 expect.extend(toHaveNoViolations)
@@ -20,6 +25,7 @@ afterEach(() => {
   resetTestSessions()
   resetTestEvents()
   resetTestMfa()
+  resetAdminDeadLetterJobs()
 })
 afterAll(() => server.close())
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder
