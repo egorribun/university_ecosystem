@@ -11,20 +11,8 @@ interface MapFallbackProps {
 }
 
 type CampusPointConfig = {
-  key:
-    | "main"
-    | "library"
-    | "sports"
-    | "dormitory"
-    | "cafeteria"
-  tags: (
-    | "services"
-    | "study"
-    | "events"
-    | "sports"
-    | "housing"
-    | "food"
-  )[]
+  key: "main" | "library" | "sports" | "dormitory" | "cafeteria"
+  tags: ("services" | "study" | "events" | "sports" | "housing" | "food")[]
 }
 
 const CAMPUS_POINTS: CampusPointConfig[] = [
@@ -236,7 +224,8 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                           theme.palette.primary.main,
                           theme.palette.mode === "dark" ? 0.32 : 0.18
                         ),
-                        color: theme.palette.mode === "dark" ? "#f6f8ff" : theme.palette.primary.dark,
+                        color:
+                          theme.palette.mode === "dark" ? "#f6f8ff" : theme.palette.primary.dark,
                         fontWeight: 600,
                       }}
                     />
