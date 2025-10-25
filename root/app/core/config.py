@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     mfa_webauthn_rp_id: str = "localhost"
     mfa_webauthn_rp_name: str = "University Ecosystem"
     mfa_webauthn_origin: str = "http://localhost:5173"
+    mfa_webauthn_metadata_url: str = ""
+    mfa_webauthn_metadata_json: str = ""
+    mfa_webauthn_metadata_refresh_seconds: int = 86_400
+    mfa_webauthn_metadata_enforcement: str = "log"
     mfa_step_up_ttl_seconds: int = 300
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
@@ -255,6 +259,25 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_mfa_webauthn_origin(cls, value: str) -> str:
         return _validate_webauthn_origin(value)
+
+    @field_validator("mfa_webauthn_metadata_enforcement")
+    @classmethod
+    def _validate_webauthn_metadata_enforcement(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"disabled", "log", "strict"}:
+            raise ValueError(
+                "MFA_WEBAUTHN_METADATA_ENFORCEMENT must be disabled, log, or strict"
+            )
+        return normalized
+
+    @field_validator("mfa_webauthn_metadata_refresh_seconds")
+    @classmethod
+    def _validate_webauthn_metadata_refresh(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError(
+                "MFA_WEBAUTHN_METADATA_REFRESH_SECONDS must be zero or positive"
+            )
+        return value
 
     @field_validator(
         "mfa_challenge_ttl_seconds",

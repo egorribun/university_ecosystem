@@ -270,6 +270,11 @@ class MfaWebAuthnCredential(Base):
     device_name = Column(String(255))
     backed_up = Column(Boolean, nullable=False, default=False, index=True)
     clone_warning = Column(Boolean, nullable=False, default=False)
+    aaguid = Column(String(64), nullable=True, index=True)
+    attestation_format = Column(String(64), nullable=True)
+    attestation_trust_score = Column(Integer, nullable=True)
+    attestation_metadata = Column(JSON, nullable=True)
+    metadata_warnings = Column(JSON, nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
