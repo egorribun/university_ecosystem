@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from httpx import AsyncClient
 from sqlalchemy import select, text, update
 
@@ -337,7 +336,9 @@ def test_serialize_notification_normalizes_id_and_read_flag():
 
 
 @pytest.mark.anyio
-async def test_admin_dead_letter_requires_admin(async_client: AsyncClient, user_factory):
+async def test_admin_dead_letter_requires_admin(
+    async_client: AsyncClient, user_factory
+):
     password = "NoAdmin123!"
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True, role="student")

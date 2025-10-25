@@ -33,14 +33,14 @@ from app.schemas.schemas import (
     NotificationOut,
     NotificationsListOut,
 )
-from app.services.notifications import (
-    build_schedule_reminder_message,
-    create_notifications_for_users,
-)
 from app.services.notification_queue import (
     delete_dead_lettered_jobs,
     list_dead_lettered_jobs,
     retry_dead_lettered_jobs,
+)
+from app.services.notifications import (
+    build_schedule_reminder_message,
+    create_notifications_for_users,
 )
 
 logger = logging.getLogger(__name__)

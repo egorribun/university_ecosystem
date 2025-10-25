@@ -529,7 +529,9 @@ async def list_dead_lettered_jobs(
         stmt = (
             select(NotificationQueueJob)
             .where(NotificationQueueJob.dead_lettered.is_(True))
-            .order_by(NotificationQueueJob.enqueued_at.asc(), NotificationQueueJob.id.asc())
+            .order_by(
+                NotificationQueueJob.enqueued_at.asc(), NotificationQueueJob.id.asc()
+            )
             .offset(safe_offset)
             .limit(safe_limit)
         )
