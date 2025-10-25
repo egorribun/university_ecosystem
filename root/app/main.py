@@ -22,6 +22,7 @@ from app.core.database import Base, engine, wait_db
 from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
+from app.core.schema_upgrade import ensure_webauthn_attestation_columns
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import shutdown_cache
 from app.routers.notifications import legacy_router as legacy_push_router
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        await ensure_webauthn_attestation_columns(engine)
     stop_scheduler = None
     stop_notifications_retention = None
     stop_session_cleanup = None
