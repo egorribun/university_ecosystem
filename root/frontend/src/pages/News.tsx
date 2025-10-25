@@ -29,8 +29,7 @@ import SmartImage from "@/components/SmartImage"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
-import { ApiResponseValidationError } from "@/api/validation"
-import { fetchNews as fetchNewsRequest, parseNewsList, type NewsItem } from "@/api/news"
+import { useNewsFeed } from "@/hooks/useNewsFeed"
 
 type NewsFormState = {
   title: string
@@ -50,105 +49,20 @@ const News = () => {
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
-  const [newsList, setNewsList] = useState<NewsItem[]>([])
+  const { data: newsDataList, refetch: refetchNews, isPending, isFetching } = useNewsFeed(language)
+  const newsList = newsDataList ?? []
   const deferredList = useDeferredValue(newsList)
   const [visibleCount, setVisibleCount] = useState(0)
   const [addOpen, setAddOpen] = useState(false)
   const [newsData, setNewsData] = useState(initialNews)
   const [adding, setAdding] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
-  const hydratedFromCache = useRef(false)
   const isMobile = useMediaQuery("(max-width:600px)")
 
-  const cacheKey = useMemo(() => `news:list:${language}`, [language])
-  const etagKey = useMemo(() => `news:etag:${language}`, [language])
-  const legacyCacheKey = "news:list"
-  const legacyEtagKey = "news:etag"
-
-  const fetchNews = useCallback(
-    async (signal?: AbortSignal) => {
-      const cachedPrimary = localStorage.getItem(cacheKey)
-      const cachedLegacy = language === "ru" ? localStorage.getItem(legacyCacheKey) : null
-      const cached = cachedPrimary ?? cachedLegacy
-
-      if (cached && !hydratedFromCache.current) {
-        try {
-          const arr = parseNewsList(JSON.parse(cached))
-          startTransition(() => setNewsList(arr))
-          hydratedFromCache.current = true
-        } catch (error) {
-          if (!(error instanceof ApiResponseValidationError)) {
-            console.error(error)
-          }
-        }
-      }
-
-      const shouldShowLoader = !cached && !hydratedFromCache.current
-      if (shouldShowLoader) setLoading(true)
-
-      try {
-        const storedTagPrimary = localStorage.getItem(etagKey)
-        const storedTagLegacy = language === "ru" ? localStorage.getItem(legacyEtagKey) : null
-        const etag = storedTagPrimary ?? storedTagLegacy ?? ""
-        const res = await fetchNewsRequest({
-          ifNoneMatch: etag,
-          signal,
-        })
-
-        if (signal?.aborted) return
-
-        if (res.status === 200) {
-          let arr: NewsItem[] = []
-          try {
-            arr = parseNewsList(res.data)
-          } catch (error) {
-            if (!(error instanceof ApiResponseValidationError)) {
-              console.error(error)
-            }
-          }
-          startTransition(() => setNewsList(arr))
-          hydratedFromCache.current = true
-          localStorage.setItem(cacheKey, JSON.stringify(arr))
-          if (language === "ru") localStorage.setItem(legacyCacheKey, JSON.stringify(arr))
-          const newTag = (res.headers?.etag as string) || ""
-          if (newTag) {
-            localStorage.setItem(etagKey, newTag)
-            if (language === "ru") localStorage.setItem(legacyEtagKey, newTag)
-          }
-        } else if (res.status === 304 && cached) {
-          try {
-            const arr = parseNewsList(JSON.parse(cached))
-            startTransition(() => setNewsList(arr))
-            hydratedFromCache.current = true
-          } catch {
-            startTransition(() => setNewsList([]))
-          }
-        }
-      } catch {
-        if (signal?.aborted) {
-          return
-        }
-        if (!cached) startTransition(() => setNewsList([]))
-      } finally {
-        if (!signal?.aborted && shouldShowLoader) {
-          setLoading(false)
-        }
-      }
-      if (signal?.aborted) {
-        return
-      }
-    },
-    [cacheKey, etagKey, language, legacyCacheKey, legacyEtagKey]
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetchNews(controller.signal)
-    return () => controller.abort()
-  }, [fetchNews])
+  const isInitialLoading = isPending && newsList.length === 0
+  const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
 
   useEffect(() => {
     return () => {
@@ -231,12 +145,12 @@ const News = () => {
         URL.revokeObjectURL(imagePreview)
         setImagePreview(null)
       }
-      void fetchNews()
+      void refetchNews()
       if (imageInputRef.current) imageInputRef.current.value = ""
     } finally {
       setAdding(false)
     }
-  }, [adding, fetchNews, imageFile, imagePreview, language, newsData])
+  }, [adding, imageFile, imagePreview, newsData, refetchNews])
 
   const handleCloseDialog = useCallback(() => {
     setAddOpen(false)
@@ -328,13 +242,13 @@ const News = () => {
                     {...news}
                     image_url={news.image_url ?? undefined}
                     onChange={() => {
-                      void fetchNews()
+                      void refetchNews()
                     }}
                   />
                 </Box>
               ))}
 
-            {Array.isArray(newsList) && newsList.length === 0 && !loading && (
+            {Array.isArray(newsList) && showEmptyState && (
               <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
                 <Typography fontSize={24} className="events-empty-text">
                   {t("news:states.empty")}
