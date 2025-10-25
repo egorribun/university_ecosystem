@@ -108,8 +108,6 @@ const clearLegacyStorageKeys = () => {
 const buildQueryKey = (language: SupportedLanguage) =>
   ["news", "feed", language] as const satisfies QueryKey
 
-type NewsFeedQueryKey = ReturnType<typeof buildQueryKey>
-
 const fetchNewsSnapshot = async (
   language: SupportedLanguage,
   signal: AbortSignal | undefined,
