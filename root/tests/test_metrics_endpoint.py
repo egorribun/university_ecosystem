@@ -57,6 +57,7 @@ async def test_metrics_endpoint_exposes_prometheus_payload(
     body = response.text
     assert "http_requests_total" in body
     assert "http_request_duration_seconds" in body
+    assert "notification_queue_dead_lettered_jobs" in body
 
 
 @pytest.mark.anyio
