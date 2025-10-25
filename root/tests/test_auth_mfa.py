@@ -8,11 +8,10 @@ import pyotp
 import pytest
 from fastapi import HTTPException, status
 from sqlalchemy import select
-
 from webauthn.helpers.structs import (
+    AttestationFormat,
     AuthenticatorAttestationResponse,
     AuthenticatorTransport,
-    AttestationFormat,
     CredentialDeviceType,
     PublicKeyCredentialType,
     RegistrationCredential,
@@ -685,7 +684,9 @@ async def test_webauthn_enrollment_with_trusted_metadata(
             }
         ]
     }
-    monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", json.dumps(metadata_payload))
+    monkeypatch.setattr(
+        settings, "mfa_webauthn_metadata_json", json.dumps(metadata_payload)
+    )
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "")
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_enforcement", "log")
     metadata_resolver.invalidate()
@@ -750,7 +751,8 @@ async def test_webauthn_enrollment_with_trusted_metadata(
             continue
         audit_events.append(payload)
     assert not any(
-        event.get("event") == "users.mfa.webauthn.metadata_warning" for event in audit_events
+        event.get("event") == "users.mfa.webauthn.metadata_warning"
+        for event in audit_events
     )
 
     metadata_resolver.invalidate()
@@ -780,7 +782,9 @@ async def test_webauthn_enrollment_rejects_untrusted_authenticator(
             }
         ]
     }
-    monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", json.dumps(metadata_payload))
+    monkeypatch.setattr(
+        settings, "mfa_webauthn_metadata_json", json.dumps(metadata_payload)
+    )
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "")
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_enforcement", "strict")
     metadata_resolver.invalidate()
@@ -847,7 +851,7 @@ async def test_webauthn_enrollment_rejects_untrusted_authenticator(
 @pytest.mark.anyio
 async def test_webauthn_metadata_resolver_refresh(monkeypatch):
     metadata_resolver.invalidate()
-    monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", "{\"entries\": []}")
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", '{"entries": []}')
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "")
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_refresh_seconds", 60)
 

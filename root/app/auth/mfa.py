@@ -51,8 +51,8 @@ from app.models.models import (
     MfaWebAuthnCredential,
     User,
 )
-from app.utils import ratelimit as ratelimit_utils
 from app.services.webauthn_metadata import MetadataLoadError, metadata_resolver
+from app.utils import ratelimit as ratelimit_utils
 
 _RECOVERY_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 _RECOVERY_CODE_LENGTH = 10

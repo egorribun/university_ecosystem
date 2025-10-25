@@ -82,7 +82,9 @@ class WebAuthnMetadataResolver:
         await self.refresh()
 
     async def _should_refresh(self) -> bool:
-        if not (settings.mfa_webauthn_metadata_url or settings.mfa_webauthn_metadata_json):
+        if not (
+            settings.mfa_webauthn_metadata_url or settings.mfa_webauthn_metadata_json
+        ):
             if self._entries:
                 self.invalidate()
             return False
@@ -106,7 +108,8 @@ class WebAuthnMetadataResolver:
         entries = self._parse_entries(raw)
         self._entries = entries
         self._trusted_roots = {
-            aaguid: entry.attestation_root_certificates for aaguid, entry in entries.items()
+            aaguid: entry.attestation_root_certificates
+            for aaguid, entry in entries.items()
         }
         self._fetched_at = time.time()
 
@@ -217,4 +220,9 @@ class WebAuthnMetadataResolver:
 
 metadata_resolver = WebAuthnMetadataResolver()
 
-__all__ = ["MetadataEntry", "MetadataLoadError", "WebAuthnMetadataResolver", "metadata_resolver"]
+__all__ = [
+    "MetadataEntry",
+    "MetadataLoadError",
+    "WebAuthnMetadataResolver",
+    "metadata_resolver",
+]
