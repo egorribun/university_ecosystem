@@ -18,6 +18,7 @@ from app.models.user_loaders import (
     ensure_mfa_relationships_loaded,
 )
 from app.schemas import schemas
+from app.services import attendance_tokens
 
 
 async def get_user_auth(db: AsyncSession, login: str):
@@ -305,7 +306,7 @@ def serialize_event(
     participant_count: int = 0,
     files: Sequence[models.EventFile | schemas.EventFileOut] = (),
     is_registered: bool | None = None,
-    my_qr_code: str | None = None,
+    my_qr_token: str | None = None,
 ) -> schemas.EventOut:
     normalized_locale = normalize_locale(locale)
     prepared_files: list[schemas.EventFileOut] = []
@@ -360,7 +361,7 @@ def serialize_event(
         "files": prepared_files,
         "participant_count": participant_count,
         "is_registered": is_registered,
-        "my_qr_code": my_qr_code,
+        "my_qr_token": my_qr_token,
     }
 
     return schemas.EventOut.model_validate(data)
@@ -453,15 +454,19 @@ async def get_all_events(
             .scalars()
             .all()
         )
-        missing_qr = [row for row in attendance_rows if not row.qr_code]
-        if missing_qr:
-            for row in missing_qr:
-                row.qr_code = str(uuid.uuid4())
+        updated_rows: list[models.EventAttendance] = []
+        for row in attendance_rows:
+            if attendance_tokens.ensure_secret_material(row):
+                db.add(row)
+                updated_rows.append(row)
+        if updated_rows:
             await db.commit()
-            for row in missing_qr:
+            for row in updated_rows:
                 await db.refresh(row)
         registered_ids = {row.event_id for row in attendance_rows}
-        qr_map = {row.event_id: row.qr_code for row in attendance_rows}
+        qr_map = {
+            row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
+        }
 
     normalized_locale = normalize_locale(locale)
     result: List[schemas.EventOut] = []
@@ -474,7 +479,7 @@ async def get_all_events(
                 participant_count=counts.get(event.id, 0),
                 files=files,
                 is_registered=event.id in registered_ids,
-                my_qr_code=qr_map.get(event.id),
+                my_qr_token=qr_map.get(event.id),
             )
         )
 
@@ -584,20 +589,21 @@ async def register_attendance(
         if exist.registered_at is None:
             exist.registered_at = datetime.now(UTC)
             updated = True
-        if not exist.qr_code:
-            exist.qr_code = str(uuid.uuid4())
+        if attendance_tokens.ensure_secret_material(exist):
             updated = True
         if updated:
             db.add(exist)
             await db.commit()
             await db.refresh(exist)
+        exist.qr_token = attendance_tokens.issue_token(exist)
         return exist
 
-    qr_code = str(uuid.uuid4())
+    secret = attendance_tokens.generate_secret()
     record = models.EventAttendance(
         user_id=user_id,
         event_id=data.event_id,
-        qr_code=qr_code,
+        qr_secret=secret,
+        qr_hmac=attendance_tokens.compute_secret_hmac(secret),
         registered_at=datetime.now(UTC),
     )
     db.add(record)
@@ -615,15 +621,16 @@ async def register_attendance(
         if exist.registered_at is None:
             exist.registered_at = datetime.now(UTC)
             updated = True
-        if not exist.qr_code:
-            exist.qr_code = str(uuid.uuid4())
+        if attendance_tokens.ensure_secret_material(exist):
             updated = True
         if updated:
             db.add(exist)
             await db.commit()
             await db.refresh(exist)
+        exist.qr_token = attendance_tokens.issue_token(exist)
         return exist
     await db.refresh(record)
+    record.qr_token = attendance_tokens.issue_token(record)
     return record
 
 
@@ -658,15 +665,19 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
     )
     if not attendance_rows:
         return []
-    missing_qr = [row for row in attendance_rows if not row.qr_code]
-    if missing_qr:
-        for row in missing_qr:
-            row.qr_code = str(uuid.uuid4())
+    updated_rows: list[models.EventAttendance] = []
+    for row in attendance_rows:
+        if attendance_tokens.ensure_secret_material(row):
+            db.add(row)
+            updated_rows.append(row)
+    if updated_rows:
         await db.commit()
-        for row in missing_qr:
+        for row in updated_rows:
             await db.refresh(row)
     ids = [row.event_id for row in attendance_rows]
-    qr_map = {row.event_id: row.qr_code for row in attendance_rows}
+    qr_map = {
+        row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
+    }
     q = select(models.Event).where(models.Event.id.in_(ids))
     events = (await db.execute(q)).scalars().all()
     counts = await _attendance_counts(db, ids)
@@ -683,7 +694,7 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
                 participant_count=counts.get(event.id, 0),
                 files=files,
                 is_registered=True,
-                my_qr_code=qr_map.get(event.id),
+                my_qr_token=qr_map.get(event.id),
             )
         )
     return result

@@ -43,6 +43,7 @@ os.environ.setdefault("RATE_LIMIT_DEFAULT", "5/minute,10/hour")
 os.environ.setdefault("RATE_LIMIT_SENSITIVE", "4/minute")
 os.environ.setdefault("RATE_LIMIT_STORAGE_BACKEND", "redis")
 os.environ.setdefault("RATE_LIMIT_STORAGE_URI", "redis://test")
+os.environ.setdefault("ATTENDANCE_TOKEN_SECRET", "attendance-test-secret")
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 
 try:

@@ -421,7 +421,7 @@ class EventOut(OrmModel):
     files: List[EventFileOut] = Field(default_factory=list)
     participant_count: int = 0
     is_registered: Optional[bool] = None
-    my_qr_code: Optional[str] = None
+    my_qr_token: Optional[str] = None
 
 
 class PaginatedEvents(BaseModel):
@@ -442,7 +442,7 @@ class EventAttendanceOut(OrmModel):
     user_id: int
     event_id: int
     registered_at: datetime
-    qr_code: Optional[str] = None
+    qr_token: Optional[str] = None
 
 
 class Token(BaseModel):
