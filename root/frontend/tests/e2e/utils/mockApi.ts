@@ -22,6 +22,18 @@ type MfaState = {
   stepUpChallenge: PendingMfaResponse | null
 }
 
+type AdminDeadLetterJob = {
+  id: number
+  kind: "event" | "news"
+  record_id: number
+  locale: string | null
+  enqueued_at: string
+  claimed_at: string | null
+  attempts: number
+  last_error: string | null
+  next_retry_at: string | null
+}
+
 type MockState = {
   loggedIn: boolean
   newsVersion: string
@@ -31,6 +43,7 @@ type MockState = {
   profile: User
   totp: TotpState
   mfa: MfaState
+  deadLetterJobs: AdminDeadLetterJob[]
 }
 
 type SessionMock = {
@@ -131,6 +144,31 @@ const mockEvents = Array.from({ length: 18 }, (_, index) => {
     my_qr_code: null,
   }
 })
+
+const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
+  {
+    id: 1,
+    kind: "event",
+    record_id: 1001,
+    locale: "ru",
+    enqueued_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+    claimed_at: null,
+    attempts: 3,
+    last_error: "Timeout",
+    next_retry_at: null,
+  },
+  {
+    id: 2,
+    kind: "news",
+    record_id: 2002,
+    locale: "en",
+    enqueued_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+    claimed_at: null,
+    attempts: 2,
+    last_error: "Webhook failed",
+    next_retry_at: null,
+  },
+]
 
 const mockSchedule = [
   {
@@ -263,6 +301,20 @@ export async function useMockApi(page: Page) {
         sessionId: 42,
       }),
     },
+    deadLetterJobs: createDeadLetterJobs(),
+  }
+
+  const mutateDeadLetterJobs = (jobIds: unknown): number => {
+    const ids = Array.isArray(jobIds)
+      ? jobIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : []
+    if (!ids.length) return 0
+    const before = state.deadLetterJobs.length
+    const allowed = new Set(ids)
+    state.deadLetterJobs = state.deadLetterJobs.filter((job) => !allowed.has(job.id))
+    return before - state.deadLetterJobs.length
   }
 
   await page.addInitScript(() => {
@@ -913,6 +965,82 @@ export async function useMockApi(page: Page) {
             },
           ],
         }),
+      })
+      return
+    }
+
+    if (pathname === "api/notifications/admin/dead-letter") {
+      if (!state.loggedIn || state.profile.role !== "admin") {
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Forbidden" }),
+        })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: state.deadLetterJobs,
+          total: state.deadLetterJobs.length,
+        }),
+      })
+      return
+    }
+
+    if (
+      pathname === "api/notifications/admin/dead-letter/retry" &&
+      method === "POST"
+    ) {
+      if (!state.loggedIn || state.profile.role !== "admin") {
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Forbidden" }),
+        })
+        return
+      }
+      let payload: unknown = null
+      try {
+        const raw = route.request().postData() ?? "{}"
+        payload = JSON.parse(raw)
+      } catch {
+        payload = null
+      }
+      const removed = mutateDeadLetterJobs((payload as { job_ids?: unknown } | null)?.job_ids)
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ retried: removed }),
+      })
+      return
+    }
+
+    if (
+      pathname === "api/notifications/admin/dead-letter/purge" &&
+      method === "POST"
+    ) {
+      if (!state.loggedIn || state.profile.role !== "admin") {
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Forbidden" }),
+        })
+        return
+      }
+      let payload: unknown = null
+      try {
+        const raw = route.request().postData() ?? "{}"
+        payload = JSON.parse(raw)
+      } catch {
+        payload = null
+      }
+      const removed = mutateDeadLetterJobs((payload as { job_ids?: unknown } | null)?.job_ids)
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ deleted: removed }),
       })
       return
     }

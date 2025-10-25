@@ -20,6 +20,18 @@ type ResetPasswordPayload = {
   [key: string]: unknown
 }
 
+type AdminDeadLetterJob = {
+  id: number
+  kind: "event" | "news"
+  record_id: number
+  locale: string | null
+  enqueued_at: string
+  claimed_at: string | null
+  attempts: number
+  last_error: string | null
+  next_retry_at: string | null
+}
+
 export const testUser: User = {
   id: 1,
   email: "user@example.com",
@@ -261,6 +273,51 @@ export const resetTestEvents = () => {
   setTestEvents(createBaseEvents())
 }
 
+const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
+  {
+    id: 1,
+    kind: "event",
+    record_id: 1001,
+    locale: "ru",
+    enqueued_at: nowIso(),
+    claimed_at: null,
+    attempts: 3,
+    last_error: "Timeout",
+    next_retry_at: null,
+  },
+  {
+    id: 2,
+    kind: "news",
+    record_id: 2002,
+    locale: "en",
+    enqueued_at: nowIso(),
+    claimed_at: null,
+    attempts: 2,
+    last_error: "Webhook failed",
+    next_retry_at: null,
+  },
+]
+
+const adminDeadLetterJobs: AdminDeadLetterJob[] = createAdminDeadLetterJobs()
+
+const applyAdminQueueMutation = (jobIds: unknown) => {
+  const ids = Array.isArray(jobIds) ? new Set(jobIds.map((id) => Number(id))) : new Set<number>()
+  let removed = 0
+  for (let index = adminDeadLetterJobs.length - 1; index >= 0; index -= 1) {
+    const job = adminDeadLetterJobs[index]
+    if (!job) continue
+    if (ids.has(job.id)) {
+      adminDeadLetterJobs.splice(index, 1)
+      removed += 1
+    }
+  }
+  return removed
+}
+
+export const resetAdminDeadLetterJobs = () => {
+  adminDeadLetterJobs.splice(0, adminDeadLetterJobs.length, ...createAdminDeadLetterJobs())
+}
+
 resetTestMfa()
 
 export const handlers = [
@@ -437,6 +494,34 @@ export const handlers = [
       next_cursor: hasMore ? nextCursor : null,
       has_more: hasMore,
     })
+  }),
+  http.get("*/notifications/admin/dead-letter", () =>
+    HttpResponse.json({
+      items: adminDeadLetterJobs,
+      total: adminDeadLetterJobs.length,
+    })
+  ),
+  http.post("*/notifications/admin/dead-letter/retry", async ({ request }) => {
+    let payload: unknown
+    try {
+      payload = await request.json()
+    } catch {
+      payload = null
+    }
+    const jobIds = (payload as { job_ids?: unknown } | null)?.job_ids
+    const removed = applyAdminQueueMutation(jobIds)
+    return HttpResponse.json({ retried: removed })
+  }),
+  http.post("*/notifications/admin/dead-letter/purge", async ({ request }) => {
+    let payload: unknown
+    try {
+      payload = await request.json()
+    } catch {
+      payload = null
+    }
+    const jobIds = (payload as { job_ids?: unknown } | null)?.job_ids
+    const removed = applyAdminQueueMutation(jobIds)
+    return HttpResponse.json({ deleted: removed })
   }),
   http.post("*/users", async ({ request }) => {
     const body = (await request.json()) as NewUserPayload

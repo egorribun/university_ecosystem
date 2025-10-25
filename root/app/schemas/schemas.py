@@ -522,3 +522,52 @@ class NotificationsListOut(BaseModel):
 class NotificationMarkReadIn(BaseModel):
     id: Optional[int] = None
     ids: Optional[List[int]] = None
+
+
+class NotificationDeadLetterJobOut(OrmModel):
+    id: int
+    kind: str
+    record_id: int
+    locale: Optional[str] = None
+    enqueued_at: datetime
+    claimed_at: Optional[datetime] = None
+    attempts: int
+    last_error: Optional[str] = None
+    next_retry_at: Optional[datetime] = None
+
+
+class NotificationDeadLetterListOut(BaseModel):
+    items: List[NotificationDeadLetterJobOut]
+    total: int
+
+
+class _NotificationDeadLetterJobIds(BaseModel):
+    job_ids: List[int] = Field(min_length=1)
+
+    @field_validator("job_ids")
+    @classmethod
+    def _ensure_positive_unique(cls, value: List[int]) -> List[int]:
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for raw in value:
+            try:
+                parsed = int(raw)
+            except (TypeError, ValueError) as exc:  # pragma: no cover - defensive guard
+                raise ValueError("job_ids must contain integers") from exc
+            if parsed <= 0:
+                raise ValueError("job_ids must be positive integers")
+            if parsed in seen:
+                continue
+            seen.add(parsed)
+            normalized.append(parsed)
+        if not normalized:
+            raise ValueError("job_ids must contain at least one value")
+        return normalized
+
+
+class NotificationDeadLetterReplayIn(_NotificationDeadLetterJobIds):
+    pass
+
+
+class NotificationDeadLetterPurgeIn(_NotificationDeadLetterJobIds):
+    pass

@@ -100,6 +100,7 @@ const Navbar = () => {
       { to: "/map", label: t("navigation:menu.map") },
     ]
     if (user?.role === "admin") {
+      base.push({ to: "/admin/notifications", label: t("navigation:menu.notificationsAdmin") })
       base.push({ to: "/admin/stories", label: t("navigation:menu.stories") })
       base.push({ to: "/admin/users", label: t("navigation:menu.users") })
     }
