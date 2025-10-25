@@ -51,6 +51,7 @@ from app.services.story_cleanup import (
     cleanup_expired_stories,
     start_story_cleanup_scheduler,
 )
+from app.core.schema_upgrade import ensure_webauthn_attestation_columns
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        await ensure_webauthn_attestation_columns(engine)
     stop_scheduler = None
     stop_notifications_retention = None
     stop_session_cleanup = None
