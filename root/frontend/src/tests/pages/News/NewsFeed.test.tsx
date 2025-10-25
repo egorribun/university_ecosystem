@@ -70,7 +70,9 @@ const createMockCaches = (initialEntries: CacheEntry[] = []) => {
     delete: vi.fn(async () => false),
     add: vi.fn(),
     addAll: vi.fn(),
-    keys: vi.fn(async () => Array.from(entries.keys()).map((key) => new Request(key.split("::")[0]!))),
+    keys: vi.fn(async () =>
+      Array.from(entries.keys()).map((key) => new Request(key.split("::")[0]!))
+    ),
   } as unknown as Cache
 
   const cachesStorage = {

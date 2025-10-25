@@ -189,8 +189,10 @@ export const useNewsFeed = (language: SupportedLanguage) => {
   const query = useQuery<NewsFeedSnapshot, Error, NewsItem[], NewsFeedQueryKey>({
     queryKey,
     queryFn: async ({ signal }) =>
-      fetchNewsSnapshot(language, signal, () =>
-        queryClient.getQueryData<NewsFeedSnapshot>(queryKey) ?? readCacheSnapshot(language)
+      fetchNewsSnapshot(
+        language,
+        signal,
+        () => queryClient.getQueryData<NewsFeedSnapshot>(queryKey) ?? readCacheSnapshot(language)
       ),
     select: (snapshot) => snapshot.items,
     placeholderData: (previous) => previous,
