@@ -22,7 +22,9 @@ class _SortedSetEntry:
 class FakeRedis:
     """Minimal subset of :class:`redis.asyncio.Redis` methods."""
 
-    def __init__(self, *, encoding: str = "utf-8", decode_responses: bool = False) -> None:
+    def __init__(
+        self, *, encoding: str = "utf-8", decode_responses: bool = False
+    ) -> None:
         self.encoding = encoding
         self.decode_responses = decode_responses
         self._strings: Dict[str, str] = {}
@@ -120,7 +122,9 @@ class FakeRedis:
             zset = {entry.member: entry for entry in self._get_sorted_set(key)}
             for member, score in mapping.items():
                 zset[member] = _SortedSetEntry(member=member, score=float(score))
-            self._sorted_sets[key] = sorted(zset.values(), key=lambda entry: entry.score)
+            self._sorted_sets[key] = sorted(
+                zset.values(), key=lambda entry: entry.score
+            )
 
     async def zrange(
         self,
@@ -152,7 +156,9 @@ class FakeRedis:
         async with self._lock:
             return len(self._sorted_members(key))
 
-    async def zremrangebyscore(self, key: str, min_score: float, max_score: float) -> None:
+    async def zremrangebyscore(
+        self, key: str, min_score: float, max_score: float
+    ) -> None:
         async with self._lock:
             members = [
                 entry

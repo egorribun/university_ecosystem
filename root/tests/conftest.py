@@ -14,7 +14,6 @@ for candidate in (REPO_ROOT, PROJECT_ROOT):
         sys.path.insert(0, path_str)
 
 import fakeredis.aioredis
-
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
