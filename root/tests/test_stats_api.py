@@ -5,6 +5,7 @@ import pytest
 
 from app.auth.security import get_password_hash
 from app.models import models
+from app.services import attendance_tokens
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -100,23 +101,22 @@ async def test_attendance_stats_returns_expected_payload(
     )
     await db_session.commit()
 
-    attendances = [
-        models.EventAttendance(
-            user_id=student.id,
-            event_id=current_attended.id,
-            registered_at=now - timedelta(days=5, hours=1),
-        ),
-        models.EventAttendance(
-            user_id=student.id,
-            event_id=current_attended_2.id,
-            registered_at=now - timedelta(days=2, hours=2),
-        ),
-        models.EventAttendance(
-            user_id=student.id,
-            event_id=previous_attended.id,
-            registered_at=now - timedelta(days=34),
-        ),
-    ]
+    attendances = []
+    for event_id, registered_at in [
+        (current_attended.id, now - timedelta(days=5, hours=1)),
+        (current_attended_2.id, now - timedelta(days=2, hours=2)),
+        (previous_attended.id, now - timedelta(days=34)),
+    ]:
+        secret = attendance_tokens.generate_secret()
+        attendances.append(
+            models.EventAttendance(
+                user_id=student.id,
+                event_id=event_id,
+                registered_at=registered_at,
+                qr_secret=secret,
+                qr_hmac=attendance_tokens.compute_secret_hmac(secret),
+            )
+        )
     db_session.add_all(attendances)
     await db_session.commit()
 
@@ -238,25 +238,23 @@ async def test_participation_stats_summarize_events(
     db_session.add_all([event_one, event_two, previous_event])
     await db_session.commit()
 
-    db_session.add_all(
-        [
+    attendances = []
+    for event_id, registered_at in [
+        (event_one.id, now - timedelta(days=6, hours=1)),
+        (event_two.id, now - timedelta(days=3, hours=2)),
+        (previous_event.id, now - timedelta(days=39)),
+    ]:
+        secret = attendance_tokens.generate_secret()
+        attendances.append(
             models.EventAttendance(
                 user_id=student.id,
-                event_id=event_one.id,
-                registered_at=now - timedelta(days=6, hours=1),
-            ),
-            models.EventAttendance(
-                user_id=student.id,
-                event_id=event_two.id,
-                registered_at=now - timedelta(days=3, hours=2),
-            ),
-            models.EventAttendance(
-                user_id=student.id,
-                event_id=previous_event.id,
-                registered_at=now - timedelta(days=39),
-            ),
-        ]
-    )
+                event_id=event_id,
+                registered_at=registered_at,
+                qr_secret=secret,
+                qr_hmac=attendance_tokens.compute_secret_hmac(secret),
+            )
+        )
+    db_session.add_all(attendances)
     await db_session.commit()
 
     headers = await _login(async_client, student.email, password)

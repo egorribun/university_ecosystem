@@ -14,6 +14,8 @@ import os
 import secrets
 
 import sqlalchemy as sa
+from sqlalchemy import inspect
+from sqlalchemy.exc import NoSuchTableError
 
 from alembic import op
 
@@ -38,11 +40,27 @@ def _encode_digest(secret: str) -> str:
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
+def _table_columns(bind, table_name: str) -> set[str]:
+    inspector = inspect(bind)
+    try:
+        columns = inspector.get_columns(table_name)
+    except NoSuchTableError:
+        return set()
+    return {column["name"] for column in columns}
+
+
 def upgrade() -> None:
-    op.add_column(
-        "event_attendance", sa.Column("qr_secret", sa.String(), nullable=True)
-    )
-    op.add_column("event_attendance", sa.Column("qr_hmac", sa.String(), nullable=True))
+    bind = op.get_bind()
+    existing_columns = _table_columns(bind, "event_attendance")
+
+    if "qr_secret" not in existing_columns:
+        op.add_column(
+            "event_attendance", sa.Column("qr_secret", sa.String(), nullable=True)
+        )
+    if "qr_hmac" not in existing_columns:
+        op.add_column(
+            "event_attendance", sa.Column("qr_hmac", sa.String(), nullable=True)
+        )
 
     attendance = sa.table(
         "event_attendance",
@@ -53,24 +71,47 @@ def upgrade() -> None:
     )
 
     connection = op.get_bind()
-    rows = connection.execute(
-        sa.select(attendance.c.id, attendance.c.qr_code)
-    ).fetchall()
+    current_columns = _table_columns(connection, "event_attendance")
+    selectable = [attendance.c.id, attendance.c.qr_secret, attendance.c.qr_hmac]
+    include_qr_code = "qr_code" in current_columns
+    if include_qr_code:
+        selectable.insert(1, attendance.c.qr_code)
+    rows = connection.execute(sa.select(*selectable)).fetchall()
     for row in rows:
-        secret = row.qr_code or secrets.token_urlsafe(32)
-        connection.execute(
-            attendance.update()
-            .where(attendance.c.id == row.id)
-            .values(qr_secret=secret, qr_hmac=_encode_digest(secret))
-        )
+        mapping = row._mapping
+        existing_secret = mapping.get("qr_secret")
+        legacy_code = mapping.get("qr_code") if include_qr_code else None
+        secret = existing_secret or legacy_code or secrets.token_urlsafe(32)
+        digest = _encode_digest(secret)
+        updates: dict[str, str] = {}
+        if existing_secret != secret:
+            updates["qr_secret"] = secret
+        if mapping.get("qr_hmac") != digest:
+            updates["qr_hmac"] = digest
+        if updates:
+            connection.execute(
+                attendance.update()
+                .where(attendance.c.id == mapping["id"])
+                .values(**updates)
+            )
 
-    op.drop_column("event_attendance", "qr_code")
-    op.alter_column("event_attendance", "qr_secret", nullable=False)
-    op.alter_column("event_attendance", "qr_hmac", nullable=False)
+    if include_qr_code:
+        op.drop_column("event_attendance", "qr_code")
+    if bind.dialect.name != "sqlite":
+        if "qr_secret" in current_columns:
+            op.alter_column("event_attendance", "qr_secret", nullable=False)
+        if "qr_hmac" in current_columns:
+            op.alter_column("event_attendance", "qr_hmac", nullable=False)
 
 
 def downgrade() -> None:
-    op.add_column("event_attendance", sa.Column("qr_code", sa.String(), nullable=True))
+    bind = op.get_bind()
+    existing_columns = _table_columns(bind, "event_attendance")
+
+    if "qr_code" not in existing_columns:
+        op.add_column(
+            "event_attendance", sa.Column("qr_code", sa.String(), nullable=True)
+        )
 
     attendance = sa.table(
         "event_attendance",
@@ -90,5 +131,7 @@ def downgrade() -> None:
             .values(qr_code=row.qr_secret)
         )
 
-    op.drop_column("event_attendance", "qr_hmac")
-    op.drop_column("event_attendance", "qr_secret")
+    if "qr_hmac" in existing_columns or "qr_hmac" in _table_columns(connection, "event_attendance"):
+        op.drop_column("event_attendance", "qr_hmac")
+    if "qr_secret" in existing_columns or "qr_secret" in _table_columns(connection, "event_attendance"):
+        op.drop_column("event_attendance", "qr_secret")

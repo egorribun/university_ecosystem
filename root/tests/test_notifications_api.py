@@ -6,6 +6,7 @@ from sqlalchemy import select, text, update
 
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
+from app.core.database import async_session
 from app.models.models import Notification, NotificationQueueJob
 from app.services.notifications import create_notifications_for_users
 
@@ -439,13 +440,14 @@ async def test_admin_dead_letter_retry_requeues_jobs(
     assert response.status_code == 200
     assert response.json() == {"retried": 1}
 
-    refreshed = await db_session.get(NotificationQueueJob, job.id)
-    assert refreshed is not None
-    assert refreshed.dead_lettered is False
-    assert refreshed.claimed_at is None
-    assert refreshed.next_retry_at is None
-    assert refreshed.last_error is None
-    assert refreshed.attempts == 0
+    async with async_session() as verify_session:
+        refreshed = await verify_session.get(NotificationQueueJob, job.id)
+        assert refreshed is not None
+        assert refreshed.dead_lettered is False
+        assert refreshed.claimed_at is None
+        assert refreshed.next_retry_at is None
+        assert refreshed.last_error is None
+        assert refreshed.attempts == 0
 
 
 @pytest.mark.anyio
@@ -485,7 +487,8 @@ async def test_admin_dead_letter_purge_removes_jobs(
     assert response.status_code == 200
     assert response.json() == {"deleted": 1}
 
-    removed = await db_session.get(NotificationQueueJob, doomed.id)
-    assert removed is None
-    remaining = await db_session.get(NotificationQueueJob, survivor.id)
-    assert remaining is not None
+    async with async_session() as verify_session:
+        removed = await verify_session.get(NotificationQueueJob, doomed.id)
+        assert removed is None
+        remaining = await verify_session.get(NotificationQueueJob, survivor.id)
+        assert remaining is not None
