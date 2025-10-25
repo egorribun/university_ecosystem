@@ -465,8 +465,7 @@ async def get_all_events(
                 await db.refresh(row)
         registered_ids = {row.event_id for row in attendance_rows}
         qr_map = {
-            row.event_id: attendance_tokens.issue_token(row)
-            for row in attendance_rows
+            row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
         }
 
     normalized_locale = normalize_locale(locale)
@@ -676,7 +675,9 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
         for row in updated_rows:
             await db.refresh(row)
     ids = [row.event_id for row in attendance_rows]
-    qr_map = {row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows}
+    qr_map = {
+        row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
+    }
     q = select(models.Event).where(models.Event.id.in_(ids))
     events = (await db.execute(q)).scalars().all()
     counts = await _attendance_counts(db, ids)

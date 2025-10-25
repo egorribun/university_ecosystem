@@ -14,8 +14,8 @@ import os
 import secrets
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "202507310001"
@@ -39,7 +39,9 @@ def _encode_digest(secret: str) -> str:
 
 
 def upgrade() -> None:
-    op.add_column("event_attendance", sa.Column("qr_secret", sa.String(), nullable=True))
+    op.add_column(
+        "event_attendance", sa.Column("qr_secret", sa.String(), nullable=True)
+    )
     op.add_column("event_attendance", sa.Column("qr_hmac", sa.String(), nullable=True))
 
     attendance = sa.table(
@@ -51,7 +53,9 @@ def upgrade() -> None:
     )
 
     connection = op.get_bind()
-    rows = connection.execute(sa.select(attendance.c.id, attendance.c.qr_code)).fetchall()
+    rows = connection.execute(
+        sa.select(attendance.c.id, attendance.c.qr_code)
+    ).fetchall()
     for row in rows:
         secret = row.qr_code or secrets.token_urlsafe(32)
         connection.execute(
@@ -76,7 +80,9 @@ def downgrade() -> None:
     )
 
     connection = op.get_bind()
-    rows = connection.execute(sa.select(attendance.c.id, attendance.c.qr_secret)).fetchall()
+    rows = connection.execute(
+        sa.select(attendance.c.id, attendance.c.qr_secret)
+    ).fetchall()
     for row in rows:
         connection.execute(
             attendance.update()

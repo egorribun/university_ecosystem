@@ -94,7 +94,9 @@ class AttendanceTokenPayload:
             "iat": self.issued_at,
             "exp": self.expires_at,
         }
-        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
+            "utf-8"
+        )
 
     @classmethod
     def decode(cls, data: bytes) -> "AttendanceTokenPayload":
@@ -109,7 +111,9 @@ class AttendanceTokenPayload:
         )
 
 
-def issue_token(attendance: Any, *, now: datetime | None = None, ttl_seconds: int | None = None) -> str:
+def issue_token(
+    attendance: Any, *, now: datetime | None = None, ttl_seconds: int | None = None
+) -> str:
     secret = getattr(attendance, "qr_secret", None)
     if not isinstance(secret, str) or not secret:
         raise AttendanceTokenError("Attendance record is missing QR secret material")
@@ -143,7 +147,9 @@ def verify_token(
     except ValueError as exc:
         raise AttendanceTokenInvalid("Token structure is invalid") from exc
     payload_bytes = _b64decode(payload_b64)
-    expected_signature = hmac.new(_server_secret(), payload_bytes, hashlib.sha256).digest()
+    expected_signature = hmac.new(
+        _server_secret(), payload_bytes, hashlib.sha256
+    ).digest()
     try:
         provided_signature = _b64decode(signature_b64)
     except (ValueError, binascii.Error) as exc:

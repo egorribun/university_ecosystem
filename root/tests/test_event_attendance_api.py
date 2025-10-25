@@ -247,7 +247,9 @@ async def test_attendance_token_reuse_rejected_after_expiry(
 
 
 @pytest.mark.anyio
-async def test_attendance_token_signature_tampering(async_client, db_session, user_factory):
+async def test_attendance_token_signature_tampering(
+    async_client, db_session, user_factory
+):
     token, attendance, _, _ = await _register_for_event(
         async_client, db_session, user_factory
     )
