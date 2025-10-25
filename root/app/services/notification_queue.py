@@ -527,6 +527,7 @@ async def _claim_next_persistent_job() -> NotificationJob | None:
     metrics = _get_metrics()
     if metrics is not None:
         await _refresh_persistent_queue_size(metrics)
+    return job
 
 
 async def list_dead_lettered_jobs(
