@@ -262,7 +262,7 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   id: snapshot.id,
   email: "",
   full_name: snapshot.full_name,
-  role: null,
+  role: "student",
   group_id: null,
   avatar_url: snapshot.avatar_url,
   cover_url: null,

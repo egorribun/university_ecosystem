@@ -1,5 +1,9 @@
+import { z } from "zod"
+
 import api from "@/api/client"
+import type { components, paths } from "@/api/generated/schema"
 import type { PushSubscriptionResponse, SendTestNotificationResponse } from "@/types/notifications"
+import { ensureValidResponse } from "./validation"
 
 export async function saveSubscription(
   sub: PushSubscriptionJSON,
@@ -15,7 +19,7 @@ export async function saveSubscription(
   const userAgent =
     typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent : undefined
 
-  const payload = {
+  const payload: components["schemas"]["PushSubscriptionIn"] = {
     endpoint,
     keys: { p256dh, auth },
     topics,
@@ -27,7 +31,8 @@ export async function saveSubscription(
 }
 
 export async function deleteSubscription(endpoint: string): Promise<void> {
-  await api.post("/push/unsubscribe", { endpoint })
+  const payload: components["schemas"]["PushSubscriptionDelete"] = { endpoint }
+  await api.post("/push/unsubscribe", payload)
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {
@@ -35,13 +40,12 @@ export async function sendTest(): Promise<SendTestNotificationResponse> {
   return data
 }
 
-type VapidPublicKeyResponse = {
-  publicKey?: string | null
-}
-
 export async function getVapidPublicKey(): Promise<string | null> {
-  const { data } = await api.get<VapidPublicKeyResponse>("/push/vapid-public-key")
-  const raw = typeof data?.publicKey === "string" ? data.publicKey : null
-  const normalized = raw?.trim()
-  return normalized ? normalized : null
+  const { data } = await api.get<
+    paths["/push/vapid-public-key"]["get"]["responses"]["200"]["content"]["application/json"]
+  >("/push/vapid-public-key")
+  const schema = z.object({ publicKey: z.string().trim().min(1).optional() })
+  const parsed = ensureValidResponse(schema, data, "GET /push/vapid-public-key")
+  const normalized = parsed.publicKey?.trim()
+  return normalized && normalized.length > 0 ? normalized : null
 }

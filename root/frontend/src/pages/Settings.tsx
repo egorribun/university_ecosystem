@@ -711,7 +711,12 @@ export default function Settings() {
   const defaultMethodText = useMemo(() => {
     const key = user?.mfa_default_method
     if (!key) return t("settings:security.status.noDefault")
-    return t("settings:security.status.defaultMethod", { method: methodLabels[key] })
+    if (!(key in methodLabels)) {
+      return t("settings:security.status.noDefault")
+    }
+    return t("settings:security.status.defaultMethod", {
+      method: methodLabels[key as MfaMethod],
+    })
   }, [methodLabels, t, user?.mfa_default_method])
 
   const lastVerifiedText = useMemo(() => {
@@ -1759,7 +1764,7 @@ export default function Settings() {
                   <Stack spacing={1.25}>
                     {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
                       const added = formatDateTime(credential.created_at)
-                      const lastUsed = formatDateTime(credential.last_used_at)
+                      const lastUsed = formatDateTime(credential.last_used_at ?? null)
                       return (
                         <Stack
                           key={credential.credential_id}

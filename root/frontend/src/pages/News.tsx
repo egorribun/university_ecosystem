@@ -29,30 +29,8 @@ import SmartImage from "@/components/SmartImage"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
-
-type NewsItem = {
-  id: number
-  title: string
-  content: string
-  title_en?: string | null
-  content_en?: string | null
-  created_at: string
-  image_url?: string | null
-}
-
-const isNewsItem = (value: unknown): value is NewsItem => {
-  if (!value || typeof value !== "object") return false
-  const obj = value as Record<string, unknown>
-  return (
-    typeof obj.id === "number" &&
-    typeof obj.title === "string" &&
-    typeof obj.content === "string" &&
-    typeof obj.created_at === "string"
-  )
-}
-
-const toNewsList = (value: unknown): NewsItem[] =>
-  Array.isArray(value) ? value.filter(isNewsItem) : []
+import { ApiResponseValidationError } from "@/api/validation"
+import { fetchNews as fetchNewsRequest, parseNewsList, type NewsItem } from "@/api/news"
 
 type NewsFormState = {
   title: string
@@ -98,10 +76,14 @@ const News = () => {
 
       if (cached && !hydratedFromCache.current) {
         try {
-          const arr = toNewsList(JSON.parse(cached))
+          const arr = parseNewsList(JSON.parse(cached))
           startTransition(() => setNewsList(arr))
           hydratedFromCache.current = true
-        } catch {}
+        } catch (error) {
+          if (!(error instanceof ApiResponseValidationError)) {
+            console.error(error)
+          }
+        }
       }
 
       const shouldShowLoader = !cached && !hydratedFromCache.current
@@ -111,18 +93,22 @@ const News = () => {
         const storedTagPrimary = localStorage.getItem(etagKey)
         const storedTagLegacy = language === "ru" ? localStorage.getItem(legacyEtagKey) : null
         const etag = storedTagPrimary ?? storedTagLegacy ?? ""
-        const res = await axios.get<NewsItem[]>("/news", {
-          headers: {
-            ...(etag ? { "If-None-Match": etag } : {}),
-          },
+        const res = await fetchNewsRequest({
+          ifNoneMatch: etag,
           signal,
-          validateStatus: (s) => s === 200 || s === 304,
         })
 
         if (signal?.aborted) return
 
         if (res.status === 200) {
-          const arr = toNewsList(res.data)
+          let arr: NewsItem[] = []
+          try {
+            arr = parseNewsList(res.data)
+          } catch (error) {
+            if (!(error instanceof ApiResponseValidationError)) {
+              console.error(error)
+            }
+          }
           startTransition(() => setNewsList(arr))
           hydratedFromCache.current = true
           localStorage.setItem(cacheKey, JSON.stringify(arr))
@@ -134,7 +120,7 @@ const News = () => {
           }
         } else if (res.status === 304 && cached) {
           try {
-            const arr = toNewsList(JSON.parse(cached))
+            const arr = parseNewsList(JSON.parse(cached))
             startTransition(() => setNewsList(arr))
             hydratedFromCache.current = true
           } catch {

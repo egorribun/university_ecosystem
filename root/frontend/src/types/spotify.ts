@@ -1,12 +1,8 @@
-export type NowPlaying = {
-  is_playing: boolean
-  track_id: string | null
-  track_name: string | null
-  artists: string[]
-  album_name: string | null
-  album_image_url: string | null
-  track_url: string | null
-  duration_ms: number | null
-  progress_ms: number | null
+import type { components } from "@/api/generated/schema"
+
+type SpotifyNowPlayingOut = components["schemas"]["SpotifyNowPlayingOut"]
+
+export type NowPlaying = Omit<SpotifyNowPlayingOut, "artists" | "fetched_at"> & {
+  artists: SpotifyNowPlayingOut["artists"] extends (infer T)[] | undefined ? T[] : string[]
   fetched_at?: string | number | Date | null
 }

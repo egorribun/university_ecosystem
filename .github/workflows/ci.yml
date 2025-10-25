@@ -65,6 +65,33 @@ jobs:
       - name: Install frontend dependencies
         working-directory: root/frontend
         run: npm ci
+      - name: Generate OpenAPI schema
+        working-directory: root
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          from app.main import app
+
+          schema_path = pathlib.Path("frontend/openapi.json")
+          schema_path.write_text(json.dumps(app.openapi()))
+          PY
+      - name: Generate API types
+        working-directory: root/frontend
+        env:
+          OPENAPI_PATH: frontend/openapi.json
+        run: npm run generate:api
+      - name: Remove temporary OpenAPI schema
+        working-directory: root
+        run: rm -f frontend/openapi.json
+      - name: Verify generated API types are up to date
+        working-directory: root
+        run: |
+          if ! git diff --quiet -- frontend/src/api/generated/schema.ts; then
+            echo "::error::Generated API types are not up to date. Run 'npm run generate:api'."
+            git diff -- frontend/src/api/generated/schema.ts
+            exit 1
+          fi
       - name: Run ESLint and Prettier
         working-directory: root/frontend
         run: |

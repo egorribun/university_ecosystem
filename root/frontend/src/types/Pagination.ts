@@ -1,8 +1,7 @@
-export interface PaginatedResponse<T> {
+import type { components } from "@/api/generated/schema"
+
+type PaginatedEventsSchema = components["schemas"]["PaginatedEvents"]
+
+export type PaginatedResponse<T> = Omit<PaginatedEventsSchema, "items"> & {
   items: T[]
-  total: number
-  limit: number
-  cursor: number
-  next_cursor: number | null
-  has_more: boolean
 }

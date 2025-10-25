@@ -136,7 +136,7 @@ const {
     files: [],
     participant_count: 42,
     is_registered: false,
-    my_qr_code: null,
+    my_qr_token: null,
   }
   const storiesItems = [
     {
