@@ -90,9 +90,7 @@ export default function AdminNotifications() {
   const listQuery = useQuery({
     queryKey,
     queryFn: async () => {
-      const { data } = await apiClient.get<DeadLetterResponse>(
-        "/notifications/admin/dead-letter"
-      )
+      const { data } = await apiClient.get<DeadLetterResponse>("/notifications/admin/dead-letter")
       return data
     },
   })
@@ -210,7 +208,9 @@ export default function AdminNotifications() {
                   indeterminate={selected.size > 0 && !allSelected}
                   checked={allSelected}
                   onChange={handleSelectAll}
-                  inputProps={{ "aria-label": t("admin:notifications.table.selectAll") ?? "Select all" }}
+                  inputProps={{
+                    "aria-label": t("admin:notifications.table.selectAll") ?? "Select all",
+                  }}
                 />
               </TableCell>
               <TableCell>{t("admin:notifications.table.columns.kind")}</TableCell>
@@ -231,12 +231,17 @@ export default function AdminNotifications() {
                     <Checkbox
                       checked={isSelected}
                       onChange={() => toggleSelect(job.id)}
-                      inputProps={{ "aria-label": t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select" }}
+                      inputProps={{
+                        "aria-label":
+                          t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select",
+                      }}
                     />
                   </TableCell>
                   <TableCell>{formatJobKind(job.kind, t)}</TableCell>
                   <TableCell>{job.record_id}</TableCell>
-                  <TableCell>{job.locale ?? t("admin:notifications.table.localeFallback")}</TableCell>
+                  <TableCell>
+                    {job.locale ?? t("admin:notifications.table.localeFallback")}
+                  </TableCell>
                   <TableCell>{dateFormatter.format(new Date(job.enqueued_at))}</TableCell>
                   <TableCell>{job.attempts}</TableCell>
                   <TableCell>
@@ -259,7 +264,9 @@ export default function AdminNotifications() {
                           size="small"
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          aria-label={t("admin:notifications.actions.retryJob", { id: job.id }) ?? "Retry job"}
+                          aria-label={
+                            t("admin:notifications.actions.retryJob", { id: job.id }) ?? "Retry job"
+                          }
                         >
                           <ReplayIcon fontSize="small" />
                         </IconButton>
@@ -271,7 +278,10 @@ export default function AdminNotifications() {
                           size="small"
                           onClick={() => purgeMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          aria-label={t("admin:notifications.actions.purgeJob", { id: job.id }) ?? "Delete job"}
+                          aria-label={
+                            t("admin:notifications.actions.purgeJob", { id: job.id }) ??
+                            "Delete job"
+                          }
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
