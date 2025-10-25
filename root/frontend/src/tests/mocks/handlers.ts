@@ -2,6 +2,13 @@ import { HttpResponse, http } from "msw"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
 import type { Event } from "@/types/Event"
+import type {
+  MfaMethod,
+  MfaTotpEnrollment,
+  MfaVerifyPayload,
+  PendingMfaResponse,
+  TotpEnrollmentStartResponse,
+} from "@/types/Mfa"
 
 type NewUserPayload = {
   email?: string
@@ -48,6 +55,119 @@ export const testUser: User = {
   webauthn_credentials: [],
   recovery_codes: [],
   mfa_challenges: [],
+}
+
+const nowIso = () => new Date().toISOString()
+
+const createTotpEnrollment = (overrides: Partial<MfaTotpEnrollment> = {}): MfaTotpEnrollment => {
+  const createdAt = overrides.created_at ?? nowIso()
+  return {
+    id: overrides.id ?? Math.floor(Math.random() * 10_000) + 1,
+    user_id: overrides.user_id ?? testUser.id,
+    label: overrides.label ?? null,
+    is_active: overrides.is_active ?? false,
+    confirmed_at: overrides.confirmed_at ?? null,
+    revoked_at: overrides.revoked_at ?? null,
+    created_at: createdAt,
+  }
+}
+
+const createChallengeExpiresAt = () => new Date(Date.now() + 5 * 60 * 1000).toISOString()
+
+type ChallengeOptions = {
+  includeTotp?: boolean
+  includeRecovery?: boolean
+  includeWebAuthn?: boolean
+  defaultMethod?: MfaMethod | null
+  sessionId?: number | null
+}
+
+const createMfaChallenge = ({
+  includeTotp = true,
+  includeRecovery = false,
+  includeWebAuthn = false,
+  defaultMethod = includeTotp ? "totp" : includeWebAuthn ? "webauthn" : null,
+  sessionId = 1,
+}: ChallengeOptions = {}): PendingMfaResponse => {
+  const methods: PendingMfaResponse["methods"] = []
+  if (includeTotp) {
+    methods.push({
+      method: "totp",
+      challenge_token: "totp-challenge-token",
+      challenge_expires_at: createChallengeExpiresAt(),
+      options: null,
+    })
+  }
+  if (includeRecovery) {
+    methods.push({
+      method: "recovery",
+      challenge_token: "recovery-challenge-token",
+      challenge_expires_at: createChallengeExpiresAt(),
+      options: null,
+    })
+  }
+  if (includeWebAuthn) {
+    methods.push({
+      method: "webauthn",
+      challenge_token: "webauthn-challenge-token",
+      challenge_expires_at: createChallengeExpiresAt(),
+      options: {
+        challenge: "c2FtcGxlLXdlYmF1dGhuLWNoYWxsZW5nZQ==",
+        timeout: 60_000,
+        rpId: "localhost",
+        allowCredentials: [
+          {
+            type: "public-key",
+            id: "credential-id",
+            transports: ["internal"],
+          },
+        ],
+        userVerification: "preferred",
+      },
+    })
+  }
+
+  return {
+    status: "mfa_required",
+    user_id: testUser.id,
+    session_id: sessionId,
+    default_method: defaultMethod,
+    methods,
+  }
+}
+
+let totpDraft: TotpEnrollmentStartResponse | null = null
+let totpEnrollmentCounter = 1
+let loginChallenge: PendingMfaResponse | null = null
+let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
+  includeTotp: true,
+  includeWebAuthn: true,
+  includeRecovery: true,
+  sessionId: 42,
+})
+
+const resetUserEnrollments = () => {
+  testUser.totp_enrollments.splice(0, testUser.totp_enrollments.length)
+  testUser.webauthn_credentials.splice(0, testUser.webauthn_credentials.length)
+  testUser.recovery_codes.splice(0, testUser.recovery_codes.length)
+  testUser.mfa_challenges.splice(0, testUser.mfa_challenges.length)
+}
+
+export const resetTestMfa = () => {
+  totpDraft = null
+  totpEnrollmentCounter = 1
+  loginChallenge = null
+  stepUpChallenge = createMfaChallenge({
+    includeTotp: true,
+    includeWebAuthn: true,
+    includeRecovery: true,
+    sessionId: 42,
+  })
+  testUser.mfa_required = false
+  testUser.mfa_default_method = null
+  testUser.mfa_last_verified_at = null
+  testUser.mfa_recovery_codes_generated_at = null
+  resetUserEnrollments()
 }
 
 const createBaseSessions = (): ActiveSession[] => {
@@ -141,12 +261,149 @@ export const resetTestEvents = () => {
   setTestEvents(createBaseEvents())
 }
 
+resetTestMfa()
+
 export const handlers = [
   http.get("*/auth/session/signing-key", () =>
     HttpResponse.json({ signing_key: "test-session-signing-key" })
   ),
   http.get("*/users/me", () => HttpResponse.json(testUser)),
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
+  http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments)),
+  http.post("*/auth/mfa/totp/start", async ({ request }) => {
+    let payload: unknown = {}
+    try {
+      payload = await request.json()
+    } catch {
+      payload = {}
+    }
+
+    const label =
+      payload &&
+      typeof payload === "object" &&
+      typeof (payload as { label?: unknown }).label === "string"
+        ? ((payload as { label?: string }).label as string)
+        : null
+
+    const enrollment = createTotpEnrollment({
+      id: totpEnrollmentCounter++,
+      label,
+      created_at: nowIso(),
+    })
+    const secret = "JBSW Y3DP EHJK"
+    const otpauthUrl = `otpauth://totp/University:user?secret=${secret.replace(/\s+/g, "")}&issuer=University`
+    totpDraft = { enrollment, secret, otpauth_url: otpauthUrl }
+    return HttpResponse.json(totpDraft)
+  }),
+  http.post("*/auth/mfa/totp/confirm", async ({ request }) => {
+    if (!totpDraft) {
+      return HttpResponse.json({ detail: "No pending enrollment" }, { status: 400 })
+    }
+
+    const body = (await request.json().catch(() => null)) as {
+      enrollment_id?: number
+      code?: string
+    } | null
+
+    if (!body || body.enrollment_id !== totpDraft.enrollment.id) {
+      return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
+    }
+
+    const code = (body.code ?? "").toString().replace(/\s+/g, "")
+    if (code !== "123456") {
+      return HttpResponse.json({ detail: "Invalid verification code" }, { status: 400 })
+    }
+
+    const confirmed = {
+      ...totpDraft.enrollment,
+      is_active: true,
+      confirmed_at: nowIso(),
+    }
+    totpDraft = null
+    testUser.mfa_default_method = "totp"
+    testUser.mfa_last_verified_at = nowIso()
+    testUser.mfa_required = false
+    testUser.totp_enrollments.splice(0, testUser.totp_enrollments.length, confirmed)
+    return HttpResponse.json(confirmed)
+  }),
+  http.delete("*/auth/mfa/totp/:id", ({ params }) => {
+    const id = Number(params.id)
+    const index = testUser.totp_enrollments.findIndex((entry) => entry.id === id)
+    if (index === -1) {
+      return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
+    }
+    const entry = testUser.totp_enrollments[index]!
+    entry.is_active = false
+    entry.revoked_at = nowIso()
+    testUser.totp_enrollments.splice(index, 1)
+    if (!testUser.totp_enrollments.length && testUser.mfa_default_method === "totp") {
+      testUser.mfa_default_method = null
+    }
+    return HttpResponse.json({ disabled: true })
+  }),
+  http.post("*/auth/mfa/step-up", () => {
+    if (!stepUpChallenge) {
+      stepUpChallenge = createMfaChallenge({
+        includeTotp: true,
+        includeRecovery: true,
+        includeWebAuthn: true,
+        sessionId: 42,
+      })
+    }
+    return HttpResponse.json(stepUpChallenge, { status: 202 })
+  }),
+  http.post("*/auth/mfa/verify", async ({ request }) => {
+    const body = (await request.json().catch(() => null)) as MfaVerifyPayload | null
+    if (!body || typeof body !== "object") {
+      return HttpResponse.json({ detail: "Invalid payload" }, { status: 400 })
+    }
+
+    const matchChallenge = (challenge: PendingMfaResponse | null) =>
+      Boolean(
+        challenge?.methods.some(
+          (method) =>
+            method.method === body.method && method.challenge_token === body.challenge_token
+        )
+      )
+
+    const matchedLogin = matchChallenge(loginChallenge)
+    const matchedStepUp = matchChallenge(stepUpChallenge)
+
+    if (!matchedLogin && !matchedStepUp) {
+      return HttpResponse.json({ detail: "Challenge expired" }, { status: 400 })
+    }
+
+    if (body.method === "webauthn") {
+      if (!body.credential || typeof body.credential !== "object") {
+        return HttpResponse.json({ detail: "Invalid credential" }, { status: 400 })
+      }
+    } else {
+      const code = body.code?.toString().replace(/\s+/g, "") ?? ""
+      if (code !== "123456" && !(body.method === "recovery" && code === "RECOVERY-1")) {
+        return HttpResponse.json({ detail: "Invalid verification code" }, { status: 400 })
+      }
+    }
+
+    testUser.mfa_last_verified_at = nowIso()
+    if (body.method !== "recovery") {
+      testUser.mfa_default_method = body.method
+    }
+    testUser.mfa_required = false
+
+    if (matchedLogin) {
+      loginChallenge = null
+    }
+    if (matchedStepUp) {
+      stepUpChallenge = createMfaChallenge({
+        includeTotp: true,
+        includeRecovery: true,
+        includeWebAuthn: true,
+        sessionId: 42,
+      })
+    }
+
+    return HttpResponse.json({ access_token: "test-access-token", token_type: "bearer" })
+  }),
   http.delete("*/auth/sessions/:id", ({ params }) => {
     const id = Number(params.id)
     const session = testSessions.find((item) => item.id === id)
@@ -196,6 +453,31 @@ export const handlers = [
 
     if (!username || !password || username === "blocked@example.com") {
       return HttpResponse.json({ detail: "Неверные данные для входа" }, { status: 401 })
+    }
+
+    if (username === "mfa@example.com" && password === "Password123") {
+      loginChallenge = createMfaChallenge({
+        includeTotp: true,
+        includeRecovery: true,
+        defaultMethod: "totp",
+        sessionId: 84,
+      })
+      testUser.mfa_required = true
+      testUser.mfa_default_method = "totp"
+      return HttpResponse.json(loginChallenge, { status: 202 })
+    }
+
+    if (username === "webauthn@example.com" && password === "Password123") {
+      loginChallenge = createMfaChallenge({
+        includeTotp: false,
+        includeRecovery: false,
+        includeWebAuthn: true,
+        defaultMethod: "webauthn",
+        sessionId: 96,
+      })
+      testUser.mfa_required = true
+      testUser.mfa_default_method = "webauthn"
+      return HttpResponse.json(loginChallenge, { status: 202 })
     }
 
     return HttpResponse.json({ access_token: "test-access-token", username })

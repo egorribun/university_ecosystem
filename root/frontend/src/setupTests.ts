@@ -5,7 +5,7 @@ import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
 import { toHaveNoViolations } from "jest-axe"
 import { server } from "./tests/mocks/server"
-import { resetTestEvents, resetTestSessions } from "./tests/mocks/handlers"
+import { resetTestEvents, resetTestMfa, resetTestSessions } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
 
 expect.extend(toHaveNoViolations)
@@ -19,6 +19,7 @@ afterEach(() => {
   server.resetHandlers()
   resetTestSessions()
   resetTestEvents()
+  resetTestMfa()
 })
 afterAll(() => server.close())
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder
@@ -46,4 +47,59 @@ if (!windowWithScroll.scrollTo) {
 }
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
+}))
+
+vi.mock("@simplewebauthn/browser", () => ({
+  startAuthentication: vi.fn(async () => ({
+    id: "test-credential",
+    rawId: "dGVzdC1jcmVkZW50aWFs",
+    response: {
+      clientDataJSON: "",
+      authenticatorData: "",
+      signature: "",
+      userHandle: null,
+    },
+    type: "public-key",
+    clientExtensionResults: () => ({}),
+    authenticatorAttachment: "platform",
+    toJSON() {
+      return {
+        id: "test-credential",
+        rawId: "dGVzdC1jcmVkZW50aWFs",
+        response: {
+          clientDataJSON: "",
+          authenticatorData: "",
+          signature: "",
+          userHandle: null,
+        },
+        type: "public-key",
+        clientExtensionResults: {},
+        authenticatorAttachment: "platform",
+      }
+    },
+  })),
+  startRegistration: vi.fn(async () => ({
+    id: "test-registration",
+    rawId: "dGVzdC1yZWc=",
+    response: {
+      clientDataJSON: "",
+      attestationObject: "",
+    },
+    type: "public-key",
+    clientExtensionResults: () => ({}),
+    authenticatorAttachment: "platform",
+    toJSON() {
+      return {
+        id: "test-registration",
+        rawId: "dGVzdC1yZWc=",
+        response: {
+          clientDataJSON: "",
+          attestationObject: "",
+        },
+        type: "public-key",
+        clientExtensionResults: {},
+        authenticatorAttachment: "platform",
+      }
+    },
+  })),
 }))

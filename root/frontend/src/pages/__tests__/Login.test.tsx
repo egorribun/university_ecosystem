@@ -169,6 +169,70 @@ describe("Login page", () => {
     expect(message).toBeInTheDocument()
   })
 
+  it("transitions to MFA verification when additional challenges are required", async () => {
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.email")), {
+        selector: 'input[type="email"]',
+      }),
+      "mfa@example.com"
+    )
+
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.password")), {
+        selector: 'input[type="password"]',
+      }),
+      "Password123"
+    )
+
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
+
+    await screen.findByText(tAuth("mfa.verifyTitle"))
+
+    const otpInput = screen.getByLabelText(/Authenticator code|Код из приложения/i)
+    await user.type(otpInput, "123456")
+    await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
+
+    await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
+  })
+
+  it("displays errors for invalid OTP attempts and allows retry", async () => {
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.email")), {
+        selector: 'input[type="email"]',
+      }),
+      "mfa@example.com"
+    )
+
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.password")), {
+        selector: 'input[type="password"]',
+      }),
+      "Password123"
+    )
+
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
+
+    await screen.findByText(tAuth("mfa.verifyTitle"))
+
+    const otpInput = screen.getByLabelText(/Authenticator code|Код из приложения/i)
+    await user.type(otpInput, "000000")
+    await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
+
+    await screen.findByText(/Invalid verification code|Неверный код/i)
+
+    await user.clear(otpInput)
+    await user.type(otpInput, "123456")
+    await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
+
+    await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
+  })
+
   it("meets basic accessibility requirements", async () => {
     const { container } = renderLogin()
     const results = await axe(container)
