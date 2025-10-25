@@ -47,9 +47,7 @@ def _ensure_webauthn_columns(sync_conn: Connection) -> None:
             column_type,
         )
         sync_conn.execute(
-            sa.text(
-                f"ALTER TABLE {_TABLE_NAME} ADD COLUMN {column_name} {column_type}"
-            )
+            sa.text(f"ALTER TABLE {_TABLE_NAME} ADD COLUMN {column_name} {column_type}")
         )
         columns.add(column_name)
 
@@ -59,9 +57,7 @@ def _ensure_webauthn_columns(sync_conn: Connection) -> None:
 
     logger.info("Creating missing index %s on %s", _INDEX_NAME, _TABLE_NAME)
     sync_conn.execute(
-        sa.text(
-            f"CREATE INDEX IF NOT EXISTS {_INDEX_NAME} ON {_TABLE_NAME} (aaguid)"
-        )
+        sa.text(f"CREATE INDEX IF NOT EXISTS {_INDEX_NAME} ON {_TABLE_NAME} (aaguid)")
     )
 
 

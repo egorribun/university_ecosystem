@@ -44,7 +44,6 @@ def sqlite_engine(tmp_path: Path) -> AsyncEngine:
 
 
 def _get_columns(engine: AsyncEngine) -> set[str]:
-
     async def _inner() -> set[str]:
         async with engine.connect() as conn:
             return await conn.run_sync(
@@ -60,7 +59,6 @@ def _get_columns(engine: AsyncEngine) -> set[str]:
 
 
 def _get_indexes(engine: AsyncEngine) -> set[str]:
-
     async def _inner() -> set[str]:
         async with engine.connect() as conn:
             return await conn.run_sync(
