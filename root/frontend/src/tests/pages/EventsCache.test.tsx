@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
+import type { ContextType } from "react"
 
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
@@ -34,11 +35,13 @@ const buildEvent = (id: number, title: string, isActive: boolean): Event => {
     files: [],
     participant_count: 0,
     is_registered: null,
-    my_qr_code: null,
+    my_qr_token: null,
   }
 }
 
-const authValue = {
+type AuthContextValue = ContextType<typeof AuthContext>
+
+const authValue: AuthContextValue = {
   isAuth: true,
   login: vi.fn(),
   logout: vi.fn(),

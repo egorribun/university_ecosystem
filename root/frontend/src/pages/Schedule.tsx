@@ -557,7 +557,7 @@ export default function Schedule() {
   useEffect(() => {
     if (!user) return
     if (user.role === "student" && user.group_id) {
-      setSelectedGroup((prev) => prev ?? user.group_id)
+      setSelectedGroup((prev) => prev ?? user.group_id ?? null)
     }
   }, [user])
 

@@ -121,8 +121,10 @@ def issue_token(
     if ttl <= 0:
         raise AttendanceTokenError("Attendance token TTL must be positive")
     moment = now or _now()
-    issued_at = int(moment.timestamp())
-    expires_at = int((moment + timedelta(seconds=ttl)).timestamp())
+    current_second = int(moment.timestamp())
+    slot_start = (current_second // ttl) * ttl
+    issued_at = slot_start
+    expires_at = slot_start + ttl
     payload = AttendanceTokenPayload(
         purpose=TOKEN_PURPOSE,
         event_id=int(getattr(attendance, "event_id")),

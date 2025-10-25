@@ -21,7 +21,8 @@
     "lhci": "lhci autorun --budget-path=../../budget.json --upload.target=filesystem --upload.outputDir=.lighthouseci",
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
-    "prepare": "husky ../.husky"
+    "prepare": "husky ../.husky",
+    "generate:api": "node ./scripts/generate-api-types.mjs"
   },
   "keywords": [],
   "author": "",
@@ -55,6 +56,7 @@
     "react-dom": "^19.1.0",
     "react-i18next": "^16.0.1",
     "react-router-dom": "^6.30.0",
+    "zod": "^3.24.1",
     "zxcvbn": "^4.4.2"
   },
   "devDependencies": {
@@ -95,7 +97,8 @@
     "vite-plugin-pwa": "^1.0.3",
     "vitest": "^2.1.5",
     "workbox-build": "^7.3.0",
-    "workbox-window": "^7.3.0"
+    "workbox-window": "^7.3.0",
+    "openapi-typescript": "^7.5.1"
   },
   "description": "",
   "lint-staged": {

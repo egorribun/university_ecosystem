@@ -159,10 +159,10 @@ let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
 })
 
 const resetUserEnrollments = () => {
-  testUser.totp_enrollments.splice(0, testUser.totp_enrollments.length)
-  testUser.webauthn_credentials.splice(0, testUser.webauthn_credentials.length)
-  testUser.recovery_codes.splice(0, testUser.recovery_codes.length)
-  testUser.mfa_challenges.splice(0, testUser.mfa_challenges.length)
+  testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length)
+  testUser.webauthn_credentials!.splice(0, testUser.webauthn_credentials!.length)
+  testUser.recovery_codes!.splice(0, testUser.recovery_codes!.length)
+  testUser.mfa_challenges!.splice(0, testUser.mfa_challenges!.length)
 }
 
 export const resetTestMfa = () => {
@@ -258,7 +258,7 @@ const createBaseEvents = (): Event[] => {
       files: [],
       participant_count: 0,
       is_registered: null,
-      my_qr_code: null,
+      my_qr_token: null,
     }
   })
 }
@@ -326,7 +326,7 @@ export const handlers = [
   ),
   http.get("*/users/me", () => HttpResponse.json(testUser)),
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
-  http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments)),
+  http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments ?? [])),
   http.post("*/auth/mfa/totp/start", async ({ request }) => {
     let payload: unknown = {}
     try {
@@ -380,20 +380,20 @@ export const handlers = [
     testUser.mfa_default_method = "totp"
     testUser.mfa_last_verified_at = nowIso()
     testUser.mfa_required = false
-    testUser.totp_enrollments.splice(0, testUser.totp_enrollments.length, confirmed)
+    testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length, confirmed)
     return HttpResponse.json(confirmed)
   }),
   http.delete("*/auth/mfa/totp/:id", ({ params }) => {
     const id = Number(params.id)
-    const index = testUser.totp_enrollments.findIndex((entry) => entry.id === id)
+    const index = testUser.totp_enrollments!.findIndex((entry) => entry.id === id)
     if (index === -1) {
       return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
     }
-    const entry = testUser.totp_enrollments[index]!
+    const entry = testUser.totp_enrollments![index]!
     entry.is_active = false
     entry.revoked_at = nowIso()
-    testUser.totp_enrollments.splice(index, 1)
-    if (!testUser.totp_enrollments.length && testUser.mfa_default_method === "totp") {
+    testUser.totp_enrollments!.splice(index, 1)
+    if (!(testUser.totp_enrollments?.length ?? 0) && testUser.mfa_default_method === "totp") {
       testUser.mfa_default_method = null
     }
     return HttpResponse.json({ disabled: true })

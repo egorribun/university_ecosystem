@@ -52,21 +52,21 @@ dayjs.extend(timezone)
 type EventCardProps = {
   id: number
   title: string
-  description: string | null
+  description?: string | null
   title_en?: string | null
   description_en?: string | null
   event_type?: string | null
   event_type_en?: string | null
-  location: string | null
+  location?: string | null
   location_en?: string | null
   starts_at: string
   ends_at: string
   created_by: number
   participant_count: number
-  files: Event["files"]
+  files?: Event["files"]
   is_active: boolean
   is_registered?: boolean | null
-  my_qr_code?: string | null
+  my_qr_token?: string | null
   speaker?: string | null
   image_url?: string | null
   about?: string | null
@@ -118,7 +118,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   participant_count,
   is_active,
   is_registered = false,
-  my_qr_code,
+  my_qr_token,
   speaker,
   image_url,
   about,
@@ -199,7 +199,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         setCount(event.participant_count)
       }
       if (nextRegistered) {
-        const code = event?.my_qr_code
+        const code = event?.my_qr_token
         if (code) {
           setQr(code)
           try {
@@ -230,21 +230,21 @@ const EventCardComponent: FC<EventCardProps> = ({
       } catch {}
       return
     }
-    if (my_qr_code) {
-      setQr(my_qr_code)
+    if (my_qr_token) {
+      setQr(my_qr_token)
       try {
-        localStorage.setItem(qrKey(id, user), my_qr_code)
+        localStorage.setItem(qrKey(id, user), my_qr_token)
       } catch {}
     }
-  }, [registered, my_qr_code, id, user])
+  }, [registered, my_qr_token, id, user])
 
   useEffect(() => {
-    if (!registered || qr || my_qr_code) return
+    if (!registered || qr || my_qr_token) return
     try {
       const stored = localStorage.getItem(qrKey(id, user))
       if (stored) setQr(stored)
     } catch {}
-  }, [registered, qr, my_qr_code, id, user])
+  }, [registered, qr, my_qr_token, id, user])
 
   useLayoutEffect(() => {
     try {
@@ -988,7 +988,7 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.participant_count === next.participant_count &&
   prev.is_active === next.is_active &&
   prev.is_registered === next.is_registered &&
-  prev.my_qr_code === next.my_qr_code &&
+  prev.my_qr_token === next.my_qr_token &&
   prev.speaker === next.speaker &&
   prev.image_url === next.image_url &&
   prev.about === next.about &&
