@@ -3,11 +3,15 @@ import { visuallyHidden } from "@mui/utils"
 import { useTranslation } from "react-i18next"
 import Layout from "./Layout"
 
+type LoadingStateProps = {
+  label?: string
+}
+
 const HEADER_SKELETON_RADIUS = "16px"
 
-export default function RouteGuardLoading() {
+export default function LoadingState({ label }: LoadingStateProps) {
   const { t } = useTranslation("common")
-  const loadingLabel = t("statuses.loading")
+  const loadingLabel = label ?? t("statuses.loading")
 
   return (
     <Layout>

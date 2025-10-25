@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 describe("PrivateRoute", () => {
-  test("shows a busy loading fallback while authentication is resolving", async () => {
+  test("shows an accessible loading fallback while authentication is resolving", async () => {
     mockUseAuth.mockReturnValue({ isAuth: false, loading: true, user: null })
 
     const { container } = render(
@@ -30,6 +30,7 @@ describe("PrivateRoute", () => {
 
     const status = screen.getByRole("status")
     expect(status).toHaveAttribute("aria-busy", "true")
+    expect(status).toHaveAttribute("aria-live", "polite")
     expect(screen.getAllByText(/loading/i)[0]).toBeInTheDocument()
     expect(container.querySelector("main#main")).not.toBeNull()
     expect(container.querySelector("header")).not.toBeNull()
@@ -73,10 +74,10 @@ describe("PrivateRoute", () => {
 })
 
 describe("AdminRoute", () => {
-  test("shows the loading indicator while the admin state is resolving", () => {
+  test("shows the loading indicator while the admin state is resolving", async () => {
     mockUseAuth.mockReturnValue({ isAuth: true, loading: true, user: { role: "admin" } })
 
-    render(
+    const { container } = render(
       <AdminRoute>
         <div>Admin content</div>
       </AdminRoute>
@@ -84,6 +85,9 @@ describe("AdminRoute", () => {
 
     const status = screen.getByRole("status")
     expect(status).toHaveAttribute("aria-busy", "true")
+    expect(status).toHaveAttribute("aria-live", "polite")
+
+    await checkA11y(container)
   })
 
   test("redirects non-admin users to the dashboard", () => {
