@@ -3,8 +3,8 @@ import type {
   MfaTotpEnrollment,
   PendingMfaResponse,
   TotpEnrollmentStartResponse,
-} from "../../src/types/Mfa"
-import type { User } from "../../src/types/User"
+} from "@/types/Mfa"
+import type { User } from "@/types/User"
 
 type NewsLogEntry = {
   header: string | undefined
@@ -621,7 +621,8 @@ export async function useMockApi(page: Page) {
       const matches = (challenge: PendingMfaResponse | null) =>
         Boolean(
           challenge?.methods.some(
-            (entry) => entry.method === method && entry.challenge_token === challengeToken
+            (entry: PendingMfaResponse["methods"][number]) =>
+              entry.method === method && entry.challenge_token === challengeToken
           )
         )
 

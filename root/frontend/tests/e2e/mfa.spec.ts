@@ -15,7 +15,7 @@ test.describe("Multi-factor authentication flows", () => {
     await page.getByRole("button", { name: matchTotpAddButton }).click()
     await expect(page.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
 
-    await page.getByLabelText(/Authenticator code|Код из приложения/i).fill("123456")
+    await page.getByLabel(/Authenticator code|Код из приложения/i).fill("123456")
     await page.getByRole("button", { name: matchTotpVerifyButton }).click()
 
     await expect(
@@ -36,7 +36,7 @@ test.describe("Multi-factor authentication flows", () => {
 
     await expect(page.getByText(/Verify it's you|Подтвердите свою личность/i)).toBeVisible()
 
-    await page.getByLabelText(/Authenticator code|Код из приложения/i).fill("123456")
+    await page.getByLabel(/Authenticator code|Код из приложения/i).fill("123456")
     await page.getByRole("button", { name: matchTotpVerifyButton }).click()
 
     await expect(page).toHaveURL(/\/dashboard$/)
@@ -54,7 +54,7 @@ test.describe("Multi-factor authentication flows", () => {
 
     await expect(page.getByText(/Verify it's you|Подтвердите свою личность/i)).toBeVisible()
 
-    const otpInput = page.getByLabelText(/Authenticator code|Код из приложения/i)
+    const otpInput = page.getByLabel(/Authenticator code|Код из приложения/i)
     await otpInput.fill("000000")
     await page.getByRole("button", { name: matchTotpVerifyButton }).click()
 
