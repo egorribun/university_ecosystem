@@ -1,7 +1,7 @@
 """tokenize event attendance qr codes
 
-Revision ID: 202507310001
-Revises: 202507300002
+Revision ID: 202507310002
+Revises: 202507310001
 Create Date: 2025-07-31 00:01:00.000000
 """
 
@@ -21,8 +21,8 @@ from sqlalchemy.exc import NoSuchTableError
 from alembic import context, op
 
 # revision identifiers, used by Alembic.
-revision = "202507310001"
-down_revision = "202507300002"
+revision = "202507310002"
+down_revision = "202507310001"
 branch_labels = None
 depends_on = None
 
