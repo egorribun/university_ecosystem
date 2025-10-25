@@ -31,3 +31,21 @@ The dashboard "stories" carousel now exposes additional localized strings in
 
 Whenever you adjust these phrases, update both `en` and `ru` locales so the
 dashboard and accessibility hints stay in sync across languages.
+
+## Campus map fallback
+
+Privacy settings, reduced-motion preferences, or offline conditions can disable
+the embedded Yandex map on the campus page. The replacement component relies on
+new strings in `system.json`:
+
+- `map.fallback.title` and `description.*` describe why the static view is
+  shown (load error vs. privacy preference).
+- `map.fallback.instructions`, `offlineNotice`, and `listLabel` provide the
+  keyboard/ARIA copy for the structured campus list.
+- `map.fallback.retry` labels the retry button, while `tags.*` and
+  `points.*.(title|description|address)` localize the individual campus tiles.
+
+Update both locales when these values change so the fallback remains accessible
+and consistent with the interactive map. Note that the full map still requires
+an active connection and permission to load third-party embeds; the fallback
+content must remain usable offline.

@@ -32,6 +32,52 @@
       "label": "Traffic",
       "show": "Show traffic",
       "hide": "Hide traffic"
+    },
+    "fallback": {
+      "title": "Campus overview",
+      "description": {
+        "preferences": "Interactive maps are disabled to respect your privacy or reduced motion settings.",
+        "load": "We couldn't load the interactive map. Browse the campus highlights below while you're offline."
+      },
+      "instructions": "Use Tab or the arrow keys to move between campus points and hear details.",
+      "offlineNotice": "The interactive map requires third-party embeds and a live connection, but this list stays available offline.",
+      "listLabel": "Campus points",
+      "retry": "Try loading the map again",
+      "tags": {
+        "services": "Student services",
+        "study": "Study spaces",
+        "events": "Events hub",
+        "sports": "Sports",
+        "housing": "Housing",
+        "food": "Dining"
+      },
+      "points": {
+        "main": {
+          "title": "Main building",
+          "description": "Admissions, student services, and major lecture halls are located here.",
+          "address": "109544, Moscow, Ryazansky Prospekt, 99"
+        },
+        "library": {
+          "title": "Library and study center",
+          "description": "Quiet reading rooms, group study pods, and printing services across three floors.",
+          "address": "Reading room entrance — 1st floor, sector B"
+        },
+        "sports": {
+          "title": "Sports complex",
+          "description": "Indoor courts, a swimming pool, and the fitness studio for intramural teams.",
+          "address": "Sports wing, ground level, follow the green signage"
+        },
+        "dormitory": {
+          "title": "Residence hall",
+          "description": "Student housing with 24/7 security, shared kitchens, and laundry facilities.",
+          "address": "Dormitory entrance — ul. Akademika Volgina, 10"
+        },
+        "cafeteria": {
+          "title": "Campus cafeteria",
+          "description": "Hot meals, vegetarian options, and grab-and-go snacks served all day.",
+          "address": "Central atrium, 2nd floor"
+        }
+      }
     }
   },
   "installPrompt": {
