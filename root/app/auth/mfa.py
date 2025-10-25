@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
+import logging
 import secrets
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
@@ -49,6 +51,7 @@ from app.models.models import (
     MfaWebAuthnCredential,
     User,
 )
+from app.services.webauthn_metadata import MetadataLoadError, metadata_resolver
 from app.utils import ratelimit as ratelimit_utils
 
 _RECOVERY_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -68,6 +71,10 @@ CHALLENGE_TYPE_RECOVERY = "recovery-code"
 MFA_METHOD_TOTP = "totp"
 MFA_METHOD_WEBAUTHN = "webauthn"
 MFA_METHOD_RECOVERY = "recovery"
+
+
+audit_logger = logging.getLogger("app.users.audit")
+metadata_logger = logging.getLogger("app.auth.webauthn")
 
 
 @dataclass(slots=True)
@@ -581,7 +588,86 @@ async def complete_webauthn_enrollment(
                 transport.value for transport in credential.response.transports
             ]
     elif isinstance(credential, Mapping):
-        transports = credential.get("transports")
+        raw_transports = credential.get("transports")
+        if isinstance(raw_transports, list):
+            transports = [
+                str(item).lower()
+                for item in raw_transports
+                if isinstance(item, str) and item
+            ]
+    transports_list = transports or []
+    metadata_entry = None
+    metadata_info: dict[str, Any] | None = None
+    metadata_warnings: list[str] = []
+    trust_score: int | None = None
+    enforcement = settings.mfa_webauthn_metadata_enforcement
+    metadata_configured = bool(
+        settings.mfa_webauthn_metadata_url.strip()
+        or settings.mfa_webauthn_metadata_json.strip()
+    )
+    if metadata_configured or enforcement != "disabled":
+        try:
+            metadata_entry = await metadata_resolver.get_entry(verified.aaguid)
+        except MetadataLoadError as exc:
+            metadata_logger.warning("WebAuthn metadata refresh failed: %s", exc)
+            if metadata_configured:
+                metadata_warnings.append("metadata_error")
+        except Exception as exc:  # pragma: no cover - defensive
+            metadata_logger.warning("Unexpected WebAuthn metadata failure: %s", exc)
+            if metadata_configured:
+                metadata_warnings.append("metadata_error")
+    if metadata_entry:
+        trust_score = metadata_entry.trust_score
+        metadata_info = metadata_entry.to_dict()
+        if metadata_entry.status_warning:
+            metadata_warnings.append("status_warning")
+        if metadata_entry.trust_score == 0:
+            metadata_warnings.append("untrusted_status")
+        if transports_list and metadata_entry.allowed_transports:
+            invalid_transports = sorted(
+                transport
+                for transport in transports_list
+                if transport not in metadata_entry.allowed_transports
+            )
+            if invalid_transports:
+                metadata_warnings.append("transport_mismatch")
+                metadata_info["invalid_transports"] = invalid_transports
+        if verified.credential_backed_up and metadata_entry.backup_eligible is False:
+            metadata_warnings.append("backup_not_permitted")
+        if transports_list:
+            metadata_info.setdefault("observed_transports", transports_list)
+    elif metadata_configured:
+        metadata_warnings.append("metadata_missing")
+        metadata_info = {"metadata_available": False}
+    metadata_warnings = sorted(set(metadata_warnings))
+    if metadata_warnings:
+        audit_payload: dict[str, Any] = {
+            "event": "users.mfa.webauthn.metadata_warning",
+            "user_id": user.id,
+            "credential_id": credential_id,
+            "aaguid": verified.aaguid or None,
+            "warnings": metadata_warnings,
+            "enforcement": enforcement,
+        }
+        if trust_score is not None:
+            audit_payload["attestation_trust_score"] = trust_score
+        if metadata_entry and metadata_entry.description:
+            audit_payload["description"] = metadata_entry.description
+        audit_logger.warning(json.dumps(audit_payload, ensure_ascii=False))
+    blockable_warnings = {
+        "metadata_error",
+        "metadata_missing",
+        "untrusted_status",
+        "transport_mismatch",
+        "backup_not_permitted",
+    }
+    if enforcement == "strict" and any(
+        warning in blockable_warnings for warning in metadata_warnings
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Authenticator attestation failed metadata policy",
+        )
     record = MfaWebAuthnCredential(
         user_id=user.id,
         credential_id=credential_id,
@@ -591,6 +677,11 @@ async def complete_webauthn_enrollment(
         device_name=device_name,
         backed_up=verified.credential_backed_up,
         clone_warning=False,
+        aaguid=verified.aaguid or None,
+        attestation_format=verified.fmt.value if verified.fmt else None,
+        attestation_trust_score=trust_score,
+        attestation_metadata=metadata_info,
+        metadata_warnings=metadata_warnings or None,
     )
     db.add(record)
     await db.flush()

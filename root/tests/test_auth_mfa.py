@@ -6,8 +6,17 @@ from types import SimpleNamespace
 
 import pyotp
 import pytest
-from fastapi import status
+from fastapi import HTTPException, status
 from sqlalchemy import select
+from webauthn.helpers.structs import (
+    AttestationFormat,
+    AuthenticatorAttestationResponse,
+    AuthenticatorTransport,
+    CredentialDeviceType,
+    PublicKeyCredentialType,
+    RegistrationCredential,
+)
+from webauthn.registration.verify_registration_response import VerifiedRegistration
 
 from app.api import users as users_api
 from app.auth import mfa
@@ -15,6 +24,7 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.management import reset_mfa
 from app.models import models
+from app.services.webauthn_metadata import metadata_resolver
 
 
 def _base64url(data: bytes) -> str:
@@ -302,11 +312,16 @@ async def test_webauthn_attestation_and_assertion_flow(
 
     def fake_verify_registration_response(**kwargs):
         assert kwargs["expected_challenge"] == registration_challenge
-        return SimpleNamespace(
+        return VerifiedRegistration(
             credential_id=credential_id,
             credential_public_key=public_key,
             sign_count=1,
-            transports=["internal"],
+            aaguid="cccccccc-cccc-cccc-cccc-cccccccccccc",
+            fmt=AttestationFormat.PACKED,
+            credential_type=PublicKeyCredentialType.PUBLIC_KEY,
+            user_verified=True,
+            attestation_object=b"attestation",
+            credential_device_type=CredentialDeviceType.MULTI_DEVICE,
             credential_backed_up=False,
         )
 
@@ -643,3 +658,222 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
     audit_event = _find_audit_event(caplog, "app.users.audit", "users.mfa.reset")
     assert audit_event["user_id"] == str(user.id)
     assert audit_event["reason"] == "admin_reset_noop"
+
+
+@pytest.mark.anyio
+async def test_webauthn_enrollment_with_trusted_metadata(
+    db_session, user_factory, monkeypatch, caplog
+):
+    caplog.set_level(logging.WARNING, logger="app.users.audit")
+    user = await user_factory(
+        email="trusted-webauthn@example.com",
+        hashed_password=get_password_hash("TrustedPass123!"),
+    )
+
+    metadata_payload = {
+        "entries": [
+            {
+                "aaguid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "metadataStatement": {
+                    "description": "Trusted Hardware Key",
+                    "attestationRootCertificates": ["root-cert"],
+                    "authenticatorGetInfo": {"transports": ["usb", "nfc"]},
+                    "isBackupEligible": False,
+                },
+                "statusReports": [{"status": "FIDO_CERTIFIED"}],
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        settings, "mfa_webauthn_metadata_json", json.dumps(metadata_payload)
+    )
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "")
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_enforcement", "log")
+    metadata_resolver.invalidate()
+
+    challenge = await mfa.issue_challenge(
+        db_session,
+        user_id=user.id,
+        challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_ENROLL,
+        payload={"challenge": _base64url(b"challenge")},
+    )
+
+    response = AuthenticatorAttestationResponse(
+        client_data_json=b"client",
+        attestation_object=b"object",
+        transports=[AuthenticatorTransport.USB],
+    )
+    registration = RegistrationCredential(
+        id="cred-id",
+        raw_id=b"cred-id",
+        response=response,
+    )
+    verified = VerifiedRegistration(
+        credential_id=b"cred-id",
+        credential_public_key=b"public",
+        sign_count=1,
+        aaguid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        fmt=AttestationFormat.PACKED,
+        credential_type=PublicKeyCredentialType.PUBLIC_KEY,
+        user_verified=True,
+        attestation_object=b"object",
+        credential_device_type=CredentialDeviceType.MULTI_DEVICE,
+        credential_backed_up=False,
+    )
+    monkeypatch.setattr(mfa, "verify_registration_response", lambda **_: verified)
+
+    record = await mfa.complete_webauthn_enrollment(
+        db_session,
+        user=user,
+        credential=registration,
+        challenge_token=challenge.token,
+        device_name="Trusted Key",
+    )
+    await db_session.flush()
+
+    assert record.aaguid == verified.aaguid
+    assert record.attestation_trust_score == 100
+    assert record.metadata_warnings is None
+    assert record.attestation_metadata["description"] == "Trusted Hardware Key"
+    assert record.attestation_metadata["attestation_root_certificates"] == ["root-cert"]
+    assert set(record.attestation_metadata["allowed_transports"]) == {"nfc", "usb"}
+
+    trusted_roots = await metadata_resolver.get_trusted_root_certificates()
+    assert trusted_roots[verified.aaguid] == ("root-cert",)
+
+    audit_events: list[dict] = []
+    for entry in caplog.records:
+        if entry.name != "app.users.audit":
+            continue
+        try:
+            payload = json.loads(entry.message)
+        except json.JSONDecodeError:  # pragma: no cover - defensive guard
+            continue
+        audit_events.append(payload)
+    assert not any(
+        event.get("event") == "users.mfa.webauthn.metadata_warning"
+        for event in audit_events
+    )
+
+    metadata_resolver.invalidate()
+
+
+@pytest.mark.anyio
+async def test_webauthn_enrollment_rejects_untrusted_authenticator(
+    db_session, user_factory, monkeypatch, caplog
+):
+    caplog.set_level(logging.WARNING, logger="app.users.audit")
+    user = await user_factory(
+        email="untrusted-webauthn@example.com",
+        hashed_password=get_password_hash("UntrustedPass123!"),
+    )
+
+    metadata_payload = {
+        "entries": [
+            {
+                "aaguid": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                "metadataStatement": {
+                    "description": "Revoked Key",
+                    "attestationRootCertificates": ["revoked-root"],
+                    "authenticatorGetInfo": {"transports": ["usb"]},
+                    "isBackupEligible": True,
+                },
+                "statusReports": [{"status": "REVOKED"}],
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        settings, "mfa_webauthn_metadata_json", json.dumps(metadata_payload)
+    )
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "")
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_enforcement", "strict")
+    metadata_resolver.invalidate()
+
+    challenge = await mfa.issue_challenge(
+        db_session,
+        user_id=user.id,
+        challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_ENROLL,
+        payload={"challenge": _base64url(b"challenge")},
+    )
+
+    response = AuthenticatorAttestationResponse(
+        client_data_json=b"client",
+        attestation_object=b"object",
+        transports=[AuthenticatorTransport.USB],
+    )
+    registration = RegistrationCredential(
+        id="revoked",
+        raw_id=b"revoked",
+        response=response,
+    )
+    verified = VerifiedRegistration(
+        credential_id=b"revoked",
+        credential_public_key=b"public",
+        sign_count=1,
+        aaguid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        fmt=AttestationFormat.PACKED,
+        credential_type=PublicKeyCredentialType.PUBLIC_KEY,
+        user_verified=True,
+        attestation_object=b"object",
+        credential_device_type=CredentialDeviceType.MULTI_DEVICE,
+        credential_backed_up=True,
+    )
+    monkeypatch.setattr(mfa, "verify_registration_response", lambda **_: verified)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await mfa.complete_webauthn_enrollment(
+            db_session,
+            user=user,
+            credential=registration,
+            challenge_token=challenge.token,
+            device_name="Revoked Key",
+        )
+
+    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+
+    warning_events: list[dict] = []
+    for entry in caplog.records:
+        if entry.name != "app.users.audit":
+            continue
+        try:
+            payload = json.loads(entry.message)
+        except json.JSONDecodeError:  # pragma: no cover - defensive guard
+            continue
+        if payload.get("event") == "users.mfa.webauthn.metadata_warning":
+            warning_events.append(payload)
+    assert warning_events, "Expected metadata warning audit event"
+    assert "untrusted_status" in warning_events[0]["warnings"]
+    assert warning_events[0].get("attestation_trust_score") == 0
+
+    metadata_resolver.invalidate()
+
+
+@pytest.mark.anyio
+async def test_webauthn_metadata_resolver_refresh(monkeypatch):
+    metadata_resolver.invalidate()
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", '{"entries": []}')
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "")
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_refresh_seconds", 60)
+
+    calls: list[int] = []
+
+    async def fake_load_source():
+        calls.append(1)
+        return {"entries": []}
+
+    monkeypatch.setattr(metadata_resolver, "_load_source", fake_load_source)
+
+    await metadata_resolver.refresh(force=True)
+    assert len(calls) == 1
+
+    await metadata_resolver.refresh()
+    assert len(calls) == 1
+
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_refresh_seconds", 0)
+    await metadata_resolver.refresh()
+    assert len(calls) == 2
+
+    await metadata_resolver.refresh(force=True)
+    assert len(calls) == 3
+
+    metadata_resolver.invalidate()
