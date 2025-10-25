@@ -12,12 +12,13 @@ import hashlib
 import hmac
 import os
 import secrets
+from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.exc import NoSuchTableError
 
-from alembic import op
+from alembic import context, op
 
 # revision identifiers, used by Alembic.
 revision = "202507310001"
@@ -26,8 +27,49 @@ branch_labels = None
 depends_on = None
 
 
+_ENV_SECRET_KEYS = ("ATTENDANCE_TOKEN_SECRET", "SECRET_KEY")
+
+
+def _secret_from_alembic_config() -> str | None:
+    config = context.config if hasattr(context, "config") else None
+    if not config:
+        return None
+    for key in _ENV_SECRET_KEYS:
+        value = (config.get_main_option(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _secret_from_env_files() -> str | None:
+    project_root = Path(__file__).resolve().parents[2]
+    for name in (".env", ".env.local", ".env.example"):
+        candidate = project_root / name
+        if not candidate.exists():
+            continue
+        for line in candidate.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key not in _ENV_SECRET_KEYS:
+                continue
+            normalized = value.strip().strip("\"'")
+            if normalized:
+                return normalized
+    return None
+
+
 def _server_secret() -> bytes:
-    secret = os.getenv("ATTENDANCE_TOKEN_SECRET") or os.getenv("SECRET_KEY")
+    secret = (
+        os.getenv("ATTENDANCE_TOKEN_SECRET")
+        or os.getenv("SECRET_KEY")
+        or _secret_from_alembic_config()
+        or _secret_from_env_files()
+    )
     if not secret:
         raise RuntimeError(
             "ATTENDANCE_TOKEN_SECRET or SECRET_KEY must be set during migration"
