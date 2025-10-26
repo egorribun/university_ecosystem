@@ -55,7 +55,6 @@ export default function DashboardStories({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const listLabel = t("aria.storiesList")
-  const emptyLabel = t("stories.empty")
   const emptyDescription = t("stories.emptyDescription")
 
   const displayStories = useMemo(() => {
@@ -302,14 +301,11 @@ export default function DashboardStories({
           ))}
         </Stack>
       )}
-      {!loading && displayStories.length === 0 && (
+      {!loading && displayStories.length === 0 && hasEmptyDescription && (
         <Stack spacing={0.5}>
-          <Typography color="text.secondary">{emptyLabel}</Typography>
-          {hasEmptyDescription && (
-            <Typography color="text.secondary" variant="body2">
-              {emptyDescription}
-            </Typography>
-          )}
+          <Typography color="text.secondary" variant="body2">
+            {emptyDescription}
+          </Typography>
         </Stack>
       )}
       {!loading && displayStories.length > 0 && (
