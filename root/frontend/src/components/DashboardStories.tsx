@@ -55,7 +55,6 @@ export default function DashboardStories({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const listLabel = t("aria.storiesList")
-  const emptyLabel = t("stories.empty")
   const emptyDescription = t("stories.emptyDescription")
 
   const displayStories = useMemo(() => {
@@ -251,6 +250,8 @@ export default function DashboardStories({
     : undefined
 
   const hasEmptyDescription = emptyDescription && emptyDescription !== "stories.emptyDescription"
+  const hasStories = displayStories.length > 0
+  const shouldShowHeading = loading || hasStories
 
   const handlePointerStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     touchOrigin.current = { x: event.clientX, y: event.clientY }
@@ -285,9 +286,11 @@ export default function DashboardStories({
       onPointerEnter={onPrefetch}
       onFocusCapture={onPrefetch}
     >
-      <Typography component="h2" variant="h6" sx={{ ...visuallyHidden }}>
-        {t("stories.heading")}
-      </Typography>
+      {shouldShowHeading && (
+        <Typography component="h2" variant="h6" sx={{ ...visuallyHidden }}>
+          {t("stories.heading")}
+        </Typography>
+      )}
       {loading && (
         <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6, py: 0.75 }}>
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
@@ -302,17 +305,14 @@ export default function DashboardStories({
           ))}
         </Stack>
       )}
-      {!loading && displayStories.length === 0 && (
+      {!loading && displayStories.length === 0 && hasEmptyDescription && (
         <Stack spacing={0.5}>
-          <Typography color="text.secondary">{emptyLabel}</Typography>
-          {hasEmptyDescription && (
-            <Typography color="text.secondary" variant="body2">
-              {emptyDescription}
-            </Typography>
-          )}
+          <Typography color="text.secondary" variant="body2">
+            {emptyDescription}
+          </Typography>
         </Stack>
       )}
-      {!loading && displayStories.length > 0 && (
+      {!loading && hasStories && (
         <Stack
           component="ul"
           direction="row"

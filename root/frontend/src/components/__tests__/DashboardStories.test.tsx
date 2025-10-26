@@ -211,4 +211,10 @@ describe("DashboardStories", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     })
   })
+
+  it("omits the stories heading when there are no stories", () => {
+    renderStories({ stories: [] })
+
+    expect(screen.queryByRole("heading", { name: "Stories" })).not.toBeInTheDocument()
+  })
 })

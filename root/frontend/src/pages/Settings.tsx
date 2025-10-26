@@ -60,6 +60,7 @@ import {
 import dayjs from "dayjs"
 import { useColorScheme, styled, alpha } from "@mui/material/styles"
 import type { PaperProps } from "@mui/material/Paper"
+import type { TypographyProps } from "@mui/material/Typography"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
 import LightModeIcon from "@mui/icons-material/LightMode"
@@ -195,7 +196,9 @@ const SectionCard = styled((props: PaperProps) => <Paper {...props} />)(({ theme
   gap: theme.spacing(1.5),
 }))
 
-const SectionTitle = styled(Typography)({
+const SectionTitle = styled(({ component = "h2", ...props }: TypographyProps) => (
+  <Typography {...props} component={component} />
+))({
   fontWeight: 600,
   color: "var(--page-text)",
 })
@@ -381,7 +384,7 @@ export default function Settings() {
   } = useQuery<ActiveSession[], unknown>({
     queryKey: sessionsKey,
     queryFn: fetchSessions,
-    enabled: tab === 2 && Boolean(user),
+    enabled: tab === 1 && Boolean(user),
     staleTime: 30_000,
   })
 
@@ -863,10 +866,7 @@ export default function Settings() {
           return
         }
         setSnack({
-          text: resolveDetailMessage(
-            error,
-            t("settings:sessions.snackbar.revokeAllFailed")
-          ),
+          text: resolveDetailMessage(error, t("settings:sessions.snackbar.revokeAllFailed")),
           sev: "error",
         })
       }
@@ -932,10 +932,7 @@ export default function Settings() {
           }
         }
         if (!handled) {
-          const message = resolveDetailMessage(
-            error,
-            t("settings:security.email.failed")
-          )
+          const message = resolveDetailMessage(error, t("settings:security.email.failed"))
           setEmailError(message)
           setSnack({ text: message, sev: "error" })
         }
@@ -964,9 +961,7 @@ export default function Settings() {
       setPasswordError(null)
       let hasError = false
       if (!currentPasswordValue) {
-        setCurrentPasswordError(
-          t("settings:security.password.errors.currentRequired")
-        )
+        setCurrentPasswordError(t("settings:security.password.errors.currentRequired"))
         hasError = true
       }
       let derivedError: string | null = null
@@ -1011,10 +1006,7 @@ export default function Settings() {
           })
           return
         }
-        const message = resolveDetailMessage(
-          error,
-          t("settings:security.password.failed")
-        )
+        const message = resolveDetailMessage(error, t("settings:security.password.failed"))
         let handled = false
         if (isAxiosError(error)) {
           const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
@@ -1333,7 +1325,6 @@ export default function Settings() {
           >
             <Tab label={t("settings:tabs.general")} />
             <Tab label={t("settings:tabs.account")} />
-            <Tab label={t("settings:tabs.security")} />
             <Tab label={t("settings:tabs.integrations")} />
           </Tabs>
         </Paper>
@@ -1781,15 +1772,6 @@ export default function Settings() {
                 {t("settings:account.logout.button")}
               </Button>
             </SectionCard>
-
-          </Stack>
-        )}
-
-        {tab === 2 && (
-          <Stack
-            spacing={2.5}
-            sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
-          >
             <SectionCard component="section">
               <Stack spacing={1}>
                 <SectionTitle variant="subtitle1">
@@ -1810,7 +1792,7 @@ export default function Settings() {
                 sx={{ mt: 2 }}
               >
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">
+                  <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.email.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
@@ -1886,7 +1868,7 @@ export default function Settings() {
                 }}
               >
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">
+                  <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.password.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
@@ -1919,7 +1901,7 @@ export default function Settings() {
                       if (passwordError) setPasswordError(null)
                     }}
                     error={isNewPasswordError}
-                    helperText={isNewPasswordError ? passwordError ?? undefined : undefined}
+                    helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
                     autoComplete="new-password"
                   />
                 </Stack>
@@ -2121,7 +2103,7 @@ export default function Settings() {
 
               <Stack spacing={2.5} sx={{ mt: 1.5 }}>
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">
+                  <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.totp")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
@@ -2225,7 +2207,7 @@ export default function Settings() {
                 <Divider sx={{ my: 1 }} />
 
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">
+                  <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.webauthn")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
@@ -2326,7 +2308,7 @@ export default function Settings() {
                 <Divider sx={{ my: 1 }} />
 
                 <Stack spacing={1}>
-                  <SectionTitle variant="subtitle2">
+                  <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.recovery")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
@@ -2367,7 +2349,7 @@ export default function Settings() {
           </Stack>
         )}
 
-        {tab === 3 && (
+        {tab === 2 && (
           <Stack spacing={3}>
             <Stack spacing={2}>
               <Stack direction="row" alignItems="center" spacing={1}>
