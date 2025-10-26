@@ -1300,7 +1300,8 @@ export default function Schedule() {
                             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
                             label={lesson.teacher}
                             sx={(theme) => {
-                              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                              const primaryColor =
+                                theme.vars?.palette.primary.main ?? theme.palette.primary.main
                               return {
                                 borderColor: primaryColor,
                                 color: primaryColor,
@@ -1315,7 +1316,8 @@ export default function Schedule() {
                             icon={<RoomIcon sx={{ fontSize: 16 }} />}
                             label={lesson.room}
                             sx={(theme) => {
-                              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                              const primaryColor =
+                                theme.vars?.palette.primary.main ?? theme.palette.primary.main
                               return {
                                 borderColor: primaryColor,
                                 color: primaryColor,
@@ -1446,7 +1448,8 @@ export default function Schedule() {
                       icon={<SchoolIcon sx={{ fontSize: 16 }} />}
                       label={currentLesson.teacher}
                       sx={(theme) => {
-                        const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                        const primaryColor =
+                          theme.vars?.palette.primary.main ?? theme.palette.primary.main
                         return { "& .MuiChip-icon": { color: primaryColor } }
                       }}
                     />
@@ -1456,7 +1459,8 @@ export default function Schedule() {
                       icon={<RoomIcon sx={{ fontSize: 16 }} />}
                       label={currentLesson.room}
                       sx={(theme) => {
-                        const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                        const primaryColor =
+                          theme.vars?.palette.primary.main ?? theme.palette.primary.main
                         return { "& .MuiChip-icon": { color: primaryColor } }
                       }}
                     />
