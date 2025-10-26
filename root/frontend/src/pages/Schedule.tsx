@@ -36,8 +36,10 @@ import {
   DialogTitle,
   DialogContent,
   Chip,
+  Divider,
   LinearProgress,
 } from "@mui/material"
+import { alpha, useTheme } from "@mui/material/styles"
 import DeleteIcon from "@mui/icons-material/Delete"
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
 import AddIcon from "@mui/icons-material/Add"
@@ -219,6 +221,49 @@ export default function Schedule() {
   const { t } = useTranslation(["schedule", "common"])
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
+  const theme = useTheme()
+  const design = useMemo(() => {
+    const text = theme.palette.text.primary
+    const secondary = theme.palette.text.secondary
+    const border = alpha(text, theme.palette.mode === "dark" ? 0.28 : 0.08)
+    const borderMuted = alpha(text, theme.palette.mode === "dark" ? 0.18 : 0.06)
+    const borderStrong = alpha(text, theme.palette.mode === "dark" ? 0.32 : 0.12)
+    const surface = theme.palette.background.paper
+    const tintedSurface = theme.palette.mode === "dark" ? alpha(surface, 0.65) : "#f4f7fb"
+    const subtleShadow =
+      theme.palette.mode === "dark"
+        ? "0 18px 44px rgba(13, 23, 42, 0.55)"
+        : "0 18px 44px rgba(15, 23, 42, 0.08)"
+    const cardShadow =
+      theme.palette.mode === "dark"
+        ? "0 26px 64px rgba(13, 23, 42, 0.62)"
+        : "0 26px 64px rgba(15, 23, 42, 0.12)"
+    const hoverShadow =
+      theme.palette.mode === "dark"
+        ? "0 32px 82px rgba(13, 23, 42, 0.7)"
+        : "0 36px 88px rgba(15, 23, 42, 0.16)"
+    const primary = theme.palette.primary.main
+    return {
+      text,
+      secondary,
+      border,
+      borderMuted,
+      borderStrong,
+      surface,
+      tintedSurface,
+      subtleShadow,
+      cardShadow,
+      hoverShadow,
+      primary,
+      primaryContrast: theme.palette.primary.contrastText,
+      accentSoft: alpha(primary, theme.palette.mode === "dark" ? 0.25 : 0.12),
+      accentSoftStrong: alpha(primary, theme.palette.mode === "dark" ? 0.4 : 0.18),
+      chipBackground: theme.palette.mode === "dark" ? alpha(text, 0.14) : alpha(primary, 0.05),
+      chipBorder: theme.palette.mode === "dark" ? alpha(text, 0.2) : alpha(text, 0.1),
+      pageBackground:
+        theme.palette.mode === "dark" ? alpha(theme.palette.background.default, 0.72) : "#f5f7fb",
+    }
+  }, [theme])
   const weekdayConfigs = useMemo(() => {
     const rawItems = t("schedule:weekdays.items", { returnObjects: true }) as unknown
     const rawOrder = t("schedule:weekdays.order", { returnObjects: true }) as unknown
@@ -726,46 +771,158 @@ export default function Schedule() {
     return set
   }, [filteredSchedule])
 
+  const heroCardSx = {
+    position: "relative" as const,
+    borderRadius: { xs: 3, md: 4 },
+    px: { xs: 2.4, md: 3.4 },
+    py: { xs: 2.6, md: 3.2 },
+    background:
+      theme.palette.mode === "dark"
+        ? alpha(design.surface, 0.92)
+        : `linear-gradient(135deg, ${design.tintedSurface}, ${design.surface})`,
+    border: `1px solid ${design.border}`,
+    boxShadow: design.cardShadow,
+    overflow: "hidden",
+    "&::before": {
+      content: "''",
+      position: "absolute",
+      inset: 0,
+      background:
+        theme.palette.mode === "dark"
+          ? alpha(design.primary, 0.12)
+          : `radial-gradient(140% 140% at 0% 0%, ${design.accentSoft}, transparent 60%)`,
+      pointerEvents: "none",
+    },
+    "& > *": {
+      position: "relative",
+      zIndex: 1,
+    },
+  } as const
+
+  const parityButtonBaseSx = {
+    borderRadius: 999,
+    textTransform: "none",
+    fontWeight: 600,
+    px: { xs: 2.2, md: 2.6 },
+    py: 0.85,
+    letterSpacing: ".015em",
+    transition:
+      "background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease",
+    borderColor: design.border,
+    boxShadow: "none",
+    "&:hover": {
+      transform: "translateY(-2px)",
+      boxShadow: design.subtleShadow,
+      backgroundColor: design.accentSoft,
+    },
+  } as const
+
   const badgeBase = {
     display: "inline-flex",
     alignItems: "center",
+    gap: 0.8,
     px: 1.3,
-    py: 1.2,
+    py: 0.85,
     borderRadius: 999,
-    fontWeight: 700,
+    fontWeight: 600,
     lineHeight: 1,
-    fontSize: "clamp(.78rem, .7rem + .35vw, .98rem)",
+    fontSize: "clamp(.75rem, .68rem + .32vw, .95rem)",
+    letterSpacing: ".05em",
+    textTransform: "uppercase" as const,
     userSelect: "none",
     whiteSpace: "nowrap",
+    color: design.secondary,
   } as const
 
   const badgeGhost = {
     ...badgeBase,
-    background: "var(--btn-bg)",
-    color: "var(--nav-text)",
-    border: "1px solid var(--btn-border)",
+    backgroundColor: design.chipBackground,
+    border: `1px solid ${design.borderMuted}`,
+  } as const
+
+  const chipTimeSx = {
+    bgcolor: design.chipBackground,
+    border: `1px solid ${design.chipBorder}`,
+    color: design.text,
+    fontWeight: 600,
+  } as const
+
+  const chipClockSx = {
+    bgcolor: design.accentSoft,
+    border: `1px solid ${design.accentSoftStrong}`,
+    color: design.primary,
+    fontWeight: 700,
+  } as const
+
+  const chipLeftSx = {
+    bgcolor: alpha(design.primary, theme.palette.mode === "dark" ? 0.28 : 0.12),
+    border: `1px solid ${design.accentSoftStrong}`,
+    color: design.primary,
+    fontWeight: 600,
+  } as const
+
+  const chipOutlinedInfoSx = {
+    borderColor: design.chipBorder,
+    backgroundColor: design.chipBackground,
+    color: design.secondary,
   } as const
 
   const headerCardSx = {
-    borderRadius: 4,
-    p: 2,
-    background: "var(--card-bg)",
-    boxShadow: "0 12px 36px #00000012, 0 4px 14px #0000000a",
-    border: "1px solid var(--btn-border)",
-  }
+    borderRadius: { xs: 2, md: 3 },
+    p: { xs: 1.8, md: 2.2 },
+    backgroundColor: theme.palette.mode === "dark" ? alpha(design.surface, 0.9) : design.surface,
+    boxShadow: design.subtleShadow,
+    border: `1px solid ${design.border}`,
+  } as const
 
   const headerActions = (
-    <Stack direction="row" spacing={2} alignItems="center" mb={2.5} flexWrap="wrap">
-      <Typography component="span">{t("schedule:week.label")}</Typography>
+    <Stack
+      direction="row"
+      alignItems="center"
+      flexWrap="wrap"
+      sx={{ gap: 1.4, justifyContent: { xs: "flex-start", md: "flex-end" } }}
+    >
+      <Typography
+        component="span"
+        sx={{
+          fontWeight: 600,
+          letterSpacing: ".08em",
+          fontSize: "0.78rem",
+          textTransform: "uppercase",
+          color: design.secondary,
+        }}
+      >
+        {t("schedule:week.label")}
+      </Typography>
       <Button
+        disableElevation
         variant={currentParity === "odd" ? "contained" : "outlined"}
         onClick={() => setCurrentParity("odd")}
+        sx={{
+          ...parityButtonBaseSx,
+          borderColor: currentParity === "odd" ? "transparent" : design.border,
+          bgcolor: currentParity === "odd" ? design.primary : "transparent",
+          color: currentParity === "odd" ? design.primaryContrast : design.text,
+          "&:focus-visible": {
+            boxShadow: `0 0 0 3px ${design.accentSoftStrong}`,
+          },
+        }}
       >
         {t("schedule:week.odd")}
       </Button>
       <Button
+        disableElevation
         variant={currentParity === "even" ? "contained" : "outlined"}
         onClick={() => setCurrentParity("even")}
+        sx={{
+          ...parityButtonBaseSx,
+          borderColor: currentParity === "even" ? "transparent" : design.border,
+          bgcolor: currentParity === "even" ? design.primary : "transparent",
+          color: currentParity === "even" ? design.primaryContrast : design.text,
+          "&:focus-visible": {
+            boxShadow: `0 0 0 3px ${design.accentSoftStrong}`,
+          },
+        }}
       >
         {t("schedule:week.even")}
       </Button>
@@ -790,7 +947,17 @@ export default function Schedule() {
           zIndex: 3,
         }}
       >
-        <Chip size="small" label={t("schedule:break", { minutes: gap })} className="chip-break" />
+        <Chip
+          size="small"
+          label={t("schedule:break", { minutes: gap })}
+          className="chip-break"
+          sx={{
+            bgcolor: design.chipBackground,
+            border: `1px solid ${design.chipBorder}`,
+            color: design.secondary,
+            fontWeight: 600,
+          }}
+        />
       </Box>
     )
   }
@@ -814,20 +981,23 @@ export default function Schedule() {
       onClick={onOpen}
       sx={{
         minHeight: lessonCardHeight,
-        p: 1.2,
-        pl: 1.8,
-        pr: 1.4,
-        borderRadius: 2,
-        background: "var(--option-bg)",
-        border: "1px solid var(--btn-border)",
-        boxShadow: "var(--option-shadow)",
-        transition: "transform .2s, box-shadow .2s",
+        p: { xs: 1.25, sm: 1.35, md: 1.45 },
+        pl: { xs: 1.7, md: 1.9 },
+        pr: { xs: 1.35, md: 1.55 },
+        borderRadius: 3,
+        backgroundColor:
+          theme.palette.mode === "dark" ? alpha(design.surface, 0.85) : design.surface,
+        border: `1px solid ${design.border}`,
+        boxShadow: design.subtleShadow,
+        transition:
+          "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease",
         position: "relative",
         cursor: "pointer",
-        mt: hasBreakBefore ? 2.5 : 0,
+        mt: hasBreakBefore ? 2.2 : 0,
         "&:hover": {
-          transform: "translateY(-1px)",
-          boxShadow: "0 10px 28px #0000001f, 0 2px 10px #0003",
+          transform: "translateY(-4px)",
+          boxShadow: design.hoverShadow,
+          borderColor: design.accentSoftStrong,
         },
       }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
@@ -838,10 +1008,11 @@ export default function Schedule() {
           left: -1,
           top: -1,
           bottom: -1,
-          width: 6,
-          borderTopLeftRadius: 8,
-          borderBottomLeftRadius: 8,
+          width: 7,
+          borderTopLeftRadius: 10,
+          borderBottomLeftRadius: 10,
           background: getLessonTypeColor(lesson.lesson_type),
+          boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
         }}
       />
       <Stack spacing={0.6}>
@@ -851,9 +1022,12 @@ export default function Schedule() {
             label={lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
             sx={{
               height: 22,
+              px: 0.75,
               fontWeight: 700,
               color: "#fff",
-              background: getLessonTypeColor(lesson.lesson_type),
+              backgroundColor: getLessonTypeColor(lesson.lesson_type),
+              boxShadow:
+                theme.palette.mode === "dark" ? "none" : "0 10px 18px rgba(15, 23, 42, 0.18)",
             }}
           />
           <Chip
@@ -861,18 +1035,23 @@ export default function Schedule() {
             className="chip-time"
             icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
             label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
-            sx={{ bgcolor: "transparent", border: "1px solid var(--btn-border)" }}
+            sx={{
+              bgcolor: design.chipBackground,
+              border: `1px solid ${design.chipBorder}`,
+              color: design.text,
+            }}
           />
         </Stack>
         <Typography
           fontWeight={800}
           sx={{
-            color: "var(--page-text)",
+            color: design.text,
             fontSize: "1rem",
             display: "-webkit-box",
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
+            letterSpacing: ".02em",
           }}
         >
           {lesson.subject}
@@ -883,14 +1062,22 @@ export default function Schedule() {
             variant="outlined"
             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
             label={lesson.teacher}
-            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+            sx={{
+              borderColor: design.chipBorder,
+              color: design.secondary,
+              backgroundColor: design.chipBackground,
+            }}
           />
           <Chip
             size="small"
             variant="outlined"
             icon={<RoomIcon sx={{ fontSize: 16 }} />}
             label={lesson.room}
-            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+            sx={{
+              borderColor: design.chipBorder,
+              color: design.secondary,
+              backgroundColor: design.chipBackground,
+            }}
           />
         </Stack>
       </Stack>
@@ -901,7 +1088,8 @@ export default function Schedule() {
             right: 8,
             bottom: 8,
             fontSize: 18,
-            color: "var(--secondary-text)",
+            color: design.secondary,
+            opacity: 0.9,
           }}
         />
       </Tooltip>
@@ -909,7 +1097,21 @@ export default function Schedule() {
         <IconButton
           aria-label={t("schedule:aria.deleteLesson")}
           size="small"
-          sx={{ position: "absolute", top: 6, right: 6, bgcolor: "var(--card-bg)", zIndex: 2 }}
+          sx={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            bgcolor: theme.palette.mode === "dark" ? alpha(design.surface, 0.7) : design.surface,
+            border: `1px solid ${design.border}`,
+            boxShadow: design.subtleShadow,
+            zIndex: 2,
+            "&:hover": {
+              bgcolor:
+                theme.palette.mode === "dark"
+                  ? alpha(design.surface, 0.85)
+                  : alpha(design.primary, 0.08),
+            },
+          }}
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
@@ -923,8 +1125,8 @@ export default function Schedule() {
           sx={{
             position: "absolute",
             inset: 0,
-            borderRadius: 2,
-            boxShadow: "0 0 0 3px #ef535033 inset",
+            borderRadius: 3,
+            boxShadow: `0 0 0 2px ${alpha(theme.palette.error.main, 0.35)} inset`,
             pointerEvents: "none",
           }}
         />
@@ -942,11 +1144,13 @@ export default function Schedule() {
           width: "100%",
           maxWidth: "min(98vw,1920px)",
           mx: "auto",
-          borderRadius: { xs: 2, md: 4 },
-          boxShadow: 5,
+          borderRadius: { xs: 2.4, md: 4 },
+          border: `1px solid ${design.border}`,
+          boxShadow: design.cardShadow,
           minHeight: 360,
-          bgcolor: "var(--card-bg)",
-          color: "var(--page-text)",
+          backgroundColor:
+            theme.palette.mode === "dark" ? alpha(design.surface, 0.9) : design.surface,
+          color: design.text,
           overflowX: "auto",
           scrollBehavior: "smooth",
           contentVisibility: "auto",
@@ -960,13 +1164,20 @@ export default function Schedule() {
                 align="center"
                 sx={{
                   fontWeight: 700,
-                  width: 45,
-                  background: "var(--table-header-bg)",
+                  width: 52,
+                  backgroundColor:
+                    theme.palette.mode === "dark"
+                      ? alpha(design.surface, 0.8)
+                      : design.tintedSurface,
                   zIndex: 10,
                   position: "sticky",
                   left: 0,
-                  color: "var(--page-text)",
-                  fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
+                  color: design.text,
+                  fontSize: "clamp(0.92rem,1.5vw,1.08rem)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".06em",
+                  borderRight: `1px solid ${design.border}`,
+                  borderBottom: `1px solid ${design.border}`,
                 }}
               >
                 №
@@ -982,16 +1193,24 @@ export default function Schedule() {
                     }}
                     sx={{
                       fontWeight: 700,
-                      background:
+                      backgroundColor:
                         hasToday && idx === todayIdx
-                          ? "var(--table-row-today)"
-                          : "var(--table-header-bg)",
+                          ? design.accentSoft
+                          : theme.palette.mode === "dark"
+                            ? alpha(design.surface, 0.75)
+                            : design.tintedSurface,
                       fontSize: "clamp(0.97rem, 1.4vw, 1.11rem)",
                       zIndex: 5,
-                      color: "var(--page-text)",
+                      color: design.text,
                       position: "relative",
-                      borderLeft: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
-                      borderRight: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
+                      textTransform: "uppercase",
+                      letterSpacing: ".05em",
+                      borderLeft: `1px solid ${design.border}`,
+                      borderBottom: `1px solid ${design.border}`,
+                      boxShadow:
+                        hasToday && idx === todayIdx
+                          ? `inset 0 -2px 0 ${design.accentSoftStrong}`
+                          : undefined,
                     }}
                   >
                     <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
@@ -1006,11 +1225,21 @@ export default function Schedule() {
                           }}
                           sx={{
                             ml: 1,
-                            border: "1px solid var(--btn-border)",
-                            bgcolor: "var(--card-bg)",
-                            "&:hover": { bgcolor: "var(--option-bg)" },
-                            height: 26,
-                            width: 26,
+                            borderRadius: 2,
+                            border: `1px solid ${design.border}`,
+                            bgcolor:
+                              theme.palette.mode === "dark"
+                                ? alpha(design.surface, 0.75)
+                                : design.surface,
+                            transition:
+                              "background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
+                            "&:hover": {
+                              bgcolor: design.accentSoft,
+                              transform: "translateY(-2px)",
+                              boxShadow: design.subtleShadow,
+                            },
+                            height: 28,
+                            width: 28,
                           }}
                           aria-label={t("schedule:aria.addLesson", { day: label })}
                         >
@@ -1032,16 +1261,34 @@ export default function Schedule() {
               </TableRow>
             ) : (
               visibleRows.map((row, rowIdx) => (
-                <TableRow key={rowIdx} sx={{ "&:hover": { background: "var(--table-row-hover)" } }}>
+                <TableRow
+                  key={rowIdx}
+                  sx={{
+                    "&:hover": {
+                      backgroundColor: alpha(
+                        design.primary,
+                        theme.palette.mode === "dark" ? 0.24 : 0.08
+                      ),
+                    },
+                    transition: "background-color 160ms ease",
+                  }}
+                >
                   <TableCell
                     align="center"
                     sx={{
                       fontWeight: 700,
-                      background: "var(--table-header-bg)",
+                      backgroundColor:
+                        theme.palette.mode === "dark"
+                          ? alpha(design.surface, 0.75)
+                          : design.tintedSurface,
                       position: "sticky",
                       left: 0,
-                      color: "var(--page-text)",
-                      fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
+                      color: design.text,
+                      fontSize: "clamp(0.92rem,1.6vw,1.08rem)",
+                      letterSpacing: ".04em",
+                      borderRight: `1px solid ${design.border}`,
+                      borderBottom: `1px solid ${design.border}`,
+                      zIndex: 4,
                     }}
                   >
                     {rowIdx + 1}
@@ -1053,15 +1300,19 @@ export default function Schedule() {
                         <TableCell
                           key={`empty-${rowIdx}-${colIdx}`}
                           sx={{
-                            background: colIsToday ? "var(--table-row-today)" : "transparent",
+                            backgroundColor: colIsToday
+                              ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                              : "transparent",
                             p: 1.2,
+                            borderLeft: `1px solid ${design.border}`,
+                            borderBottom: `1px solid ${design.border}`,
                           }}
                         >
                           <Box
                             sx={{
                               minHeight: lessonCardHeight,
                               borderRadius: 2,
-                              border: "1px dashed var(--glass-border)",
+                              border: `1px dashed ${design.border}`,
                               bgcolor: "transparent",
                             }}
                           />
@@ -1083,10 +1334,15 @@ export default function Schedule() {
                         key={lesson.id ?? `${rowIdx}-${colIdx}`}
                         sx={{
                           position: "relative",
-                          color: "var(--page-text)",
-                          background: colIsToday ? "var(--table-row-today)" : "transparent",
+                          color: design.text,
+                          backgroundColor: colIsToday
+                            ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                            : "transparent",
                           overflow: "visible",
                           p: 1.2,
+                          borderLeft: `1px solid ${design.border}`,
+                          borderBottom: `1px solid ${design.border}`,
+                          transition: "background-color 160ms ease",
                         }}
                       >
                         {renderBreakChip(rowIdx, colIdx)}
@@ -1119,12 +1375,32 @@ export default function Schedule() {
           key={day}
           clickable
           className="chip-day"
-          color={hasToday && i === todayIdx ? "primary" : "default"}
+          size="small"
           label={weekdayShort[i] ?? getDayLabel(day)}
           onClick={() =>
             dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
           }
-          sx={{ flex: "0 0 auto" }}
+          sx={{
+            flex: "0 0 auto",
+            borderRadius: 999,
+            fontWeight: 600,
+            letterSpacing: ".06em",
+            textTransform: "uppercase",
+            px: 1,
+            bgcolor: hasToday && i === todayIdx ? design.primary : design.chipBackground,
+            color: hasToday && i === todayIdx ? design.primaryContrast : design.secondary,
+            border: `1px solid ${hasToday && i === todayIdx ? design.primary : design.border}`,
+            boxShadow: hasToday && i === todayIdx ? design.subtleShadow : "none",
+            transition: "transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease",
+            "&:hover": {
+              transform: "translateY(-1px)",
+              backgroundColor:
+                hasToday && i === todayIdx
+                  ? design.primary
+                  : alpha(design.primary, theme.palette.mode === "dark" ? 0.28 : 0.12),
+              boxShadow: design.subtleShadow,
+            },
+          }}
         />
       ))}
     </Stack>
@@ -1144,21 +1420,30 @@ export default function Schedule() {
             ref={(el: HTMLDivElement | null) => {
               dayCardRefs.current[dayIdx] = el
             }}
-            elevation={4}
+            elevation={0}
             sx={{
               borderRadius: 3,
-              p: 2,
+              p: { xs: 2, md: 2.4 },
               mb: 1,
-              bgcolor:
-                hasToday && dayIdx === todayIdx ? "var(--table-row-today)" : "var(--card-bg)",
-              border: "1px solid var(--btn-border)",
-              boxShadow: "0 10px 30px #00000014, 0 3px 12px #0000000a",
+              backgroundColor:
+                hasToday && dayIdx === todayIdx
+                  ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                  : theme.palette.mode === "dark"
+                    ? alpha(design.surface, 0.9)
+                    : design.surface,
+              border: `1px solid ${design.border}`,
+              boxShadow: design.cardShadow,
               contentVisibility: "auto",
               containIntrinsicSize: "400px",
+              transition: "transform 180ms ease, box-shadow 180ms ease",
+              "&:hover": {
+                transform: "translateY(-4px)",
+                boxShadow: design.hoverShadow,
+              },
             }}
           >
             <Box display="flex" alignItems="center" mb={1} gap={1}>
-              <Typography fontWeight={800} fontSize="1.12rem">
+              <Typography fontWeight={800} fontSize="1.12rem" sx={{ letterSpacing: ".02em" }}>
                 {label}
               </Typography>
               {(user?.role === "admin" || user?.role === "teacher") && (
@@ -1171,9 +1456,17 @@ export default function Schedule() {
                   }}
                   sx={{
                     ml: 0.5,
-                    border: "1px solid var(--btn-border)",
-                    bgcolor: "var(--card-bg)",
-                    "&:hover": { bgcolor: "var(--option-bg)" },
+                    borderRadius: 2,
+                    border: `1px solid ${design.border}`,
+                    bgcolor:
+                      theme.palette.mode === "dark" ? alpha(design.surface, 0.75) : design.surface,
+                    transition:
+                      "background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
+                    "&:hover": {
+                      bgcolor: design.accentSoft,
+                      transform: "translateY(-2px)",
+                      boxShadow: design.subtleShadow,
+                    },
                     height: 26,
                     width: 26,
                   }}
@@ -1184,7 +1477,7 @@ export default function Schedule() {
               )}
             </Box>
             {lessons.length === 0 ? (
-              <Typography sx={{ color: "var(--secondary-text)" }}>
+              <Typography sx={{ color: design.secondary }}>
                 {t("schedule:mobile.noLessons")}
               </Typography>
             ) : (
@@ -1199,7 +1492,13 @@ export default function Schedule() {
                           size="small"
                           label={t("schedule:break", { minutes: gap })}
                           className="chip-break"
-                          sx={{ mb: 0.8 }}
+                          sx={{
+                            mb: 0.8,
+                            bgcolor: design.chipBackground,
+                            border: `1px solid ${design.chipBorder}`,
+                            color: design.secondary,
+                            fontWeight: 600,
+                          }}
                         />
                       )}
                       <Box
@@ -1208,19 +1507,28 @@ export default function Schedule() {
                           setOpenDialog(true)
                         }}
                         sx={{
-                          p: 1.3,
-                          borderRadius: 2,
-                          background: "var(--option-bg)",
-                          boxShadow: "var(--option-shadow)",
-                          border: "1px solid var(--btn-border)",
+                          p: { xs: 1.25, md: 1.35 },
+                          borderRadius: 3,
+                          backgroundColor:
+                            theme.palette.mode === "dark"
+                              ? alpha(design.surface, 0.85)
+                              : design.surface,
+                          boxShadow: design.subtleShadow,
+                          border: `1px solid ${design.border}`,
                           cursor: "pointer",
-                          transition: "transform .2s, box-shadow .2s",
+                          transition:
+                            "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease",
                           "&:hover": {
-                            background: "var(--option-hover-bg)",
-                            transform: "translateY(-1px)",
-                            boxShadow: "0 8px 26px #2175ee20, 0 1.5px 8px #0002",
+                            backgroundColor:
+                              theme.palette.mode === "dark"
+                                ? alpha(design.surface, 0.92)
+                                : alpha(design.primary, 0.04),
+                            transform: "translateY(-4px)",
+                            boxShadow: design.hoverShadow,
+                            borderColor: design.accentSoftStrong,
                           },
                           position: "relative",
+                          overflow: "hidden",
                         }}
                       >
                         <Box
@@ -1229,10 +1537,11 @@ export default function Schedule() {
                             left: 0,
                             top: 0,
                             bottom: 0,
-                            width: 6,
-                            borderTopLeftRadius: 8,
-                            borderBottomLeftRadius: 8,
+                            width: 7,
+                            borderTopLeftRadius: 10,
+                            borderBottomLeftRadius: 10,
                             background: getLessonTypeColor(lesson.lesson_type),
+                            boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
                           }}
                         />
                         <Stack
@@ -1251,10 +1560,14 @@ export default function Schedule() {
                             }
                             className="chip-type"
                             sx={{
-                              background: getLessonTypeColor(lesson.lesson_type),
+                              backgroundColor: getLessonTypeColor(lesson.lesson_type),
                               color: "#fff",
                               height: 24,
                               fontWeight: 700,
+                              boxShadow:
+                                theme.palette.mode === "dark"
+                                  ? "none"
+                                  : "0 10px 22px rgba(15, 23, 42, 0.18)",
                             }}
                           />
                           <Chip
@@ -1262,19 +1575,25 @@ export default function Schedule() {
                             className="chip-time"
                             icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
                             label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+                            sx={{
+                              bgcolor: design.chipBackground,
+                              border: `1px solid ${design.chipBorder}`,
+                              color: design.text,
+                            }}
                           />
                         </Stack>
                         <Typography
                           fontWeight={700}
                           fontSize="1.02rem"
                           sx={{
-                            color: "var(--page-text)",
+                            color: design.text,
                             pl: 1,
                             mt: 0.5,
                             display: "-webkit-box",
                             WebkitLineClamp: 2,
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden",
+                            letterSpacing: ".02em",
                           }}
                         >
                           {lesson.subject}
@@ -1285,12 +1604,22 @@ export default function Schedule() {
                             variant="outlined"
                             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
                             label={lesson.teacher}
+                            sx={{
+                              borderColor: design.chipBorder,
+                              backgroundColor: design.chipBackground,
+                              color: design.secondary,
+                            }}
                           />
                           <Chip
                             size="small"
                             variant="outlined"
                             icon={<RoomIcon sx={{ fontSize: 16 }} />}
                             label={lesson.room}
+                            sx={{
+                              borderColor: design.chipBorder,
+                              backgroundColor: design.chipBackground,
+                              color: design.secondary,
+                            }}
                           />
                         </Stack>
                       </Box>
@@ -1329,11 +1658,16 @@ export default function Schedule() {
       `}</style>
         <Box
           sx={{
-            width: "100vw",
+            width: "100%",
             minHeight: "100vh",
-            bgcolor: "var(--page-bg)",
-            color: "var(--page-text)",
-            py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 },
+            backgroundColor: design.pageBackground,
+            backgroundImage:
+              theme.palette.mode === "dark"
+                ? `linear-gradient(180deg, ${alpha(design.surface, 0.18)}, transparent)`
+                : `linear-gradient(180deg, ${alpha(design.primary, 0.08)} 0%, transparent 60%)`,
+            backgroundRepeat: "no-repeat",
+            color: design.text,
+            py: { xs: 4, sm: 4.2, md: 4.5 },
           }}
         >
           <Box
@@ -1341,149 +1675,209 @@ export default function Schedule() {
               ...mainAlignSx,
               ml: { xs: 2, sm: 4, md: 5, lg: 8 },
               mr: { xs: 2, sm: 4, md: 5, lg: 8 },
-              maxWidth: 980,
-              mb: 2,
-              mt: 0,
+              maxWidth: 1120,
+              mb: { xs: 3, md: 3.6 },
             }}
           >
-            <Stack
+            <Paper
               data-fade
-              style={{ "--fade-delay": "80ms" } as CSSProperties}
-              direction="row"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1.3}
-              mb={2.2}
-              mt={0.5}
+              style={{ "--fade-delay": "60ms" } as CSSProperties}
+              elevation={0}
+              sx={heroCardSx}
             >
-              <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
-              <Typography
-                variant="h4"
-                fontWeight={700}
-                color="primary.main"
-                sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-              >
-                {user?.role === "student"
-                  ? t("schedule:title.student")
-                  : t("schedule:title.default")}
-              </Typography>
-              <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>{todayLabel}</Box>
-              {activeGroupName && (
-                <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>
-                  {t("schedule:header.groupName", { name: activeGroupName })}
-                </Box>
-              )}
-            </Stack>
-
-            <Stack
-              data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              direction="row"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1}
-              mb={2}
-            >
-              {headerActions}
-            </Stack>
-
-            <Box
-              data-fade
-              style={{ "--fade-delay": "200ms" } as CSSProperties}
-              className="no-print"
-              sx={{ ...headerCardSx, mb: 2 }}
-            >
-              {currentLesson ? (
-                <Box>
-                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                    <Chip size="small" className="chip-clock" label={t("schedule:chips.current")} />
-                    <Chip
-                      size="small"
-                      className="chip-time"
-                      label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
-                    />
-                    <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
-                    {!!timeLeftText && (
-                      <Chip size="small" className="chip-left" label={timeLeftText} />
-                    )}
-                  </Stack>
-                  <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<SchoolIcon sx={{ fontSize: 16 }} />}
-                      label={currentLesson.teacher}
-                    />
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<RoomIcon sx={{ fontSize: 16 }} />}
-                      label={currentLesson.room}
-                    />
-                  </Stack>
-                  <LinearProgress
-                    value={currentProgress}
-                    variant="determinate"
-                    className="lesson-progress"
-                    sx={{
-                      mt: 1.5,
-                      height: 8,
-                      borderRadius: 999,
-                      backgroundColor: "var(--progress-track)",
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor: "var(--progress-bar)",
-                        transition: "transform 0.4s linear",
-                      },
-                    }}
-                    aria-label={t("schedule:aria.currentProgress")}
-                  />
-                </Box>
-              ) : nextLesson ? (
-                <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                  <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
-                  <Chip
-                    size="small"
-                    className="chip-time"
-                    label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
-                  />
-                  <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
-                  {!!timeLeftText && (
-                    <Chip size="small" className="chip-left" label={timeLeftText} />
-                  )}
-                </Stack>
-              ) : (
-                <Typography sx={{ color: "var(--secondary-text)" }}>
-                  {t("schedule:summary.noMoreToday")}
-                </Typography>
-              )}
-            </Box>
-
-            {(user?.role === "teacher" || user?.role === "admin") && (
-              <FormControl
-                data-fade
-                style={{ "--fade-delay": "240ms" } as CSSProperties}
-                fullWidth
-                sx={{ mb: 2, maxWidth: 340 }}
-              >
-                <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
-                <Select
-                  value={selectedGroup ?? ""}
-                  label={t("schedule:form.groupLabel")}
-                  onChange={(e) => setSelectedGroup(Number(e.target.value))}
+              <Stack spacing={{ xs: 2.4, md: 3 }}>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                  justifyContent="space-between"
+                  spacing={{ xs: 2, md: 3 }}
                 >
-                  {groups.map((g) => (
-                    <MenuItem value={g.id} key={g.id}>
-                      {g.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
+                  <Stack direction="row" spacing={2.2} alignItems="center" flexWrap="wrap">
+                    <Box
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: "50%",
+                        display: "grid",
+                        placeItems: "center",
+                        backgroundColor: alpha(
+                          design.primary,
+                          theme.palette.mode === "dark" ? 0.24 : 0.12
+                        ),
+                        border: `1px solid ${design.border}`,
+                        boxShadow: design.subtleShadow,
+                      }}
+                    >
+                      <CalendarMonthIcon color="primary" sx={{ fontSize: 30 }} />
+                    </Box>
+                    <Box>
+                      <Typography
+                        variant="h4"
+                        fontWeight={700}
+                        sx={{
+                          fontSize: "clamp(1.8rem, 1.1rem + 2vw, 2.8rem)",
+                          color: design.text,
+                          letterSpacing: ".01em",
+                        }}
+                      >
+                        {user?.role === "student"
+                          ? t("schedule:title.student")
+                          : t("schedule:title.default")}
+                      </Typography>
+                      <Stack direction="row" spacing={1.2} mt={1.2} flexWrap="wrap">
+                        <Box sx={badgeGhost}>{todayLabel}</Box>
+                        {activeGroupName && (
+                          <Box sx={badgeGhost}>
+                            {t("schedule:header.groupName", { name: activeGroupName })}
+                          </Box>
+                        )}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                  <Box
+                    data-fade
+                    style={{ "--fade-delay": "120ms" } as CSSProperties}
+                    sx={{
+                      width: "100%",
+                      display: "flex",
+                      justifyContent: { xs: "flex-start", md: "flex-end" },
+                    }}
+                  >
+                    {headerActions}
+                  </Box>
+                </Stack>
+                <Divider
+                  data-fade
+                  style={{ "--fade-delay": "160ms" } as CSSProperties}
+                  sx={{ borderColor: design.borderMuted, opacity: 0.65 }}
+                />
+                <Box
+                  data-fade
+                  style={{ "--fade-delay": "180ms" } as CSSProperties}
+                  className="no-print"
+                  sx={headerCardSx}
+                >
+                  {currentLesson ? (
+                    <Box>
+                      <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                        <Chip
+                          size="small"
+                          className="chip-clock"
+                          label={t("schedule:chips.current")}
+                          sx={chipClockSx}
+                        />
+                        <Chip
+                          size="small"
+                          className="chip-time"
+                          label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                          sx={chipTimeSx}
+                        />
+                        <Typography sx={{ fontWeight: 800, color: design.text }}>
+                          {currentLesson.subject}
+                        </Typography>
+                        {!!timeLeftText && (
+                          <Chip
+                            size="small"
+                            className="chip-left"
+                            label={timeLeftText}
+                            sx={chipLeftSx}
+                          />
+                        )}
+                      </Stack>
+                      <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          icon={<SchoolIcon sx={{ fontSize: 16 }} />}
+                          label={currentLesson.teacher}
+                          sx={chipOutlinedInfoSx}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          icon={<RoomIcon sx={{ fontSize: 16 }} />}
+                          label={currentLesson.room}
+                          sx={chipOutlinedInfoSx}
+                        />
+                      </Stack>
+                      <LinearProgress
+                        value={currentProgress}
+                        variant="determinate"
+                        className="lesson-progress"
+                        sx={{
+                          mt: 1.5,
+                          height: 8,
+                          borderRadius: 999,
+                          backgroundColor: alpha(design.text, 0.08),
+                          "& .MuiLinearProgress-bar": {
+                            backgroundColor: design.primary,
+                            transition: "transform 0.4s linear",
+                          },
+                        }}
+                        aria-label={t("schedule:aria.currentProgress")}
+                      />
+                    </Box>
+                  ) : nextLesson ? (
+                    <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                      <Chip
+                        size="small"
+                        className="chip-clock"
+                        label={t("schedule:chips.next")}
+                        sx={chipClockSx}
+                      />
+                      <Chip
+                        size="small"
+                        className="chip-time"
+                        label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
+                        sx={chipTimeSx}
+                      />
+                      <Typography sx={{ fontWeight: 800, color: design.text }}>
+                        {nextLesson.subject}
+                      </Typography>
+                      {!!timeLeftText && (
+                        <Chip
+                          size="small"
+                          className="chip-left"
+                          label={timeLeftText}
+                          sx={chipLeftSx}
+                        />
+                      )}
+                    </Stack>
+                  ) : (
+                    <Typography sx={{ color: design.secondary }}>
+                      {t("schedule:summary.noMoreToday")}
+                    </Typography>
+                  )}
+                </Box>
+
+                {(user?.role === "teacher" || user?.role === "admin") && (
+                  <FormControl
+                    data-fade
+                    style={{ "--fade-delay": "220ms" } as CSSProperties}
+                    fullWidth
+                    sx={{ maxWidth: 360 }}
+                  >
+                    <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
+                    <Select
+                      value={selectedGroup ?? ""}
+                      label={t("schedule:form.groupLabel")}
+                      onChange={(e) => setSelectedGroup(Number(e.target.value))}
+                    >
+                      {groups.map((g) => (
+                        <MenuItem value={g.id} key={g.id}>
+                          {g.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              </Stack>
+            </Paper>
           </Box>
 
           <Box
             data-fade
-            style={{ "--fade-delay": "280ms" } as CSSProperties}
+            style={{ "--fade-delay": "260ms" } as CSSProperties}
             sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}
           >
             {isMobile ? renderMobileCards() : renderTable()}
