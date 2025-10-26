@@ -39,7 +39,7 @@ import {
   Divider,
   LinearProgress,
 } from "@mui/material"
-import { alpha, darken, lighten, useTheme } from "@mui/material/styles"
+import { alpha, useTheme } from "@mui/material/styles"
 import DeleteIcon from "@mui/icons-material/Delete"
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
 import AddIcon from "@mui/icons-material/Add"
@@ -223,65 +223,45 @@ export default function Schedule() {
   const locale = getLocaleForLanguage(language)
   const theme = useTheme()
   const design = useMemo(() => {
-    const isDark = theme.palette.mode === "dark"
     const text = theme.palette.text.primary
     const secondary = theme.palette.text.secondary
+    const border = alpha(text, theme.palette.mode === "dark" ? 0.28 : 0.08)
+    const borderMuted = alpha(text, theme.palette.mode === "dark" ? 0.18 : 0.06)
+    const borderStrong = alpha(text, theme.palette.mode === "dark" ? 0.32 : 0.12)
+    const surface = theme.palette.background.paper
+    const tintedSurface = theme.palette.mode === "dark" ? alpha(surface, 0.65) : "#f4f7fb"
+    const subtleShadow =
+      theme.palette.mode === "dark"
+        ? "0 18px 44px rgba(13, 23, 42, 0.55)"
+        : "0 18px 44px rgba(15, 23, 42, 0.08)"
+    const cardShadow =
+      theme.palette.mode === "dark"
+        ? "0 26px 64px rgba(13, 23, 42, 0.62)"
+        : "0 26px 64px rgba(15, 23, 42, 0.12)"
+    const hoverShadow =
+      theme.palette.mode === "dark"
+        ? "0 32px 82px rgba(13, 23, 42, 0.7)"
+        : "0 36px 88px rgba(15, 23, 42, 0.16)"
     const primary = theme.palette.primary.main
-    const border = alpha(text, isDark ? 0.28 : 0.08)
-    const borderMuted = alpha(text, isDark ? 0.18 : 0.06)
-    const borderStrong = alpha(text, isDark ? 0.32 : 0.12)
-    const surfaceBase = theme.palette.background.paper
-    const surface = isDark ? lighten(surfaceBase, 0.04) : surfaceBase
-    const elevatedSurface = isDark ? lighten(surfaceBase, 0.1) : surface
-    const tintedSurface = isDark ? alpha(lighten(surfaceBase, 0.12), 0.78) : "#f4f7fb"
-    const subtleShadow = isDark
-      ? "0 18px 44px rgba(6, 12, 24, 0.55)"
-      : "0 18px 44px rgba(15, 23, 42, 0.08)"
-    const cardShadow = isDark
-      ? "0 26px 64px rgba(5, 12, 24, 0.62)"
-      : "0 26px 64px rgba(15, 23, 42, 0.12)"
-    const hoverShadow = isDark
-      ? "0 32px 82px rgba(3, 8, 18, 0.7)"
-      : "0 36px 88px rgba(15, 23, 42, 0.16)"
-    const pageBackgroundColor = isDark ? darken(theme.palette.background.default, 0.04) : "#f5f7fb"
-    const pageOverlay = isDark
-      ? `radial-gradient(140% 140% at 0% 0%, ${alpha(primary, 0.18)}, transparent 55%), linear-gradient(180deg, ${alpha(elevatedSurface, 0.42)}, transparent 65%)`
-      : `linear-gradient(180deg, ${alpha(primary, 0.08)} 0%, transparent 60%)`
-    const heroBackground = isDark
-      ? `linear-gradient(135deg, ${alpha(primary, 0.22)}, ${alpha(elevatedSurface, 0.95)})`
-      : `linear-gradient(135deg, ${tintedSurface}, ${surface})`
-    const headerBackground = isDark ? alpha(elevatedSurface, 0.96) : surface
-    const cardBackground = isDark ? alpha(elevatedSurface, 0.94) : surface
-    const tableStickyBackground = isDark ? alpha(elevatedSurface, 0.92) : tintedSurface
-    const tableHighlight = isDark ? alpha(primary, 0.24) : alpha(primary, 0.08)
-    const chipBackground = isDark ? alpha(text, 0.16) : alpha(primary, 0.05)
-    const chipBorder = isDark ? alpha(text, 0.24) : alpha(text, 0.1)
     return {
-      isDark,
       text,
       secondary,
       border,
       borderMuted,
       borderStrong,
       surface,
-      elevatedSurface,
       tintedSurface,
       subtleShadow,
       cardShadow,
       hoverShadow,
       primary,
       primaryContrast: theme.palette.primary.contrastText,
-      accentSoft: alpha(primary, isDark ? 0.25 : 0.12),
-      accentSoftStrong: alpha(primary, isDark ? 0.45 : 0.18),
-      chipBackground,
-      chipBorder,
-      pageBackground: pageBackgroundColor,
-      pageOverlay,
-      heroBackground,
-      headerBackground,
-      cardBackground,
-      tableStickyBackground,
-      tableHighlight,
+      accentSoft: alpha(primary, theme.palette.mode === "dark" ? 0.25 : 0.12),
+      accentSoftStrong: alpha(primary, theme.palette.mode === "dark" ? 0.4 : 0.18),
+      chipBackground: theme.palette.mode === "dark" ? alpha(text, 0.14) : alpha(primary, 0.05),
+      chipBorder: theme.palette.mode === "dark" ? alpha(text, 0.2) : alpha(text, 0.1),
+      pageBackground:
+        theme.palette.mode === "dark" ? alpha(theme.palette.background.default, 0.72) : "#f5f7fb",
     }
   }, [theme])
   const weekdayConfigs = useMemo(() => {
@@ -796,7 +776,10 @@ export default function Schedule() {
     borderRadius: { xs: 3, md: 4 },
     px: { xs: 2.4, md: 3.4 },
     py: { xs: 2.6, md: 3.2 },
-    background: design.heroBackground,
+    background:
+      theme.palette.mode === "dark"
+        ? alpha(design.surface, 0.92)
+        : `linear-gradient(135deg, ${design.tintedSurface}, ${design.surface})`,
     border: `1px solid ${design.border}`,
     boxShadow: design.cardShadow,
     overflow: "hidden",
@@ -872,7 +855,7 @@ export default function Schedule() {
   } as const
 
   const chipLeftSx = {
-    bgcolor: alpha(design.primary, design.isDark ? 0.32 : 0.12),
+    bgcolor: alpha(design.primary, theme.palette.mode === "dark" ? 0.28 : 0.12),
     border: `1px solid ${design.accentSoftStrong}`,
     color: design.primary,
     fontWeight: 600,
@@ -887,7 +870,7 @@ export default function Schedule() {
   const headerCardSx = {
     borderRadius: { xs: 2, md: 3 },
     p: { xs: 1.8, md: 2.2 },
-    backgroundColor: design.headerBackground,
+    backgroundColor: theme.palette.mode === "dark" ? alpha(design.surface, 0.9) : design.surface,
     boxShadow: design.subtleShadow,
     border: `1px solid ${design.border}`,
   } as const
@@ -1002,7 +985,8 @@ export default function Schedule() {
         pl: { xs: 1.7, md: 1.9 },
         pr: { xs: 1.35, md: 1.55 },
         borderRadius: 3,
-        backgroundColor: design.cardBackground,
+        backgroundColor:
+          theme.palette.mode === "dark" ? alpha(design.surface, 0.85) : design.surface,
         border: `1px solid ${design.border}`,
         boxShadow: design.subtleShadow,
         transition:
@@ -1028,9 +1012,7 @@ export default function Schedule() {
           borderTopLeftRadius: 10,
           borderBottomLeftRadius: 10,
           background: getLessonTypeColor(lesson.lesson_type),
-          boxShadow: design.isDark
-            ? `0 0 0 1px ${alpha(design.primaryContrast, 0.2)} inset`
-            : "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
+          boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
         }}
       />
       <Stack spacing={0.6}>
@@ -1119,14 +1101,15 @@ export default function Schedule() {
             position: "absolute",
             top: 6,
             right: 6,
-            bgcolor: design.cardBackground,
+            bgcolor: theme.palette.mode === "dark" ? alpha(design.surface, 0.7) : design.surface,
             border: `1px solid ${design.border}`,
             boxShadow: design.subtleShadow,
             zIndex: 2,
             "&:hover": {
-              bgcolor: design.isDark
-                ? alpha(design.cardBackground, 0.9)
-                : alpha(design.primary, 0.08),
+              bgcolor:
+                theme.palette.mode === "dark"
+                  ? alpha(design.surface, 0.85)
+                  : alpha(design.primary, 0.08),
             },
           }}
           onClick={(e) => {
@@ -1165,7 +1148,8 @@ export default function Schedule() {
           border: `1px solid ${design.border}`,
           boxShadow: design.cardShadow,
           minHeight: 360,
-          backgroundColor: design.cardBackground,
+          backgroundColor:
+            theme.palette.mode === "dark" ? alpha(design.surface, 0.9) : design.surface,
           color: design.text,
           overflowX: "auto",
           scrollBehavior: "smooth",
@@ -1181,7 +1165,10 @@ export default function Schedule() {
                 sx={{
                   fontWeight: 700,
                   width: 52,
-                  backgroundColor: design.tableStickyBackground,
+                  backgroundColor:
+                    theme.palette.mode === "dark"
+                      ? alpha(design.surface, 0.8)
+                      : design.tintedSurface,
                   zIndex: 10,
                   position: "sticky",
                   left: 0,
@@ -1208,8 +1195,10 @@ export default function Schedule() {
                       fontWeight: 700,
                       backgroundColor:
                         hasToday && idx === todayIdx
-                          ? design.tableHighlight
-                          : design.tableStickyBackground,
+                          ? design.accentSoft
+                          : theme.palette.mode === "dark"
+                            ? alpha(design.surface, 0.75)
+                            : design.tintedSurface,
                       fontSize: "clamp(0.97rem, 1.4vw, 1.11rem)",
                       zIndex: 5,
                       color: design.text,
@@ -1238,7 +1227,10 @@ export default function Schedule() {
                             ml: 1,
                             borderRadius: 2,
                             border: `1px solid ${design.border}`,
-                            bgcolor: design.cardBackground,
+                            bgcolor:
+                              theme.palette.mode === "dark"
+                                ? alpha(design.surface, 0.75)
+                                : design.surface,
                             transition:
                               "background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
                             "&:hover": {
@@ -1273,7 +1265,10 @@ export default function Schedule() {
                   key={rowIdx}
                   sx={{
                     "&:hover": {
-                      backgroundColor: alpha(design.primary, design.isDark ? 0.24 : 0.08),
+                      backgroundColor: alpha(
+                        design.primary,
+                        theme.palette.mode === "dark" ? 0.24 : 0.08
+                      ),
                     },
                     transition: "background-color 160ms ease",
                   }}
@@ -1282,7 +1277,10 @@ export default function Schedule() {
                     align="center"
                     sx={{
                       fontWeight: 700,
-                      backgroundColor: design.tableStickyBackground,
+                      backgroundColor:
+                        theme.palette.mode === "dark"
+                          ? alpha(design.surface, 0.75)
+                          : design.tintedSurface,
                       position: "sticky",
                       left: 0,
                       color: design.text,
@@ -1302,7 +1300,9 @@ export default function Schedule() {
                         <TableCell
                           key={`empty-${rowIdx}-${colIdx}`}
                           sx={{
-                            backgroundColor: colIsToday ? design.tableHighlight : "transparent",
+                            backgroundColor: colIsToday
+                              ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                              : "transparent",
                             p: 1.2,
                             borderLeft: `1px solid ${design.border}`,
                             borderBottom: `1px solid ${design.border}`,
@@ -1335,7 +1335,9 @@ export default function Schedule() {
                         sx={{
                           position: "relative",
                           color: design.text,
-                          backgroundColor: colIsToday ? design.tableHighlight : "transparent",
+                          backgroundColor: colIsToday
+                            ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                            : "transparent",
                           overflow: "visible",
                           p: 1.2,
                           borderLeft: `1px solid ${design.border}`,
@@ -1395,7 +1397,7 @@ export default function Schedule() {
               backgroundColor:
                 hasToday && i === todayIdx
                   ? design.primary
-                  : alpha(design.primary, design.isDark ? 0.3 : 0.12),
+                  : alpha(design.primary, theme.palette.mode === "dark" ? 0.28 : 0.12),
               boxShadow: design.subtleShadow,
             },
           }}
@@ -1424,7 +1426,11 @@ export default function Schedule() {
               p: { xs: 2, md: 2.4 },
               mb: 1,
               backgroundColor:
-                hasToday && dayIdx === todayIdx ? design.tableHighlight : design.cardBackground,
+                hasToday && dayIdx === todayIdx
+                  ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                  : theme.palette.mode === "dark"
+                    ? alpha(design.surface, 0.9)
+                    : design.surface,
               border: `1px solid ${design.border}`,
               boxShadow: design.cardShadow,
               contentVisibility: "auto",
@@ -1452,7 +1458,8 @@ export default function Schedule() {
                     ml: 0.5,
                     borderRadius: 2,
                     border: `1px solid ${design.border}`,
-                    bgcolor: design.cardBackground,
+                    bgcolor:
+                      theme.palette.mode === "dark" ? alpha(design.surface, 0.75) : design.surface,
                     transition:
                       "background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
                     "&:hover": {
@@ -1502,16 +1509,20 @@ export default function Schedule() {
                         sx={{
                           p: { xs: 1.25, md: 1.35 },
                           borderRadius: 3,
-                          backgroundColor: design.cardBackground,
+                          backgroundColor:
+                            theme.palette.mode === "dark"
+                              ? alpha(design.surface, 0.85)
+                              : design.surface,
                           boxShadow: design.subtleShadow,
                           border: `1px solid ${design.border}`,
                           cursor: "pointer",
                           transition:
                             "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease",
                           "&:hover": {
-                            backgroundColor: design.isDark
-                              ? alpha(design.cardBackground, 0.96)
-                              : alpha(design.primary, 0.04),
+                            backgroundColor:
+                              theme.palette.mode === "dark"
+                                ? alpha(design.surface, 0.92)
+                                : alpha(design.primary, 0.04),
                             transform: "translateY(-4px)",
                             boxShadow: design.hoverShadow,
                             borderColor: design.accentSoftStrong,
@@ -1530,9 +1541,7 @@ export default function Schedule() {
                             borderTopLeftRadius: 10,
                             borderBottomLeftRadius: 10,
                             background: getLessonTypeColor(lesson.lesson_type),
-                            boxShadow: design.isDark
-                              ? `0 0 0 1px ${alpha(design.primaryContrast, 0.2)} inset`
-                              : "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
+                            boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
                           }}
                         />
                         <Stack
@@ -1652,7 +1661,10 @@ export default function Schedule() {
             width: "100%",
             minHeight: "100vh",
             backgroundColor: design.pageBackground,
-            backgroundImage: design.pageOverlay,
+            backgroundImage:
+              theme.palette.mode === "dark"
+                ? `linear-gradient(180deg, ${alpha(design.surface, 0.18)}, transparent)`
+                : `linear-gradient(180deg, ${alpha(design.primary, 0.08)} 0%, transparent 60%)`,
             backgroundRepeat: "no-repeat",
             color: design.text,
             py: { xs: 4, sm: 4.2, md: 4.5 },
