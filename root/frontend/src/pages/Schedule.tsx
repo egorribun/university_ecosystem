@@ -36,6 +36,7 @@ import {
   DialogTitle,
   DialogContent,
   Chip,
+  Divider,
   LinearProgress,
 } from "@mui/material"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -726,46 +727,138 @@ export default function Schedule() {
     return set
   }, [filteredSchedule])
 
+  const heroCardSx = {
+    position: "relative" as const,
+    borderRadius: { xs: 3, md: 4 },
+    px: { xs: 2.6, md: 3.8 },
+    py: { xs: 2.8, md: 3.9 },
+    background: `linear-gradient(135deg, var(--hero-grad-start), var(--hero-grad-end))`,
+    border: "1px solid var(--glass-border)",
+    boxShadow: "var(--glass-shadow)",
+    backdropFilter: "blur(calc(var(--glass-blur) * 1.2))",
+    overflow: "hidden",
+    isolation: "isolate" as const,
+    "&::before": {
+      content: "''",
+      position: "absolute",
+      inset: 0,
+      background: "linear-gradient(160deg, var(--glass-tint-1), transparent 70%)",
+      opacity: 0.9,
+      pointerEvents: "none",
+    },
+    "&::after": {
+      content: "''",
+      position: "absolute",
+      inset: 0,
+      background: "radial-gradient(120% 120% at 0% 0%, var(--glass-tint-2), transparent 55%)",
+      opacity: 0.85,
+      pointerEvents: "none",
+      mixBlendMode: "soft-light",
+    },
+    "& > *": {
+      position: "relative",
+      zIndex: 1,
+    },
+  } as const
+
+  const parityButtonBaseSx = {
+    borderRadius: 999,
+    textTransform: "none",
+    fontWeight: 700,
+    px: 2.6,
+    py: 0.95,
+    letterSpacing: ".04em",
+    transition: "transform var(--anim-med), box-shadow var(--anim-med)",
+    borderColor: "var(--glass-border)",
+    boxShadow: "none",
+    "&:hover": {
+      transform: "translateY(-1px)",
+      boxShadow: "0 16px 32px rgba(16, 21, 27, 0.16)",
+    },
+  } as const
+
   const badgeBase = {
     display: "inline-flex",
     alignItems: "center",
-    px: 1.3,
-    py: 1.2,
+    gap: 0.8,
+    px: 1.4,
+    py: 1,
     borderRadius: 999,
-    fontWeight: 700,
+    fontWeight: 600,
     lineHeight: 1,
-    fontSize: "clamp(.78rem, .7rem + .35vw, .98rem)",
+    fontSize: "clamp(.75rem, .68rem + .32vw, .95rem)",
+    letterSpacing: ".06em",
+    textTransform: "uppercase" as const,
     userSelect: "none",
     whiteSpace: "nowrap",
+    color: "var(--page-text)",
   } as const
 
   const badgeGhost = {
     ...badgeBase,
-    background: "var(--btn-bg)",
-    color: "var(--nav-text)",
-    border: "1px solid var(--btn-border)",
+    background: "linear-gradient(135deg, var(--glass-tint-1), var(--glass-tint-3))",
+    border: "1px solid var(--glass-border)",
+    boxShadow: "0 18px 38px rgba(16, 21, 27, 0.18)",
+    backdropFilter: "blur(calc(var(--glass-blur) * 1.1))",
   } as const
 
   const headerCardSx = {
-    borderRadius: 4,
-    p: 2,
-    background: "var(--card-bg)",
-    boxShadow: "0 12px 36px #00000012, 0 4px 14px #0000000a",
-    border: "1px solid var(--btn-border)",
-  }
+    borderRadius: { xs: 2, md: 3 },
+    p: { xs: 1.9, md: 2.4 },
+    background: "linear-gradient(145deg, var(--card-bg), var(--glass-tint-3))",
+    boxShadow: "var(--glass-shadow)",
+    border: "1px solid var(--glass-border)",
+    position: "relative" as const,
+    overflow: "hidden",
+    "&::after": {
+      content: "''",
+      position: "absolute",
+      inset: 0,
+      background: "linear-gradient(180deg, var(--glass-tint-3), transparent)",
+      pointerEvents: "none",
+    },
+  } as const
 
   const headerActions = (
-    <Stack direction="row" spacing={2} alignItems="center" mb={2.5} flexWrap="wrap">
-      <Typography component="span">{t("schedule:week.label")}</Typography>
+    <Stack
+      direction="row"
+      alignItems="center"
+      flexWrap="wrap"
+      sx={{ gap: 1.4, justifyContent: { xs: "flex-start", md: "flex-end" } }}
+    >
+      <Typography
+        component="span"
+        sx={{
+          fontWeight: 600,
+          letterSpacing: ".12em",
+          fontSize: "0.78rem",
+          textTransform: "uppercase",
+          color: "var(--secondary-text)",
+        }}
+      >
+        {t("schedule:week.label")}
+      </Typography>
       <Button
+        disableElevation
         variant={currentParity === "odd" ? "contained" : "outlined"}
         onClick={() => setCurrentParity("odd")}
+        sx={{
+          ...parityButtonBaseSx,
+          bgcolor: currentParity === "odd" ? "primary.main" : "transparent",
+          color: currentParity === "odd" ? "primary.contrastText" : "var(--page-text)",
+        }}
       >
         {t("schedule:week.odd")}
       </Button>
       <Button
+        disableElevation
         variant={currentParity === "even" ? "contained" : "outlined"}
         onClick={() => setCurrentParity("even")}
+        sx={{
+          ...parityButtonBaseSx,
+          bgcolor: currentParity === "even" ? "primary.main" : "transparent",
+          color: currentParity === "even" ? "primary.contrastText" : "var(--page-text)",
+        }}
       >
         {t("schedule:week.even")}
       </Button>
@@ -814,20 +907,22 @@ export default function Schedule() {
       onClick={onOpen}
       sx={{
         minHeight: lessonCardHeight,
-        p: 1.2,
-        pl: 1.8,
-        pr: 1.4,
-        borderRadius: 2,
-        background: "var(--option-bg)",
-        border: "1px solid var(--btn-border)",
-        boxShadow: "var(--option-shadow)",
-        transition: "transform .2s, box-shadow .2s",
+        p: { xs: 1.25, sm: 1.35, md: 1.45 },
+        pl: { xs: 1.75, md: 2 },
+        pr: { xs: 1.45, md: 1.7 },
+        borderRadius: 3,
+        background: "linear-gradient(160deg, var(--option-bg), var(--glass-tint-2))",
+        border: "1px solid var(--glass-border)",
+        boxShadow: "0 22px 48px rgba(16, 21, 27, 0.18)",
+        transition: "transform var(--anim-med), box-shadow var(--anim-med), background var(--anim-med)",
         position: "relative",
         cursor: "pointer",
         mt: hasBreakBefore ? 2.5 : 0,
+        backdropFilter: "blur(calc(var(--glass-blur) * 0.8))",
         "&:hover": {
-          transform: "translateY(-1px)",
-          boxShadow: "0 10px 28px #0000001f, 0 2px 10px #0003",
+          transform: "translateY(-2px)",
+          boxShadow: "0 26px 58px rgba(16, 21, 27, 0.24)",
+          background: "linear-gradient(160deg, var(--option-hover-bg), var(--glass-tint-2))",
         },
       }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
@@ -838,10 +933,11 @@ export default function Schedule() {
           left: -1,
           top: -1,
           bottom: -1,
-          width: 6,
-          borderTopLeftRadius: 8,
-          borderBottomLeftRadius: 8,
+          width: 7,
+          borderTopLeftRadius: 10,
+          borderBottomLeftRadius: 10,
           background: getLessonTypeColor(lesson.lesson_type),
+          boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.18) inset",
         }}
       />
       <Stack spacing={0.6}>
@@ -854,6 +950,7 @@ export default function Schedule() {
               fontWeight: 700,
               color: "#fff",
               background: getLessonTypeColor(lesson.lesson_type),
+              boxShadow: "0 8px 20px rgba(0, 0, 0, 0.28)",
             }}
           />
           <Chip
@@ -861,7 +958,12 @@ export default function Schedule() {
             className="chip-time"
             icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
             label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
-            sx={{ bgcolor: "transparent", border: "1px solid var(--btn-border)" }}
+            sx={{
+              bgcolor: "var(--glass-tint-1)",
+              border: "1px solid var(--glass-border)",
+              color: "var(--page-text)",
+              backdropFilter: "blur(calc(var(--glass-blur) * 0.5))",
+            }}
           />
         </Stack>
         <Typography
@@ -873,6 +975,7 @@ export default function Schedule() {
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
+            letterSpacing: ".02em",
           }}
         >
           {lesson.subject}
@@ -883,14 +986,22 @@ export default function Schedule() {
             variant="outlined"
             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
             label={lesson.teacher}
-            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+            sx={{
+              borderColor: "var(--glass-border)",
+              color: "var(--page-text)",
+              background: "var(--glass-tint-3)",
+            }}
           />
           <Chip
             size="small"
             variant="outlined"
             icon={<RoomIcon sx={{ fontSize: 16 }} />}
             label={lesson.room}
-            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+            sx={{
+              borderColor: "var(--glass-border)",
+              color: "var(--page-text)",
+              background: "var(--glass-tint-3)",
+            }}
           />
         </Stack>
       </Stack>
@@ -902,6 +1013,7 @@ export default function Schedule() {
             bottom: 8,
             fontSize: 18,
             color: "var(--secondary-text)",
+            opacity: 0.8,
           }}
         />
       </Tooltip>
@@ -909,7 +1021,15 @@ export default function Schedule() {
         <IconButton
           aria-label={t("schedule:aria.deleteLesson")}
           size="small"
-          sx={{ position: "absolute", top: 6, right: 6, bgcolor: "var(--card-bg)", zIndex: 2 }}
+          sx={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            bgcolor: "var(--card-bg)",
+            border: "1px solid var(--glass-border)",
+            boxShadow: "0 10px 18px rgba(16, 21, 27, 0.18)",
+            zIndex: 2,
+          }}
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
@@ -923,8 +1043,8 @@ export default function Schedule() {
           sx={{
             position: "absolute",
             inset: 0,
-            borderRadius: 2,
-            boxShadow: "0 0 0 3px #ef535033 inset",
+            borderRadius: 3,
+            boxShadow: "0 0 0 3px #ef535045 inset",
             pointerEvents: "none",
           }}
         />
@@ -942,15 +1062,17 @@ export default function Schedule() {
           width: "100%",
           maxWidth: "min(98vw,1920px)",
           mx: "auto",
-          borderRadius: { xs: 2, md: 4 },
-          boxShadow: 5,
+          borderRadius: { xs: 2.4, md: 4 },
+          border: "1px solid var(--glass-border)",
+          boxShadow: "0 38px 82px rgba(16, 21, 27, 0.18)",
           minHeight: 360,
-          bgcolor: "var(--card-bg)",
+          background: "linear-gradient(160deg, var(--card-bg), var(--glass-tint-2))",
           color: "var(--page-text)",
           overflowX: "auto",
           scrollBehavior: "smooth",
           contentVisibility: "auto",
           containIntrinsicSize: "600px",
+          backdropFilter: "blur(calc(var(--glass-blur) * 1.05))",
         }}
       >
         <Table stickyHeader>
@@ -960,13 +1082,18 @@ export default function Schedule() {
                 align="center"
                 sx={{
                   fontWeight: 700,
-                  width: 45,
+                  width: 52,
                   background: "var(--table-header-bg)",
                   zIndex: 10,
                   position: "sticky",
                   left: 0,
                   color: "var(--page-text)",
-                  fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
+                  fontSize: "clamp(0.92rem,1.5vw,1.08rem)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".08em",
+                  borderRight: "1px solid var(--glass-border)",
+                  borderBottom: "1px solid var(--glass-border)",
+                  backdropFilter: "blur(calc(var(--glass-blur) * 0.7))",
                 }}
               >
                 №
@@ -990,8 +1117,15 @@ export default function Schedule() {
                       zIndex: 5,
                       color: "var(--page-text)",
                       position: "relative",
-                      borderLeft: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
-                      borderRight: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
+                      textTransform: "uppercase",
+                      letterSpacing: ".05em",
+                      borderLeft: "1px solid var(--glass-border)",
+                      borderBottom: "1px solid var(--glass-border)",
+                      backdropFilter: "blur(calc(var(--glass-blur) * 0.75))",
+                      boxShadow:
+                        hasToday && idx === todayIdx
+                          ? "inset 0 -2px 0 #2563eb55, inset 0 2px 0 #2563eb33"
+                          : undefined,
                     }}
                   >
                     <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
@@ -1006,11 +1140,18 @@ export default function Schedule() {
                           }}
                           sx={{
                             ml: 1,
-                            border: "1px solid var(--btn-border)",
+                            borderRadius: 2,
+                            border: "1px solid var(--glass-border)",
                             bgcolor: "var(--card-bg)",
-                            "&:hover": { bgcolor: "var(--option-bg)" },
-                            height: 26,
-                            width: 26,
+                            transition: "transform var(--anim-med), box-shadow var(--anim-med)",
+                            "&:hover": {
+                              bgcolor: "var(--option-bg)",
+                              transform: "translateY(-1px)",
+                              boxShadow: "0 14px 28px rgba(16, 21, 27, 0.2)",
+                            },
+                            height: 28,
+                            width: 28,
+                            boxShadow: "0 10px 22px rgba(16, 21, 27, 0.18)",
                           }}
                           aria-label={t("schedule:aria.addLesson", { day: label })}
                         >
@@ -1032,7 +1173,13 @@ export default function Schedule() {
               </TableRow>
             ) : (
               visibleRows.map((row, rowIdx) => (
-                <TableRow key={rowIdx} sx={{ "&:hover": { background: "var(--table-row-hover)" } }}>
+                <TableRow
+                  key={rowIdx}
+                  sx={{
+                    "&:hover": { background: "var(--table-row-hover)" },
+                    transition: "background var(--anim-med)",
+                  }}
+                >
                   <TableCell
                     align="center"
                     sx={{
@@ -1041,7 +1188,12 @@ export default function Schedule() {
                       position: "sticky",
                       left: 0,
                       color: "var(--page-text)",
-                      fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
+                      fontSize: "clamp(0.92rem,1.6vw,1.08rem)",
+                      letterSpacing: ".04em",
+                      borderRight: "1px solid var(--glass-border)",
+                      borderBottom: "1px solid var(--glass-border)",
+                      backdropFilter: "blur(calc(var(--glass-blur) * 0.65))",
+                      zIndex: 4,
                     }}
                   >
                     {rowIdx + 1}
@@ -1055,6 +1207,8 @@ export default function Schedule() {
                           sx={{
                             background: colIsToday ? "var(--table-row-today)" : "transparent",
                             p: 1.2,
+                            borderLeft: "1px solid var(--glass-border)",
+                            borderBottom: "1px solid var(--glass-border)",
                           }}
                         >
                           <Box
@@ -1087,6 +1241,9 @@ export default function Schedule() {
                           background: colIsToday ? "var(--table-row-today)" : "transparent",
                           overflow: "visible",
                           p: 1.2,
+                          borderLeft: "1px solid var(--glass-border)",
+                          borderBottom: "1px solid var(--glass-border)",
+                          transition: "background var(--anim-med)",
                         }}
                       >
                         {renderBreakChip(rowIdx, colIdx)}
@@ -1119,12 +1276,34 @@ export default function Schedule() {
           key={day}
           clickable
           className="chip-day"
-          color={hasToday && i === todayIdx ? "primary" : "default"}
+          size="small"
           label={weekdayShort[i] ?? getDayLabel(day)}
           onClick={() =>
             dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
           }
-          sx={{ flex: "0 0 auto" }}
+          sx={{
+            flex: "0 0 auto",
+            borderRadius: 999,
+            fontWeight: 600,
+            letterSpacing: ".06em",
+            textTransform: "uppercase",
+            px: 1,
+            bgcolor:
+              hasToday && i === todayIdx ? "primary.main" : "var(--glass-tint-1)",
+            color:
+              hasToday && i === todayIdx ? "primary.contrastText" : "var(--page-text)",
+            border: "1px solid var(--glass-border)",
+            boxShadow:
+              hasToday && i === todayIdx
+                ? "0 18px 36px rgba(37, 99, 235, 0.28)"
+                : "0 12px 28px rgba(16, 21, 27, 0.18)",
+            backdropFilter: "blur(calc(var(--glass-blur) * 0.6))",
+            transition: "transform var(--anim-med), box-shadow var(--anim-med)",
+            "&:hover": {
+              transform: "translateY(-1px)",
+              boxShadow: "0 16px 32px rgba(16, 21, 27, 0.22)",
+            },
+          }}
         />
       ))}
     </Stack>
@@ -1144,21 +1323,29 @@ export default function Schedule() {
             ref={(el: HTMLDivElement | null) => {
               dayCardRefs.current[dayIdx] = el
             }}
-            elevation={4}
+            elevation={0}
             sx={{
               borderRadius: 3,
-              p: 2,
+              p: { xs: 2, md: 2.4 },
               mb: 1,
-              bgcolor:
-                hasToday && dayIdx === todayIdx ? "var(--table-row-today)" : "var(--card-bg)",
-              border: "1px solid var(--btn-border)",
-              boxShadow: "0 10px 30px #00000014, 0 3px 12px #0000000a",
+              background:
+                hasToday && dayIdx === todayIdx
+                  ? "linear-gradient(160deg, var(--table-row-today), var(--glass-tint-2))"
+                  : "linear-gradient(160deg, var(--card-bg), var(--glass-tint-2))",
+              border: "1px solid var(--glass-border)",
+              boxShadow: "0 28px 60px rgba(16, 21, 27, 0.18)",
               contentVisibility: "auto",
               containIntrinsicSize: "400px",
+              backdropFilter: "blur(calc(var(--glass-blur) * 0.8))",
+              transition: "transform var(--anim-med), box-shadow var(--anim-med)",
+              "&:hover": {
+                transform: "translateY(-2px)",
+                boxShadow: "0 36px 72px rgba(16, 21, 27, 0.24)",
+              },
             }}
           >
             <Box display="flex" alignItems="center" mb={1} gap={1}>
-              <Typography fontWeight={800} fontSize="1.12rem">
+              <Typography fontWeight={800} fontSize="1.12rem" sx={{ letterSpacing: ".02em" }}>
                 {label}
               </Typography>
               {(user?.role === "admin" || user?.role === "teacher") && (
@@ -1171,11 +1358,18 @@ export default function Schedule() {
                   }}
                   sx={{
                     ml: 0.5,
-                    border: "1px solid var(--btn-border)",
+                    borderRadius: 2,
+                    border: "1px solid var(--glass-border)",
                     bgcolor: "var(--card-bg)",
-                    "&:hover": { bgcolor: "var(--option-bg)" },
+                    transition: "transform var(--anim-med), box-shadow var(--anim-med)",
+                    "&:hover": {
+                      bgcolor: "var(--option-bg)",
+                      transform: "translateY(-1px)",
+                      boxShadow: "0 14px 28px rgba(16, 21, 27, 0.2)",
+                    },
                     height: 26,
                     width: 26,
+                    boxShadow: "0 10px 20px rgba(16, 21, 27, 0.18)",
                   }}
                   aria-label={t("schedule:aria.addLesson", { day: label })}
                 >
@@ -1208,19 +1402,20 @@ export default function Schedule() {
                           setOpenDialog(true)
                         }}
                         sx={{
-                          p: 1.3,
-                          borderRadius: 2,
-                          background: "var(--option-bg)",
-                          boxShadow: "var(--option-shadow)",
-                          border: "1px solid var(--btn-border)",
+                          p: { xs: 1.25, md: 1.35 },
+                          borderRadius: 3,
+                          background: "linear-gradient(160deg, var(--option-bg), var(--glass-tint-2))",
+                          boxShadow: "0 22px 48px rgba(16, 21, 27, 0.18)",
+                          border: "1px solid var(--glass-border)",
                           cursor: "pointer",
-                          transition: "transform .2s, box-shadow .2s",
+                          transition: "transform var(--anim-med), box-shadow var(--anim-med), background var(--anim-med)",
                           "&:hover": {
-                            background: "var(--option-hover-bg)",
-                            transform: "translateY(-1px)",
-                            boxShadow: "0 8px 26px #2175ee20, 0 1.5px 8px #0002",
+                            background: "linear-gradient(160deg, var(--option-hover-bg), var(--glass-tint-2))",
+                            transform: "translateY(-2px)",
+                            boxShadow: "0 28px 60px rgba(16, 21, 27, 0.22)",
                           },
                           position: "relative",
+                          overflow: "hidden",
                         }}
                       >
                         <Box
@@ -1229,10 +1424,11 @@ export default function Schedule() {
                             left: 0,
                             top: 0,
                             bottom: 0,
-                            width: 6,
-                            borderTopLeftRadius: 8,
-                            borderBottomLeftRadius: 8,
+                            width: 7,
+                            borderTopLeftRadius: 10,
+                            borderBottomLeftRadius: 10,
                             background: getLessonTypeColor(lesson.lesson_type),
+                            boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.2) inset",
                           }}
                         />
                         <Stack
@@ -1255,6 +1451,7 @@ export default function Schedule() {
                               color: "#fff",
                               height: 24,
                               fontWeight: 700,
+                              boxShadow: "0 10px 24px rgba(0, 0, 0, 0.28)",
                             }}
                           />
                           <Chip
@@ -1262,6 +1459,12 @@ export default function Schedule() {
                             className="chip-time"
                             icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
                             label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+                            sx={{
+                              bgcolor: "var(--glass-tint-1)",
+                              border: "1px solid var(--glass-border)",
+                              color: "var(--page-text)",
+                              backdropFilter: "blur(calc(var(--glass-blur) * 0.5))",
+                            }}
                           />
                         </Stack>
                         <Typography
@@ -1275,6 +1478,7 @@ export default function Schedule() {
                             WebkitLineClamp: 2,
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden",
+                            letterSpacing: ".02em",
                           }}
                         >
                           {lesson.subject}
@@ -1285,12 +1489,22 @@ export default function Schedule() {
                             variant="outlined"
                             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
                             label={lesson.teacher}
+                            sx={{
+                              borderColor: "var(--glass-border)",
+                              background: "var(--glass-tint-3)",
+                              color: "var(--page-text)",
+                            }}
                           />
                           <Chip
                             size="small"
                             variant="outlined"
                             icon={<RoomIcon sx={{ fontSize: 16 }} />}
                             label={lesson.room}
+                            sx={{
+                              borderColor: "var(--glass-border)",
+                              background: "var(--glass-tint-3)",
+                              color: "var(--page-text)",
+                            }}
                           />
                         </Stack>
                       </Box>
@@ -1329,11 +1543,14 @@ export default function Schedule() {
       `}</style>
         <Box
           sx={{
-            width: "100vw",
+            width: "100%",
             minHeight: "100vh",
-            bgcolor: "var(--page-bg)",
+            background:
+              "radial-gradient(120% 80% at 0% 0%, rgba(0, 94, 162, 0.12), transparent 60%), " +
+              "radial-gradient(110% 70% at 95% 0%, rgba(14, 165, 233, 0.1), transparent 55%), " +
+              "var(--page-bg)",
             color: "var(--page-text)",
-            py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 },
+            py: { xs: 4, sm: 4.2, md: 4.5 },
           }}
         >
           <Box
@@ -1341,149 +1558,179 @@ export default function Schedule() {
               ...mainAlignSx,
               ml: { xs: 2, sm: 4, md: 5, lg: 8 },
               mr: { xs: 2, sm: 4, md: 5, lg: 8 },
-              maxWidth: 980,
-              mb: 2,
-              mt: 0,
+              maxWidth: 1120,
+              mb: { xs: 3, md: 3.6 },
             }}
           >
-            <Stack
+            <Paper
               data-fade
-              style={{ "--fade-delay": "80ms" } as CSSProperties}
-              direction="row"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1.3}
-              mb={2.2}
-              mt={0.5}
+              style={{ "--fade-delay": "60ms" } as CSSProperties}
+              elevation={0}
+              sx={heroCardSx}
             >
-              <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
-              <Typography
-                variant="h4"
-                fontWeight={700}
-                color="primary.main"
-                sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-              >
-                {user?.role === "student"
-                  ? t("schedule:title.student")
-                  : t("schedule:title.default")}
-              </Typography>
-              <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>{todayLabel}</Box>
-              {activeGroupName && (
-                <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>
-                  {t("schedule:header.groupName", { name: activeGroupName })}
-                </Box>
-              )}
-            </Stack>
-
-            <Stack
-              data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              direction="row"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1}
-              mb={2}
-            >
-              {headerActions}
-            </Stack>
-
-            <Box
-              data-fade
-              style={{ "--fade-delay": "200ms" } as CSSProperties}
-              className="no-print"
-              sx={{ ...headerCardSx, mb: 2 }}
-            >
-              {currentLesson ? (
-                <Box>
-                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                    <Chip size="small" className="chip-clock" label={t("schedule:chips.current")} />
-                    <Chip
-                      size="small"
-                      className="chip-time"
-                      label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
-                    />
-                    <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
-                    {!!timeLeftText && (
-                      <Chip size="small" className="chip-left" label={timeLeftText} />
-                    )}
-                  </Stack>
-                  <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<SchoolIcon sx={{ fontSize: 16 }} />}
-                      label={currentLesson.teacher}
-                    />
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<RoomIcon sx={{ fontSize: 16 }} />}
-                      label={currentLesson.room}
-                    />
-                  </Stack>
-                  <LinearProgress
-                    value={currentProgress}
-                    variant="determinate"
-                    className="lesson-progress"
-                    sx={{
-                      mt: 1.5,
-                      height: 8,
-                      borderRadius: 999,
-                      backgroundColor: "var(--progress-track)",
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor: "var(--progress-bar)",
-                        transition: "transform 0.4s linear",
-                      },
-                    }}
-                    aria-label={t("schedule:aria.currentProgress")}
-                  />
-                </Box>
-              ) : nextLesson ? (
-                <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                  <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
-                  <Chip
-                    size="small"
-                    className="chip-time"
-                    label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
-                  />
-                  <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
-                  {!!timeLeftText && (
-                    <Chip size="small" className="chip-left" label={timeLeftText} />
-                  )}
-                </Stack>
-              ) : (
-                <Typography sx={{ color: "var(--secondary-text)" }}>
-                  {t("schedule:summary.noMoreToday")}
-                </Typography>
-              )}
-            </Box>
-
-            {(user?.role === "teacher" || user?.role === "admin") && (
-              <FormControl
-                data-fade
-                style={{ "--fade-delay": "240ms" } as CSSProperties}
-                fullWidth
-                sx={{ mb: 2, maxWidth: 340 }}
-              >
-                <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
-                <Select
-                  value={selectedGroup ?? ""}
-                  label={t("schedule:form.groupLabel")}
-                  onChange={(e) => setSelectedGroup(Number(e.target.value))}
+              <Stack spacing={{ xs: 2.4, md: 3 }}>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                  justifyContent="space-between"
+                  spacing={{ xs: 2, md: 3 }}
                 >
-                  {groups.map((g) => (
-                    <MenuItem value={g.id} key={g.id}>
-                      {g.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
+                  <Stack direction="row" spacing={2.2} alignItems="center" flexWrap="wrap">
+                    <Box
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: "50%",
+                        display: "grid",
+                        placeItems: "center",
+                        background:
+                          "linear-gradient(135deg, rgba(0, 94, 162, 0.18), rgba(14, 165, 233, 0.2))",
+                        border: "1px solid var(--glass-border)",
+                        boxShadow: "0 18px 42px rgba(16, 21, 27, 0.2)",
+                      }}
+                    >
+                      <CalendarMonthIcon color="primary" sx={{ fontSize: 30 }} />
+                    </Box>
+                    <Box>
+                      <Typography
+                        variant="h4"
+                        fontWeight={700}
+                        sx={{
+                          fontSize: "clamp(1.8rem, 1.1rem + 2vw, 2.8rem)",
+                          color: "var(--page-text)",
+                          letterSpacing: ".01em",
+                        }}
+                      >
+                        {user?.role === "student"
+                          ? t("schedule:title.student")
+                          : t("schedule:title.default")}
+                      </Typography>
+                      <Stack direction="row" spacing={1.2} mt={1.2} flexWrap="wrap">
+                        <Box sx={badgeGhost}>{todayLabel}</Box>
+                        {activeGroupName && (
+                          <Box sx={badgeGhost}>
+                            {t("schedule:header.groupName", { name: activeGroupName })}
+                          </Box>
+                        )}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                  <Box
+                    data-fade
+                    style={{ "--fade-delay": "120ms" } as CSSProperties}
+                    sx={{
+                      width: "100%",
+                      display: "flex",
+                      justifyContent: { xs: "flex-start", md: "flex-end" },
+                    }}
+                  >
+                    {headerActions}
+                  </Box>
+                </Stack>
+                <Divider
+                  data-fade
+                  style={{ "--fade-delay": "160ms" } as CSSProperties}
+                  sx={{ borderColor: "var(--glass-border)", opacity: 0.65 }}
+                />
+                <Box
+                  data-fade
+                  style={{ "--fade-delay": "180ms" } as CSSProperties}
+                  className="no-print"
+                  sx={headerCardSx}
+                >
+                  {currentLesson ? (
+                    <Box>
+                      <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                        <Chip size="small" className="chip-clock" label={t("schedule:chips.current")} />
+                        <Chip
+                          size="small"
+                          className="chip-time"
+                          label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                        />
+                        <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
+                        {!!timeLeftText && (
+                          <Chip size="small" className="chip-left" label={timeLeftText} />
+                        )}
+                      </Stack>
+                      <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          icon={<SchoolIcon sx={{ fontSize: 16 }} />}
+                          label={currentLesson.teacher}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          icon={<RoomIcon sx={{ fontSize: 16 }} />}
+                          label={currentLesson.room}
+                        />
+                      </Stack>
+                      <LinearProgress
+                        value={currentProgress}
+                        variant="determinate"
+                        className="lesson-progress"
+                        sx={{
+                          mt: 1.5,
+                          height: 8,
+                          borderRadius: 999,
+                          backgroundColor: "var(--progress-track)",
+                          "& .MuiLinearProgress-bar": {
+                            backgroundColor: "var(--progress-bar)",
+                            transition: "transform 0.4s linear",
+                          },
+                        }}
+                        aria-label={t("schedule:aria.currentProgress")}
+                      />
+                    </Box>
+                  ) : nextLesson ? (
+                    <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                      <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
+                      <Chip
+                        size="small"
+                        className="chip-time"
+                        label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
+                      />
+                      <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
+                      {!!timeLeftText && (
+                        <Chip size="small" className="chip-left" label={timeLeftText} />
+                      )}
+                    </Stack>
+                  ) : (
+                    <Typography sx={{ color: "var(--secondary-text)" }}>
+                      {t("schedule:summary.noMoreToday")}
+                    </Typography>
+                  )}
+                </Box>
+
+                {(user?.role === "teacher" || user?.role === "admin") && (
+                  <FormControl
+                    data-fade
+                    style={{ "--fade-delay": "220ms" } as CSSProperties}
+                    fullWidth
+                    sx={{ maxWidth: 360 }}
+                  >
+                    <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
+                    <Select
+                      value={selectedGroup ?? ""}
+                      label={t("schedule:form.groupLabel")}
+                      onChange={(e) => setSelectedGroup(Number(e.target.value))}
+                    >
+                      {groups.map((g) => (
+                        <MenuItem value={g.id} key={g.id}>
+                          {g.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              </Stack>
+            </Paper>
           </Box>
 
           <Box
             data-fade
-            style={{ "--fade-delay": "280ms" } as CSSProperties}
+            style={{ "--fade-delay": "260ms" } as CSSProperties}
             sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}
           >
             {isMobile ? renderMobileCards() : renderTable()}
