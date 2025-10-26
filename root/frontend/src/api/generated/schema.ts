@@ -209,40 +209,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/auth/mfa/recovery": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List Recovery Codes */
-    get: operations["list_recovery_codes_auth_mfa_recovery_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/auth/mfa/recovery/regenerate": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Regenerate Recovery Codes */
-    post: operations["regenerate_recovery_codes_auth_mfa_recovery_regenerate_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/auth/mfa/webauthn/attestation/finish": {
     parameters: {
       query?: never
@@ -271,6 +237,40 @@ export interface paths {
     put?: never
     /** Start Webauthn Assertion Endpoint */
     post: operations["start_webauthn_assertion_endpoint_auth_mfa_webauthn_assertion_start_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/auth/mfa/recovery": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Recovery Codes */
+    get: operations["list_recovery_codes_auth_mfa_recovery_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/auth/mfa/recovery/regenerate": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Regenerate Recovery Codes */
+    post: operations["regenerate_recovery_codes_auth_mfa_recovery_regenerate_post"]
     delete?: never
     options?: never
     head?: never
@@ -450,23 +450,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/auth/sessions/revoke-others": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Revoke Other Sessions */
-    post: operations["revoke_other_sessions_auth_sessions_revoke_others_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/auth/sessions/{session_id}": {
     parameters: {
       query?: never
@@ -479,6 +462,23 @@ export interface paths {
     post?: never
     /** Revoke Session */
     delete: operations["revoke_session_auth_sessions__session_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/auth/sessions/revoke-others": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Revoke Other Sessions */
+    post: operations["revoke_other_sessions_auth_sessions_revoke_others_post"]
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -3085,46 +3085,6 @@ export interface operations {
       }
     }
   }
-  list_recovery_codes_auth_mfa_recovery_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MfaRecoveryCodeOut"][]
-        }
-      }
-    }
-  }
-  regenerate_recovery_codes_auth_mfa_recovery_regenerate_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-    }
-  }
   start_webauthn_attestation_auth_mfa_webauthn_attestation_start_post: {
     parameters: {
       query?: never
@@ -3194,6 +3154,46 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["WebAuthnAssertionStartOut"]
+        }
+      }
+    }
+  }
+  list_recovery_codes_auth_mfa_recovery_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MfaRecoveryCodeOut"][]
+        }
+      }
+    }
+  }
+  regenerate_recovery_codes_auth_mfa_recovery_regenerate_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
         }
       }
     }
@@ -3456,37 +3456,6 @@ export interface operations {
       }
     }
   }
-  revoke_other_sessions_auth_sessions_revoke_others_post: {
-    parameters: {
-      query?: {
-        user_id?: number | null
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SessionBulkRevokeOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
   revoke_session_auth_sessions__session_id__delete: {
     parameters: {
       query?: never
@@ -3505,6 +3474,37 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["ActiveSessionOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  revoke_other_sessions_auth_sessions_revoke_others_post: {
+    parameters: {
+      query?: {
+        user_id?: number | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SessionBulkRevokeOut"]
         }
       }
       /** @description Validation Error */
