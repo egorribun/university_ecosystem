@@ -234,21 +234,16 @@ export default function Schedule() {
     const surface = isDark ? lighten(surfaceBase, 0.04) : surfaceBase
     const elevatedSurface = isDark ? lighten(surfaceBase, 0.1) : surface
     const tintedSurface = isDark ? alpha(lighten(surfaceBase, 0.12), 0.78) : "#f4f7fb"
-    const subtleShadow =
-      isDark
-        ? "0 18px 44px rgba(6, 12, 24, 0.55)"
-        : "0 18px 44px rgba(15, 23, 42, 0.08)"
-    const cardShadow =
-      isDark
-        ? "0 26px 64px rgba(5, 12, 24, 0.62)"
-        : "0 26px 64px rgba(15, 23, 42, 0.12)"
-    const hoverShadow =
-      isDark
-        ? "0 32px 82px rgba(3, 8, 18, 0.7)"
-        : "0 36px 88px rgba(15, 23, 42, 0.16)"
-    const pageBackgroundColor = isDark
-      ? darken(theme.palette.background.default, 0.04)
-      : "#f5f7fb"
+    const subtleShadow = isDark
+      ? "0 18px 44px rgba(6, 12, 24, 0.55)"
+      : "0 18px 44px rgba(15, 23, 42, 0.08)"
+    const cardShadow = isDark
+      ? "0 26px 64px rgba(5, 12, 24, 0.62)"
+      : "0 26px 64px rgba(15, 23, 42, 0.12)"
+    const hoverShadow = isDark
+      ? "0 32px 82px rgba(3, 8, 18, 0.7)"
+      : "0 36px 88px rgba(15, 23, 42, 0.16)"
+    const pageBackgroundColor = isDark ? darken(theme.palette.background.default, 0.04) : "#f5f7fb"
     const pageOverlay = isDark
       ? `radial-gradient(140% 140% at 0% 0%, ${alpha(primary, 0.18)}, transparent 55%), linear-gradient(180deg, ${alpha(elevatedSurface, 0.42)}, transparent 65%)`
       : `linear-gradient(180deg, ${alpha(primary, 0.08)} 0%, transparent 60%)`
@@ -1243,8 +1238,7 @@ export default function Schedule() {
                             ml: 1,
                             borderRadius: 2,
                             border: `1px solid ${design.border}`,
-                            bgcolor:
-                              design.cardBackground,
+                            bgcolor: design.cardBackground,
                             transition:
                               "background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
                             "&:hover": {
@@ -1279,10 +1273,7 @@ export default function Schedule() {
                   key={rowIdx}
                   sx={{
                     "&:hover": {
-                      backgroundColor: alpha(
-                        design.primary,
-                        design.isDark ? 0.24 : 0.08
-                      ),
+                      backgroundColor: alpha(design.primary, design.isDark ? 0.24 : 0.08),
                     },
                     transition: "background-color 160ms ease",
                   }}
@@ -1311,9 +1302,7 @@ export default function Schedule() {
                         <TableCell
                           key={`empty-${rowIdx}-${colIdx}`}
                           sx={{
-                            backgroundColor: colIsToday
-                              ? design.tableHighlight
-                              : "transparent",
+                            backgroundColor: colIsToday ? design.tableHighlight : "transparent",
                             p: 1.2,
                             borderLeft: `1px solid ${design.border}`,
                             borderBottom: `1px solid ${design.border}`,
@@ -1346,9 +1335,7 @@ export default function Schedule() {
                         sx={{
                           position: "relative",
                           color: design.text,
-                          backgroundColor: colIsToday
-                            ? design.tableHighlight
-                            : "transparent",
+                          backgroundColor: colIsToday ? design.tableHighlight : "transparent",
                           overflow: "visible",
                           p: 1.2,
                           borderLeft: `1px solid ${design.border}`,
@@ -1437,9 +1424,7 @@ export default function Schedule() {
               p: { xs: 2, md: 2.4 },
               mb: 1,
               backgroundColor:
-                hasToday && dayIdx === todayIdx
-                  ? design.tableHighlight
-                  : design.cardBackground,
+                hasToday && dayIdx === todayIdx ? design.tableHighlight : design.cardBackground,
               border: `1px solid ${design.border}`,
               boxShadow: design.cardShadow,
               contentVisibility: "auto",
