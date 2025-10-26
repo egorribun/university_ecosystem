@@ -883,14 +883,28 @@ export default function Schedule() {
             variant="outlined"
             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
             label={lesson.teacher}
-            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+            sx={(theme) => {
+              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+              return {
+                borderColor: "var(--btn-border)",
+                color: "var(--page-text)",
+                "& .MuiChip-icon": { color: primaryColor },
+              }
+            }}
           />
           <Chip
             size="small"
             variant="outlined"
             icon={<RoomIcon sx={{ fontSize: 16 }} />}
             label={lesson.room}
-            sx={{ borderColor: "var(--btn-border)", color: "var(--page-text)" }}
+            sx={(theme) => {
+              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+              return {
+                borderColor: "var(--btn-border)",
+                color: "var(--page-text)",
+                "& .MuiChip-icon": { color: primaryColor },
+              }
+            }}
           />
         </Stack>
       </Stack>
@@ -1285,12 +1299,30 @@ export default function Schedule() {
                             variant="outlined"
                             icon={<SchoolIcon sx={{ fontSize: 16 }} />}
                             label={lesson.teacher}
+                            sx={(theme) => {
+                              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                              return {
+                                borderColor: primaryColor,
+                                color: primaryColor,
+                                fontWeight: 600,
+                                "& .MuiChip-icon": { color: primaryColor },
+                              }
+                            }}
                           />
                           <Chip
                             size="small"
                             variant="outlined"
                             icon={<RoomIcon sx={{ fontSize: 16 }} />}
                             label={lesson.room}
+                            sx={(theme) => {
+                              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                              return {
+                                borderColor: primaryColor,
+                                color: primaryColor,
+                                fontWeight: 600,
+                                "& .MuiChip-icon": { color: primaryColor },
+                              }
+                            }}
                           />
                         </Stack>
                       </Box>
@@ -1413,12 +1445,20 @@ export default function Schedule() {
                       variant="outlined"
                       icon={<SchoolIcon sx={{ fontSize: 16 }} />}
                       label={currentLesson.teacher}
+                      sx={(theme) => {
+                        const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                        return { "& .MuiChip-icon": { color: primaryColor } }
+                      }}
                     />
                     <Chip
                       size="small"
                       variant="outlined"
                       icon={<RoomIcon sx={{ fontSize: 16 }} />}
                       label={currentLesson.room}
+                      sx={(theme) => {
+                        const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
+                        return { "& .MuiChip-icon": { color: primaryColor } }
+                      }}
                     />
                   </Stack>
                   <LinearProgress
