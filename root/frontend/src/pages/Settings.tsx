@@ -863,10 +863,7 @@ export default function Settings() {
           return
         }
         setSnack({
-          text: resolveDetailMessage(
-            error,
-            t("settings:sessions.snackbar.revokeAllFailed")
-          ),
+          text: resolveDetailMessage(error, t("settings:sessions.snackbar.revokeAllFailed")),
           sev: "error",
         })
       }
@@ -932,10 +929,7 @@ export default function Settings() {
           }
         }
         if (!handled) {
-          const message = resolveDetailMessage(
-            error,
-            t("settings:security.email.failed")
-          )
+          const message = resolveDetailMessage(error, t("settings:security.email.failed"))
           setEmailError(message)
           setSnack({ text: message, sev: "error" })
         }
@@ -964,9 +958,7 @@ export default function Settings() {
       setPasswordError(null)
       let hasError = false
       if (!currentPasswordValue) {
-        setCurrentPasswordError(
-          t("settings:security.password.errors.currentRequired")
-        )
+        setCurrentPasswordError(t("settings:security.password.errors.currentRequired"))
         hasError = true
       }
       let derivedError: string | null = null
@@ -1011,10 +1003,7 @@ export default function Settings() {
           })
           return
         }
-        const message = resolveDetailMessage(
-          error,
-          t("settings:security.password.failed")
-        )
+        const message = resolveDetailMessage(error, t("settings:security.password.failed"))
         let handled = false
         if (isAxiosError(error)) {
           const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
@@ -1781,7 +1770,6 @@ export default function Settings() {
                 {t("settings:account.logout.button")}
               </Button>
             </SectionCard>
-
           </Stack>
         )}
 
@@ -1919,7 +1907,7 @@ export default function Settings() {
                       if (passwordError) setPasswordError(null)
                     }}
                     error={isNewPasswordError}
-                    helperText={isNewPasswordError ? passwordError ?? undefined : undefined}
+                    helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
                     autoComplete="new-password"
                   />
                 </Stack>
