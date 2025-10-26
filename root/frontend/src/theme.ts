@@ -65,8 +65,9 @@ const baseTheme = extendTheme({
           contrastText: "#ffffff",
         },
         text: {
-          primary: "#10151B",
-          secondary: "#4B5563",
+          primary: "#0B121A",
+          secondary: "#2F3B4C",
+          disabled: "rgba(47, 59, 76, 0.45)",
         },
         divider: "rgba(16, 21, 27, 0.12)",
         background: {
