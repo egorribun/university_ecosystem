@@ -308,6 +308,18 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Указанный email уже используется",
         "en": "The specified email is already in use",
     },
+    "errors.users.email_same": {
+        "ru": "Новый email должен отличаться от текущего",
+        "en": "The new email must be different from your current address",
+    },
+    "errors.users.invalid_password": {
+        "ru": "Текущий пароль указан неверно",
+        "en": "The current password is incorrect",
+    },
+    "errors.users.password_same": {
+        "ru": "Новый пароль должен отличаться от текущего",
+        "en": "Choose a new password that's different from the current one",
+    },
     "errors.users.create_failed": {
         "ru": "Ошибка создания пользователя",
         "en": "Failed to create user",

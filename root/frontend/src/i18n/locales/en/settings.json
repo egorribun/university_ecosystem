@@ -5,6 +5,7 @@
   "tabs": {
     "general": "General",
     "account": "Account",
+    "security": "Security",
     "integrations": "Integrations"
   },
   "appearance": {
@@ -110,6 +111,8 @@
     "empty": "No other sessions are active.",
     "loadFailed": "Couldn't load sessions",
     "revoke": "Revoke",
+    "revokeAll": "Sign out of other sessions",
+    "revokeAllHint": "This keeps you signed in here but signs out every other active session.",
     "unknownDevice": "Unknown device",
     "ipAddress": "IP {{ip}}",
     "ipUnknown": "IP unknown",
@@ -124,12 +127,53 @@
     },
     "snackbar": {
       "revoked": "Session revoked",
-      "failed": "Couldn't revoke session"
+      "failed": "Couldn't revoke session",
+      "revokedAll": "Signed out {{count}} other sessions",
+      "revokeAllFailed": "Couldn't sign out other sessions"
     }
   },
   "security": {
     "title": "Security & MFA",
     "subtitle": "Manage two-factor authentication methods, recovery codes, and trusted devices.",
+    "account": {
+      "title": "Account security",
+      "subtitle": "Update your sign-in email and password to keep your account safe."
+    },
+    "email": {
+      "title": "Email",
+      "subtitle": "We'll use this address for notifications and security alerts.",
+      "label": "New email",
+      "passwordLabel": "Current password",
+      "updateButton": "Update email",
+      "helper": "We'll verify updates instantly.",
+      "updated": "Email updated",
+      "failed": "Couldn't update email",
+      "noChange": "Enter a different email address",
+      "errors": {
+        "required": "Enter a new email",
+        "passwordRequired": "Enter your current password",
+        "invalidPassword": "The current password is incorrect"
+      }
+    },
+    "password": {
+      "title": "Password",
+      "subtitle": "Use a strong password you don't reuse anywhere else.",
+      "currentLabel": "Current password",
+      "newLabel": "New password",
+      "confirmLabel": "Confirm new password",
+      "updateButton": "Update password",
+      "updating": "Updating…",
+      "failed": "Couldn't update password",
+      "updated": "Password updated. Signed out {{count}} other sessions.",
+      "errors": {
+        "currentRequired": "Enter your current password",
+        "newRequired": "Enter a new password",
+        "confirmRequired": "Confirm your new password",
+        "mismatch": "Passwords don't match",
+        "currentInvalid": "The current password is incorrect",
+        "same": "Choose a new password that's different from the current one"
+      }
+    },
     "method": {
       "totp": "Authenticator app",
       "webauthn": "Security key",

@@ -14,7 +14,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_fresh_mfa
 from app.auth import mfa
 from app.auth.security import (
     create_access_token,
@@ -35,6 +35,7 @@ from app.models.models import (
     User,
 )
 from app.schemas.schemas import (
+    MfaRecoveryCodeOut,
     MfaTotpEnrollmentOut,
     MfaWebAuthnCredentialOut,
     SessionSigningKeyOut,
@@ -831,6 +832,7 @@ async def list_totp_enrollments(
 async def delete_totp_enrollment(
     enrollment_id: int,
     request: Request,
+    _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -867,6 +869,7 @@ async def list_webauthn_credentials(
 async def delete_webauthn_credential(
     credential_id: str,
     request: Request,
+    _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -987,6 +990,44 @@ async def start_webauthn_assertion_endpoint(
         challenge_token=challenge.token,
         challenge_expires_at=challenge.expires_at,
     )
+
+
+@router.get("/mfa/recovery", response_model=list[MfaRecoveryCodeOut])
+async def list_recovery_codes(
+    _: None = Depends(require_fresh_mfa),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(MfaRecoveryCode)
+        .where(MfaRecoveryCode.user_id == user.id)
+        .order_by(MfaRecoveryCode.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [MfaRecoveryCodeOut.model_validate(record) for record in result.scalars()]
+
+
+@router.post("/mfa/recovery/regenerate")
+async def regenerate_recovery_codes(
+    request: Request,
+    _: None = Depends(require_fresh_mfa),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    codes = await mfa.create_recovery_codes(db, user=user)
+    await db.commit()
+    await db.refresh(user)
+    _audit_log(
+        "auth.mfa.recovery.regenerated",
+        request,
+        user_id=user.id,
+        reason="issued",
+        extra={"generated_at": getattr(user, "mfa_recovery_codes_generated_at", None)},
+    )
+    return {
+        "codes": codes,
+        "generated_at": user.mfa_recovery_codes_generated_at,
+    }
 
 
 @router.post("/mfa/verify", response_model=Token)

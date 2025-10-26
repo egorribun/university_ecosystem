@@ -33,6 +33,16 @@ class ResetPasswordIn(BaseModel):
     password: str = Field(min_length=8, max_length=200)
 
 
+class UserEmailChangeIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserPasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=200)
+
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
@@ -136,6 +146,15 @@ class UserMfaMethodsOut(BaseModel):
     webauthn_credentials: List[MfaWebAuthnCredentialOut] = Field(default_factory=list)
     recovery_codes: List[MfaRecoveryCodeOut] = Field(default_factory=list)
     pending_challenges: List[MfaChallengeOut] = Field(default_factory=list)
+
+
+class PasswordChangeOut(BaseModel):
+    ok: bool
+    revoked_sessions: int = 0
+
+
+class SessionBulkRevokeOut(BaseModel):
+    revoked: int = 0
 
 
 class UserProfileUpdate(BaseModel):
