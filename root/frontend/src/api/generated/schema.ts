@@ -2579,13 +2579,6 @@ export interface components {
       /** Pending Challenges */
       pending_challenges?: components["schemas"]["MfaChallengeOut"][]
     }
-    /** UserPasswordChangeIn */
-    UserPasswordChangeIn: {
-      /** Current Password */
-      current_password: string
-      /** New Password */
-      new_password: string
-    }
     /** UserOut */
     UserOut: {
       /**
@@ -2670,6 +2663,13 @@ export interface components {
       recovery_codes?: components["schemas"]["MfaRecoveryCodeOut"][]
       /** Mfa Challenges */
       mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
+    }
+    /** UserPasswordChangeIn */
+    UserPasswordChangeIn: {
+      /** Current Password */
+      current_password: string
+      /** New Password */
+      new_password: string
     }
     /** UserProfileUpdate */
     UserProfileUpdate: {
