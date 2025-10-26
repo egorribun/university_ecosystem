@@ -229,10 +229,7 @@ export default function Schedule() {
     const borderMuted = alpha(text, theme.palette.mode === "dark" ? 0.18 : 0.06)
     const borderStrong = alpha(text, theme.palette.mode === "dark" ? 0.32 : 0.12)
     const surface = theme.palette.background.paper
-    const tintedSurface =
-      theme.palette.mode === "dark"
-        ? alpha(surface, 0.65)
-        : "#f4f7fb"
+    const tintedSurface = theme.palette.mode === "dark" ? alpha(surface, 0.65) : "#f4f7fb"
     const subtleShadow =
       theme.palette.mode === "dark"
         ? "0 18px 44px rgba(13, 23, 42, 0.55)"
@@ -261,18 +258,10 @@ export default function Schedule() {
       primaryContrast: theme.palette.primary.contrastText,
       accentSoft: alpha(primary, theme.palette.mode === "dark" ? 0.25 : 0.12),
       accentSoftStrong: alpha(primary, theme.palette.mode === "dark" ? 0.4 : 0.18),
-      chipBackground:
-        theme.palette.mode === "dark"
-          ? alpha(text, 0.14)
-          : alpha(primary, 0.05),
-      chipBorder:
-        theme.palette.mode === "dark"
-          ? alpha(text, 0.2)
-          : alpha(text, 0.1),
+      chipBackground: theme.palette.mode === "dark" ? alpha(text, 0.14) : alpha(primary, 0.05),
+      chipBorder: theme.palette.mode === "dark" ? alpha(text, 0.2) : alpha(text, 0.1),
       pageBackground:
-        theme.palette.mode === "dark"
-          ? alpha(theme.palette.background.default, 0.72)
-          : "#f5f7fb",
+        theme.palette.mode === "dark" ? alpha(theme.palette.background.default, 0.72) : "#f5f7fb",
     }
   }, [theme])
   const weekdayConfigs = useMemo(() => {
@@ -881,8 +870,7 @@ export default function Schedule() {
   const headerCardSx = {
     borderRadius: { xs: 2, md: 3 },
     p: { xs: 1.8, md: 2.2 },
-    backgroundColor:
-      theme.palette.mode === "dark" ? alpha(design.surface, 0.9) : design.surface,
+    backgroundColor: theme.palette.mode === "dark" ? alpha(design.surface, 0.9) : design.surface,
     boxShadow: design.subtleShadow,
     border: `1px solid ${design.border}`,
   } as const
@@ -1038,7 +1026,8 @@ export default function Schedule() {
               fontWeight: 700,
               color: "#fff",
               backgroundColor: getLessonTypeColor(lesson.lesson_type),
-              boxShadow: theme.palette.mode === "dark" ? "none" : "0 10px 18px rgba(15, 23, 42, 0.18)",
+              boxShadow:
+                theme.palette.mode === "dark" ? "none" : "0 10px 18px rgba(15, 23, 42, 0.18)",
             }}
           />
           <Chip
@@ -1311,10 +1300,9 @@ export default function Schedule() {
                         <TableCell
                           key={`empty-${rowIdx}-${colIdx}`}
                           sx={{
-                            backgroundColor:
-                              colIsToday
-                                ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
-                                : "transparent",
+                            backgroundColor: colIsToday
+                              ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                              : "transparent",
                             p: 1.2,
                             borderLeft: `1px solid ${design.border}`,
                             borderBottom: `1px solid ${design.border}`,
@@ -1347,10 +1335,9 @@ export default function Schedule() {
                         sx={{
                           position: "relative",
                           color: design.text,
-                          backgroundColor:
-                            colIsToday
-                              ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
-                              : "transparent",
+                          backgroundColor: colIsToday
+                            ? alpha(design.primary, theme.palette.mode === "dark" ? 0.22 : 0.08)
+                            : "transparent",
                           overflow: "visible",
                           p: 1.2,
                           borderLeft: `1px solid ${design.border}`,
@@ -1400,15 +1387,10 @@ export default function Schedule() {
             letterSpacing: ".06em",
             textTransform: "uppercase",
             px: 1,
-            bgcolor:
-              hasToday && i === todayIdx
-                ? design.primary
-                : design.chipBackground,
-            color:
-              hasToday && i === todayIdx ? design.primaryContrast : design.secondary,
+            bgcolor: hasToday && i === todayIdx ? design.primary : design.chipBackground,
+            color: hasToday && i === todayIdx ? design.primaryContrast : design.secondary,
             border: `1px solid ${hasToday && i === todayIdx ? design.primary : design.border}`,
-            boxShadow:
-              hasToday && i === todayIdx ? design.subtleShadow : "none",
+            boxShadow: hasToday && i === todayIdx ? design.subtleShadow : "none",
             transition: "transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease",
             "&:hover": {
               transform: "translateY(-1px)",
@@ -1477,9 +1459,7 @@ export default function Schedule() {
                     borderRadius: 2,
                     border: `1px solid ${design.border}`,
                     bgcolor:
-                      theme.palette.mode === "dark"
-                        ? alpha(design.surface, 0.75)
-                        : design.surface,
+                      theme.palette.mode === "dark" ? alpha(design.surface, 0.75) : design.surface,
                     transition:
                       "background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease",
                     "&:hover": {
