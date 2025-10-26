@@ -148,7 +148,12 @@ def verify_token(
         payload_b64, signature_b64 = token.split(".", 1)
     except ValueError as exc:
         raise AttendanceTokenInvalid("Token structure is invalid") from exc
-    payload_bytes = _b64decode(payload_b64)
+    try:
+        payload_bytes = _b64decode(payload_b64)
+    except (ValueError, binascii.Error) as exc:
+        raise AttendanceTokenInvalid("Token payload encoding is invalid") from exc
+    if _b64encode(payload_bytes) != payload_b64:
+        raise AttendanceTokenInvalid("Token payload encoding is non-canonical")
     expected_signature = hmac.new(
         _server_secret(), payload_bytes, hashlib.sha256
     ).digest()
@@ -156,6 +161,8 @@ def verify_token(
         provided_signature = _b64decode(signature_b64)
     except (ValueError, binascii.Error) as exc:
         raise AttendanceTokenInvalid("Token signature encoding is invalid") from exc
+    if _b64encode(provided_signature) != signature_b64:
+        raise AttendanceTokenInvalid("Token signature encoding is non-canonical")
     if not hmac.compare_digest(expected_signature, provided_signature):
         raise AttendanceTokenInvalid("Token signature mismatch")
     try:
