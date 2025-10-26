@@ -209,6 +209,40 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/auth/mfa/recovery": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Recovery Codes */
+    get: operations["list_recovery_codes_auth_mfa_recovery_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/auth/mfa/recovery/regenerate": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Regenerate Recovery Codes */
+    post: operations["regenerate_recovery_codes_auth_mfa_recovery_regenerate_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/auth/mfa/webauthn/attestation/finish": {
     parameters: {
       query?: never
@@ -410,6 +444,23 @@ export interface paths {
     get: operations["list_sessions_auth_sessions_get"]
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/auth/sessions/revoke-others": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Revoke Other Sessions */
+    post: operations["revoke_other_sessions_auth_sessions_revoke_others_post"]
     delete?: never
     options?: never
     head?: never
@@ -860,6 +911,40 @@ export interface paths {
     /** Update Me */
     put: operations["update_me_users_me_put"]
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/users/me/email": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Change Email */
+    post: operations["change_email_users_me_email_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/users/me/password": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Change Password */
+    post: operations["change_password_users_me_password_post"]
     delete?: never
     options?: never
     head?: never
@@ -1989,6 +2074,16 @@ export interface components {
       /** Has More */
       has_more: boolean
     }
+    /** PasswordChangeOut */
+    PasswordChangeOut: {
+      /** Ok */
+      ok: boolean
+      /**
+       * Revoked Sessions
+       * @default 0
+       */
+      revoked_sessions: number
+    }
     /** PendingMfaResponse */
     PendingMfaResponse: {
       /**
@@ -2230,6 +2325,14 @@ export interface components {
       /** Detail */
       detail?: string | null
     }
+    /** SessionBulkRevokeOut */
+    SessionBulkRevokeOut: {
+      /**
+       * Revoked
+       * @default 0
+       */
+      revoked: number
+    }
     /** SessionSigningKeyOut */
     SessionSigningKeyOut: {
       /** Signing Key */
@@ -2455,6 +2558,16 @@ export interface components {
       /** Invite Code */
       invite_code?: string | null
     }
+    /** UserEmailChangeIn */
+    UserEmailChangeIn: {
+      /**
+       * Email
+       * Format: email
+       */
+      email: string
+      /** Password */
+      password: string
+    }
     /** UserMfaMethodsOut */
     UserMfaMethodsOut: {
       /** Totp Enrollments */
@@ -2465,6 +2578,13 @@ export interface components {
       recovery_codes?: components["schemas"]["MfaRecoveryCodeOut"][]
       /** Pending Challenges */
       pending_challenges?: components["schemas"]["MfaChallengeOut"][]
+    }
+    /** UserPasswordChangeIn */
+    UserPasswordChangeIn: {
+      /** Current Password */
+      current_password: string
+      /** New Password */
+      new_password: string
     }
     /** UserOut */
     UserOut: {
@@ -2965,6 +3085,46 @@ export interface operations {
       }
     }
   }
+  list_recovery_codes_auth_mfa_recovery_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MfaRecoveryCodeOut"][]
+        }
+      }
+    }
+  }
+  regenerate_recovery_codes_auth_mfa_recovery_regenerate_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
   start_webauthn_attestation_auth_mfa_webauthn_attestation_start_post: {
     parameters: {
       query?: never
@@ -3283,6 +3443,37 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["ActiveSessionOut"][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  revoke_other_sessions_auth_sessions_revoke_others_post: {
+    parameters: {
+      query?: {
+        user_id?: number | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SessionBulkRevokeOut"]
         }
       }
       /** @description Validation Error */
@@ -4143,6 +4334,72 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  change_email_users_me_email_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserEmailChangeIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  change_password_users_me_password_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserPasswordChangeIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PasswordChangeOut"]
         }
       }
       /** @description Validation Error */
