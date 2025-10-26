@@ -55,7 +55,6 @@ export default function DashboardStories({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const listLabel = t("aria.storiesList")
-  const emptyDescription = t("stories.emptyDescription")
 
   const displayStories = useMemo(() => {
     const filtered = Array.isArray(stories) ? stories.filter(Boolean) : []
@@ -249,7 +248,6 @@ export default function DashboardStories({
       })
     : undefined
 
-  const hasEmptyDescription = emptyDescription && emptyDescription !== "stories.emptyDescription"
   const hasStories = displayStories.length > 0
   const shouldShowHeading = loading || hasStories
 
@@ -303,13 +301,6 @@ export default function DashboardStories({
               <Skeleton variant="circular" width={76} height={76} />
             </Stack>
           ))}
-        </Stack>
-      )}
-      {!loading && displayStories.length === 0 && hasEmptyDescription && (
-        <Stack spacing={0.5}>
-          <Typography color="text.secondary" variant="body2">
-            {emptyDescription}
-          </Typography>
         </Stack>
       )}
       {!loading && hasStories && (
