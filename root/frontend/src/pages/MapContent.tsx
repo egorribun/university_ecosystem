@@ -21,11 +21,11 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt"
 import "../assets/themes.css"
 import { useTranslation } from "react-i18next"
 import MapFallback from "@/components/MapFallback"
+import { CAMPUS_COORDINATES } from "@/constants/campus"
 
 type LayerMode = "map" | "hybrid"
 
 const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57"
-const CAMPUS = { lat: 55.71392, lon: 37.81474 }
 const Z_DEFAULT = 16
 const LOAD_TIMEOUT_MS = 12000
 
@@ -105,7 +105,9 @@ export default function MapContent() {
     if (layer === "map" && !traffic) {
       return `https://yandex.ru/map-widget/v1/?um=constructor%3A${MAP_ID}&source=constructor`
     }
-    const ll = encodeURIComponent(`${CAMPUS.lon.toFixed(6)},${CAMPUS.lat.toFixed(6)}`)
+    const ll = encodeURIComponent(
+      `${CAMPUS_COORDINATES.lon.toFixed(6)},${CAMPUS_COORDINATES.lat.toFixed(6)}`
+    )
     return `https://yandex.ru/map-widget/v1/?ll=${ll}&z=${Z_DEFAULT}&l=${encodeURIComponent(lParam)}`
   }, [layer, traffic, lParam])
 
@@ -182,7 +184,7 @@ export default function MapContent() {
       )
       return
     }
-    const ll = `${CAMPUS.lon.toFixed(6)},${CAMPUS.lat.toFixed(6)}`
+    const ll = `${CAMPUS_COORDINATES.lon.toFixed(6)},${CAMPUS_COORDINATES.lat.toFixed(6)}`
     window.open(
       `https://yandex.ru/maps/?ll=${ll}&z=${Z_DEFAULT}&l=${lParam.replace(/%2C/g, ",")}`,
       "_blank",
