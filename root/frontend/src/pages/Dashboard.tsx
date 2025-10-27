@@ -419,12 +419,10 @@ export default function Dashboard() {
     "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-80 blur-[220px]",
   ]
 
-  const glassPanelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border border-[var(--glass-border)] bg-[var(--glass-bg)] text-page-foreground shadow-[var(--glass-shadow)] backdrop-blur-[38px] transition-all duration-500"
-  const glassPanelHover =
-    "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--glass-shadow)]"
-  const glassSheen =
-    "before:pointer-events-none before:absolute before:inset-px before:rounded-[inherit] before:bg-[linear-gradient(135deg,var(--dash-glass-sheen-start),var(--dash-glass-sheen-end))] before:opacity-75 before:transition-opacity before:duration-700 before:content-[''] group-hover:before:opacity-100"
+  const panelBase =
+    "group relative isolate overflow-hidden rounded-[2.4rem] border border-[color-mix(in_srgb,var(--page-text)_8%,transparent)] bg-surface text-page-foreground shadow-surface transition-all duration-500"
+  const panelHover =
+    "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-surface"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -481,16 +479,15 @@ export default function Dashboard() {
               data-pop="true"
               style={fadeDelayStyle("40ms")}
               className={cn(
-                glassPanelBase,
-                glassPanelHover,
-                glassSheen,
+                panelBase,
+                panelHover,
                 "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
                 headerGradientClass
               )}
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--glass-highlight)_65%,transparent),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
               />
               <span
                 aria-hidden="true"
@@ -551,7 +548,7 @@ export default function Dashboard() {
               data-fade="up"
               data-pop="true"
               style={fadeDelayStyle("100ms")}
-              className={cn(glassPanelBase, glassPanelHover, glassSheen, "p-2 md:p-3")}
+              className={cn(panelBase, panelHover, "p-2 md:p-3")}
             >
               <div
                 aria-hidden="true"
@@ -575,7 +572,7 @@ export default function Dashboard() {
                 data-fade="left"
                 data-pop="true"
                 style={fadeDelayStyle("140ms")}
-                className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
+                className={cn(panelBase, panelHover, "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingSched}
               >
@@ -693,7 +690,7 @@ export default function Dashboard() {
                 data-fade="up"
                 data-pop="true"
                 style={fadeDelayStyle("200ms")}
-                className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
+                className={cn(panelBase, panelHover, "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingNews}
               >
@@ -754,7 +751,7 @@ export default function Dashboard() {
                         <li key={n.id} className="py-3 first:pt-0 last:pb-0">
                           <button
                             type="button"
-                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[var(--glass-tint-1)] focus-visible:outline-none focus-visible:shadow-focus"
+                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-surface-accent focus-visible:outline-none focus-visible:shadow-focus"
                             onClick={() => navigate(`/news/${n.id}`)}
                             title={n.title}
                             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
@@ -795,7 +792,7 @@ export default function Dashboard() {
                 data-fade="right"
                 data-pop="true"
                 style={fadeDelayStyle("260ms")}
-                className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
+                className={cn(panelBase, panelHover, "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingEvents}
               >
@@ -871,7 +868,7 @@ export default function Dashboard() {
                           <li key={e.id} className="py-3 first:pt-0 last:pb-0">
                             <button
                               type="button"
-                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[var(--glass-tint-1)] focus-visible:outline-none focus-visible:shadow-focus"
+                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-surface-accent focus-visible:outline-none focus-visible:shadow-focus"
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >
