@@ -38,19 +38,21 @@ async def cleanup_expired_sessions(
         async with async_session() as session:
             return await cleanup_expired_sessions(db=session, now=now)
 
-    target_sessions_stmt = select(ActiveSession.id).where(
-        or_(ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now)
+    expiry_condition = or_(
+        ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
     )
-    result = await db.execute(target_sessions_stmt)
-    session_ids = [row[0] for row in result]
-    deleted = 0
-    if session_ids:
-        await db.execute(
-            delete(MfaChallenge).where(MfaChallenge.session_id.in_(session_ids))
-        )
-        delete_stmt = delete(ActiveSession).where(ActiveSession.id.in_(session_ids))
-        delete_result = await db.execute(delete_stmt)
-        deleted = int(delete_result.rowcount or 0)
+
+    expired_session_exists = (
+        select(1)
+        .where(ActiveSession.id == MfaChallenge.session_id)
+        .where(expiry_condition)
+        .exists()
+    )
+    await db.execute(delete(MfaChallenge).where(expired_session_exists))
+
+    delete_stmt = delete(ActiveSession).where(expiry_condition)
+    delete_result = await db.execute(delete_stmt)
+    deleted = int(delete_result.rowcount or 0)
     await db.commit()
     if deleted:
         logger.info("Removed %s expired sessions", deleted)

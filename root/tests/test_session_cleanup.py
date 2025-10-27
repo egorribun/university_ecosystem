@@ -84,3 +84,68 @@ async def test_cleanup_expired_sessions_removes_mfa_challenges(db_session):
             select(MfaChallenge).where(MfaChallenge.id == challenge.id)
         )
         assert result.scalars().first() is None
+
+
+@pytest.mark.anyio
+async def test_cleanup_expired_sessions_handles_large_batches(db_session):
+    now = dt.datetime.now(dt.UTC)
+
+    user = User(email="bulk@example.com", hashed_password="x")
+    db_session.add(user)
+    await db_session.flush()
+
+    expired_sessions = [
+        ActiveSession(
+            user_id=user.id,
+            jti=f"expired-{idx}",
+            expires_at=now - dt.timedelta(minutes=idx + 1),
+        )
+        for idx in range(300)
+    ]
+    revoked_sessions = [
+        ActiveSession(
+            user_id=user.id,
+            jti=f"revoked-{idx}",
+            expires_at=now + dt.timedelta(hours=1),
+            revoked_at=now - dt.timedelta(minutes=idx + 1),
+        )
+        for idx in range(150)
+    ]
+    active_sessions = [
+        ActiveSession(
+            user_id=user.id,
+            jti=f"active-{idx}",
+            expires_at=now + dt.timedelta(hours=2),
+        )
+        for idx in range(50)
+    ]
+
+    db_session.add_all(expired_sessions + revoked_sessions + active_sessions)
+    await db_session.flush()
+
+    active_ids = {session.id for session in active_sessions}
+
+    challenge_targets = expired_sessions[:180] + revoked_sessions[:40]
+    db_session.add_all(
+        [
+            MfaChallenge(
+                user_id=user.id,
+                session_id=session.id,
+                challenge_type=mfa.CHALLENGE_TYPE_TOTP_VERIFY,
+                token=f"token-{session.id}",
+                expires_at=now + dt.timedelta(minutes=5),
+            )
+            for session in challenge_targets
+        ]
+    )
+    await db_session.commit()
+
+    removed = await cleanup_expired_sessions(now=now)
+
+    assert removed == len(expired_sessions) + len(revoked_sessions)
+
+    remaining_sessions = await db_session.execute(select(ActiveSession.id))
+    assert set(remaining_sessions.scalars().all()) == active_ids
+
+    remaining_challenges = await db_session.execute(select(MfaChallenge.id))
+    assert remaining_challenges.scalars().all() == []
