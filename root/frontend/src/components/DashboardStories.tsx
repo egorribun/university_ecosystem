@@ -10,21 +10,10 @@ import {
 } from "react"
 import SmartImage from "@/components/SmartImage"
 import type { StoryItem } from "@/types/Story"
-import { storyCircleSx } from "@/constants/storyCircle"
-import {
-  Avatar,
-  Box,
-  Button,
-  ButtonBase,
-  Dialog,
-  IconButton,
-  LinearProgress,
-  Skeleton,
-  Stack,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material"
+import { Box, Dialog, IconButton, Stack, Typography, useMediaQuery, useTheme } from "@mui/material"
+import { Button, ProgressBar, Skeleton, StoryCircle } from "@/components/ui"
+import type { ButtonProps } from "@/components/ui/button"
+import { cn } from "@/utils/cn"
 import { visuallyHidden } from "@mui/utils"
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded"
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded"
@@ -200,18 +189,9 @@ export default function DashboardStories({
     }
     const initials = story.title.slice(0, 2).toUpperCase()
     return (
-      <Avatar
-        sx={{
-          width: "100%",
-          height: "100%",
-          fontWeight: 700,
-          bgcolor: "transparent",
-          color: "inherit",
-          fontSize: "1.1rem",
-        }}
-      >
+      <div className="flex h-full w-full items-center justify-center text-[1.1rem] font-semibold uppercase tracking-wide text-white/95">
         {initials}
-      </Avatar>
+      </div>
     )
   }, [])
 
@@ -227,18 +207,30 @@ export default function DashboardStories({
 
   const viewerStory = openIndex === null ? null : (displayStories[openIndex] ?? null)
 
-  const linkPropsFor = useCallback((url?: string | null) => {
-    if (!url) return null
-    const trimmed = url.trim()
-    if (!trimmed) return null
-    if (trimmed.startsWith("/")) {
-      return { component: Link, to: trimmed }
-    }
-    if (/^https?:/i.test(trimmed)) {
-      return { href: trimmed, target: "_blank", rel: "noreferrer" as const }
-    }
-    return { href: trimmed }
-  }, [])
+  const linkPropsFor = useCallback(
+    (url?: string | null): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
+      if (!url) return null
+      const trimmed = url.trim()
+      if (!trimmed) return null
+      if (trimmed.startsWith("/")) {
+        return { as: Link, to: trimmed } satisfies ButtonProps<typeof Link>
+      }
+      if (/^https?:/i.test(trimmed)) {
+        return {
+          as: "a" as const,
+          href: trimmed,
+          target: "_blank",
+          rel: "noreferrer" as const,
+        } satisfies ButtonProps<"a">
+      }
+      return { as: "a" as const, href: trimmed } satisfies ButtonProps<"a">
+    },
+    []
+  )
+
+  const viewerStoryLink = viewerStory?.cta_url
+    ? linkPropsFor(viewerStory.cta_url)
+    : null
 
   const storyDialogLabel = viewerStory
     ? t("stories.viewer.aria.dialog", {
@@ -298,7 +290,7 @@ export default function DashboardStories({
               justifyContent="center"
               sx={{ width: 92, minHeight: 112 }}
             >
-              <Skeleton variant="circular" width={76} height={76} />
+              <Skeleton width={76} height={76} rounded="9999px" />
             </Stack>
           ))}
         </Stack>
@@ -346,63 +338,25 @@ export default function DashboardStories({
                     : {}),
                 }}
               >
-                <ButtonBase
-                  focusRipple
+                <StoryCircle
+                  as="button"
+                  type="button"
+                  size="md"
+                  borderWidth={2}
                   onClick={() => openStory(story, index)}
                   onFocus={onPrefetch}
                   onMouseEnter={onPrefetch}
                   aria-label={label}
-                  title={tooltip}
-                  data-active={viewerStory?.id === story.id || undefined}
-                  sx={{
-                    ...storyCircleSx(),
-                    cursor: "pointer",
-                    outline: "none",
-                    position: "relative",
-                    zIndex: 1,
-                    "&:hover": {
-                      boxShadow:
-                        "0 8px 22px rgba(37,99,235,0.26), 0 0 0 4px rgba(125,172,255,0.22)",
-                      zIndex: 3,
-                    },
-                    "&:hover::after": {
-                      opacity: 1,
-                      transform: "scale(1)",
-                    },
-                    "&:focus-visible": {
-                      outline: "none",
-                      boxShadow: "0 8px 24px rgba(37,99,235,0.3), 0 0 0 4px rgba(125,172,255,0.42)",
-                      zIndex: 3,
-                    },
-                    "&:focus-visible::after": {
-                      opacity: 1,
-                      transform: "scale(1)",
-                    },
-                    "&[data-active='true']::after": {
-                      opacity: 1,
-                      transform: "scale(1)",
-                    },
-                    "&[data-active='true']": {
-                      zIndex: 3,
-                    },
-                  }}
+                  title={tooltip ?? undefined}
+                  data-active={viewerStory?.id === story.id ? "true" : undefined}
+                  className={cn(
+                    "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-[rgba(125,172,255,0.45)]"
+                  )}
                 >
-                  <Box
-                    aria-hidden="true"
-                    sx={{
-                      position: "relative",
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
+                  <div className="relative h-full w-full overflow-hidden rounded-full">
                     {renderAvatar(story)}
-                  </Box>
-                </ButtonBase>
+                  </div>
+                </StoryCircle>
               </Stack>
             )
           })}
@@ -565,21 +519,28 @@ export default function DashboardStories({
                       {viewerStory.short_text}
                     </Typography>
                   )}
-                  {viewerStory.cta_url && (
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      {...(linkPropsFor(viewerStory.cta_url) ?? {})}
-                      sx={{
-                        alignSelf: "flex-start",
-                        textTransform: "none",
-                        borderRadius: 999,
-                        px: 3,
-                      }}
-                    >
-                      {t("stories.viewer.openLink")}
-                    </Button>
-                  )}
+                  {viewerStoryLink &&
+                    ("to" in viewerStoryLink ? (
+                      <Button
+                        as={Link}
+                        to={viewerStoryLink.to}
+                        variant="solid"
+                        className="self-start rounded-full px-5"
+                      >
+                        {t("stories.viewer.openLink")}
+                      </Button>
+                    ) : (
+                      <Button
+                        as="a"
+                        href={viewerStoryLink.href}
+                        target={viewerStoryLink.target}
+                        rel={viewerStoryLink.rel}
+                        variant="solid"
+                        className="self-start rounded-full px-5"
+                      >
+                        {t("stories.viewer.openLink")}
+                      </Button>
+                    ))}
                 </Stack>
               )}
 
@@ -594,25 +555,22 @@ export default function DashboardStories({
                 }}
               >
                 {displayStories.map((story, index) => (
-                  <LinearProgress
+                  <ProgressBar
                     key={story.id}
-                    variant="determinate"
-                    aria-label={t("stories.viewer.aria.progress", {
+                    value={progressForIndex(index)}
+                    ariaLabel={t("stories.viewer.aria.progress", {
                       index: index + 1,
                       total: displayStories.length,
                       title: story.title,
                     })}
-                    value={progressForIndex(index)}
-                    sx={{
-                      flex: 1,
-                      height: 3,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(255,255,255,0.35)",
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor: "#fff",
-                        transition: "transform 140ms linear",
-                      },
-                    }}
+                    className="h-[3px] flex-1 bg-white/35"
+                    barClassName={cn(
+                      "bg-white",
+                      prefersReducedMotion
+                        ? "motion-reduce:transition-none"
+                        : "duration-150 ease-linear"
+                    )}
+                    animated={!prefersReducedMotion}
                   />
                 ))}
               </Stack>
