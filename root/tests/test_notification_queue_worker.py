@@ -1,14 +1,33 @@
 import asyncio
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from prometheus_client import REGISTRY
 from sqlalchemy import select
 
+from alembic import command
+from alembic.config import Config
 from app.core import observability
-from app.core.database import async_session
+from app.core.database import Base, async_session
 from app.models.models import NotificationQueueJob
 from app.services import notification_queue
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _make_alembic_config(tmp_path: Path) -> tuple[Config, str, str | None]:
+    db_path = tmp_path / "queue-migration.sqlite"
+    async_url = f"sqlite+aiosqlite:///{db_path}"
+    sync_url = f"sqlite:///{db_path}"
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
+    config.set_main_option("sqlalchemy.url", async_url)
+    previous_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = async_url
+    return config, sync_url, previous_url
 
 
 @pytest.fixture(autouse=True)
@@ -363,3 +382,99 @@ async def test_persistent_queue_dead_letters_poison_jobs(
     await notification_queue.wait_for_all_jobs(timeout=1.0)
 
     notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_notification_queue_pending_index_migration(tmp_path: Path) -> None:
+    config, sync_url, previous_url = _make_alembic_config(tmp_path)
+
+    def _prepare_schema() -> None:
+        engine = sa.create_engine(sync_url)
+        try:
+            Base.metadata.create_all(engine)
+            with engine.begin() as conn:
+                conn.execute(
+                    sa.text(
+                        "DROP INDEX IF EXISTS ix_notification_queue_jobs_pending_claim"
+                    )
+                )
+        finally:
+            engine.dispose()
+
+    await asyncio.to_thread(_prepare_schema)
+    try:
+        await asyncio.to_thread(command.upgrade, config, "head")
+    finally:
+        if previous_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_url
+
+    def _inspect_indexes() -> set[str]:
+        engine = sa.create_engine(sync_url)
+        try:
+            inspector = sa.inspect(engine)
+            indexes = inspector.get_indexes("notification_queue_jobs")
+            return {index["name"] for index in indexes}
+        finally:
+            engine.dispose()
+
+    index_names = await asyncio.to_thread(_inspect_indexes)
+    assert "ix_notification_queue_jobs_pending_claim" in index_names
+
+
+@pytest.mark.anyio
+async def test_persistent_queue_claims_next_job_from_large_backlog() -> None:
+    await notification_queue.reset_testing_state()
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+
+    now = datetime.now(timezone.utc)
+
+    async with async_session() as session:
+        bulk_jobs = [
+            NotificationQueueJob(
+                kind="event",
+                record_id=1000 + index,
+                locale="ru",
+                enqueued_at=now - timedelta(seconds=300 + index),
+                next_retry_at=now + timedelta(minutes=5),
+            )
+            for index in range(500)
+        ]
+        session.add_all(bulk_jobs)
+
+        ready_job = NotificationQueueJob(
+            kind="news",
+            record_id=9999,
+            locale="en",
+            enqueued_at=now - timedelta(minutes=10),
+            next_retry_at=now - timedelta(seconds=1),
+        )
+        session.add(ready_job)
+
+        fallback_job = NotificationQueueJob(
+            kind="event",
+            record_id=5000,
+            locale=None,
+            enqueued_at=now + timedelta(minutes=10),
+            next_retry_at=None,
+        )
+        session.add(fallback_job)
+
+        await session.commit()
+
+    try:
+        job = await notification_queue._claim_next_persistent_job()
+        assert job is not None
+        assert job.kind == "news"
+        assert job.record_id == 9999
+        assert job.queue_id is not None
+
+        async with async_session() as session:
+            stored = await session.get(NotificationQueueJob, job.queue_id)
+            assert stored is not None
+            assert stored.claimed_at is not None
+
+    finally:
+        await notification_queue.reset_testing_state()
