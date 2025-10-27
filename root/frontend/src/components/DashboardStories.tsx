@@ -483,7 +483,11 @@ export default function DashboardStories({
                   flexBasis: STORY_CIRCLE_DIAMETER,
                 }}
               >
-                <Skeleton width={STORY_CIRCLE_DIAMETER} height={STORY_CIRCLE_DIAMETER} rounded="9999px" />
+                <Skeleton
+                  width={STORY_CIRCLE_DIAMETER}
+                  height={STORY_CIRCLE_DIAMETER}
+                  rounded="9999px"
+                />
               </div>
             ))}
           </div>
