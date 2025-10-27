@@ -14,6 +14,7 @@ import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
 import { Link, useNavigate } from "react-router-dom"
 import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -850,7 +851,7 @@ export default function Dashboard() {
                               {e.title}
                             </span>
                             <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-white/20 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white/70 transition-colors duration-300 group-hover:border-white/60 group-hover:text-white">
-                              ✦
+                              <AutoAwesomeRoundedIcon aria-hidden="true" fontSize="inherit" className="h-3.5 w-3.5" />
                             </span>
                           </span>
                           <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
