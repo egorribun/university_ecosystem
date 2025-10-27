@@ -87,10 +87,10 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
     <Tooltip content={full}>
       <span
         aria-label={t("ariaDatePublished", { date: full })}
-        className="flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full bg-[linear-gradient(120deg,#1d5fff,#65b2ff)] text-white shadow-surface"
+        className="flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-white/70 bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.95),rgba(148,163,184,0.35),rgba(59,130,246,0.82),rgba(255,255,255,0.95))] text-slate-900 shadow-[0_18px_40px_-22px_rgba(30,64,175,0.55)] backdrop-blur-md"
       >
-        <span className="text-[0.85rem] font-extrabold leading-none">{dd}</span>
-        <span className="text-[0.65rem] font-semibold leading-tight opacity-90">{mm}</span>
+        <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>
+        <span className="text-[0.65rem] font-semibold leading-tight text-slate-700">{mm}</span>
       </span>
     </Tooltip>
   )
@@ -394,7 +394,16 @@ export default function Dashboard() {
     fetchSchedule()
   }, [fetchSchedule])
 
-  const headerGradientClass = isNarrow ? "bg-hero-gradient-strong" : "bg-hero-gradient"
+  const headerGradientClass = isNarrow
+    ? "bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.32),rgba(15,23,42,0.72))]"
+    : "bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.32),rgba(15,23,42,0.78))]"
+
+  const glassPanelBase =
+    "group relative isolate overflow-hidden rounded-[2.5rem] border border-white/15 bg-white/[0.08] backdrop-blur-[32px] shadow-[0_55px_140px_-80px_rgba(15,23,42,0.85)] transition-all duration-500"
+  const glassPanelHover =
+    "hover:-translate-y-[6px] hover:shadow-[0_70px_170px_-90px_rgba(59,130,246,0.65)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[0_55px_140px_-80px_rgba(15,23,42,0.85)]"
+  const glassSheen =
+    "before:pointer-events-none before:absolute before:inset-px before:rounded-[inherit] before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.55),rgba(255,255,255,0.08))] before:opacity-80 before:transition-opacity before:duration-700 before:content-[''] group-hover:before:opacity-100"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -441,35 +450,39 @@ export default function Dashboard() {
       <PageFadeIn>
         <section
           id="main"
-          className="relative mx-auto w-full max-w-[min(1800px,100%)] overflow-hidden px-4 py-6 sm:px-6 md:px-10 lg:px-16"
+          className="relative mx-auto flex min-h-screen w-full max-w-[min(1800px,100%)] flex-col overflow-hidden rounded-[2rem] px-4 pb-16 pt-10 text-slate-100 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.75)] sm:px-6 sm:rounded-[2.5rem] md:px-10 lg:px-16 lg:rounded-[3rem]"
         >
           <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-            <div className="absolute -top-36 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.35),rgba(59,130,246,0))] blur-[120px]" />
-            <div className="absolute bottom-[-8rem] right-[-6rem] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.3),rgba(16,185,129,0))] blur-[120px]" />
-            <div className="absolute left-16 top-1/2 h-40 w-40 -translate-y-1/2 animate-[pulse_8s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.35),rgba(244,114,182,0))] blur-[90px]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.75),rgba(15,23,42,0.55))]" />
+            <div className="absolute -top-48 left-1/2 h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(120,162,255,0.32),rgba(120,162,255,0))] blur-[160px]" />
+            <div className="absolute bottom-[-10rem] right-[8%] h-[30rem] w-[30rem] rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.32),rgba(125,211,252,0))] blur-[160px]" />
+            <div className="absolute -left-24 top-1/2 h-[28rem] w-[28rem] -translate-y-1/2 animate-[pulse_10s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.28),rgba(244,114,182,0))] blur-[140px]" />
+            <div className="absolute left-1/2 top-10 h-64 w-64 -translate-x-1/2 rounded-full bg-[conic-gradient(from_45deg_at_50%_50%,rgba(255,255,255,0.35),rgba(125,211,252,0.45),rgba(255,255,255,0.15),rgba(192,132,252,0.4),rgba(255,255,255,0.35))] opacity-50 blur-[180px]" />
           </div>
-          <div className="relative z-[1] space-y-6">
+          <div className="relative z-[1] space-y-8">
             <header
               data-fade
               style={fadeDelayStyle("40ms")}
               className={cn(
-                "group relative isolate overflow-hidden rounded-[var(--radius-lg)] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.38),rgba(17,24,39,0.82))] p-6 shadow-surface shadow-[0_45px_120px_-60px_rgba(37,99,235,0.75)] backdrop-blur-sm transition-all duration-500 ease-out focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus md:p-9",
-                headerGradientClass,
-                "hover:-translate-y-[2px] hover:shadow-[0_35px_120px_-70px_rgba(147,197,253,0.8)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-surface"
+                glassPanelBase,
+                glassPanelHover,
+                glassSheen,
+                "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
+                headerGradientClass
               )}
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.35),transparent_65%)] opacity-70 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.45),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
               />
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -inset-y-28 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
+                className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
               >
-                <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/55 to-transparent" />
+                <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
               </span>
               <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.45),rgba(14,165,233,0))] opacity-70 blur-3xl" />
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,rgba(59,130,246,0.35),rgba(59,130,246,0),rgba(14,165,233,0.35),rgba(59,130,246,0.35))] opacity-50 blur-[100px]" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,rgba(59,130,246,0.45),rgba(59,130,246,0.1),rgba(14,165,233,0.38),rgba(59,130,246,0.45))] opacity-60 blur-[120px]" />
               <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
                 <div className="space-y-3 text-nav-text lg:col-span-8">
                   <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
@@ -520,11 +533,20 @@ export default function Dashboard() {
             <div
               data-fade
               style={fadeDelayStyle("100ms")}
-              className="relative overflow-hidden rounded-[var(--radius-lg)] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.18),rgba(15,23,42,0.75))] p-2 shadow-surface shadow-[0_35px_100px_-70px_rgba(59,130,246,0.6)] backdrop-blur-sm"
+              className={cn(
+                glassPanelBase,
+                glassPanelHover,
+                glassSheen,
+                "p-2 md:p-3"
+              )}
             >
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.24),transparent_70%)] opacity-80"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.28),transparent_65%)] opacity-80"
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-10 top-0 h-2 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-60"
               />
               <div className="relative z-[1]">
                 <DashboardStories
@@ -540,7 +562,9 @@ export default function Dashboard() {
                 data-fade
                 style={fadeDelayStyle("140ms")}
                 className={cn(
-                  "group relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.95),rgba(30,41,59,0.75))] shadow-surface shadow-[0_35px_90px_-65px_rgba(14,116,144,0.7)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_38px_110px_-70px_rgba(59,130,246,0.55)]",
+                  glassPanelBase,
+                  glassPanelHover,
+                  glassSheen,
                   "lg:col-span-4"
                 )}
                 padding="lg"
@@ -648,11 +672,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_72%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-24 right-10 z-0 h-32 w-32 rounded-full bg-[radial-gradient(circle,rgba(96,165,250,0.45),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-75"
+                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.45),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
                 />
               </Card>
 
@@ -660,7 +684,9 @@ export default function Dashboard() {
                 data-fade
                 style={fadeDelayStyle("200ms")}
                 className={cn(
-                  "group relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.96),rgba(17,24,39,0.78))] shadow-surface shadow-[0_30px_95px_-70px_rgba(59,130,246,0.65)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_42px_120px_-75px_rgba(96,165,250,0.55)]",
+                  glassPanelBase,
+                  glassPanelHover,
+                  glassSheen,
                   "lg:col-span-4"
                 )}
                 padding="lg"
@@ -752,11 +778,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.2),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.18),transparent_68%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.55),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,rgba(129,140,248,0.45),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-80"
                 />
               </Card>
 
@@ -764,7 +790,9 @@ export default function Dashboard() {
                 data-fade
                 style={fadeDelayStyle("260ms")}
                 className={cn(
-                  "group relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top,rgba(17,24,39,0.94),rgba(30,41,59,0.76))] shadow-surface shadow-[0_28px_95px_-70px_rgba(59,130,246,0.6)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_40px_120px_-75px_rgba(56,189,248,0.55)]",
+                  glassPanelBase,
+                  glassPanelHover,
+                  glassSheen,
                   "lg:col-span-4"
                 )}
                 padding="lg"
@@ -886,11 +914,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(167,139,250,0.5),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-85"
+                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.5),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-85"
                 />
               </Card>
             </section>
