@@ -26,8 +26,8 @@ from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
 from app.core.database import get_db
-from app.deps.cache import etag_matches, format_etag
-from app.localization import resolve_locale, translate
+from app.deps.cache import etag_matches, format_etag, get_cache
+from app.localization import normalize_locale, resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
 from app.services import attendance_tokens, notification_queue
@@ -37,6 +37,72 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+_EVENTS_LIST_CACHE_PREFIX = "events:list"
+_events_list_cache_keys: set[str] = set()
+
+
+def _register_events_cache_key(key: str) -> None:
+    if key:
+        _events_list_cache_keys.add(key)
+
+
+def _consume_events_cache_keys() -> list[str]:
+    if not _events_list_cache_keys:
+        return []
+    keys = list(_events_list_cache_keys)
+    _events_list_cache_keys.clear()
+    return keys
+
+
+def _events_cache_keys_snapshot() -> tuple[str, ...]:
+    return tuple(sorted(_events_list_cache_keys))
+
+
+def _reset_events_cache_registry() -> None:
+    _events_list_cache_keys.clear()
+
+
+def _events_list_cache_key(
+    *,
+    locale: str | None,
+    search: str,
+    event_type: str,
+    location: str,
+    is_active: bool,
+    limit: int,
+    cursor: int,
+) -> str:
+    normalized_locale = normalize_locale(locale)
+    normalized_search = (search or "").strip().lower()
+    normalized_type = (event_type or "").strip().lower()
+    normalized_location = (location or "").strip().lower()
+    upper_bound = cursor + max(0, limit)
+    signature = json.dumps(
+        {
+            "search": normalized_search,
+            "type": normalized_type,
+            "location": normalized_location,
+            "is_active": bool(is_active),
+            "limit": int(limit),
+            "cursor": int(cursor),
+            "range": [int(cursor), int(upper_bound)],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    digest = hashlib.sha256(signature).hexdigest()
+    return f"{_EVENTS_LIST_CACHE_PREFIX}:{normalized_locale}:{digest}"
+
+
+async def _invalidate_events_list_cache() -> None:
+    keys = _consume_events_cache_keys()
+    if not keys:
+        return
+    cache = get_cache()
+    if cache.enabled:
+        await cache.invalidate(*keys)
 
 
 @lru_cache(maxsize=1)
@@ -79,6 +145,7 @@ async def create_event(
             detail=translate("errors.forbidden", locale=locale),
         )
     record = await crud.create_event(db, data, user_id=user.id)
+    await _invalidate_events_list_cache()
     try:
         background.add_task(
             notification_queue.enqueue_event_notification,
@@ -113,6 +180,30 @@ async def all_events(
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
+    cache = get_cache()
+    cache_key: str | None = None
+    if cache.enabled:
+        cache_key = _events_list_cache_key(
+            locale=locale,
+            search=search,
+            event_type=type,
+            location=location,
+            is_active=is_active,
+            limit=limit,
+            cursor=cursor,
+        )
+        _register_events_cache_key(cache_key)
+        cached = await cache.get(cache_key)
+        if cached:
+            etag_header = format_etag(cached.etag)
+            if etag_matches(cached.etag, if_none_match):
+                not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+                not_modified.headers["ETag"] = etag_header
+                _set_language_headers(not_modified, locale)
+                return not_modified
+            response.headers["ETag"] = etag_header
+            return cached.payload
+
     payload = await crud.get_all_events(
         db,
         user_id=user.id,
@@ -124,6 +215,20 @@ async def all_events(
         limit=limit,
         cursor=cursor,
     )
+
+    encoded = jsonable_encoder(payload)
+
+    if cache.enabled and cache_key:
+        entry = await cache.set(cache_key, encoded)
+        etag_header = format_etag(entry.etag)
+        if etag_matches(entry.etag, if_none_match):
+            not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+            not_modified.headers["ETag"] = etag_header
+            _set_language_headers(not_modified, locale)
+            return not_modified
+        response.headers["ETag"] = etag_header
+        return encoded
+
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
@@ -327,6 +432,7 @@ async def update_event(
             .where(models.EventAttendance.event_id == q.id)
         )
     ).scalar()
+    await _invalidate_events_list_cache()
     return crud.serialize_event(
         q,
         locale,
@@ -371,6 +477,7 @@ async def delete_event(
     )
     await db.delete(q)
     await db.commit()
+    await _invalidate_events_list_cache()
     if event_image_url:
         await delete_static_file(event_image_url)
     for url in file_urls:
