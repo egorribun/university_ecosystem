@@ -40,3 +40,6 @@ opentelemetry-instrumentation-sqlalchemy==0.59b0
 opentelemetry-instrumentation-asyncpg==0.59b0
 opentelemetry-semantic-conventions==0.59b0
 sentry-sdk[opentelemetry]>=2,<3
+
+# Testing dependencies required for async fixtures
+pytest-asyncio>=0.23
