@@ -39,17 +39,17 @@ const baseTheme = extendTheme({
       palette: {
         mode: "light",
         primary: {
-          main: "#005EA2",
-          light: "#3B82F6",
-          dark: "#1A4480",
+          main: "#0F4FAA",
+          light: "#3F7BDF",
+          dark: "#123F84",
           contrastText: "#ffffff",
         },
         secondary: {
-          main: "#1A4480",
+          main: "#17406F",
           contrastText: "#ffffff",
         },
         info: {
-          main: "#0B5CAD",
+          main: "#1F68C7",
           contrastText: "#ffffff",
         },
         success: {
@@ -58,20 +58,20 @@ const baseTheme = extendTheme({
         },
         warning: {
           main: "#B7791F",
-          contrastText: "#11161E",
+          contrastText: "#102033",
         },
         error: {
           main: "#D14343",
           contrastText: "#ffffff",
         },
         text: {
-          primary: "#0B121A",
-          secondary: "#2F3B4C",
-          disabled: "rgba(47, 59, 76, 0.45)",
+          primary: "#101621",
+          secondary: "#3B495C",
+          disabled: "rgba(59, 73, 92, 0.42)",
         },
-        divider: "rgba(16, 21, 27, 0.12)",
+        divider: "rgba(16, 22, 33, 0.12)",
         background: {
-          default: "#F3F6FA",
+          default: "#E8F1FB",
           paper: "#FFFFFF",
         },
       },
@@ -80,39 +80,39 @@ const baseTheme = extendTheme({
       palette: {
         mode: "dark",
         primary: {
-          main: "#69A9DC",
-          light: "#89BCE7",
-          dark: "#2B4C72",
-          contrastText: "#0B0F15",
+          main: "#7FB6E6",
+          light: "#9DC8F0",
+          dark: "#2F4F75",
+          contrastText: "#050B14",
         },
         secondary: {
-          main: "#1E3A5F",
-          contrastText: "#E6EBF2",
+          main: "#1B3A5D",
+          contrastText: "#DDE6F7",
         },
         info: {
-          main: "#7FB6E6",
-          contrastText: "#0B0F15",
+          main: "#8ABFEF",
+          contrastText: "#050B14",
         },
         success: {
           main: "#4ADE80",
-          contrastText: "#08121A",
+          contrastText: "#050B14",
         },
         warning: {
           main: "#FBBF24",
-          contrastText: "#08121A",
+          contrastText: "#050B14",
         },
         error: {
           main: "#F87171",
-          contrastText: "#08121A",
+          contrastText: "#050B14",
         },
         text: {
-          primary: "#E6EBF2",
-          secondary: "#B8C2D0",
+          primary: "#DDE6F7",
+          secondary: "#9FB2CC",
         },
-        divider: "rgba(230, 235, 242, 0.16)",
+        divider: "rgba(157, 181, 214, 0.18)",
         background: {
-          default: "#0B0F15",
-          paper: "#11161E",
+          default: "#060B14",
+          paper: "#101A2A",
         },
       },
     },
