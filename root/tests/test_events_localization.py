@@ -4,6 +4,7 @@ import pytest
 from fastapi import status
 
 from app import crud
+from app.api import events
 from app.auth.security import get_password_hash
 from app.models import models
 from app.services import attendance_tokens
@@ -125,7 +126,11 @@ async def test_events_localization(async_client, db_session, user_factory):
 
 
 @pytest.mark.anyio
-async def test_events_etag_and_not_modified(async_client, db_session, user_factory):
+async def test_events_etag_and_not_modified(
+    async_client, db_session, user_factory, fake_cache
+):
+    events._reset_events_cache_registry()
+    assert fake_cache is not None
     password = "TestEvent456!"
     hashed = get_password_hash(password)
     admin = await user_factory(role="admin")
@@ -287,3 +292,101 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     )
     assert capped.status_code == status.HTTP_200_OK
     assert capped.json()["limit"] == crud.MAX_EVENTS_LIMIT
+
+
+@pytest.mark.anyio
+async def test_events_cache_invalidation_on_mutations(
+    async_client, db_session, user_factory, fake_cache
+):
+    events._reset_events_cache_registry()
+
+    admin_password = "CacheAdmin123!"
+    student_password = "CacheStudent123!"
+    admin = await user_factory(
+        role="admin", hashed_password=get_password_hash(admin_password)
+    )
+    student = await user_factory(
+        hashed_password=get_password_hash(student_password), is_active=True
+    )
+
+    now = datetime.now(timezone.utc)
+    initial_event = models.Event(
+        title="Initial event",
+        description="Initial description",
+        location="Campus",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=2),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(initial_event)
+    await db_session.commit()
+    await db_session.refresh(initial_event)
+
+    student_headers = await _login(async_client, student.email, student_password)
+    list_headers = {**student_headers, "Accept-Language": "en"}
+
+    first_response = await async_client.get("/events", headers=list_headers)
+    assert first_response.status_code == status.HTTP_200_OK
+    keys_after_first = events._events_cache_keys_snapshot()
+    assert keys_after_first
+    tracked_key = keys_after_first[0]
+    cached_entry = await fake_cache.get(tracked_key)
+    assert cached_entry is not None
+
+    first_etag = first_response.headers.get("ETag")
+    assert first_etag
+    cached_not_modified = await async_client.get(
+        "/events",
+        headers={**list_headers, "If-None-Match": first_etag},
+    )
+    assert cached_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
+
+    admin_headers = await _login(async_client, admin.email, admin_password)
+    create_payload = {
+        "title": "New cached event",
+        "description": "Fresh description",
+        "location": "Campus",
+        "starts_at": (now + timedelta(days=3)).isoformat(),
+        "ends_at": (now + timedelta(days=3, hours=1)).isoformat(),
+    }
+    create_response = await async_client.post(
+        "/events",
+        headers=admin_headers,
+        json=create_payload,
+    )
+    assert create_response.status_code == status.HTTP_200_OK
+    created_event_id = create_response.json()["id"]
+
+    assert await fake_cache.get(tracked_key) is None
+    assert not events._events_cache_keys_snapshot()
+
+    after_create = await async_client.get("/events", headers=list_headers)
+    assert after_create.status_code == status.HTTP_200_OK
+    keys_after_create = events._events_cache_keys_snapshot()
+    assert keys_after_create
+    active_key = keys_after_create[0]
+    assert await fake_cache.get(active_key) is not None
+
+    update_response = await async_client.patch(
+        f"/events/{created_event_id}",
+        headers=admin_headers,
+        json={"title": "Updated cached event"},
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+    assert await fake_cache.get(active_key) is None
+    assert not events._events_cache_keys_snapshot()
+
+    after_update = await async_client.get("/events", headers=list_headers)
+    assert after_update.status_code == status.HTTP_200_OK
+    keys_after_update = events._events_cache_keys_snapshot()
+    assert keys_after_update
+    post_update_key = keys_after_update[0]
+    assert await fake_cache.get(post_update_key) is not None
+
+    delete_response = await async_client.delete(
+        f"/events/{created_event_id}", headers=admin_headers
+    )
+    assert delete_response.status_code == status.HTTP_200_OK
+    assert await fake_cache.get(post_update_key) is None
+    assert not events._events_cache_keys_snapshot()
