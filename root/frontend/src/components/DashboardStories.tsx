@@ -7,22 +7,23 @@ import {
   useId,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type SVGProps,
 } from "react"
-import SmartImage from "@/components/SmartImage"
-import type { StoryItem } from "@/types/Story"
-import { Box, Dialog, IconButton, Stack, Typography, useMediaQuery, useTheme } from "@mui/material"
-import { Button, ProgressBar, Skeleton, StoryCircle } from "@/components/ui"
-import type { ButtonProps } from "@/components/ui/button"
-import { cn } from "@/utils/cn"
-import { visuallyHidden } from "@mui/utils"
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded"
-import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded"
-import ArrowForwardIosRoundedIcon from "@mui/icons-material/ArrowForwardIosRounded"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
+import SmartImage from "@/components/SmartImage"
+import { Button, ProgressBar, Skeleton, StoryCircle } from "@/components/ui"
+import type { ButtonProps } from "@/components/ui/button"
+import type { StoryItem } from "@/types/Story"
+import useFocusTrap from "@/hooks/useFocusTrap"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { cn } from "@/utils/cn"
 
 const STORY_AUTO_ADVANCE_MS = 6500
 const SKELETON_COUNT = 8
+
+const isBrowser = typeof document !== "undefined"
 
 type DashboardStoriesProps = {
   stories: StoryItem[]
@@ -39,9 +40,11 @@ export default function DashboardStories({
   onStoryOpen,
   maxVisibleStories = 12,
 }: DashboardStoriesProps) {
-  const theme = useTheme()
   const { t } = useTranslation("dashboard")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+
+  const [isClient, setIsClient] = useState(false)
+  useEffect(() => setIsClient(true), [])
 
   const listLabel = t("aria.storiesList")
 
@@ -56,6 +59,12 @@ export default function DashboardStories({
   const touchOrigin = useRef<{ x: number; y: number } | null>(null)
   const rafRef = useRef<number | null>(null)
   const autoStartRef = useRef<number>(0)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+
+  const dialogTrapRef = useFocusTrap<HTMLDivElement>({
+    active: openIndex !== null,
+    initialFocus: () => closeButtonRef.current ?? undefined,
+  })
 
   useEffect(() => {
     return () => {
@@ -65,6 +74,15 @@ export default function DashboardStories({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!isBrowser || openIndex === null) return undefined
+    const { overflow } = document.body.style
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = overflow
+    }
+  }, [openIndex])
 
   const closeViewer = useCallback(() => {
     setOpenIndex(null)
@@ -260,198 +278,56 @@ export default function DashboardStories({
         } else {
           goPrev()
         }
+        return
       }
+      if ((event.target as HTMLElement).closest("button,a")) {
+        return
+      }
+      goNext()
     },
     [goNext, goPrev]
   )
 
-  return (
-    <Box
-      data-fade
-      style={{ "--fade-delay": "120ms" } as CSSProperties}
-      sx={{ mt: 3, mb: 3, display: "flex", flexDirection: "column", gap: 2 }}
-      aria-busy={loading}
-      onPointerEnter={onPrefetch}
-      onFocusCapture={onPrefetch}
-    >
-      {shouldShowHeading && (
-        <Typography component="h2" variant="h6" sx={{ ...visuallyHidden }}>
-          {t("stories.heading")}
-        </Typography>
-      )}
-      {loading && (
-        <Stack direction="row" spacing={1.6} sx={{ flexWrap: "wrap", rowGap: 1.6, py: 0.75 }}>
-          {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
-            <Stack
-              key={index}
-              alignItems="center"
-              justifyContent="center"
-              sx={{ width: 92, minHeight: 112 }}
+  const overlay =
+    isClient && viewerStory && openIndex !== null
+      ? createPortal(
+          <div
+            className="fixed inset-0 flex items-center justify-center p-4 sm:p-8"
+            style={{ zIndex: "var(--ue-z-index-overlay)" }}
+          >
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-[rgba(8,11,21,0.35)] backdrop-blur-xl"
+              onClick={closeViewer}
+            />
+            <div
+              ref={dialogTrapRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={viewerStory.title ? dialogTitleId : undefined}
+              aria-label={storyDialogLabel}
+              className="relative z-[1] flex w-full justify-center"
             >
-              <Skeleton width={76} height={76} rounded="9999px" />
-            </Stack>
-          ))}
-        </Stack>
-      )}
-      {!loading && hasStories && (
-        <Stack
-          component="ul"
-          direction="row"
-          spacing={1.6}
-          sx={{
-            listStyle: "none",
-            p: 0,
-            m: 0,
-            overflowX: "auto",
-            columnGap: 1.6,
-            rowGap: 1.6,
-            flexWrap: { xs: "nowrap", sm: "wrap" },
-            pr: { xs: 1, sm: 0 },
-            mr: { xs: -1, sm: 0 },
-            scrollbarWidth: "none",
-            "&::-webkit-scrollbar": {
-              display: "none",
-            },
-          }}
-          aria-label={listLabel}
-        >
-          {displayStories.map((story, index) => {
-            const label = t("aria.storyItem", { title: story.title })
-            const tooltip = story.short_text || story.title
-            return (
-              <Stack
-                key={story.id}
-                component="li"
-                alignItems="center"
-                justifyContent="center"
-                sx={{
-                  width: 92,
-                  minHeight: 112,
-                  flex: { xs: "0 0 auto", sm: "0 0 92px" },
-                  overflow: "visible",
-                  ...(index === 0
-                    ? {
-                        ml: { xs: 1.2, sm: 0.8 },
-                      }
-                    : {}),
+              <div
+                className={cn(
+                  "relative flex aspect-[9/16] w-[min(92vw,420px)] max-h-[92vh] max-w-[min(92vw,420px)] flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-[16/9] sm:w-[min(96vw,960px)] sm:max-h-[80vh] sm:max-w-[min(96vw,960px)]",
+                  viewerStory.cover_url
+                    ? "bg-[#080b15]"
+                    : "bg-[linear-gradient(135deg,#1d4ed8,#60a5fa)] shadow-[0_30px_80px_rgba(0,0,0,0.55)]",
+                  viewerStory.cover_url ? "rounded-none" : "rounded-[1.25rem] sm:rounded-[1.5rem]"
+                )}
+                onPointerDown={handlePointerStart}
+                onPointerUp={handlePointerEnd}
+                onPointerCancel={() => {
+                  touchOrigin.current = null
+                  setIsPaused(false)
+                }}
+                onPointerLeave={() => {
+                  touchOrigin.current = null
+                  setIsPaused(false)
                 }}
               >
-                <StoryCircle
-                  as="button"
-                  type="button"
-                  size="md"
-                  borderWidth={2}
-                  onClick={() => openStory(story, index)}
-                  onFocus={onPrefetch}
-                  onMouseEnter={onPrefetch}
-                  aria-label={label}
-                  title={tooltip ?? undefined}
-                  data-active={viewerStory?.id === story.id ? "true" : undefined}
-                  className={cn(
-                    "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-[rgba(125,172,255,0.45)]"
-                  )}
-                >
-                  <div className="relative h-full w-full overflow-hidden rounded-full">
-                    {renderAvatar(story)}
-                  </div>
-                </StoryCircle>
-              </Stack>
-            )
-          })}
-        </Stack>
-      )}
-
-      <Dialog
-        open={openIndex !== null}
-        onClose={closeViewer}
-        aria-labelledby={dialogTitleId}
-        aria-label={storyDialogLabel}
-        keepMounted
-        PaperProps={{
-          sx: {
-            background: "transparent",
-            boxShadow: "none",
-            color: "#fff",
-            position: "relative",
-            overflow: "visible",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            p: { xs: 2, sm: 4 },
-            m: 0,
-            maxWidth: "unset",
-          },
-        }}
-        BackdropProps={{
-          sx: {
-            backgroundColor: "rgba(8,11,21,0.35)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-          },
-        }}
-      >
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 0,
-            pointerEvents: "none",
-            background: "transparent",
-            backdropFilter: "none",
-            WebkitBackdropFilter: "none",
-          }}
-        />
-        {viewerStory && (
-          <Box
-            sx={{
-              position: "relative",
-              zIndex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              px: { xs: 0, sm: 2 },
-              py: { xs: 0, sm: 2 },
-            }}
-          >
-            <Box
-              sx={{
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "stretch",
-                justifyContent: "center",
-                width: { xs: "min(92vw, 420px)", sm: "min(96vw, 960px)" },
-                maxWidth: { xs: "min(92vw, 420px)", sm: "min(96vw, 960px)" },
-                maxHeight: { xs: "92vh", sm: "80vh" },
-                aspectRatio: { xs: "9 / 16", sm: "16 / 9" },
-                borderRadius: viewerStory.cover_url ? 0 : { xs: 3, sm: 4 },
-                overflow: "hidden",
-                boxShadow: viewerStory.cover_url ? "none" : "0 30px 80px rgba(0,0,0,0.55)",
-                backgroundColor: viewerStory.cover_url ? "#080b15" : undefined,
-                backgroundImage: viewerStory.cover_url
-                  ? "none"
-                  : "linear-gradient(135deg,#1d4ed8,#60a5fa)",
-              }}
-              onPointerDown={handlePointerStart}
-              onPointerUp={handlePointerEnd}
-              onPointerCancel={() => {
-                touchOrigin.current = null
-                setIsPaused(false)
-              }}
-              onPointerLeave={() => {
-                touchOrigin.current = null
-                setIsPaused(false)
-              }}
-              onClick={(event) => {
-                if ((event.target as HTMLElement).closest("button,a")) {
-                  return
-                }
-                goNext()
-              }}
-            >
-              {viewerStory.cover_url ? (
-                <>
+                {viewerStory.cover_url ? (
                   <SmartImage
                     srcRaw={viewerStory.cover_url}
                     alt={viewerStory.title}
@@ -463,187 +339,212 @@ export default function DashboardStories({
                       backgroundColor: "#080b15",
                     }}
                   />
-                </>
-              ) : (
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: "grid",
-                    placeItems: "center",
-                    background: "linear-gradient(135deg,#1d4ed8,#60a5fa)",
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontWeight: 800,
-                      fontSize: "clamp(2.2rem, 12vw, 3.2rem)",
-                      textTransform: "uppercase",
+                ) : (
+                  <div className="flex flex-1 items-center justify-center bg-[linear-gradient(135deg,#1d4ed8,#60a5fa)]">
+                    <span className="text-[clamp(2.2rem,12vw,3.2rem)] font-extrabold uppercase">
+                      {viewerStory.title.slice(0, 2).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+
+                <p className="sr-only">{t("stories.viewer.hints.auto")}</p>
+
+                {(viewerStory.title || viewerStory.short_text || viewerStory.cta_url) && (
+                  <div
+                    className={cn(
+                      "absolute bottom-0 left-0 right-0 flex flex-col",
+                      viewerStory.cta_url ? "gap-5" : "gap-4",
+                      "p-6 pt-12 sm:p-8 sm:pt-16"
+                    )}
+                    style={{
+                      backgroundImage: viewerStory.cover_url
+                        ? "linear-gradient(180deg, rgba(8,11,21,0) 0%, rgba(8,11,21,0.65) 55%, rgba(8,11,21,0.85) 100%)"
+                        : "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
+                      backdropFilter: viewerStory.cover_url ? "blur(12px)" : undefined,
+                      WebkitBackdropFilter: viewerStory.cover_url ? "blur(12px)" : undefined,
                     }}
                   >
-                    {viewerStory.title.slice(0, 2).toUpperCase()}
-                  </Typography>
-                </Box>
-              )}
-
-              <Typography sx={{ ...visuallyHidden }}>{t("stories.viewer.hints.auto")}</Typography>
-
-              {(viewerStory.title || viewerStory.short_text || viewerStory.cta_url) && (
-                <Stack
-                  spacing={viewerStory.cta_url ? 2 : 1}
-                  sx={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    p: { xs: 3, sm: 4 },
-                    pt: { xs: 6, sm: 7 },
-                    backgroundImage: viewerStory.cover_url
-                      ? "linear-gradient(180deg, rgba(8,11,21,0) 0%, rgba(8,11,21,0.65) 55%, rgba(8,11,21,0.85) 100%)"
-                      : "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
-                    backdropFilter: viewerStory.cover_url ? "blur(12px)" : "none",
-                    WebkitBackdropFilter: viewerStory.cover_url ? "blur(12px)" : "none",
-                  }}
-                >
-                  <Typography
-                    id={dialogTitleId}
-                    variant="h5"
-                    component="h2"
-                    sx={{ fontWeight: 800, lineHeight: 1.2 }}
-                  >
-                    {viewerStory.title}
-                  </Typography>
-                  {viewerStory.short_text && (
-                    <Typography component="p" sx={{ opacity: 0.95, fontSize: "1rem" }}>
-                      {viewerStory.short_text}
-                    </Typography>
-                  )}
-                  {viewerStoryLink &&
-                    ("to" in viewerStoryLink ? (
-                      <Button
-                        as={Link}
-                        to={viewerStoryLink.to}
-                        variant="solid"
-                        className="self-start rounded-full px-5"
-                      >
-                        {t("stories.viewer.openLink")}
-                      </Button>
-                    ) : (
-                      <Button
-                        as="a"
-                        href={viewerStoryLink.href}
-                        target={viewerStoryLink.target}
-                        rel={viewerStoryLink.rel}
-                        variant="solid"
-                        className="self-start rounded-full px-5"
-                      >
-                        {t("stories.viewer.openLink")}
-                      </Button>
-                    ))}
-                </Stack>
-              )}
-
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                  position: "absolute",
-                  top: 12,
-                  left: 16,
-                  right: 16,
-                }}
-              >
-                {displayStories.map((story, index) => (
-                  <ProgressBar
-                    key={story.id}
-                    value={progressForIndex(index)}
-                    ariaLabel={t("stories.viewer.aria.progress", {
-                      index: index + 1,
-                      total: displayStories.length,
-                      title: story.title,
-                    })}
-                    className="h-[3px] flex-1 bg-white/35"
-                    barClassName={cn(
-                      "bg-white",
-                      prefersReducedMotion
-                        ? "motion-reduce:transition-none"
-                        : "duration-150 ease-linear"
+                    {viewerStory.title && (
+                      <h2 id={dialogTitleId} className="text-3xl font-extrabold leading-snug">
+                        {viewerStory.title}
+                      </h2>
                     )}
-                    animated={!prefersReducedMotion}
-                  />
-                ))}
-              </Stack>
+                    {viewerStory.short_text && (
+                      <p className="text-base opacity-95">{viewerStory.short_text}</p>
+                    )}
+                    {viewerStoryLink &&
+                      ("to" in viewerStoryLink ? (
+                        <Button
+                          as={Link}
+                          to={viewerStoryLink.to}
+                          variant="solid"
+                          className="self-start rounded-full px-5"
+                        >
+                          {t("stories.viewer.openLink")}
+                        </Button>
+                      ) : (
+                        <Button
+                          as="a"
+                          href={viewerStoryLink.href}
+                          target={viewerStoryLink.target}
+                          rel={viewerStoryLink.rel}
+                          variant="solid"
+                          className="self-start rounded-full px-5"
+                        >
+                          {t("stories.viewer.openLink")}
+                        </Button>
+                      ))}
+                  </div>
+                )}
 
-              <IconButton
-                onClick={closeViewer}
-                aria-label={t("stories.viewer.aria.close")}
-                sx={{
-                  position: "absolute",
-                  top: 36,
-                  right: 16,
-                  color: "inherit",
-                  backgroundColor: "rgba(8,11,21,0.55)",
-                  "&:hover": { backgroundColor: "rgba(8,11,21,0.7)" },
-                }}
-              >
-                <CloseRoundedIcon />
-              </IconButton>
-            </Box>
+                <div className="absolute left-4 right-4 top-3 flex items-center gap-2 sm:left-6 sm:right-6 sm:top-4">
+                  {displayStories.map((story, index) => (
+                    <ProgressBar
+                      key={story.id}
+                      value={progressForIndex(index)}
+                      ariaLabel={t("stories.viewer.aria.progress", {
+                        index: index + 1,
+                        total: displayStories.length,
+                        title: story.title,
+                      })}
+                      className="h-[3px] flex-1 bg-white/35"
+                      barClassName={cn(
+                        "bg-white",
+                        prefersReducedMotion
+                          ? "motion-reduce:transition-none"
+                          : "duration-150 ease-linear"
+                      )}
+                      animated={!prefersReducedMotion}
+                    />
+                  ))}
+                </div>
 
-            <Box
-              sx={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-              }}
-            >
-              <Box
-                component="span"
-                sx={{
-                  position: "absolute",
-                  top: "50%",
-                  left: { xs: 4, sm: 24 },
-                  transform: "translateY(-50%)",
-                  pointerEvents: "auto",
-                }}
-              >
-                <IconButton
-                  onClick={goPrev}
-                  aria-label={t("stories.viewer.aria.prev")}
-                  sx={{
-                    color: "inherit",
-                    backgroundColor: "rgba(8,11,21,0.55)",
-                    "&:hover": { backgroundColor: "rgba(8,11,21,0.7)" },
-                  }}
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  onClick={closeViewer}
+                  aria-label={t("stories.viewer.aria.close")}
+                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(8,11,21,0.55)] text-white transition-colors duration-200 ease-out hover:bg-[rgba(8,11,21,0.7)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 sm:right-6"
                 >
-                  <ArrowBackIosNewRoundedIcon />
-                </IconButton>
-              </Box>
-              <Box
-                component="span"
-                sx={{
-                  position: "absolute",
-                  top: "50%",
-                  right: { xs: 4, sm: 24 },
-                  transform: "translateY(-50%)",
-                  pointerEvents: "auto",
-                }}
-              >
-                <IconButton
-                  onClick={goNext}
-                  aria-label={t("stories.viewer.aria.next")}
-                  sx={{
-                    color: "inherit",
-                    backgroundColor: "rgba(8,11,21,0.55)",
-                    "&:hover": { backgroundColor: "rgba(8,11,21,0.7)" },
-                  }}
-                >
-                  <ArrowForwardIosRoundedIcon />
-                </IconButton>
-              </Box>
-            </Box>
-          </Box>
+                  <CloseIcon className="h-5 w-5" aria-hidden="true" />
+                </button>
+
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="pointer-events-auto absolute left-2 top-1/2 -translate-y-1/2 sm:left-6">
+                    <button
+                      type="button"
+                      onClick={goPrev}
+                      aria-label={t("stories.viewer.aria.prev")}
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(8,11,21,0.55)] text-white transition-colors duration-200 ease-out hover:bg-[rgba(8,11,21,0.7)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+                    >
+                      <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <div className="pointer-events-auto absolute right-2 top-1/2 -translate-y-1/2 sm:right-6">
+                    <button
+                      type="button"
+                      onClick={goNext}
+                      aria-label={t("stories.viewer.aria.next")}
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(8,11,21,0.55)] text-white transition-colors duration-200 ease-out hover:bg-[rgba(8,11,21,0.7)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+                    >
+                      <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null
+
+  return (
+    <>
+      <div
+        data-fade
+        style={{ "--fade-delay": "120ms" } as CSSProperties}
+        className="mt-3 mb-3 flex flex-col gap-2"
+        aria-busy={loading}
+        onPointerEnter={onPrefetch}
+        onFocusCapture={onPrefetch}
+      >
+        {shouldShowHeading && <h2 className="sr-only">{t("stories.heading")}</h2>}
+        {loading && (
+          <div className="flex flex-wrap gap-x-6 gap-y-6 py-3">
+            {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
+              <div key={index} className="flex w-[92px] min-h-[112px] items-center justify-center">
+                <Skeleton width={76} height={76} rounded="9999px" />
+              </div>
+            ))}
+          </div>
         )}
-      </Dialog>
-    </Box>
+        {!loading && hasStories && (
+          <ul
+            className="-mr-4 flex list-none gap-6 overflow-x-auto p-0 pr-4 sm:-mr-0 sm:flex-wrap sm:pr-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            aria-label={listLabel}
+          >
+            {displayStories.map((story, index) => {
+              const label = t("aria.storyItem", { title: story.title })
+              const tooltip = story.short_text || story.title
+              return (
+                <li
+                  key={story.id}
+                  className={cn(
+                    "flex min-h-[112px] w-[92px] flex-shrink-0 flex-col items-center justify-center overflow-visible sm:basis-[92px]",
+                    index === 0 ? "ml-3 sm:ml-2" : ""
+                  )}
+                >
+                  <StoryCircle
+                    as="button"
+                    type="button"
+                    size="md"
+                    borderWidth={2}
+                    onClick={() => openStory(story, index)}
+                    onFocus={onPrefetch}
+                    onMouseEnter={onPrefetch}
+                    aria-label={label}
+                    title={tooltip ?? undefined}
+                    data-active={viewerStory?.id === story.id ? "true" : undefined}
+                    className={cn(
+                      "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-[rgba(125,172,255,0.45)]"
+                    )}
+                  >
+                    <div className="relative h-full w-full overflow-hidden rounded-full">
+                      {renderAvatar(story)}
+                    </div>
+                  </StoryCircle>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      {overlay}
+    </>
+  )
+}
+
+function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M18 6 6 18" />
+      <path d="M6 6l12 12" />
+    </svg>
+  )
+}
+
+function ArrowLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  )
+}
+
+function ArrowRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
   )
 }
