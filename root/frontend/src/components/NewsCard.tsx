@@ -26,7 +26,6 @@ import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import SmartImage from "@/components/SmartImage"
-import { cardHoverStyles } from "@/constants/cardHover"
 import { cn } from "@/utils/cn"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { useTranslation } from "react-i18next"
@@ -240,12 +239,24 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   )
 
   const hoveringDisabled = editOpen || Boolean(menuAnchor)
-  const cardHover = cardHoverStyles({ disabled: hoveringDisabled })
+  const interactiveSx = useMemo(() => {
+    if (hoveringDisabled) {
+      return {}
+    }
+    return {
+      "&:hover": {
+        transform: "translateY(-2px) scale(1.02)",
+        boxShadow: "var(--shadow-2)",
+      },
+      "&:active": {
+        transform: "scale(0.997)",
+      },
+    }
+  }, [hoveringDisabled])
 
   return (
     <Box
-      className={cn("news-card", cardHover.className)}
-      style={cardHover.style}
+      className={cn("news-card")}
       sx={{
         width: "100%",
         maxWidth: 700,
@@ -264,6 +275,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           outline: "2px solid var(--nav-link)",
           outlineOffset: "2px",
         },
+        transition: "transform 0.25s ease, box-shadow 0.25s ease",
+        ...interactiveSx,
       }}
       role="button"
       tabIndex={0}
