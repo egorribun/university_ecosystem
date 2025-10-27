@@ -544,11 +544,7 @@ export default function Dashboard() {
               </div>
             </header>
 
-            <div
-              data-fade="up"
-              data-pop="true"
-              style={fadeDelayStyle("100ms")}
-            >
+            <div data-fade="up" data-pop="true" style={fadeDelayStyle("100ms")}>
               <DashboardStories
                 stories={stories}
                 loading={loadingStories}
