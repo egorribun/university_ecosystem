@@ -778,13 +778,45 @@ export async function useMockApi(page: Page) {
       }
 
       const limitParam = Number(url.searchParams.get("limit") ?? "")
-      const cursorParam = Number(url.searchParams.get("cursor") ?? "")
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 20
-      const cursor = Number.isFinite(cursorParam) && cursorParam >= 0 ? cursorParam : 0
-      const slice = mockEvents.slice(cursor, cursor + limit)
-      const total = mockEvents.length
-      const nextCursor = cursor + slice.length
-      const hasMore = nextCursor < total
+      const cursorParam = url.searchParams.get("cursor")
+
+      const decodeCursor = (value: string | null) => {
+        if (!value) return null
+        try {
+          const payload = JSON.parse(value) as { id?: number; starts_at?: string }
+          if (typeof payload?.id !== "number") return null
+          return payload
+        } catch {
+          return null
+        }
+      }
+
+      const encodeCursor = (event: { id: number; starts_at?: string | null } | undefined) =>
+        event ? JSON.stringify({ id: event.id, starts_at: event.starts_at ?? null }) : null
+
+      const decodedCursor = decodeCursor(cursorParam)
+
+      const sortedEvents = [...mockEvents].sort((a, b) => {
+        const startsA = String(a.starts_at ?? "")
+        const startsB = String(b.starts_at ?? "")
+        const compareStarts = startsA.localeCompare(startsB)
+        if (compareStarts !== 0) return compareStarts
+        return a.id - b.id
+      })
+
+      const startIndex = decodedCursor
+        ? (() => {
+            const index = sortedEvents.findIndex((event) => event.id === decodedCursor.id)
+            return index >= 0 ? index + 1 : 0
+          })()
+        : 0
+
+      const slice = sortedEvents.slice(startIndex, startIndex + limit)
+      const total = sortedEvents.length
+      const lastItem = slice[slice.length - 1]
+      const nextCursor = encodeCursor(lastItem)
+      const hasMore = startIndex + slice.length < total
 
       await route.fulfill({
         status: 200,
@@ -793,7 +825,7 @@ export async function useMockApi(page: Page) {
           items: slice,
           total,
           limit,
-          cursor,
+          cursor: decodedCursor ? cursorParam : null,
           next_cursor: hasMore ? nextCursor : null,
           has_more: hasMore,
         }),

@@ -71,13 +71,13 @@ def _events_list_cache_key(
     location: str,
     is_active: bool,
     limit: int,
-    cursor: int,
+    cursor: str | None,
 ) -> str:
     normalized_locale = normalize_locale(locale)
     normalized_search = (search or "").strip().lower()
     normalized_type = (event_type or "").strip().lower()
     normalized_location = (location or "").strip().lower()
-    upper_bound = cursor + max(0, limit)
+    normalized_cursor = (cursor or "").strip()
     signature = json.dumps(
         {
             "search": normalized_search,
@@ -85,8 +85,7 @@ def _events_list_cache_key(
             "location": normalized_location,
             "is_active": bool(is_active),
             "limit": int(limit),
-            "cursor": int(cursor),
-            "range": [int(cursor), int(upper_bound)],
+            "cursor": normalized_cursor,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -175,7 +174,7 @@ async def all_events(
         le=crud.MAX_EVENTS_LIMIT,
         alias="limit",
     ),
-    cursor: int = Query(0, ge=0, alias="cursor"),
+    cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
 ):
     locale = resolve_locale(request=request, user=user)

@@ -2068,9 +2068,9 @@ export interface components {
       /** Limit */
       limit: number
       /** Cursor */
-      cursor: number
+      cursor?: string | null
       /** Next Cursor */
-      next_cursor?: number | null
+      next_cursor?: string | null
       /** Has More */
       has_more: boolean
     }
@@ -4721,7 +4721,7 @@ export interface operations {
         location?: string
         is_active?: boolean
         limit?: number
-        cursor?: number
+        cursor?: string | null
       }
       header?: {
         "if-none-match"?: string | null

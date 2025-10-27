@@ -121,6 +121,73 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     assert en_events.items[0].about == "English text"
 
 
+async def test_get_all_events_cursor_respects_ordering_and_gaps(
+    db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    student = await user_factory()
+    base = datetime.now(timezone.utc) + timedelta(days=1)
+
+    def _build_event(delta: timedelta, title: str) -> models.Event:
+        return models.Event(
+            title=title,
+            starts_at=base + delta,
+            ends_at=base + delta + timedelta(hours=1),
+            created_by=admin.id,
+            is_active=True,
+        )
+
+    initial_events = [
+        _build_event(timedelta(hours=1), "Event A"),
+        _build_event(timedelta(hours=2), "Event B"),
+        _build_event(timedelta(hours=3), "Event C"),
+        _build_event(timedelta(hours=3), "Event D"),
+    ]
+    db_session.add_all(initial_events)
+    await db_session.commit()
+    for event in initial_events:
+        await db_session.refresh(event)
+
+    first_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+    )
+    assert [item.title for item in first_page.items] == ["Event A", "Event B"]
+    assert first_page.next_cursor is not None
+
+    inserted = _build_event(timedelta(hours=2, minutes=30), "Inserted Event")
+    db_session.add(inserted)
+    await db_session.commit()
+    await db_session.refresh(inserted)
+
+    second_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+        cursor=first_page.next_cursor,
+    )
+    assert second_page.cursor == first_page.next_cursor
+    assert [item.title for item in second_page.items] == [
+        "Inserted Event",
+        "Event C",
+    ]
+    assert second_page.next_cursor is not None
+
+    third_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+        cursor=second_page.next_cursor,
+    )
+    assert third_page.cursor == second_page.next_cursor
+    assert [item.title for item in third_page.items] == ["Event D"]
+    assert third_page.next_cursor is None
+
+
 async def test_event_detail_returns_qr_code_after_registration(
     async_client, db_session, user_factory
 ):
