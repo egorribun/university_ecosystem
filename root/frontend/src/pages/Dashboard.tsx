@@ -88,13 +88,13 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
       <span
         aria-label={t("ariaDatePublished", { date: full })}
         className={cn(
-          "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-white/70 text-slate-900 backdrop-blur-md",
-          "bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.9),rgba(148,163,184,0.25),rgba(59,130,246,0.65),rgba(255,255,255,0.9))]",
-          "shadow-[0_18px_40px_-22px_rgba(30,64,175,0.55)]"
+          "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-[var(--glass-border)] text-page-foreground backdrop-blur-md",
+          "bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.92),rgba(148,163,184,0.25),rgba(59,130,246,0.45),rgba(255,255,255,0.92))] dark:bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.32),rgba(148,163,184,0.25),rgba(56,189,248,0.55),rgba(255,255,255,0.32))]",
+          "shadow-[0_18px_40px_-22px_rgba(30,64,175,0.35)]"
         )}
       >
         <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>
-        <span className="text-[0.65rem] font-semibold leading-tight text-slate-700">{mm}</span>
+        <span className="text-[0.65rem] font-semibold leading-tight text-secondary">{mm}</span>
       </span>
     </Tooltip>
   )
@@ -398,32 +398,35 @@ export default function Dashboard() {
     fetchSchedule()
   }, [fetchSchedule])
 
-  const headerGradientClass = isNarrow
-    ? "bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.28),rgba(15,23,42,0.78))]"
-    : "bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.3),rgba(15,23,42,0.82))]"
+  const headerGradientClass = cn(
+    "transition-[background] duration-700",
+    isNarrow
+      ? "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.85),_rgba(255,255,255,0.22))] dark:bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.92),_rgba(15,23,42,0.55))]"
+      : "bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.72),_rgba(226,232,240,0.22))] dark:bg-[radial-gradient(circle_at_top_right,_rgba(15,23,42,0.92),_rgba(30,41,59,0.6))]"
+  )
 
   const heroSectionClass = cn(
     "relative mx-auto flex min-h-screen w-full max-w-[min(1800px,100%)] flex-col overflow-hidden",
-    "rounded-[2rem] border border-white/10 px-4 pb-16 pt-10 text-slate-100 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.75)]",
+    "rounded-[2rem] border border-[var(--glass-border)] px-4 pb-16 pt-10 text-page-foreground shadow-[0_48px_120px_-60px_rgba(12,18,32,0.45)]",
     "sm:px-6 sm:rounded-[2.5rem] md:px-10 lg:px-16 lg:rounded-[3rem]",
-    "bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.82),rgba(15,23,42,0.55))]",
-    "ring-1 ring-inset ring-white/5"
+    "bg-[linear-gradient(145deg,var(--hero-grad-start),var(--hero-grad-end))] dark:shadow-[0_50px_140px_-70px_rgba(0,0,0,0.75)]",
+    "ring-1 ring-inset ring-white/20 dark:ring-white/10"
   )
 
   const heroBackdropLayers = [
-    "absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.75),rgba(15,23,42,0.5))]",
-    "absolute -top-52 left-1/2 h-[42rem] w-[42rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(120,162,255,0.33),rgba(120,162,255,0))] blur-[180px]",
-    "absolute bottom-[-12rem] right-[8%] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.3),rgba(125,211,252,0))] blur-[180px]",
-    "absolute -left-24 top-1/2 h-[28rem] w-[28rem] -translate-y-1/2 animate-[pulse_11s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.25),rgba(244,114,182,0))] blur-[160px]",
-    "absolute left-1/2 top-12 h-64 w-64 -translate-x-1/2 rounded-full bg-[conic-gradient(from_45deg_at_50%_50%,rgba(255,255,255,0.32),rgba(125,211,252,0.42),rgba(255,255,255,0.12),rgba(192,132,252,0.38),rgba(255,255,255,0.32))] opacity-50 blur-[200px]",
+    "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.75),_transparent_75%)] dark:bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.88),_transparent_78%)] mix-blend-soft-light",
+    "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,_rgba(148,163,184,0.14),_transparent_68%)] dark:bg-[radial-gradient(circle_at_bottom,_rgba(37,99,235,0.25),_transparent_75%)]",
+    "absolute -top-60 left-1/2 h-[46rem] w-[46rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,_rgba(120,162,255,0.36),_rgba(120,162,255,0))] blur-[220px]",
+    "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,_rgba(56,189,248,0.3),_rgba(56,189,248,0))] blur-[210px]",
+    "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,rgba(255,255,255,0.3),rgba(186,230,253,0.25),rgba(255,255,255,0.08),rgba(192,132,252,0.28),rgba(255,255,255,0.3))] opacity-80 blur-[220px]",
   ]
 
   const glassPanelBase =
-    "group relative isolate overflow-hidden rounded-[2.5rem] border border-white/15 bg-white/[0.08] backdrop-blur-[32px] shadow-[0_55px_140px_-80px_rgba(15,23,42,0.85)] transition-all duration-500"
+    "group relative isolate overflow-hidden rounded-[2.4rem] border border-[var(--glass-border)] bg-[var(--glass-bg)] text-page-foreground shadow-[var(--glass-shadow)] backdrop-blur-[38px] transition-all duration-500"
   const glassPanelHover =
-    "hover:-translate-y-[6px] hover:shadow-[0_70px_170px_-90px_rgba(59,130,246,0.65)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[0_55px_140px_-80px_rgba(15,23,42,0.85)]"
+    "hover:-translate-y-[6px] hover:shadow-[0_70px_160px_-90px_rgba(37,99,235,0.55)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--glass-shadow)]"
   const glassSheen =
-    "before:pointer-events-none before:absolute before:inset-px before:rounded-[inherit] before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.55),rgba(255,255,255,0.08))] before:opacity-80 before:transition-opacity before:duration-700 before:content-[''] group-hover:before:opacity-100"
+    "before:pointer-events-none before:absolute before:inset-px before:rounded-[inherit] before:bg-[linear-gradient(135deg,rgba(255,255,255,0.65),rgba(255,255,255,0.08))] before:opacity-75 before:transition-opacity before:duration-700 before:content-[''] group-hover:before:opacity-100"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -749,7 +752,7 @@ export default function Dashboard() {
                         <li key={n.id} className="py-3 first:pt-0 last:pb-0">
                           <button
                             type="button"
-                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-white/5 focus-visible:outline-none focus-visible:shadow-focus"
+                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[var(--glass-tint-1)] focus-visible:outline-none focus-visible:shadow-focus"
                             onClick={() => navigate(`/news/${n.id}`)}
                             title={n.title}
                             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
@@ -766,7 +769,7 @@ export default function Dashboard() {
                             </div>
                             <span
                               aria-hidden="true"
-                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-xs font-semibold uppercase tracking-[0.2em] text-white/70 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--glass-border)] bg-[var(--glass-tint-2)] text-xs font-semibold uppercase tracking-[0.2em] text-[var(--secondary-text)] opacity-0 transition-all duration-300 group-hover:-translate-y-[1px] group-hover:opacity-100 group-hover:text-page-foreground"
                             >
                               →
                             </span>
@@ -865,7 +868,7 @@ export default function Dashboard() {
                           <li key={e.id} className="py-3 first:pt-0 last:pb-0">
                             <button
                               type="button"
-                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-white/5 focus-visible:outline-none focus-visible:shadow-focus"
+                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[var(--glass-tint-1)] focus-visible:outline-none focus-visible:shadow-focus"
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >
@@ -873,7 +876,7 @@ export default function Dashboard() {
                                 <span className="text-base font-semibold text-page-foreground">
                                   {e.title}
                                 </span>
-                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-white/20 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white/70 transition-colors duration-300 group-hover:border-white/60 group-hover:text-white">
+                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[var(--glass-border)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--secondary-text)] transition-colors duration-300 group-hover:border-[var(--page-text)] group-hover:text-page-foreground">
                                   <AutoAwesomeRoundedIcon
                                     aria-hidden="true"
                                     fontSize="inherit"
