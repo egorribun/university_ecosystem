@@ -420,9 +420,9 @@ export default function Dashboard() {
   ]
 
   const panelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border border-[color-mix(in_srgb,var(--page-text)_8%,transparent)] bg-surface text-page-foreground shadow-surface transition-all duration-500"
+    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg)] text-page-foreground !shadow-[var(--dash-panel-shadow)] transition-all duration-500"
   const panelHover =
-    "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-surface"
+    "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -751,7 +751,7 @@ export default function Dashboard() {
                         <li key={n.id} className="py-3 first:pt-0 last:pb-0">
                           <button
                             type="button"
-                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-surface-accent focus-visible:outline-none focus-visible:shadow-focus"
+                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
                             onClick={() => navigate(`/news/${n.id}`)}
                             title={n.title}
                             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
@@ -868,7 +868,7 @@ export default function Dashboard() {
                           <li key={e.id} className="py-3 first:pt-0 last:pb-0">
                             <button
                               type="button"
-                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-surface-accent focus-visible:outline-none focus-visible:shadow-focus"
+                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >
