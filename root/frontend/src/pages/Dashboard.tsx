@@ -76,7 +76,7 @@ const parseMinutes = (s?: string) => {
 }
 
 const fadeDelayStyle = (value: string): CSSProperties =>
-  ({ "--fade-delay": value } as CSSProperties)
+  ({ "--fade-delay": value }) as CSSProperties
 
 function DateBullet({ date, locale }: { date?: string; locale: string }) {
   const { t } = useTranslation("common")

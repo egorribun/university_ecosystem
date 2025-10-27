@@ -228,9 +228,7 @@ export default function DashboardStories({
     []
   )
 
-  const viewerStoryLink = viewerStory?.cta_url
-    ? linkPropsFor(viewerStory.cta_url)
-    : null
+  const viewerStoryLink = viewerStory?.cta_url ? linkPropsFor(viewerStory.cta_url) : null
 
   const storyDialogLabel = viewerStory
     ? t("stories.viewer.aria.dialog", {

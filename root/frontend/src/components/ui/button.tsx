@@ -1,9 +1,6 @@
 import { forwardRef, type ElementType, type ReactElement, type ReactNode } from "react"
 import { cn } from "@/utils/cn"
-import type {
-  PolymorphicComponentProps,
-  PolymorphicRef,
-} from "@/types/polymorphic"
+import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
 
 type ButtonVariant = "solid" | "outline" | "ghost"
 type ButtonSize = "sm" | "md" | "lg"
@@ -119,5 +116,4 @@ export const Button = forwardRef(
 ) as <T extends ElementType = "button">(
   props: ButtonProps<T> & { ref?: PolymorphicRef<T> }
 ) => ReactElement | null
-
 ;(Button as { displayName?: string }).displayName = "Button"
