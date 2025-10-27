@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import status
 
-from app.api import events
 from app import crud
+from app.api import events
 from app.auth.security import get_password_hash
 from app.models import models
 from app.services import attendance_tokens
