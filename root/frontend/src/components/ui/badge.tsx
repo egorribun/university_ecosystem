@@ -1,5 +1,5 @@
 import { cn } from "@/utils/cn"
-import type { ComponentPropsWithoutRef, ElementType } from "react"
+import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react"
 
 type BadgeVariant = "solid" | "outline"
 type BadgeTone = "default" | "primary" | "success" | "danger" | "info"
@@ -47,9 +47,9 @@ type BadgeOwnProps = {
   tone?: BadgeTone
   shape?: BadgeShape
   size?: BadgeSize
-  leadingIcon?: React.ReactNode
-  trailingIcon?: React.ReactNode
-  label?: React.ReactNode
+  leadingIcon?: ReactNode
+  trailingIcon?: ReactNode
+  label?: ReactNode
   className?: string
 }
 
@@ -95,4 +95,3 @@ export const Badge = <T extends ElementType = "span">({
 Badge.displayName = "Badge"
 
 export const Chip = Badge
-

@@ -753,7 +753,7 @@ export default function Dashboard() {
               {loadingNews && (
                 <Stack spacing={1.2}>
                   <Stack direction="row" gap={1.2} alignItems="center">
-                  <Skeleton width={44} height={44} rounded="9999px" />
+                    <Skeleton width={44} height={44} rounded="9999px" />
                     <Box sx={{ flex: 1 }}>
                       <Skeleton height={22} />
                       <Skeleton height={18} width="60%" />
@@ -926,7 +926,9 @@ export default function Dashboard() {
                                     : ""
                                 }
                               />
-                              {!!e.location && <Chip size="sm" variant="outline" label={e.location} />}
+                              {!!e.location && (
+                                <Chip size="sm" variant="outline" label={e.location} />
+                              )}
                             </Stack>
                           }
                           primaryTypographyProps={{ component: "div" }}

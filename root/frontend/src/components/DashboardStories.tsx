@@ -10,15 +10,7 @@ import {
 } from "react"
 import SmartImage from "@/components/SmartImage"
 import type { StoryItem } from "@/types/Story"
-import {
-  Box,
-  Dialog,
-  IconButton,
-  Stack,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material"
+import { Box, Dialog, IconButton, Stack, Typography, useMediaQuery, useTheme } from "@mui/material"
 import { Button, ProgressBar, Skeleton, StoryCircle } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { visuallyHidden } from "@mui/utils"
@@ -548,7 +540,9 @@ export default function DashboardStories({
                     className="h-[3px] flex-1 bg-white/35"
                     barClassName={cn(
                       "bg-white",
-                      prefersReducedMotion ? "motion-reduce:transition-none" : "duration-150 ease-linear"
+                      prefersReducedMotion
+                        ? "motion-reduce:transition-none"
+                        : "duration-150 ease-linear"
                     )}
                     animated={!prefersReducedMotion}
                   />

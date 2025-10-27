@@ -1,11 +1,4 @@
-type ClassValue =
-  | string
-  | number
-  | null
-  | false
-  | undefined
-  | ClassDictionary
-  | ClassArray
+type ClassValue = string | number | null | false | undefined | ClassDictionary | ClassArray
 
 interface ClassDictionary {
   [id: string]: boolean | null | undefined
@@ -35,4 +28,3 @@ const toVal = (mix: ClassValue): string => {
 export function cn(...inputs: ClassValue[]): string {
   return inputs.map(toVal).filter(Boolean).join(" ")
 }
-

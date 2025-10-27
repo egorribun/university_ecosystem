@@ -18,7 +18,8 @@ export function Skeleton({
   style,
   ...rest
 }: SkeletonProps) {
-  const borderRadius = typeof rounded === "string" ? rounded : rounded ? "var(--ue-radius-md)" : undefined
+  const borderRadius =
+    typeof rounded === "string" ? rounded : rounded ? "var(--ue-radius-md)" : undefined
 
   return (
     <div
@@ -43,4 +44,3 @@ export function Skeleton({
 }
 
 Skeleton.displayName = "Skeleton"
-

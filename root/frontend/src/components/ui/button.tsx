@@ -2,7 +2,9 @@ import {
   forwardRef,
   type ComponentPropsWithoutRef,
   type ElementType,
+  type ReactElement,
   type ReactNode,
+  type Ref,
 } from "react"
 import { cn } from "@/utils/cn"
 
@@ -36,7 +38,7 @@ const variantStyles: Record<ButtonVariant, string> = {
     "active:translate-y-[1px]",
     "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
     "disabled:bg-[color:var(--btn-disabled-bg,rgba(148,163,184,0.36))]",
-    "disabled:text-[color:var(--btn-disabled-fg,#f1f5f9))]"
+    "disabled:text-[color:var(--btn-disabled-fg,#f1f5f9)]"
   ),
   outline: cn(
     "border border-button-border text-nav-text shadow-surface bg-[color:var(--btn-outline-bg,transparent)]",
@@ -44,7 +46,7 @@ const variantStyles: Record<ButtonVariant, string> = {
     "active:translate-y-[1px]",
     "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
     "disabled:border-[color:var(--btn-disabled-border,rgba(148,163,184,0.38))]",
-    "disabled:text-[color:var(--btn-disabled-fg,#cbd5f5))]"
+    "disabled:text-[color:var(--btn-disabled-fg,#cbd5f5)]"
   ),
   ghost: cn(
     "bg-transparent text-nav-link",
@@ -68,7 +70,7 @@ const ButtonBase = <T extends ElementType = "button">(
     children,
     ...rest
   }: ButtonProps<T>,
-  ref: React.Ref<Element>
+  ref: Ref<Element>
 ) => {
   const Component = (as ?? "button") as ElementType
   const isDisabled = Boolean(disabled || loading)
@@ -99,7 +101,10 @@ const ButtonBase = <T extends ElementType = "button">(
       <span className={cn("relative", loading && "opacity-0")}>{children}</span>
       {trailingIcon ? <span className="-mr-1 inline-flex items-center">{trailingIcon}</span> : null}
       {loading ? (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+        <span
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          aria-hidden
+        >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
         </span>
       ) : null}
@@ -108,8 +113,7 @@ const ButtonBase = <T extends ElementType = "button">(
 }
 
 export const Button = forwardRef(ButtonBase) as <T extends ElementType = "button">(
-  props: ButtonProps<T> & { ref?: React.Ref<Element> }
-) => React.ReactElement | null
+  props: ButtonProps<T> & { ref?: Ref<Element> }
+) => ReactElement | null
 
 Button.displayName = "Button"
-

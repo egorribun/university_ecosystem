@@ -31,4 +31,3 @@ export function Tooltip({ content, children, className, id }: TooltipProps) {
 }
 
 Tooltip.displayName = "Tooltip"
-

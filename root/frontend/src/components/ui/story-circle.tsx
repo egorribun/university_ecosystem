@@ -65,4 +65,3 @@ export const StoryCircle = <T extends ElementType = "div">({
 }
 
 StoryCircle.displayName = "StoryCircle"
-

@@ -31,7 +31,7 @@ export const cardHoverStyles = ({
     ...extraTransitions.filter((value) => Boolean(value?.trim?.() ?? value)),
   ]
 
-  const style: (CSSProperties & Record<string, string | number | undefined>) = {
+  const style: CSSProperties & Record<string, string | number | undefined> = {
     transition: transitions.join(", ") || undefined,
   }
 
@@ -71,4 +71,3 @@ export const cardHoverStyles = ({
 
   return { className, style }
 }
-

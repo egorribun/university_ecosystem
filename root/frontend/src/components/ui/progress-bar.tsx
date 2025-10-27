@@ -19,7 +19,8 @@ export function ProgressBar({
   ariaLabel,
   ...rest
 }: ProgressBarProps) {
-  const normalized = typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(value, 0), max) : null
+  const normalized =
+    typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(value, 0), max) : null
   const percent = normalized === null ? 0 : (normalized / max) * 100
 
   return (
@@ -49,4 +50,3 @@ export function ProgressBar({
 }
 
 ProgressBar.displayName = "ProgressBar"
-
