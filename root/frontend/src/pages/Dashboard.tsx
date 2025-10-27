@@ -16,20 +16,17 @@ import axios from "../api/client"
 import {
   Box,
   Typography,
-  Chip,
   Stack,
-  Button,
   Divider,
   List,
   ListItem,
   ListItemText,
-  Skeleton,
   useMediaQuery,
-  Tooltip,
-  LinearProgress,
 } from "@mui/material"
 import { Link, useNavigate } from "react-router-dom"
-import { cardHoverSx } from "@/constants/cardHover"
+import { Button, Chip, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
+import { cn } from "@/utils/cn"
+import { cardHoverStyles } from "@/constants/cardHover"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
@@ -78,6 +75,9 @@ const parseMinutes = (s?: string) => {
   return hh * 60 + mm
 }
 
+const fadeDelayStyle = (value: string): CSSProperties =>
+  ({ "--fade-delay": value }) as CSSProperties
+
 function DateBullet({ date, locale }: { date?: string; locale: string }) {
   const { t } = useTranslation("common")
   const d = date ? new Date(date) : null
@@ -94,7 +94,7 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
       })
     : fallback
   return (
-    <Tooltip title={full} enterDelay={150}>
+    <Tooltip content={full}>
       <Box
         aria-label={t("ariaDatePublished", { date: full })}
         sx={{
@@ -423,23 +423,6 @@ export default function Dashboard() {
   const headerGradient = isNarrow
     ? "linear-gradient(100deg,var(--hero-grad-start) 50%,var(--hero-grad-end) 100%)"
     : "linear-gradient(100deg,var(--hero-grad-start) 40%,var(--hero-grad-end) 100%)"
-  const focusRing = "0 0 0 3px #2563eb33, 0 0 0 6px #2563eb1f"
-  const btnSx = {
-    borderRadius: 2,
-    fontWeight: 700,
-    px: 1.8,
-    py: 0.5,
-    whiteSpace: "nowrap",
-    transition: "background .16s,color .16s,border-color .16s,box-shadow .16s, transform .16s",
-    "&:hover": {
-      background: "linear-gradient(100deg,#1976d2 20%,#449aff 100%)",
-      color: "#fff",
-      borderColor: "transparent",
-      transform: "translateY(-1px)",
-    },
-    "&:active": { transform: "translateY(0)" },
-    "&:focus-visible": { boxShadow: focusRing, outline: "none" },
-  }
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -478,9 +461,9 @@ export default function Dashboard() {
     }
   }
 
-  const cardHoverBase = cardHoverSx()
+  const cardHoverBase = cardHoverStyles()
+  const cardHoverStyle = cardHoverBase.style as CSSProperties
   const homeCardSx = {
-    ...cardHoverBase,
     p: 2.2,
     borderRadius: "2rem",
     background: "var(--card-bg)",
@@ -533,7 +516,11 @@ export default function Dashboard() {
         >
           <Box
             data-fade
-            style={{ "--fade-delay": "40ms" } as CSSProperties}
+            className={cardHoverBase.className}
+            style={{
+              ...cardHoverStyle,
+              ...fadeDelayStyle("40ms"),
+            }}
             sx={{
               background: headerGradient,
               borderRadius: "2rem",
@@ -543,7 +530,6 @@ export default function Dashboard() {
               alignItems: "center",
               justifyContent: "space-between",
               gap: 2,
-              ...cardHoverBase,
               border: { xs: "1px solid color-mix(in srgb, var(--page-text) 10%, transparent)" },
             }}
           >
@@ -561,7 +547,7 @@ export default function Dashboard() {
                 aria-live="polite"
               >
                 <Chip
-                  size="small"
+                  size="sm"
                   className="chip-clock"
                   aria-label={t("common:ariaCurrentTime")}
                   label={
@@ -585,9 +571,10 @@ export default function Dashboard() {
             </Box>
             <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
               <Button
-                variant="outlined"
+                variant="outline"
+                size="md"
+                className="whitespace-nowrap px-5"
                 onClick={() => navigate("/profile")}
-                sx={{ ...btnSx, px: 2.2, py: 0.9 }}
                 aria-label={t("navigation:aria.openProfile")}
               >
                 {t("navigation:menu.profile")}
@@ -610,7 +597,11 @@ export default function Dashboard() {
           >
             <Box
               data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
+              className={cardHoverBase.className}
+              style={{
+                ...cardHoverStyle,
+                ...fadeDelayStyle("140ms"),
+              }}
               sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" } }}
               aria-busy={loadingSched}
             >
@@ -625,11 +616,11 @@ export default function Dashboard() {
                 </Typography>
                 <Stack direction="row" gap={1}>
                   <Button
-                    component={Link}
+                    as={Link}
                     to="/schedule"
-                    size="small"
-                    variant="outlined"
-                    sx={{ ...btnSx, px: 3, py: 0.9 }}
+                    size="sm"
+                    variant="outline"
+                    className="whitespace-nowrap px-5"
                     aria-label={t("dashboard:aria.openFullSchedule")}
                     onPointerDown={warmSchedulePage}
                     onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
@@ -641,19 +632,18 @@ export default function Dashboard() {
               {currentLesson && (
                 <Box sx={{ mb: 1.5 }}>
                   <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
-                    <Chip size="small" color="primary" label={t("dashboard:now")} />
+                    <Chip size="sm" tone="primary" label={t("dashboard:now")} />
                     <Typography sx={{ fontWeight: 700 }}>{currentLesson.subject}</Typography>
                     <Chip
-                      size="small"
+                      size="sm"
                       className="chip-time"
                       label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                     />
                   </Stack>
-                  <LinearProgress
-                    variant="determinate"
+                  <ProgressBar
                     value={currentProgress}
-                    sx={{ height: 8, borderRadius: 6 }}
-                    aria-label={t("common:ariaCurrentLessonProgress")}
+                    className="h-2 rounded-ue-pill"
+                    ariaLabel={t("common:ariaCurrentLessonProgress")}
                   />
                 </Box>
               )}
@@ -661,27 +651,15 @@ export default function Dashboard() {
                 <Box sx={{ mb: 1.5 }}>
                   <Stack direction="row" alignItems="center" gap={1}>
                     <Chip
-                      size="small"
+                      size="sm"
+                      variant="outline"
+                      tone="primary"
+                      className="font-bold"
                       label={t("dashboard:next")}
-                      sx={(theme) => ({
-                        fontWeight: 700,
-                        bgcolor:
-                          theme.palette.mode === "dark"
-                            ? "rgba(99,102,241,.18)"
-                            : "rgba(25,118,210,.08)",
-                        color:
-                          theme.palette.mode === "dark" ? "#a5b4fc" : theme.palette.primary.main,
-                        border: "1px solid",
-                        borderColor:
-                          theme.palette.mode === "dark"
-                            ? "rgba(99,102,241,.38)"
-                            : "rgba(25,118,210,.3)",
-                        "& .MuiChip-label": { px: 1.1 },
-                      })}
                     />
                     <Typography sx={{ fontWeight: 700 }}>{nextLesson.subject}</Typography>
                     <Chip
-                      size="small"
+                      size="sm"
                       className="chip-time"
                       label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
                     />
@@ -712,16 +690,16 @@ export default function Dashboard() {
                             sx={{ flexWrap: "wrap" }}
                           >
                             <Chip
-                              size="small"
+                              size="sm"
                               className="chip-time"
                               label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
                             />
                             <Typography sx={{ fontWeight: 700 }}>{l.subject}</Typography>
                             <Chip
-                              size="small"
+                              size="sm"
                               className="chip-type"
                               label={l.lesson_type}
-                              variant="outlined"
+                              variant="outline"
                             />
                           </Stack>
                         }
@@ -741,7 +719,11 @@ export default function Dashboard() {
 
             <Box
               data-fade
-              style={{ "--fade-delay": "200ms" } as CSSProperties}
+              className={cardHoverBase.className}
+              style={{
+                ...cardHoverStyle,
+                ...fadeDelayStyle("200ms"),
+              }}
               sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" } }}
               aria-busy={loadingNews}
             >
@@ -750,11 +732,11 @@ export default function Dashboard() {
                   {t("dashboard:news.heading")}
                 </Typography>
                 <Button
-                  component={Link}
+                  as={Link}
                   to="/news"
-                  size="small"
-                  variant="outlined"
-                  sx={btnSx}
+                  size="sm"
+                  variant="outline"
+                  className="whitespace-nowrap px-5"
                   aria-label={t("dashboard:aria.viewAllNews")}
                   onPointerDown={() => {
                     warmNewsPage()
@@ -774,14 +756,14 @@ export default function Dashboard() {
               {loadingNews && (
                 <Stack spacing={1.2}>
                   <Stack direction="row" gap={1.2} alignItems="center">
-                    <Skeleton variant="circular" width={44} height={44} />
+                    <Skeleton width={44} height={44} rounded="9999px" />
                     <Box sx={{ flex: 1 }}>
                       <Skeleton height={22} />
                       <Skeleton height={18} width="60%" />
                     </Box>
                   </Stack>
                   <Stack direction="row" gap={1.2} alignItems="center">
-                    <Skeleton variant="circular" width={44} height={44} />
+                    <Skeleton width={44} height={44} rounded="9999px" />
                     <Box sx={{ flex: 1 }}>
                       <Skeleton height={22} width="80%" />
                       <Skeleton height={18} width="50%" />
@@ -836,7 +818,11 @@ export default function Dashboard() {
 
             <Box
               data-fade
-              style={{ "--fade-delay": "260ms" } as CSSProperties}
+              className={cardHoverBase.className}
+              style={{
+                ...cardHoverStyle,
+                ...fadeDelayStyle("260ms"),
+              }}
               sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" } }}
               aria-busy={loadingEvents}
             >
@@ -850,11 +836,11 @@ export default function Dashboard() {
                   {t("dashboard:events.heading")}
                 </Typography>
                 <Button
-                  component={Link}
+                  as={Link}
                   to="/events"
-                  size="small"
-                  variant="outlined"
-                  sx={btnSx}
+                  size="sm"
+                  variant="outline"
+                  className="whitespace-nowrap px-5"
                   aria-label={t("dashboard:aria.viewAllEvents")}
                   onPointerDown={() => {
                     warmEventsPage()
@@ -872,19 +858,19 @@ export default function Dashboard() {
               </Stack>
               <Stack direction="row" gap={1} sx={{ mb: 1 }}>
                 <Button
-                  size="small"
-                  variant={eventsScope === "today" ? "contained" : "outlined"}
+                  size="sm"
+                  variant={eventsScope === "today" ? "solid" : "outline"}
+                  className="whitespace-nowrap"
                   onClick={() => setEventsScope("today")}
-                  sx={btnSx}
                   aria-pressed={eventsScope === "today"}
                 >
                   {t("dashboard:scope.today")}
                 </Button>
                 <Button
-                  size="small"
-                  variant={eventsScope === "week" ? "contained" : "outlined"}
+                  size="sm"
+                  variant={eventsScope === "week" ? "solid" : "outline"}
+                  className="whitespace-nowrap"
                   onClick={() => setEventsScope("week")}
-                  sx={btnSx}
                   aria-pressed={eventsScope === "week"}
                 >
                   {t("dashboard:scope.week")}
@@ -930,7 +916,7 @@ export default function Dashboard() {
                           secondary={
                             <Stack direction="row" gap={1} flexWrap="wrap">
                               <Chip
-                                size="small"
+                                size="sm"
                                 className="chip-time"
                                 label={
                                   d
@@ -943,7 +929,9 @@ export default function Dashboard() {
                                     : ""
                                 }
                               />
-                              {!!e.location && <Chip size="small" label={e.location} />}
+                              {!!e.location && (
+                                <Chip size="sm" variant="outline" label={e.location} />
+                              )}
                             </Stack>
                           }
                           primaryTypographyProps={{ component: "div" }}
