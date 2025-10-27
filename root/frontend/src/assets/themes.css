@@ -59,6 +59,39 @@
   --dash-hero-conic-accent: color-mix(in srgb, transparent 66%, var(--fed-blue-60v) 34%);
   --dash-hero-highlight: color-mix(in srgb, transparent 55%, var(--fed-blue-60v) 45%);
   --dash-hero-highlight-soft: color-mix(in srgb, transparent 70%, var(--fed-blue-60v) 30%);
+  --dash-conic-stop-1: color-mix(in srgb, white 92%, var(--nav-link) 8%);
+  --dash-conic-stop-2: color-mix(in srgb, white 74%, var(--nav-link) 26%);
+  --dash-conic-stop-3: color-mix(in srgb, white 68%, var(--nav-link-hover) 32%);
+  --dash-conic-stop-4: color-mix(in srgb, white 92%, var(--nav-link) 8%);
+  --dash-date-shadow: 0 18px 40px -22px color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-panel-hover-shadow: 0 70px 160px -90px
+    color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-glass-sheen-start: color-mix(in srgb, white 65%, transparent);
+  --dash-glass-sheen-end: color-mix(in srgb, white 12%, transparent);
+  --dash-stories-radial: color-mix(in srgb, var(--nav-link) 24%, transparent);
+  --dash-card-schedule-radial: color-mix(in srgb, var(--nav-link) 22%, transparent);
+  --dash-card-schedule-orb: color-mix(in srgb, var(--fed-blue-60v) 48%, transparent);
+  --dash-card-news-radial: color-mix(in srgb, var(--fed-blue-70v) 24%, transparent);
+  --dash-card-news-orb: color-mix(in srgb, var(--fed-blue-80v) 52%, transparent);
+  --dash-card-events-radial: color-mix(in srgb, var(--nav-link-hover) 22%, transparent);
+  --dash-card-events-orb: color-mix(in srgb, var(--fed-blue-70v) 55%, transparent);
+  --dash-arrow-pill-bg: color-mix(in srgb, white 90%, var(--nav-link) 10%);
+  --dash-arrow-pill-border: color-mix(in srgb, white 66%, var(--nav-link) 34%);
+  --dash-arrow-pill-text: color-mix(in srgb, var(--secondary-text) 55%, var(--nav-link) 45%);
+  --dash-arrow-pill-bg-active: color-mix(in srgb, white 84%, var(--nav-link) 16%);
+  --dash-arrow-pill-border-active: color-mix(in srgb, white 50%, var(--nav-link-hover) 50%);
+  --dash-arrow-pill-text-active: color-mix(in srgb, var(--page-text) 88%, var(--nav-link) 12%);
+  --dash-icon-halo-bg: color-mix(in srgb, white 92%, var(--nav-link) 8%);
+  --dash-icon-halo-border: color-mix(in srgb, white 60%, var(--nav-link-hover) 40%);
+  --dash-icon-halo-text: color-mix(in srgb, var(--secondary-text) 55%, var(--nav-link-hover) 45%);
+  --dash-icon-halo-border-active: color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-icon-halo-text-active: color-mix(in srgb, var(--page-text) 90%, var(--nav-link-hover) 10%);
+  --dash-chip-time-bg: color-mix(in srgb, white 86%, var(--nav-link) 14%);
+  --dash-chip-time-border: color-mix(in srgb, white 62%, var(--nav-link) 38%);
+  --dash-chip-time-text: color-mix(in srgb, var(--nav-text) 80%, var(--nav-link) 20%);
+  --dash-chip-type-bg: color-mix(in srgb, white 92%, var(--nav-link) 8%);
+  --dash-chip-type-border: color-mix(in srgb, white 58%, var(--nav-link-hover) 42%);
+  --dash-chip-type-text: color-mix(in srgb, var(--nav-text) 78%, var(--nav-link-hover) 22%);
   --progress-track: #dde6f3;
   --progress-bar: #0f4faa;
   --glass-bg: rgba(255, 255, 255, 0.78);
@@ -137,6 +170,39 @@ body.dark {
   --dash-hero-conic-accent: color-mix(in srgb, transparent 48%, var(--fed-blue-60v) 52%);
   --dash-hero-highlight: color-mix(in srgb, transparent 46%, var(--fed-blue-60v) 54%);
   --dash-hero-highlight-soft: color-mix(in srgb, transparent 58%, var(--fed-blue-60v) 42%);
+  --dash-conic-stop-1: color-mix(in srgb, var(--nav-link) 50%, transparent);
+  --dash-conic-stop-2: color-mix(in srgb, var(--nav-link-hover) 60%, transparent);
+  --dash-conic-stop-3: color-mix(in srgb, var(--fed-blue-80v) 55%, transparent);
+  --dash-conic-stop-4: color-mix(in srgb, var(--nav-link) 45%, transparent);
+  --dash-date-shadow: 0 18px 44px -20px color-mix(in srgb, var(--nav-link) 70%, transparent);
+  --dash-panel-hover-shadow: 0 70px 170px -90px
+    color-mix(in srgb, var(--nav-link-hover) 65%, transparent);
+  --dash-glass-sheen-start: color-mix(in srgb, white 35%, transparent);
+  --dash-glass-sheen-end: color-mix(in srgb, white 6%, transparent);
+  --dash-stories-radial: color-mix(in srgb, var(--nav-link) 40%, transparent);
+  --dash-card-schedule-radial: color-mix(in srgb, var(--nav-link) 45%, transparent);
+  --dash-card-schedule-orb: color-mix(in srgb, var(--nav-link-hover) 68%, transparent);
+  --dash-card-news-radial: color-mix(in srgb, var(--nav-link-hover) 48%, transparent);
+  --dash-card-news-orb: color-mix(in srgb, var(--fed-blue-80v) 70%, transparent);
+  --dash-card-events-radial: color-mix(in srgb, var(--nav-link) 46%, transparent);
+  --dash-card-events-orb: color-mix(in srgb, var(--fed-blue-70v) 72%, transparent);
+  --dash-arrow-pill-bg: color-mix(in srgb, var(--nav-link) 22%, transparent);
+  --dash-arrow-pill-border: color-mix(in srgb, var(--nav-link-hover) 42%, transparent);
+  --dash-arrow-pill-text: color-mix(in srgb, var(--page-text) 78%, var(--nav-link) 22%);
+  --dash-arrow-pill-bg-active: color-mix(in srgb, var(--nav-link-hover) 30%, transparent);
+  --dash-arrow-pill-border-active: color-mix(in srgb, var(--nav-link-hover) 58%, transparent);
+  --dash-arrow-pill-text-active: color-mix(in srgb, var(--page-text) 92%, var(--nav-link) 8%);
+  --dash-icon-halo-bg: color-mix(in srgb, var(--nav-link) 26%, transparent);
+  --dash-icon-halo-border: color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-icon-halo-text: color-mix(in srgb, var(--page-text) 75%, var(--nav-link) 25%);
+  --dash-icon-halo-border-active: color-mix(in srgb, var(--nav-link-hover) 68%, transparent);
+  --dash-icon-halo-text-active: color-mix(in srgb, var(--page-text) 94%, var(--nav-link) 6%);
+  --dash-chip-time-bg: color-mix(in srgb, var(--nav-link) 32%, transparent);
+  --dash-chip-time-border: color-mix(in srgb, var(--nav-link-hover) 58%, transparent);
+  --dash-chip-time-text: color-mix(in srgb, var(--page-text) 88%, var(--nav-link) 12%);
+  --dash-chip-type-bg: color-mix(in srgb, var(--nav-link-hover) 28%, transparent);
+  --dash-chip-type-border: color-mix(in srgb, var(--nav-link-hover) 60%, transparent);
+  --dash-chip-type-text: color-mix(in srgb, var(--page-text) 90%, var(--nav-link) 10%);
   --progress-track: #142033;
   --progress-bar: #7fb6e6;
   --glass-bg: rgba(9, 17, 29, 0.76);
@@ -761,60 +827,47 @@ body.dark .menu-link:not(.logout):focus {
   border: 1px solid var(--btn-border) !important;
 }
 .chip-time {
-  background: #e6f0fa !important;
-  color: #0f2b4a !important;
-  border: 1px solid #c9ddf1 !important;
+  background: var(--dash-chip-time-bg) !important;
+  color: var(--dash-chip-time-text) !important;
+  border: 1px solid var(--dash-chip-time-border) !important;
 }
 .chip-type {
-  border: 1px solid transparent !important;
+  background: var(--dash-chip-type-bg) !important;
+  color: var(--dash-chip-type-text) !important;
+  border: 1px solid var(--dash-chip-type-border) !important;
 }
 .chip-left {
-  background: #eef3f8 !important;
-  color: #243142 !important;
-  border: 1px solid #d6e2ef !important;
+  background: color-mix(in srgb, white 94%, var(--nav-link) 6%) !important;
+  color: color-mix(in srgb, var(--nav-text) 82%, var(--nav-link) 18%) !important;
+  border: 1px solid color-mix(in srgb, white 58%, var(--nav-link) 42%) !important;
 }
 .chip-break {
   background: var(--card-bg) !important;
   color: var(--nav-text) !important;
   border: 1px solid var(--btn-border) !important;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 6px 14px color-mix(in srgb, black 12%, transparent) !important;
 }
 .chip-day {
-  background: var(--btn-bg) !important;
+  background: color-mix(in srgb, white 92%, var(--nav-link) 8%) !important;
   color: var(--nav-text) !important;
-  border: 1px solid var(--btn-border) !important;
+  border: 1px solid color-mix(in srgb, white 60%, var(--nav-link) 40%) !important;
   font-weight: 700 !important;
 }
-body.dark .chip-clock {
-  background: #11161e !important;
-  color: #e6ebf2 !important;
-  border: 1px solid #263142 !important;
-}
-body.dark .chip-time {
-  background: #152031 !important;
-  color: #eaf4ff !important;
-  border: 1px solid #223349 !important;
-}
-body.dark .chip-type {
-  background: #152031 !important;
-  color: #eaf4ff !important;
-  border: 1px solid #223349 !important;
-}
 body.dark .chip-left {
-  background: #11161e !important;
-  color: #eaf4ff !important;
-  border: 1px solid #223349 !important;
+  background: color-mix(in srgb, var(--nav-link) 26%, transparent) !important;
+  color: color-mix(in srgb, var(--page-text) 88%, var(--nav-link) 12%) !important;
+  border: 1px solid color-mix(in srgb, var(--nav-link) 50%, transparent) !important;
 }
 body.dark .chip-break {
-  background: #152031 !important;
-  color: #eaf4ff !important;
-  border: 1px solid #223349 !important;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28) !important;
+  background: color-mix(in srgb, var(--nav-link) 24%, transparent) !important;
+  color: var(--page-text) !important;
+  border: 1px solid color-mix(in srgb, var(--nav-link-hover) 45%, transparent) !important;
+  box-shadow: 0 6px 14px color-mix(in srgb, black 38%, transparent) !important;
 }
 body.dark .chip-day {
-  background: #152031 !important;
-  color: #eaf4ff !important;
-  border: 1px solid #223349 !important;
+  background: color-mix(in srgb, var(--nav-link) 22%, transparent) !important;
+  color: var(--page-text) !important;
+  border: 1px solid color-mix(in srgb, var(--nav-link) 46%, transparent) !important;
 }
 body.dark .MuiChip-outlined {
   border-color: #223349 !important;

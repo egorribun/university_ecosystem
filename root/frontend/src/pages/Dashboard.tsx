@@ -89,8 +89,8 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
         aria-label={t("ariaDatePublished", { date: full })}
         className={cn(
           "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-[var(--glass-border)] text-page-foreground backdrop-blur-md",
-          "bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.92),rgba(148,163,184,0.25),rgba(59,130,246,0.45),rgba(255,255,255,0.92))] dark:bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.32),rgba(148,163,184,0.25),rgba(56,189,248,0.55),rgba(255,255,255,0.32))]",
-          "shadow-[0_18px_40px_-22px_rgba(30,64,175,0.35)]"
+          "bg-[conic-gradient(at_50%_50%,var(--dash-conic-stop-1),var(--dash-conic-stop-2),var(--dash-conic-stop-3),var(--dash-conic-stop-4))]",
+          "shadow-[var(--dash-date-shadow)]"
         )}
       >
         <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>
@@ -422,9 +422,9 @@ export default function Dashboard() {
   const glassPanelBase =
     "group relative isolate overflow-hidden rounded-[2.4rem] border border-[var(--glass-border)] bg-[var(--glass-bg)] text-page-foreground shadow-[var(--glass-shadow)] backdrop-blur-[38px] transition-all duration-500"
   const glassPanelHover =
-    "hover:-translate-y-[6px] hover:shadow-[0_70px_160px_-90px_rgba(37,99,235,0.55)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--glass-shadow)]"
+    "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--glass-shadow)]"
   const glassSheen =
-    "before:pointer-events-none before:absolute before:inset-px before:rounded-[inherit] before:bg-[linear-gradient(135deg,rgba(255,255,255,0.65),rgba(255,255,255,0.08))] before:opacity-75 before:transition-opacity before:duration-700 before:content-[''] group-hover:before:opacity-100"
+    "before:pointer-events-none before:absolute before:inset-px before:rounded-[inherit] before:bg-[linear-gradient(135deg,var(--dash-glass-sheen-start),var(--dash-glass-sheen-end))] before:opacity-75 before:transition-opacity before:duration-700 before:content-[''] group-hover:before:opacity-100"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -490,7 +490,7 @@ export default function Dashboard() {
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.45),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--glass-highlight)_65%,transparent),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
               />
               <span
                 aria-hidden="true"
@@ -555,7 +555,7 @@ export default function Dashboard() {
             >
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.28),transparent_65%)] opacity-80"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,var(--dash-stories-radial),transparent_65%)] opacity-80"
               />
               <div
                 aria-hidden="true"
@@ -681,11 +681,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_72%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.45),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
                 />
               </Card>
 
@@ -771,7 +771,7 @@ export default function Dashboard() {
                             </div>
                             <span
                               aria-hidden="true"
-                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--glass-border)] bg-[var(--glass-tint-2)] text-xs font-semibold uppercase tracking-[0.2em] text-[var(--secondary-text)] opacity-0 transition-all duration-300 group-hover:-translate-y-[1px] group-hover:opacity-100 group-hover:text-page-foreground"
+                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-all duration-300 group-hover:-translate-y-[1px] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
                             >
                               →
                             </span>
@@ -783,11 +783,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.18),transparent_68%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,rgba(129,140,248,0.45),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-80"
                 />
               </Card>
 
@@ -879,7 +879,7 @@ export default function Dashboard() {
                                 <span className="text-base font-semibold text-page-foreground">
                                   {e.title}
                                 </span>
-                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[var(--glass-border)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--secondary-text)] transition-colors duration-300 group-hover:border-[var(--page-text)] group-hover:text-page-foreground">
+                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[color:var(--dash-icon-halo-border)] bg-[color:var(--dash-icon-halo-bg)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--dash-icon-halo-text)] transition-colors duration-300 group-hover:border-[color:var(--dash-icon-halo-border-active)] group-hover:text-[color:var(--dash-icon-halo-text-active)]">
                                   <AutoAwesomeRoundedIcon
                                     aria-hidden="true"
                                     fontSize="inherit"
@@ -915,11 +915,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.5),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-85"
+                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-85"
                 />
               </Card>
             </section>
