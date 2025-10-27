@@ -574,9 +574,7 @@ class NotificationQueueJob(Base):
             "enqueued_at",
             "id",
             sqlite_where=text("dead_lettered = 0 AND claimed_at IS NULL"),
-            postgresql_where=text(
-                "dead_lettered = false AND claimed_at IS NULL"
-            ),
+            postgresql_where=text("dead_lettered = false AND claimed_at IS NULL"),
         ),
     )
 

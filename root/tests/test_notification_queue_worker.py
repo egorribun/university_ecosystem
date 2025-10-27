@@ -4,17 +4,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from prometheus_client import REGISTRY
 import sqlalchemy as sa
-from alembic import command
-from alembic.config import Config
+from prometheus_client import REGISTRY
 from sqlalchemy import select
 
+from alembic import command
+from alembic.config import Config
 from app.core import observability
 from app.core.database import Base, async_session
 from app.models.models import NotificationQueueJob
 from app.services import notification_queue
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -388,6 +387,7 @@ async def test_persistent_queue_dead_letters_poison_jobs(
 @pytest.mark.anyio
 async def test_notification_queue_pending_index_migration(tmp_path: Path) -> None:
     config, sync_url, previous_url = _make_alembic_config(tmp_path)
+
     def _prepare_schema() -> None:
         engine = sa.create_engine(sync_url)
         try:
