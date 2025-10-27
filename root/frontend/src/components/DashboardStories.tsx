@@ -13,7 +13,7 @@ import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import SmartImage from "@/components/SmartImage"
-import { Button, ProgressBar, Skeleton, StoryCircle } from "@/components/ui"
+import { Button, ProgressBar, Skeleton, StoryCircle, STORY_CIRCLE_SIZE_MAP } from "@/components/ui"
 import type { ButtonProps } from "@/components/ui/button"
 import type { StoryItem } from "@/types/Story"
 import useFocusTrap from "@/hooks/useFocusTrap"
@@ -22,6 +22,7 @@ import { cn } from "@/utils/cn"
 
 const STORY_AUTO_ADVANCE_MS = 6500
 const SKELETON_COUNT = 8
+const STORY_CIRCLE_DIAMETER = STORY_CIRCLE_SIZE_MAP.md
 
 const isBrowser = typeof document !== "undefined"
 
@@ -472,8 +473,17 @@ export default function DashboardStories({
         {loading && (
           <div className="flex flex-wrap gap-x-6 gap-y-6 py-3">
             {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
-              <div key={index} className="flex w-[92px] min-h-[112px] items-center justify-center">
-                <Skeleton width={76} height={76} rounded="9999px" />
+              <div
+                key={index}
+                className="flex flex-shrink-0 flex-col items-center justify-center"
+                style={{
+                  width: STORY_CIRCLE_DIAMETER,
+                  minHeight: STORY_CIRCLE_DIAMETER,
+                  minWidth: STORY_CIRCLE_DIAMETER,
+                  flexBasis: STORY_CIRCLE_DIAMETER,
+                }}
+              >
+                <Skeleton width={STORY_CIRCLE_DIAMETER} height={STORY_CIRCLE_DIAMETER} rounded="9999px" />
               </div>
             ))}
           </div>
@@ -490,9 +500,15 @@ export default function DashboardStories({
                 <li
                   key={story.id}
                   className={cn(
-                    "flex min-h-[112px] w-[92px] flex-shrink-0 flex-col items-center justify-center overflow-visible sm:basis-[92px]",
+                    "flex flex-shrink-0 flex-col items-center justify-center overflow-visible",
                     index === 0 ? "ml-3 sm:ml-2" : ""
                   )}
+                  style={{
+                    width: STORY_CIRCLE_DIAMETER,
+                    minHeight: STORY_CIRCLE_DIAMETER,
+                    minWidth: STORY_CIRCLE_DIAMETER,
+                    flexBasis: STORY_CIRCLE_DIAMETER,
+                  }}
                 >
                   <StoryCircle
                     as="button"

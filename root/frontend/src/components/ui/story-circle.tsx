@@ -2,12 +2,12 @@ import { cn } from "@/utils/cn"
 import type { CSSProperties, ElementType } from "react"
 import type { PolymorphicComponentProps } from "@/types/polymorphic"
 
-type StoryCircleSize = "sm" | "md" | "lg"
+export type StoryCircleSize = "sm" | "md" | "lg"
 
-const sizeMap: Record<StoryCircleSize, number> = {
-  sm: 64,
-  md: 76,
-  lg: 92,
+export const STORY_CIRCLE_SIZE_MAP: Record<StoryCircleSize, number> = {
+  sm: 76.8,
+  md: 91.2,
+  lg: 110.4,
 }
 
 type StoryCircleOwnProps = {
@@ -32,7 +32,7 @@ export const StoryCircle = <T extends ElementType = "div">({
   ...rest
 }: StoryCircleProps<T>) => {
   const Component = (as ?? "div") as ElementType
-  const dimension = sizeMap[size]
+  const dimension = STORY_CIRCLE_SIZE_MAP[size]
 
   return (
     <Component
