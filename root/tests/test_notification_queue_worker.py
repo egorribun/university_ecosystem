@@ -97,8 +97,10 @@ async def test_shutdown_notification_queue_does_not_leak_tasks(
     assert not worker_tasks
 
 
-def _metric_value(name: str) -> float | None:
-    return REGISTRY.get_sample_value(name)
+def _metric_value(name: str, labels: dict[str, str] | None = None) -> float | None:
+    if labels is None:
+        return REGISTRY.get_sample_value(name)
+    return REGISTRY.get_sample_value(name, labels)
 
 
 @pytest.mark.anyio
@@ -161,9 +163,61 @@ async def test_notification_queue_records_processing_latency(
 
     count = _metric_value("notification_queue_processing_latency_seconds_count")
     total = _metric_value("notification_queue_processing_latency_seconds_sum")
+    processed = _metric_value(
+        "notification_queue_processed_jobs_total",
+        {"kind": "event"},
+    )
+    queue_wait_total = _metric_value(
+        "notification_queue_queue_wait_time_seconds_sum",
+        {"kind": "event"},
+    )
     assert count == pytest.approx(1.0)
     assert total is not None and total > 0
+    assert processed == pytest.approx(1.0)
+    assert queue_wait_total is not None and queue_wait_total >= 0
     assert _metric_value("notification_queue_size") == pytest.approx(0.0)
+
+    notification_queue._loop_states.clear()
+
+
+@pytest.mark.anyio
+async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatch):
+    metrics = observability.get_notification_queue_metrics()
+    metrics.reset()
+    notification_queue._loop_states.clear()
+
+    processed_event = asyncio.Event()
+
+    async def _fake_process(job):
+        processed_event.set()
+
+    monkeypatch.setattr(notification_queue, "_process_job", _fake_process)
+
+    await notification_queue.enqueue_news_notification(6)
+
+    await asyncio.wait_for(processed_event.wait(), timeout=1.0)
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+    await notification_queue.shutdown_notification_queue()
+
+    processed = _metric_value(
+        "notification_queue_processed_jobs_total",
+        {"kind": "news"},
+    )
+    assert processed == pytest.approx(1.0)
+
+    await notification_queue.reset_testing_state()
+
+    assert _metric_value(
+        "notification_queue_processed_jobs_total",
+        {"kind": "news"},
+    ) in (None, pytest.approx(0.0))
+    assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(0.0)
+    assert _metric_value(
+        "notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}
+    ) in (
+        None,
+        pytest.approx(0.0),
+    )
 
     notification_queue._loop_states.clear()
 
