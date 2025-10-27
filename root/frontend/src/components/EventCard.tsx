@@ -40,7 +40,8 @@ import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
-import { cardHoverSx } from "@/constants/cardHover"
+import { cardHoverStyles } from "@/constants/cardHover"
+import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 
 import dayjs from "dayjs"
@@ -475,9 +476,15 @@ const EventCardComponent: FC<EventCardProps> = ({
     if (file) setNewImage(file)
   }
 
+  const cardHover = cardHoverStyles({
+    disabled: editOpen || qrOpen,
+    extraTransitions: ["max-width 0.25s ease"],
+  })
+
   return (
     <Box
-      className="event-card"
+      className={cn("event-card", cardHover.className)}
+      style={cardHover.style}
       sx={{
         width: "100%",
         maxWidth: maxWidth ?? 700,
@@ -490,10 +497,6 @@ const EventCardComponent: FC<EventCardProps> = ({
         boxShadow: 5,
         p: { xs: 2, sm: 3 },
         overflow: "hidden",
-        ...cardHoverSx({
-          disabled: editOpen || qrOpen,
-          extraTransitions: ["max-width 0.25s ease"],
-        }),
         "&:focus-visible": {
           outline: "2px solid var(--nav-link)",
           outlineOffset: "2px",

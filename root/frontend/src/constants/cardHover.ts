@@ -1,7 +1,7 @@
-import type { SxProps } from "@mui/system"
-import type { Theme } from "@mui/material/styles"
+import type { CSSProperties } from "react"
+import { cn } from "@/utils/cn"
 
-type CardHoverOptions = {
+export type CardHoverOptions = {
   disabled?: boolean
   hoverTransform?: string | null
   hoverBoxShadow?: string | null
@@ -9,50 +9,66 @@ type CardHoverOptions = {
   extraTransitions?: string[]
 }
 
-export const cardHoverSx = ({
+export type CardHoverResult = {
+  className: string
+  style: CSSProperties
+}
+
+const DEFAULT_TRANSFORM = "scale(1.03)"
+const DEFAULT_ACTIVE_TRANSFORM = "scale(0.997)"
+const DEFAULT_HOVER_SHADOW = "0 12px 28px rgba(0,0,0,0.18)"
+
+export const cardHoverStyles = ({
   disabled = false,
-  hoverTransform = "scale(1.03)",
-  hoverBoxShadow = "0 12px 28px rgba(0,0,0,0.18)",
-  activeTransform = "scale(0.997)",
+  hoverTransform = DEFAULT_TRANSFORM,
+  hoverBoxShadow = DEFAULT_HOVER_SHADOW,
+  activeTransform = DEFAULT_ACTIVE_TRANSFORM,
   extraTransitions = [],
-}: CardHoverOptions = {}): SxProps<Theme> => {
-  const transitions = ["transform 0.25s ease", "box-shadow 0.25s ease", ...extraTransitions].filter(
-    (transition): transition is string => Boolean(transition?.trim?.() ?? transition)
-  )
-  const reducedTransitions = transitions.filter(
-    (transition) => !transition.toLowerCase().startsWith("transform")
-  )
+}: CardHoverOptions = {}): CardHoverResult => {
+  const transitions = [
+    "transform 0.25s ease",
+    "box-shadow 0.25s ease",
+    ...extraTransitions.filter((value) => Boolean(value?.trim?.() ?? value)),
+  ]
 
-  const base: SxProps<Theme> = {
+  const style: (CSSProperties & Record<string, string | number | undefined>) = {
     transition: transitions.join(", ") || undefined,
-    willChange: "transform",
-    "@media (prefers-reduced-motion: reduce)": {
-      transition: reducedTransitions.join(", ") || "box-shadow 0.25s ease",
-    },
   }
 
-  if (disabled) {
-    return base
-  }
-
-  const hoverStyles: Record<string, unknown> = {}
+  const hoverClasses: string[] = []
 
   if (hoverTransform !== null && hoverTransform !== undefined) {
-    hoverStyles.transform = hoverTransform
+    hoverClasses.push("hover:[transform:var(--card-hover-transform,scale(1.03))]")
+    if (hoverTransform) {
+      style["--card-hover-transform"] = hoverTransform
+    }
   }
 
   if (hoverBoxShadow !== null && hoverBoxShadow !== undefined) {
-    hoverStyles.boxShadow = hoverBoxShadow
+    hoverClasses.push("hover:[box-shadow:var(--card-hover-shadow,0_12px_28px_rgba(0,0,0,0.18))]")
+    if (hoverBoxShadow) {
+      style["--card-hover-shadow"] = hoverBoxShadow
+    }
   }
 
-  const activeStyles =
-    activeTransform !== null && activeTransform !== undefined
-      ? { transform: activeTransform }
-      : undefined
-
-  return {
-    ...base,
-    ...(Object.keys(hoverStyles).length > 0 ? { "&:hover": hoverStyles } : {}),
-    ...(activeStyles ? { "&:active": activeStyles } : {}),
+  if (activeTransform !== null && activeTransform !== undefined) {
+    hoverClasses.push("active:[transform:var(--card-hover-active-transform,scale(0.997))]")
+    if (activeTransform) {
+      style["--card-hover-active-transform"] = activeTransform
+    }
   }
+
+  const className = cn(
+    "rounded-ue-xl shadow-surface transition-[transform,box-shadow] duration-[var(--card-hover-duration,250ms)] ease-out",
+    "will-change-transform motion-reduce:transition-[box-shadow]",
+    disabled
+      ? ""
+      : cn(
+          hoverClasses,
+          "motion-reduce:hover:[transform:none] motion-reduce:active:[transform:none]"
+        )
+  )
+
+  return { className, style }
 }
+
