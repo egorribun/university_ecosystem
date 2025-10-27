@@ -9,6 +9,19 @@
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` + Redis URL (например, `redis://user:pass@host:6379/0`) включает общий сторедж для middleware и чувствительных эндпоинтов. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Для экспонирования Prometheus-метрик установите `ENABLE_METRICS_ENDPOINT=true` и задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend откажется отдавать `/metrics`, если пароль равен известному плейсхолдеру вроде `changeme`.
 
+### Метрики фоновых задач
+
+- `/metrics` теперь публикует счётчики и гистограммы для фоновых очисток:
+  - `periodic_task_notifications_retention_*` — удаление старых уведомлений и доставок.
+  - `periodic_task_password_reset_cleanup_*` — очистка токенов восстановления пароля.
+  - `periodic_task_session_cleanup_*` — удаление протухших пользовательских сессий.
+  - `periodic_task_story_cleanup_*` — очистка просроченных историй.
+- Для каждой задачи доступны:
+  - `*_runs_total` — количество успешных итераций.
+  - `*_errors_total` — количество завершений с исключением.
+  - `*_deleted_total` — суммарное число удалённых записей за всё время.
+  - `*_duration_seconds{_bucket,_sum,_count}` — гистограмма продолжительности выполнения.
+
 ```bash
 # пример
 cd frontend

@@ -6,9 +6,13 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from app.core.observability import get_periodic_task_metrics
 from app.services.notifications import cleanup_stale_notifications
 
 logger = logging.getLogger(__name__)
+
+
+_METRICS = get_periodic_task_metrics("notifications_retention")
 
 
 @dataclass(slots=True)
@@ -47,7 +51,15 @@ async def start_notifications_retention_scheduler(
         try:
             while True:
                 try:
-                    await cleanup_stale_notifications(retention_days=retention_days)
+                    async with _METRICS.track_execution() as run:
+                        deleted_notifications, deleted_deliveries = (
+                            await cleanup_stale_notifications(
+                                retention_days=retention_days
+                            )
+                        )
+                        run.observe_deleted(
+                            (deleted_notifications, deleted_deliveries)
+                        )
                 except asyncio.CancelledError:
                     raise
                 except Exception:  # pragma: no cover - defensive logging
