@@ -473,7 +473,7 @@ export default function Dashboard() {
               <div key={index} className={layer} />
             ))}
           </div>
-          <div className="relative z-[1] space-y-8">
+          <div className="relative z-[1] space-y-6">
             <header
               data-fade="up"
               data-pop="true"

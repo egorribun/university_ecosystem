@@ -463,7 +463,7 @@ export default function DashboardStories({
       <div
         data-fade
         style={{ "--fade-delay": "120ms" } as CSSProperties}
-        className="mt-3 mb-3 flex flex-col gap-2"
+        className="flex flex-col gap-2"
         aria-busy={loading}
         onPointerEnter={onPrefetch}
         onFocusCapture={onPrefetch}
