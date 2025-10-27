@@ -401,8 +401,8 @@ export default function Dashboard() {
   const headerGradientClass = cn(
     "transition-[background] duration-700",
     isNarrow
-      ? "bg-[linear-gradient(135deg,rgba(247,250,255,0.92),rgba(222,234,249,0.68))] dark:bg-[linear-gradient(135deg,rgba(13,22,36,0.94),rgba(8,16,28,0.72))]"
-      : "bg-[linear-gradient(125deg,rgba(247,250,255,0.94),rgba(220,232,247,0.7))] dark:bg-[linear-gradient(125deg,rgba(12,22,36,0.95),rgba(7,16,28,0.74))]"
+      ? "bg-[linear-gradient(135deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
+      : "bg-[linear-gradient(125deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
   )
 
   const heroSectionClass = cn(
@@ -412,11 +412,11 @@ export default function Dashboard() {
   )
 
   const heroBackdropLayers = [
-    "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(247,250,255,0.85),transparent_75%)] dark:bg-[radial-gradient(circle_at_top,rgba(12,22,36,0.9),transparent_78%)] mix-blend-soft-light",
-    "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,rgba(148,163,184,0.18),transparent_68%)] dark:bg-[radial-gradient(circle_at_bottom,rgba(37,99,235,0.22),transparent_75%)]",
-    "absolute -top-60 left-1/2 h-[46rem] w-[46rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(120,162,255,0.28),rgba(120,162,255,0))] blur-[220px]",
-    "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.24),rgba(56,189,248,0))] blur-[210px]",
-    "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,rgba(247,250,255,0.32),rgba(186,230,253,0.24),rgba(255,255,255,0.08),rgba(192,132,252,0.22),rgba(247,250,255,0.32))] opacity-80 blur-[220px]",
+    "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,var(--dash-hero-radial-top),transparent_75%)] mix-blend-soft-light",
+    "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,var(--dash-hero-radial-bottom),transparent_75%)]",
+    "absolute -top-60 left-1/2 h-[46rem] w-[46rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-orb),transparent)] blur-[220px]",
+    "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] blur-[210px]",
+    "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-80 blur-[220px]",
   ]
 
   const glassPanelBase =
@@ -498,8 +498,8 @@ export default function Dashboard() {
               >
                 <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
               </span>
-              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.45),rgba(14,165,233,0))] opacity-70 blur-3xl" />
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,rgba(59,130,246,0.45),rgba(59,130,246,0.1),rgba(14,165,233,0.38),rgba(59,130,246,0.45))] opacity-60 blur-[120px]" />
+              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] opacity-70 blur-3xl" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
               <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
                 <div className="space-y-3 text-nav-text lg:col-span-8">
                   <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
