@@ -6,7 +6,6 @@ import {
   useRef,
   type KeyboardEvent,
   type CSSProperties,
-  type MediaQueryListEvent,
 } from "react"
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
