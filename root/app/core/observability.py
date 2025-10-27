@@ -524,7 +524,10 @@ class NotificationQueueMetrics:
     queue_size: Gauge
     dropped_jobs_total: Counter
     failed_jobs_total: Counter
+    processed_jobs_total: Counter
     processing_latency_seconds: Histogram
+    queue_wait_time_seconds: Histogram
+    retry_delay_seconds: Histogram
     dead_lettered_jobs: Gauge
     oldest_dead_letter_age_seconds: Histogram | None
 
@@ -536,9 +539,29 @@ class NotificationQueueMetrics:
         # hence the type: ignore annotations.
         self.dropped_jobs_total._value.set(0)  # type: ignore[attr-defined]
         self.failed_jobs_total._value.set(0)  # type: ignore[attr-defined]
+        # Reset labelled counters by clearing underlying metrics or zeroing values.
+        metrics = getattr(self.processed_jobs_total, "_metrics", None)
+        if metrics:
+            for metric in metrics.values():
+                metric._value.set(0)  # type: ignore[attr-defined]
+        value = getattr(self.processed_jobs_total, "_value", None)
+        if value is not None:
+            value.set(0)
         self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
         for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
             bucket.set(0)
+        queue_wait_metrics = getattr(self.queue_wait_time_seconds, "_metrics", None)
+        if queue_wait_metrics:
+            for metric in queue_wait_metrics.values():
+                metric._sum.set(0)  # type: ignore[attr-defined]
+                for bucket in getattr(metric, "_buckets", []):
+                    bucket.set(0)
+        retry_delay_metrics = getattr(self.retry_delay_seconds, "_metrics", None)
+        if retry_delay_metrics:
+            for metric in retry_delay_metrics.values():
+                metric._sum.set(0)  # type: ignore[attr-defined]
+                for bucket in getattr(metric, "_buckets", []):
+                    bucket.set(0)
         self.dead_lettered_jobs.set(0)
         histogram = self.oldest_dead_letter_age_seconds
         if histogram is not None:
@@ -570,6 +593,11 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
                 "notification_queue_failed_jobs_total",
                 "Total notification jobs permanently failed or dead-lettered",
             ),
+            processed_jobs_total=Counter(
+                "notification_queue_processed_jobs_total",
+                "Total notification jobs successfully processed",
+                labelnames=("kind",),
+            ),
             processing_latency_seconds=Histogram(
                 "notification_queue_processing_latency_seconds",
                 "Time spent processing individual notification jobs in seconds",
@@ -582,6 +610,41 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
                     2.5,
                     5.0,
                     10.0,
+                ),
+            ),
+            queue_wait_time_seconds=Histogram(
+                "notification_queue_queue_wait_time_seconds",
+                "Time notification jobs spend waiting in the queue before processing",
+                labelnames=("kind",),
+                buckets=(
+                    0.01,
+                    0.05,
+                    0.1,
+                    0.5,
+                    1.0,
+                    2.5,
+                    5.0,
+                    10.0,
+                    30.0,
+                    60.0,
+                ),
+            ),
+            retry_delay_seconds=Histogram(
+                "notification_queue_retry_delay_seconds",
+                "Delay applied before retrying failed notification jobs",
+                labelnames=("kind",),
+                buckets=(
+                    0.01,
+                    0.05,
+                    0.1,
+                    0.5,
+                    1.0,
+                    2.5,
+                    5.0,
+                    10.0,
+                    30.0,
+                    60.0,
+                    120.0,
                 ),
             ),
             dead_lettered_jobs=Gauge(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Literal, Sequence, cast
 from weakref import WeakKeyDictionary
@@ -37,6 +37,8 @@ class NotificationJob:
     record_id: int
     locale: str | None
     queue_id: int | None = None
+    enqueued_at: datetime | None = None
+    claimed_at: datetime | None = None
 
 
 @dataclass(slots=True)
@@ -132,6 +134,17 @@ async def _worker_loop(state: _LoopState) -> None:
                 state.active_jobs += 1
                 if metrics is not None:
                     _update_in_memory_metrics(metrics, state.queue)
+            if metrics is not None and job.enqueued_at is not None:
+                claimed_at = job.claimed_at or datetime.now(timezone.utc)
+                enqueued_at = job.enqueued_at
+                if enqueued_at.tzinfo is None:
+                    enqueued_at = enqueued_at.replace(tzinfo=timezone.utc)
+                if claimed_at.tzinfo is None:
+                    claimed_at = claimed_at.replace(tzinfo=timezone.utc)
+                wait_seconds = max((claimed_at - enqueued_at).total_seconds(), 0.0)
+                metrics.queue_wait_time_seconds.labels(kind=job.kind).observe(
+                    wait_seconds
+                )
             started = time.perf_counter()
             success = False
             error: BaseException | None = None
@@ -149,6 +162,8 @@ async def _worker_loop(state: _LoopState) -> None:
                 if metrics is not None:
                     elapsed = max(time.perf_counter() - started, 0.0)
                     metrics.processing_latency_seconds.observe(elapsed)
+                    if success:
+                        metrics.processed_jobs_total.labels(kind=job.kind).inc()
                 if _use_persistent_backend():
                     await _acknowledge_persistent_job(
                         job,
@@ -175,6 +190,8 @@ def _evict_oldest(queue: asyncio.Queue[NotificationJob]) -> NotificationJob | No
 
 
 async def _enqueue_job(job: NotificationJob) -> None:
+    if job.enqueued_at is None:
+        job = replace(job, enqueued_at=datetime.now(timezone.utc))
     if _use_persistent_backend():
         await _enqueue_persistent_job(job)
     else:
@@ -359,6 +376,7 @@ async def reset_testing_state() -> None:
     state.job_event.clear()
     await _clear_persistent_jobs()
     if metrics is not None:
+        metrics.reset()
         if _use_persistent_backend():
             await _refresh_persistent_queue_size(metrics)
         else:
@@ -523,6 +541,8 @@ async def _claim_next_persistent_job() -> NotificationJob | None:
                 record_id=row.record_id,
                 locale=row.locale,
                 queue_id=row.id,
+                enqueued_at=row.enqueued_at,
+                claimed_at=now,
             )
     metrics = _get_metrics()
     if metrics is not None:
@@ -719,6 +739,10 @@ async def _acknowledge_persistent_job(
                         )
                         record.dead_lettered = False
                         record.next_retry_at = next_retry
+                        if metrics is not None and wake_delay > 0:
+                            metrics.retry_delay_seconds.labels(kind=job.kind).observe(
+                                wake_delay
+                            )
                         logger.warning(
                             "Notification job failed; scheduling retry",
                             extra={
