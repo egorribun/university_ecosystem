@@ -1,3 +1,91 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply min-h-screen bg-page text-page-foreground font-ui antialiased transition-colors duration-300 ease-out;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display;
+  }
+
+  .skip-link {
+    @apply fixed left-1/2 top-2 -translate-x-1/2 -translate-y-full rounded-b-ue-md bg-nav px-5 py-3 font-bold text-nav-text shadow-surface opacity-0;
+    z-index: calc(var(--ue-z-index-nav) + 10);
+    transition:
+      transform var(--anim-med),
+      opacity var(--anim-med);
+  }
+
+  .skip-link:focus-visible {
+    @apply translate-y-0 opacity-100 outline-none shadow-focus;
+  }
+}
+
+@layer components {
+  /* Component tokens
+     .card-glass   → Frosted surface using the glass palette + blur.
+     .btn-gradient → Primary CTA gradient button with hover lift.
+     .chip         → Compact pill badge for schedules/filters.
+     .skeleton     → Neutral loading shimmer wrapper.
+  */
+  .card-glass {
+    @apply relative overflow-hidden rounded-ue-xl border border-glass-border bg-glass text-page-foreground shadow-glass backdrop-blur-md;
+  }
+
+  .card-glass::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 bg-gradient-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-80;
+  }
+
+  .card-glass::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    pointer-events: none;
+  }
+
+  .btn-gradient {
+    @apply inline-flex w-full items-center justify-center rounded-surface-lg bg-btn-gradient px-ue-lg py-ue-md font-display text-white font-extrabold tracking-wide shadow-surface transition-transform duration-200 ease-out;
+    letter-spacing: 0.02em;
+  }
+
+  .btn-gradient:hover,
+  .btn-gradient:focus-visible {
+    @apply bg-btn-gradient-hover shadow-surface-strong;
+  }
+
+  .btn-gradient:focus-visible {
+    @apply outline-none shadow-focus;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-ue-2xs rounded-ue-pill border border-button-border bg-button px-ue-sm py-ue-2xs text-sm font-semibold text-nav-text transition-colors duration-200 ease-out;
+  }
+
+  .chip[data-scope="today"] {
+    @apply bg-surface-accent font-bold;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-ue-md bg-skeleton text-transparent;
+    animation: fade-in var(--anim-med, 0.3s ease) both;
+  }
+
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.25) 45%, transparent 100%);
+    animation: fade-in var(--anim-med, 0.3s ease) forwards, skeleton-wave 1.6s ease-in-out infinite;
+  }
+}
