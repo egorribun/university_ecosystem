@@ -87,7 +87,11 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
     <Tooltip content={full}>
       <span
         aria-label={t("ariaDatePublished", { date: full })}
-        className="flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-white/70 bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.95),rgba(148,163,184,0.35),rgba(59,130,246,0.82),rgba(255,255,255,0.95))] text-slate-900 shadow-[0_18px_40px_-22px_rgba(30,64,175,0.55)] backdrop-blur-md"
+        className={cn(
+          "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-white/70 text-slate-900 backdrop-blur-md",
+          "bg-[conic-gradient(at_50%_50%,rgba(255,255,255,0.9),rgba(148,163,184,0.25),rgba(59,130,246,0.65),rgba(255,255,255,0.9))]",
+          "shadow-[0_18px_40px_-22px_rgba(30,64,175,0.55)]"
+        )}
       >
         <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>
         <span className="text-[0.65rem] font-semibold leading-tight text-slate-700">{mm}</span>
@@ -395,8 +399,24 @@ export default function Dashboard() {
   }, [fetchSchedule])
 
   const headerGradientClass = isNarrow
-    ? "bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.32),rgba(15,23,42,0.72))]"
-    : "bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.32),rgba(15,23,42,0.78))]"
+    ? "bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.28),rgba(15,23,42,0.78))]"
+    : "bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.3),rgba(15,23,42,0.82))]"
+
+  const heroSectionClass = cn(
+    "relative mx-auto flex min-h-screen w-full max-w-[min(1800px,100%)] flex-col overflow-hidden",
+    "rounded-[2rem] border border-white/10 px-4 pb-16 pt-10 text-slate-100 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.75)]",
+    "sm:px-6 sm:rounded-[2.5rem] md:px-10 lg:px-16 lg:rounded-[3rem]",
+    "bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.82),rgba(15,23,42,0.55))]",
+    "ring-1 ring-inset ring-white/5"
+  )
+
+  const heroBackdropLayers = [
+    "absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.75),rgba(15,23,42,0.5))]",
+    "absolute -top-52 left-1/2 h-[42rem] w-[42rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(120,162,255,0.33),rgba(120,162,255,0))] blur-[180px]",
+    "absolute bottom-[-12rem] right-[8%] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.3),rgba(125,211,252,0))] blur-[180px]",
+    "absolute -left-24 top-1/2 h-[28rem] w-[28rem] -translate-y-1/2 animate-[pulse_11s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.25),rgba(244,114,182,0))] blur-[160px]",
+    "absolute left-1/2 top-12 h-64 w-64 -translate-x-1/2 rounded-full bg-[conic-gradient(from_45deg_at_50%_50%,rgba(255,255,255,0.32),rgba(125,211,252,0.42),rgba(255,255,255,0.12),rgba(192,132,252,0.38),rgba(255,255,255,0.32))] opacity-50 blur-[200px]",
+  ]
 
   const glassPanelBase =
     "group relative isolate overflow-hidden rounded-[2.5rem] border border-white/15 bg-white/[0.08] backdrop-blur-[32px] shadow-[0_55px_140px_-80px_rgba(15,23,42,0.85)] transition-all duration-500"
@@ -448,16 +468,11 @@ export default function Dashboard() {
         {t("common:skipToMain")}
       </a>
       <PageFadeIn>
-        <section
-          id="main"
-          className="relative mx-auto flex min-h-screen w-full max-w-[min(1800px,100%)] flex-col overflow-hidden rounded-[2rem] px-4 pb-16 pt-10 text-slate-100 shadow-[0_45px_120px_-60px_rgba(15,23,42,0.75)] sm:px-6 sm:rounded-[2.5rem] md:px-10 lg:px-16 lg:rounded-[3rem]"
-        >
+        <section id="main" className={heroSectionClass}>
           <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.75),rgba(15,23,42,0.55))]" />
-            <div className="absolute -top-48 left-1/2 h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(120,162,255,0.32),rgba(120,162,255,0))] blur-[160px]" />
-            <div className="absolute bottom-[-10rem] right-[8%] h-[30rem] w-[30rem] rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.32),rgba(125,211,252,0))] blur-[160px]" />
-            <div className="absolute -left-24 top-1/2 h-[28rem] w-[28rem] -translate-y-1/2 animate-[pulse_10s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.28),rgba(244,114,182,0))] blur-[140px]" />
-            <div className="absolute left-1/2 top-10 h-64 w-64 -translate-x-1/2 rounded-full bg-[conic-gradient(from_45deg_at_50%_50%,rgba(255,255,255,0.35),rgba(125,211,252,0.45),rgba(255,255,255,0.15),rgba(192,132,252,0.4),rgba(255,255,255,0.35))] opacity-50 blur-[180px]" />
+            {heroBackdropLayers.map((layer, index) => (
+              <div key={index} className={layer} />
+            ))}
           </div>
           <div className="relative z-[1] space-y-8">
             <header
@@ -533,12 +548,7 @@ export default function Dashboard() {
             <div
               data-fade
               style={fadeDelayStyle("100ms")}
-              className={cn(
-                glassPanelBase,
-                glassPanelHover,
-                glassSheen,
-                "p-2 md:p-3"
-              )}
+              className={cn(glassPanelBase, glassPanelHover, glassSheen, "p-2 md:p-3")}
             >
               <div
                 aria-hidden="true"
@@ -561,12 +571,7 @@ export default function Dashboard() {
               <Card
                 data-fade
                 style={fadeDelayStyle("140ms")}
-                className={cn(
-                  glassPanelBase,
-                  glassPanelHover,
-                  glassSheen,
-                  "lg:col-span-4"
-                )}
+                className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingSched}
               >
@@ -683,12 +688,7 @@ export default function Dashboard() {
               <Card
                 data-fade
                 style={fadeDelayStyle("200ms")}
-                className={cn(
-                  glassPanelBase,
-                  glassPanelHover,
-                  glassSheen,
-                  "lg:col-span-4"
-                )}
+                className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingNews}
               >
@@ -789,12 +789,7 @@ export default function Dashboard() {
               <Card
                 data-fade
                 style={fadeDelayStyle("260ms")}
-                className={cn(
-                  glassPanelBase,
-                  glassPanelHover,
-                  glassSheen,
-                  "lg:col-span-4"
-                )}
+                className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingEvents}
               >
