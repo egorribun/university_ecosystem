@@ -414,12 +414,12 @@ export default function Dashboard() {
   const headerGradient = isNarrow
     ? "linear-gradient(100deg,var(--hero-grad-start) 50%,var(--hero-grad-end) 100%)"
     : "linear-gradient(100deg,var(--hero-grad-start) 40%,var(--hero-grad-end) 100%)"
+  const cardBaseClasses =
+    "rounded-[2rem] bg-[var(--card-bg)] p-6 shadow-[0_16px_40px_rgba(0,0,0,0.22)] transition-all duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(0,0,0,0.18)] md:p-8 md:shadow-[var(--shadow-1)]"
   const buttonClasses =
     "inline-flex items-center justify-center whitespace-nowrap rounded-2xl border border-transparent px-4 py-2 font-semibold tracking-wide text-[color:var(--page-text)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-transparent hover:bg-[linear-gradient(100deg,#1976d2_20%,#449aff_100%)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb55] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent active:translate-y-0"
   const pillButtonClasses =
     "inline-flex items-center justify-center whitespace-nowrap rounded-full border border-transparent px-4 py-1.5 text-sm font-semibold tracking-wide text-[color:var(--page-text)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[linear-gradient(100deg,#1976d2_20%,#449aff_100%)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb55] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent active:translate-y-0"
-  const cardBaseClasses =
-    "rounded-[2rem] bg-[var(--card-bg)] p-6 shadow-[0_16px_40px_rgba(0,0,0,0.22)] transition-all duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(0,0,0,0.18)] md:p-8 md:shadow-[var(--shadow-1)]"
   const softBorderColor = "color-mix(in srgb, var(--page-text) 12%, transparent)"
   const mutedSurface = "color-mix(in srgb, var(--page-text) 8%, transparent)"
   const skeletonBase: CSSProperties = {
@@ -462,9 +462,6 @@ export default function Dashboard() {
       callback()
     }
   }
-
-  const cardBaseClasses =
-    "rounded-[2rem] bg-[var(--card-bg)] p-6 shadow-[0_16px_40px_rgba(0,0,0,0.22)] transition-all duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(0,0,0,0.18)] md:p-8 md:shadow-[var(--shadow-1)]"
 
   return (
     <Layout>
@@ -840,7 +837,9 @@ export default function Dashboard() {
                           role="link"
                           aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                         >
-                          <h3 className="text-base font-semibold text-[color:var(--page-text)]">{e.title}</h3>
+                          <h3 className="text-base font-semibold text-[color:var(--page-text)]">
+                            {e.title}
+                          </h3>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="chip-time inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">
                               {d
