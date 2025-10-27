@@ -64,7 +64,8 @@
   --dash-conic-stop-3: color-mix(in srgb, white 68%, var(--nav-link-hover) 32%);
   --dash-conic-stop-4: color-mix(in srgb, white 92%, var(--nav-link) 8%);
   --dash-date-shadow: 0 18px 40px -22px color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
-  --dash-panel-hover-shadow: 0 70px 160px -90px color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-panel-hover-shadow: 0 70px 160px -90px
+    color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
   --dash-glass-sheen-start: color-mix(in srgb, white 65%, transparent);
   --dash-glass-sheen-end: color-mix(in srgb, white 12%, transparent);
   --dash-stories-radial: color-mix(in srgb, var(--nav-link) 24%, transparent);
@@ -174,7 +175,8 @@ body.dark {
   --dash-conic-stop-3: color-mix(in srgb, var(--fed-blue-80v) 55%, transparent);
   --dash-conic-stop-4: color-mix(in srgb, var(--nav-link) 45%, transparent);
   --dash-date-shadow: 0 18px 44px -20px color-mix(in srgb, var(--nav-link) 70%, transparent);
-  --dash-panel-hover-shadow: 0 70px 170px -90px color-mix(in srgb, var(--nav-link-hover) 65%, transparent);
+  --dash-panel-hover-shadow: 0 70px 170px -90px
+    color-mix(in srgb, var(--nav-link-hover) 65%, transparent);
   --dash-glass-sheen-start: color-mix(in srgb, white 35%, transparent);
   --dash-glass-sheen-end: color-mix(in srgb, white 6%, transparent);
   --dash-stories-radial: color-mix(in srgb, var(--nav-link) 40%, transparent);
