@@ -19,8 +19,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     indexes = {
-        index["name"]
-        for index in inspector.get_indexes("notification_queue_jobs")
+        index["name"] for index in inspector.get_indexes("notification_queue_jobs")
     }
 
     if "ix_notification_queue_jobs_pending_claim" in indexes:
@@ -40,8 +39,7 @@ def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     indexes = {
-        index["name"]
-        for index in inspector.get_indexes("notification_queue_jobs")
+        index["name"] for index in inspector.get_indexes("notification_queue_jobs")
     }
 
     if "ix_notification_queue_jobs_pending_claim" not in indexes:
