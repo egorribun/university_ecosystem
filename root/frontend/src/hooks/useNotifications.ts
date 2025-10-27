@@ -26,7 +26,7 @@ type NormalizedNotificationsResponse = {
 
 export function useNotifications() {
   const qc = useQueryClient()
-  const list = useQuery({
+  const list = useQuery<NormalizedNotificationsResponse>({
     queryKey: ["notifications", "list"],
     queryFn: async () => {
       const { data } = await api.get<NotificationsResponse>("notifications")
@@ -65,6 +65,10 @@ export function useNotifications() {
     hasMore: list.data?.hasMore ?? false,
     nextCursor: list.data?.nextCursor ?? null,
     isLoading: list.isLoading,
+    isError: list.isError,
+    error: list.error,
+    isRefetching: list.isRefetching,
+    refetch: list.refetch,
     markRead: (id: number) => markRead.mutate(id),
     markAll: () => markAll.mutate(),
     clearAll: clearAll.mutate,

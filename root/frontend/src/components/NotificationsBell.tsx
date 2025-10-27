@@ -19,11 +19,24 @@ import { useTranslation } from "react-i18next"
 
 export default function NotificationsBell() {
   const { t } = useTranslation(["system"])
-  const { data, unreadCount, isLoading, markRead, markAll, clearAll, isMarkingAll, isClearing } =
-    useNotifications()
+  const {
+    data,
+    unreadCount,
+    isLoading,
+    markRead,
+    markAll,
+    clearAll,
+    isMarkingAll,
+    isClearing,
+    isError,
+    isRefetching,
+    refetch,
+  } = useNotifications()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const open = Boolean(anchor)
   const hasNotifications = data.length > 0
+  const actionsDisabled =
+    isLoading || isError || isRefetching || !hasNotifications || isMarkingAll || isClearing
   return (
     <>
       <IconButton
@@ -62,7 +75,7 @@ export default function NotificationsBell() {
                 size="small"
                 startIcon={<DoneIcon fontSize="small" />}
                 onClick={() => markAll()}
-                disabled={isLoading || !hasNotifications || isMarkingAll || isClearing}
+                disabled={actionsDisabled}
               >
                 {t("system:notificationsBell.markAll")}
               </Button>
@@ -75,14 +88,23 @@ export default function NotificationsBell() {
                     onSuccess: () => setAnchor(null),
                   })
                 }
-                disabled={isLoading || !hasNotifications || isClearing}
+                disabled={isLoading || isError || isRefetching || !hasNotifications || isClearing}
               >
                 {t("system:notificationsBell.clear")}
               </Button>
             </Box>
           </Box>
           <List dense disablePadding>
-            {isLoading ? (
+            {isError && !isRefetching ? (
+              <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                <Typography variant="body2" color="error">
+                  {t("system:notificationsBell.error")}
+                </Typography>
+                <Button size="small" onClick={() => refetch()} disabled={isRefetching}>
+                  {t("system:errorBoundary.retry")}
+                </Button>
+              </Box>
+            ) : isLoading || isRefetching ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2">{t("system:notificationsBell.loading")}</Typography>
               </Box>

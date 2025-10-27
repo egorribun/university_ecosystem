@@ -12,6 +12,7 @@
     "clear": "Clear",
     "loading": "Loading…",
     "empty": "Nothing yet",
+    "error": "We couldn't load notifications. Try again in a moment.",
     "markRead": "Mark as read"
   },
   "map": {
