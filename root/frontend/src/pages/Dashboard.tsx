@@ -401,24 +401,22 @@ export default function Dashboard() {
   const headerGradientClass = cn(
     "transition-[background] duration-700",
     isNarrow
-      ? "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.85),_rgba(255,255,255,0.22))] dark:bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.92),_rgba(15,23,42,0.55))]"
-      : "bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.72),_rgba(226,232,240,0.22))] dark:bg-[radial-gradient(circle_at_top_right,_rgba(15,23,42,0.92),_rgba(30,41,59,0.6))]"
+      ? "bg-[linear-gradient(135deg,rgba(247,250,255,0.92),rgba(222,234,249,0.68))] dark:bg-[linear-gradient(135deg,rgba(13,22,36,0.94),rgba(8,16,28,0.72))]"
+      : "bg-[linear-gradient(125deg,rgba(247,250,255,0.94),rgba(220,232,247,0.7))] dark:bg-[linear-gradient(125deg,rgba(12,22,36,0.95),rgba(7,16,28,0.74))]"
   )
 
   const heroSectionClass = cn(
-    "relative mx-auto flex min-h-screen w-full max-w-[min(1800px,100%)] flex-col overflow-hidden",
-    "rounded-[2rem] border border-[var(--glass-border)] px-4 pb-16 pt-10 text-page-foreground shadow-[0_48px_120px_-60px_rgba(12,18,32,0.45)]",
-    "sm:px-6 sm:rounded-[2.5rem] md:px-10 lg:px-16 lg:rounded-[3rem]",
-    "bg-[linear-gradient(145deg,var(--hero-grad-start),var(--hero-grad-end))] dark:shadow-[0_50px_140px_-70px_rgba(0,0,0,0.75)]",
-    "ring-1 ring-inset ring-white/20 dark:ring-white/10"
+    "relative flex min-h-screen w-full flex-col overflow-hidden",
+    "px-4 pb-16 pt-10 text-page-foreground sm:px-8 md:px-12 lg:px-16",
+    "bg-[linear-gradient(145deg,var(--hero-grad-start),var(--hero-grad-end))]"
   )
 
   const heroBackdropLayers = [
-    "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.75),_transparent_75%)] dark:bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.88),_transparent_78%)] mix-blend-soft-light",
-    "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,_rgba(148,163,184,0.14),_transparent_68%)] dark:bg-[radial-gradient(circle_at_bottom,_rgba(37,99,235,0.25),_transparent_75%)]",
-    "absolute -top-60 left-1/2 h-[46rem] w-[46rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,_rgba(120,162,255,0.36),_rgba(120,162,255,0))] blur-[220px]",
-    "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,_rgba(56,189,248,0.3),_rgba(56,189,248,0))] blur-[210px]",
-    "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,rgba(255,255,255,0.3),rgba(186,230,253,0.25),rgba(255,255,255,0.08),rgba(192,132,252,0.28),rgba(255,255,255,0.3))] opacity-80 blur-[220px]",
+    "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(247,250,255,0.85),transparent_75%)] dark:bg-[radial-gradient(circle_at_top,rgba(12,22,36,0.9),transparent_78%)] mix-blend-soft-light",
+    "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,rgba(148,163,184,0.18),transparent_68%)] dark:bg-[radial-gradient(circle_at_bottom,rgba(37,99,235,0.22),transparent_75%)]",
+    "absolute -top-60 left-1/2 h-[46rem] w-[46rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(120,162,255,0.28),rgba(120,162,255,0))] blur-[220px]",
+    "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.24),rgba(56,189,248,0))] blur-[210px]",
+    "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,rgba(247,250,255,0.32),rgba(186,230,253,0.24),rgba(255,255,255,0.08),rgba(192,132,252,0.22),rgba(247,250,255,0.32))] opacity-80 blur-[220px]",
   ]
 
   const glassPanelBase =
@@ -479,7 +477,8 @@ export default function Dashboard() {
           </div>
           <div className="relative z-[1] space-y-8">
             <header
-              data-fade
+              data-fade="up"
+              data-pop="true"
               style={fadeDelayStyle("40ms")}
               className={cn(
                 glassPanelBase,
@@ -549,7 +548,8 @@ export default function Dashboard() {
             </header>
 
             <div
-              data-fade
+              data-fade="up"
+              data-pop="true"
               style={fadeDelayStyle("100ms")}
               className={cn(glassPanelBase, glassPanelHover, glassSheen, "p-2 md:p-3")}
             >
@@ -572,7 +572,8 @@ export default function Dashboard() {
             </div>
             <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
               <Card
-                data-fade
+                data-fade="left"
+                data-pop="true"
                 style={fadeDelayStyle("140ms")}
                 className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
                 padding="lg"
@@ -689,7 +690,8 @@ export default function Dashboard() {
               </Card>
 
               <Card
-                data-fade
+                data-fade="up"
+                data-pop="true"
                 style={fadeDelayStyle("200ms")}
                 className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
                 padding="lg"
@@ -790,7 +792,8 @@ export default function Dashboard() {
               </Card>
 
               <Card
-                data-fade
+                data-fade="right"
+                data-pop="true"
                 style={fadeDelayStyle("260ms")}
                 className={cn(glassPanelBase, glassPanelHover, glassSheen, "lg:col-span-4")}
                 padding="lg"
