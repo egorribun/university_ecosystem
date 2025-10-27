@@ -32,6 +32,42 @@ def _ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+def _decode_event_cursor(value: str | None) -> tuple[datetime, int] | None:
+    if not value:
+        return None
+    try:
+        payload = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw_starts_at = payload.get("starts_at")
+    raw_id = payload.get("id")
+    if not isinstance(raw_starts_at, str):
+        return None
+    try:
+        parsed_starts_at = datetime.fromisoformat(raw_starts_at)
+    except ValueError:
+        return None
+    try:
+        event_id = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    return _ensure_utc(parsed_starts_at), event_id
+
+
+def _encode_event_cursor(starts_at: datetime, event_id: int) -> str:
+    return json.dumps(
+        {
+            "starts_at": _ensure_utc(starts_at).isoformat(),
+            "id": int(event_id),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
 _EVENT_TIME_ORDER_KEY = "validation.events.end_after_start"
 _EVENT_TIME_PAIR_KEY = "validation.events.times_required"
 
@@ -381,11 +417,11 @@ async def get_all_events(
     locale: str | None = None,
     *,
     limit: int | None = None,
-    cursor: int | None = None,
+    cursor: str | None = None,
 ):
     now = datetime.now(UTC)
     safe_limit = max(1, min(MAX_EVENTS_LIMIT, limit or DEFAULT_EVENTS_LIMIT))
-    safe_cursor = max(0, cursor or 0)
+    cursor_values = _decode_event_cursor(cursor)
 
     conditions = []
     if search:
@@ -423,11 +459,23 @@ async def get_all_events(
     stmt = select(models.Event)
     if conditions:
         stmt = stmt.where(and_(*conditions))
+    if cursor_values:
+        last_starts_at, last_id = cursor_values
+        stmt = stmt.where(
+            or_(
+                models.Event.starts_at > last_starts_at,
+                and_(
+                    models.Event.starts_at == last_starts_at,
+                    models.Event.id > last_id,
+                ),
+            )
+        )
 
     ordered_stmt = stmt.order_by(models.Event.starts_at.asc(), models.Event.id.asc())
-    page_stmt = ordered_stmt.offset(safe_cursor).limit(safe_limit)
+    page_stmt = ordered_stmt.limit(safe_limit + 1)
     rows = await db.execute(page_stmt)
-    events = rows.scalars().all()
+    fetched_events = rows.scalars().all()
+    events = fetched_events[:safe_limit]
     ids = [e.id for e in events]
     counts = await _attendance_counts(db, ids)
     files_map = await _files_by_event(db, ids)
@@ -483,15 +531,18 @@ async def get_all_events(
             )
         )
 
-    next_cursor = safe_cursor + len(result)
-    has_more = next_cursor < total
+    has_more = len(fetched_events) > len(events)
+    next_cursor: Optional[str] = None
+    if has_more and events:
+        last_event = events[-1]
+        next_cursor = _encode_event_cursor(last_event.starts_at, last_event.id)
 
     return schemas.PaginatedEvents(
         items=result,
         total=total,
         limit=safe_limit,
-        cursor=safe_cursor,
-        next_cursor=next_cursor if has_more else None,
+        cursor=cursor if cursor_values else None,
+        next_cursor=next_cursor,
         has_more=has_more,
     )
 

@@ -174,7 +174,6 @@ const Events = () => {
                 type: dType,
                 location: dLocation,
                 limit: PAGE_SIZE,
-                cursor: 0,
               }
 
         const keyBase = cacheKey

@@ -211,7 +211,7 @@ const {
           items: [sampleEvent],
           total: 1,
           limit: 20,
-          cursor: 0,
+          cursor: null,
           next_cursor: null,
           has_more: false,
         },

@@ -57,7 +57,7 @@ describe("API language interceptor", () => {
           items: payload,
           total: payload.length,
           limit: payload.length,
-          cursor: 0,
+          cursor: null,
           next_cursor: null,
           has_more: false,
         })

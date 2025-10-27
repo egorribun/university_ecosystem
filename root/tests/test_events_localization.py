@@ -113,7 +113,7 @@ async def test_events_localization(async_client, db_session, user_factory):
     assert response_ru.headers.get("ETag")
     data_ru = response_ru.json()
     assert data_ru["total"] == 2
-    assert data_ru["cursor"] == 0
+    assert data_ru["cursor"] is None
     payload_ru = {item["id"]: item for item in data_ru["items"]}
 
     assert payload_ru[primary.id]["title"] == "Русское событие"
@@ -251,10 +251,10 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert first.status_code == status.HTTP_200_OK
     first_data = first.json()
     assert first_data["limit"] == 3
-    assert first_data["cursor"] == 0
+    assert first_data["cursor"] is None
     assert len(first_data["items"]) == 3
     assert first_data["has_more"] is True
-    assert first_data["next_cursor"] == 3
+    assert isinstance(first_data["next_cursor"], str)
 
     second = await async_client.get(
         "/events",
@@ -263,10 +263,11 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     )
     assert second.status_code == status.HTTP_200_OK
     second_data = second.json()
-    assert second_data["cursor"] == 3
+    assert second_data["cursor"] == first_data["next_cursor"]
     assert len(second_data["items"]) == 3
     assert second_data["has_more"] is True
-    assert second_data["next_cursor"] == 6
+    assert isinstance(second_data["next_cursor"], str)
+    assert second_data["next_cursor"] != first_data["next_cursor"]
 
     third = await async_client.get(
         "/events",
@@ -275,7 +276,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     )
     assert third.status_code == status.HTTP_200_OK
     third_data = third.json()
-    assert third_data["cursor"] == 6
+    assert third_data["cursor"] == second_data["next_cursor"]
     assert len(third_data["items"]) == 1
     assert third_data["has_more"] is False
     assert third_data["next_cursor"] is None

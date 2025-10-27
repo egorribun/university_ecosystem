@@ -447,8 +447,8 @@ class PaginatedEvents(BaseModel):
     items: List[EventOut]
     total: int
     limit: int
-    cursor: int
-    next_cursor: Optional[int] = None
+    cursor: Optional[str] = None
+    next_cursor: Optional[str] = None
     has_more: bool
 
 

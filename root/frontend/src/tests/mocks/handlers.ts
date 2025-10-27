@@ -478,19 +478,56 @@ export const handlers = [
     if (url.pathname.endsWith("/events/my")) {
       return HttpResponse.json(testEvents.slice(0, 3))
     }
+
     const limitRaw = Number(url.searchParams.get("limit") ?? "")
-    const cursorRaw = Number(url.searchParams.get("cursor") ?? "")
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 20
-    const cursor = Number.isFinite(cursorRaw) && cursorRaw >= 0 ? cursorRaw : 0
-    const slice = testEvents.slice(cursor, cursor + limit)
-    const total = testEvents.length
-    const nextCursor = cursor + slice.length
-    const hasMore = nextCursor < total
+    const cursorParam = url.searchParams.get("cursor")
+
+    const decodeCursor = (value: string | null) => {
+      if (!value) return null
+      try {
+        const payload = JSON.parse(value) as { id?: number; starts_at?: string }
+        if (typeof payload?.id !== "number") return null
+        if (payload.starts_at != null && typeof payload.starts_at !== "string") {
+          return null
+        }
+        return payload
+      } catch {
+        return null
+      }
+    }
+
+    const encodeCursor = (event: Event | undefined) =>
+      event ? JSON.stringify({ id: event.id, starts_at: event.starts_at ?? null }) : null
+
+    const decodedCursor = decodeCursor(cursorParam)
+
+    const sortedEvents = [...testEvents].sort((a, b) => {
+      const startsA = String(a.starts_at ?? "")
+      const startsB = String(b.starts_at ?? "")
+      const compareStarts = startsA.localeCompare(startsB)
+      if (compareStarts !== 0) return compareStarts
+      return a.id - b.id
+    })
+
+    const startIndex = decodedCursor
+      ? (() => {
+          const index = sortedEvents.findIndex((event) => event.id === decodedCursor.id)
+          return index >= 0 ? index + 1 : 0
+        })()
+      : 0
+
+    const slice = sortedEvents.slice(startIndex, startIndex + limit)
+    const total = sortedEvents.length
+    const lastItem = slice[slice.length - 1]
+    const nextCursor = encodeCursor(lastItem)
+    const hasMore = startIndex + slice.length < total
+
     return HttpResponse.json({
       items: slice,
       total,
       limit,
-      cursor,
+      cursor: decodedCursor ? cursorParam : null,
       next_cursor: hasMore ? nextCursor : null,
       has_more: hasMore,
     })
