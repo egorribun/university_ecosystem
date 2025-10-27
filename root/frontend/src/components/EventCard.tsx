@@ -40,7 +40,6 @@ import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
-import { cardHoverStyles } from "@/constants/cardHover"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 
@@ -476,15 +475,24 @@ const EventCardComponent: FC<EventCardProps> = ({
     if (file) setNewImage(file)
   }
 
-  const cardHover = cardHoverStyles({
-    disabled: editOpen || qrOpen,
-    extraTransitions: ["max-width 0.25s ease"],
-  })
+  const interactiveSx = useMemo(() => {
+    if (editOpen || qrOpen) {
+      return {}
+    }
+    return {
+      "&:hover": {
+        transform: "translateY(-2px) scale(1.02)",
+        boxShadow: "var(--shadow-2)",
+      },
+      "&:active": {
+        transform: "scale(0.997)",
+      },
+    }
+  }, [editOpen, qrOpen])
 
   return (
     <Box
-      className={cn("event-card", cardHover.className)}
-      style={cardHover.style}
+      className={cn("event-card")}
       sx={{
         width: "100%",
         maxWidth: maxWidth ?? 700,
@@ -503,6 +511,8 @@ const EventCardComponent: FC<EventCardProps> = ({
         },
         pointerEvents: qrOpen ? "none" : "auto",
         filter: qrOpen ? "grayscale(0.12) opacity(0.92)" : "none",
+        transition: "transform 0.25s ease, box-shadow 0.25s ease, max-width 0.25s ease",
+        ...interactiveSx,
       }}
       role="button"
       tabIndex={0}

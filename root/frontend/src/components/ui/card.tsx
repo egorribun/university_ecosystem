@@ -1,6 +1,5 @@
 import type { ComponentPropsWithoutRef, ElementType } from "react"
 import { cn } from "@/utils/cn"
-import { cardHoverStyles, type CardHoverOptions } from "@/constants/cardHover"
 
 type CardPadding = "none" | "sm" | "md" | "lg"
 
@@ -13,7 +12,7 @@ const paddingClasses: Record<CardPadding, string> = {
 
 type CardOwnProps = {
   as?: ElementType
-  hoverable?: boolean | CardHoverOptions
+  hoverable?: boolean
   padding?: CardPadding
   className?: string
 }
@@ -31,18 +30,18 @@ export const Card = <T extends ElementType = "div">({
   ...rest
 }: CardProps<T>) => {
   const Component = (as ?? "div") as ElementType
-  const hoverOptions = typeof hoverable === "boolean" ? {} : hoverable
-  const hover = hoverable ? cardHoverStyles(hoverOptions) : null
 
   return (
     <Component
       className={cn(
-        "relative flex flex-col rounded-ue-xl border border-[color-mix(in_srgb,var(--page-text)_8%,transparent)] bg-surface text-page-foreground shadow-surface",
+        "relative flex flex-col rounded-ue-xl border border-[color-mix(in_srgb,var(--page-text)_8%,transparent)] bg-surface text-page-foreground shadow-surface transition-[transform,box-shadow] duration-500 ease-out",
         paddingClasses[padding],
-        hover?.className,
+        hoverable
+          ? "hover:-translate-y-[2px] hover:shadow-surface-strong focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:translate-y-0 motion-reduce:transition-[box-shadow]"
+          : "",
         className
       )}
-      style={{ ...hover?.style, ...style }}
+      style={style}
       {...rest}
     >
       {children}

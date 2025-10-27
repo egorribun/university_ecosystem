@@ -9,24 +9,13 @@ import {
 } from "react"
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
-import SmartImage from "@/components/SmartImage"
 import DashboardStories from "@/components/DashboardStories"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
-import {
-  Box,
-  Typography,
-  Stack,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  useMediaQuery,
-} from "@mui/material"
 import { Link, useNavigate } from "react-router-dom"
-import { Button, Chip, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
+import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
 import { cn } from "@/utils/cn"
-import { cardHoverStyles } from "@/constants/cardHover"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
@@ -95,29 +84,13 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
     : fallback
   return (
     <Tooltip content={full}>
-      <Box
+      <span
         aria-label={t("ariaDatePublished", { date: full })}
-        sx={{
-          width: 44,
-          height: 44,
-          minWidth: 44,
-          minHeight: 44,
-          flex: "0 0 44px",
-          borderRadius: "50%",
-          background: "linear-gradient(120deg,#1d5fff,#65b2ff)",
-          color: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 800,
-          lineHeight: 1,
-          userSelect: "none",
-        }}
+        className="flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full bg-[linear-gradient(120deg,#1d5fff,#65b2ff)] text-white shadow-surface"
       >
-        <Box sx={{ fontSize: 14 }}>{dd}</Box>
-        <Box sx={{ fontSize: 10, opacity: 0.9 }}>{mm}</Box>
-      </Box>
+        <span className="text-[0.85rem] font-extrabold leading-none">{dd}</span>
+        <span className="text-[0.65rem] font-semibold leading-tight opacity-90">{mm}</span>
+      </span>
     </Tooltip>
   )
 }
@@ -420,9 +393,7 @@ export default function Dashboard() {
     fetchSchedule()
   }, [fetchSchedule])
 
-  const headerGradient = isNarrow
-    ? "linear-gradient(100deg,var(--hero-grad-start) 50%,var(--hero-grad-end) 100%)"
-    : "linear-gradient(100deg,var(--hero-grad-start) 40%,var(--hero-grad-end) 100%)"
+  const headerGradientClass = isNarrow ? "bg-hero-gradient-strong" : "bg-hero-gradient"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -461,126 +432,81 @@ export default function Dashboard() {
     }
   }
 
-  const cardHoverBase = cardHoverStyles()
-  const cardHoverStyle = cardHoverBase.style as CSSProperties
-  const homeCardSx = {
-    p: 2.2,
-    borderRadius: "2rem",
-    background: "var(--card-bg)",
-    boxShadow: {
-      xs: "0 16px 40px rgba(0,0,0,.22), 0 6px 16px rgba(0,0,0,.12)",
-      md: "var(--shadow-1)",
-    },
-    border: {
-      xs: "1px solid color-mix(in srgb, var(--page-text) 12%, transparent)",
-      md: "1px solid transparent",
-    },
-    backdropFilter: { xs: "saturate(110%)", md: "none" },
-  } as const
-
   return (
     <Layout>
-      <a
-        href="#main"
-        style={{
-          position: "fixed",
-          left: 8,
-          top: 8,
-          padding: "8px 12px",
-          background: "#1d5fff",
-          color: "#fff",
-          borderRadius: 8,
-          transform: "translateY(-200%)",
-          transition: "transform .2s",
-          zIndex: 5000,
-        }}
-        onFocus={(e) => {
-          ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)"
-        }}
-        onBlur={(e) => {
-          ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-200%)"
-        }}
-      >
+      <a href="#main" className="skip-link">
         {t("common:skipToMain")}
       </a>
       <PageFadeIn>
-        <Box
+        <section
           id="main"
-          sx={{
-            width: "100%",
-            maxWidth: "min(1800px, 100%)",
-            px: { xs: 2, sm: 3, md: 5, lg: 8 },
-            py: { xs: 2, md: 3 },
-            mx: "auto",
-          }}
+          className="mx-auto w-full max-w-[min(1800px,100%)] px-4 py-4 sm:px-6 md:px-10 lg:px-16"
         >
-          <Box
+          <header
             data-fade
-            className={cardHoverBase.className}
-            style={{
-              ...cardHoverStyle,
-              ...fadeDelayStyle("40ms"),
-            }}
-            sx={{
-              background: headerGradient,
-              borderRadius: "2rem",
-              p: { xs: 2.2, md: 3 },
-              boxShadow: "0 12px 36px #1d5fff16, 0 4px 14px #0000000a",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 2,
-              border: { xs: "1px solid color-mix(in srgb, var(--page-text) 10%, transparent)" },
-            }}
+            style={fadeDelayStyle("40ms")}
+            className={cn(
+              "group relative isolate overflow-hidden rounded-[var(--radius-lg)] p-6 shadow-surface transition-transform duration-500 ease-out focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus md:p-8",
+              headerGradientClass,
+              "hover:animate-card-hover motion-reduce:hover:animate-none"
+            )}
           >
-            <Box>
-              <Typography sx={{ fontSize: "clamp(1.4rem, 2.2vw, 2.4rem)", fontWeight: 800 }}>
-                {greeting}
-                {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
-              </Typography>
-              <Stack
-                direction="row"
-                alignItems="center"
-                gap={1}
-                mt={1}
-                role="status"
-                aria-live="polite"
-              >
-                <Chip
-                  size="sm"
-                  className="chip-clock"
-                  aria-label={t("common:ariaCurrentTime")}
-                  label={
-                    <Box
-                      sx={{
-                        display: "inline-flex",
-                        alignItems: "baseline",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      <Box>{hh}</Box>
-                      <Box sx={{ mx: 0.2, transition: "opacity .28s", opacity: showColon ? 1 : 0 }}>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.28),transparent_65%)] opacity-70 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[160%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-60"
+            >
+              <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/55 to-transparent" />
+            </span>
+            <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
+              <div className="space-y-3 text-nav-text lg:col-span-8">
+                <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
+                  {greeting}
+                  {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
+                </h1>
+                <div
+                  className="flex flex-wrap items-center gap-3 text-sm text-nav-text/90"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Badge
+                    size="sm"
+                    className="chip-clock font-mono text-base"
+                    aria-label={t("common:ariaCurrentTime")}
+                  >
+                    <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
+                      <span>{hh}</span>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "transition-opacity duration-300 ease-out",
+                          showColon ? "opacity-100" : "opacity-0"
+                        )}
+                      >
                         :
-                      </Box>
-                      <Box>{mm}</Box>
-                    </Box>
-                  }
-                />
-                <Typography sx={{ opacity: 0.9 }}>{dateStr}</Typography>
-              </Stack>
-            </Box>
-            <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
-              <Button
-                variant="outline"
-                size="md"
-                className="whitespace-nowrap px-5"
-                onClick={() => navigate("/profile")}
-                aria-label={t("navigation:aria.openProfile")}
-              >
-                {t("navigation:menu.profile")}
-              </Button>
-            </Box>
-          </Box>
+                      </span>
+                      <span>{mm}</span>
+                    </span>
+                  </Badge>
+                  <span className="text-sm font-medium tracking-tight">{dateStr}</span>
+                </div>
+              </div>
+              <div className="hidden justify-end md:flex lg:col-span-4">
+                <Button
+                  variant="outline"
+                  size="md"
+                  className="whitespace-nowrap px-5"
+                  onClick={() => navigate("/profile")}
+                  aria-label={t("navigation:aria.openProfile")}
+                >
+                  {t("navigation:menu.profile")}
+                </Button>
+              </div>
+            </div>
+          </header>
 
           <DashboardStories
             stories={stories}
@@ -588,33 +514,19 @@ export default function Dashboard() {
             onPrefetch={triggerStoriesPrefetch}
             onStoryOpen={handleStoryOpen}
           />
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(12, 1fr)",
-              gap: { xs: 2, md: 3 },
-            }}
-          >
-            <Box
+          <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
+            <Card
               data-fade
-              className={cardHoverBase.className}
-              style={{
-                ...cardHoverStyle,
-                ...fadeDelayStyle("140ms"),
-              }}
-              sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" } }}
+              style={fadeDelayStyle("140ms")}
+              className="lg:col-span-4"
+              padding="lg"
               aria-busy={loadingSched}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mb: 1 }}
-              >
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
                   {t("dashboard:todaySchedule")}
-                </Typography>
-                <Stack direction="row" gap={1}>
+                </h2>
+                <div className="flex items-center gap-2">
                   <Button
                     as={Link}
                     to="/schedule"
@@ -627,110 +539,100 @@ export default function Dashboard() {
                   >
                     {t("dashboard:fullSchedule")}
                   </Button>
-                </Stack>
-              </Stack>
+                </div>
+              </div>
               {currentLesson && (
-                <Box sx={{ mb: 1.5 }}>
-                  <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
-                    <Chip size="sm" tone="primary" label={t("dashboard:now")} />
-                    <Typography sx={{ fontWeight: 700 }}>{currentLesson.subject}</Typography>
-                    <Chip
+                <div className="mb-6">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Badge size="sm" tone="primary" label={t("dashboard:now")} />
+                    <span className="text-base font-semibold text-page-foreground">
+                      {currentLesson.subject}
+                    </span>
+                    <Badge
                       size="sm"
                       className="chip-time"
                       label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                     />
-                  </Stack>
+                  </div>
                   <ProgressBar
                     value={currentProgress}
-                    className="h-2 rounded-ue-pill"
+                    className="h-2.5"
                     ariaLabel={t("common:ariaCurrentLessonProgress")}
                   />
-                </Box>
+                </div>
               )}
               {!currentLesson && nextLesson && (
-                <Box sx={{ mb: 1.5 }}>
-                  <Stack direction="row" alignItems="center" gap={1}>
-                    <Chip
+                <div className="mb-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
                       size="sm"
                       variant="outline"
                       tone="primary"
-                      className="font-bold"
+                      className="font-bold uppercase tracking-wide"
                       label={t("dashboard:next")}
                     />
-                    <Typography sx={{ fontWeight: 700 }}>{nextLesson.subject}</Typography>
-                    <Chip
+                    <span className="text-base font-semibold text-page-foreground">
+                      {nextLesson.subject}
+                    </span>
+                    <Badge
                       size="sm"
                       className="chip-time"
                       label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
                     />
-                  </Stack>
-                </Box>
+                  </div>
+                </div>
               )}
-              <Divider sx={{ my: 1.5 }} />
+              <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
               {loadingSched && (
-                <Stack spacing={1.2}>
+                <div className="space-y-3" role="presentation">
                   <Skeleton height={22} />
                   <Skeleton height={22} />
                   <Skeleton height={22} />
-                </Stack>
+                </div>
               )}
               {!loadingSched && todayLessons.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:noClasses")}</Typography>
+                <p className="text-sm text-secondary">{t("dashboard:noClasses")}</p>
               )}
               {!loadingSched && todayLessons.length > 0 && (
-                <List dense sx={{ py: 0 }}>
+                <ul className="space-y-3">
                   {todayLessons.map((l) => (
-                    <ListItem key={l.id} disablePadding sx={{ mb: 0.5 }}>
-                      <ListItemText
-                        primary={
-                          <Stack
-                            direction="row"
-                            alignItems="center"
-                            gap={1}
-                            sx={{ flexWrap: "wrap" }}
-                          >
-                            <Chip
-                              size="sm"
-                              className="chip-time"
-                              label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                            />
-                            <Typography sx={{ fontWeight: 700 }}>{l.subject}</Typography>
-                            <Chip
-                              size="sm"
-                              className="chip-type"
-                              label={l.lesson_type}
-                              variant="outline"
-                            />
-                          </Stack>
-                        }
-                        secondary={
-                          <Typography sx={{ opacity: 0.85 }}>
-                            {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
-                          </Typography>
-                        }
-                        primaryTypographyProps={{ component: "div" }}
-                        secondaryTypographyProps={{ component: "span" }}
-                      />
-                    </ListItem>
+                    <li key={l.id} className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <Badge
+                          size="sm"
+                          className="chip-time"
+                          label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
+                        />
+                        <span className="text-base font-semibold text-page-foreground">
+                          {l.subject}
+                        </span>
+                        <Badge
+                          size="sm"
+                          className="chip-type"
+                          variant="outline"
+                          label={l.lesson_type}
+                        />
+                      </div>
+                      <p className="text-sm text-secondary">
+                        {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                      </p>
+                    </li>
                   ))}
-                </List>
+                </ul>
               )}
-            </Box>
+            </Card>
 
-            <Box
+            <Card
               data-fade
-              className={cardHoverBase.className}
-              style={{
-                ...cardHoverStyle,
-                ...fadeDelayStyle("200ms"),
-              }}
-              sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" } }}
+              style={fadeDelayStyle("200ms")}
+              className="lg:col-span-4"
+              padding="lg"
               aria-busy={loadingNews}
             >
-              <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
                   {t("dashboard:news.heading")}
-                </Typography>
+                </h2>
                 <Button
                   as={Link}
                   to="/news"
@@ -751,90 +653,71 @@ export default function Dashboard() {
                 >
                   {t("dashboard:viewAll")}
                 </Button>
-              </Stack>
-              <Divider sx={{ my: 1.5 }} />
+              </div>
+              <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
               {loadingNews && (
-                <Stack spacing={1.2}>
-                  <Stack direction="row" gap={1.2} alignItems="center">
+                <div className="space-y-4" role="presentation">
+                  <div className="flex items-center gap-3">
                     <Skeleton width={44} height={44} rounded="9999px" />
-                    <Box sx={{ flex: 1 }}>
+                    <div className="flex-1 space-y-2">
                       <Skeleton height={22} />
                       <Skeleton height={18} width="60%" />
-                    </Box>
-                  </Stack>
-                  <Stack direction="row" gap={1.2} alignItems="center">
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
                     <Skeleton width={44} height={44} rounded="9999px" />
-                    <Box sx={{ flex: 1 }}>
+                    <div className="flex-1 space-y-2">
                       <Skeleton height={22} width="80%" />
                       <Skeleton height={18} width="50%" />
-                    </Box>
-                  </Stack>
-                </Stack>
+                    </div>
+                  </div>
+                </div>
               )}
               {!loadingNews && news.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:news.empty")}</Typography>
+                <p className="text-sm text-secondary">{t("dashboard:news.empty")}</p>
               )}
               {!loadingNews && news.length > 0 && (
-                <Stack
-                  component="ul"
-                  spacing={1.1}
-                  sx={{ m: 0, p: 0, listStyle: "none" }}
+                <ul
+                  className="divide-y divide-[color:var(--slate-10)]"
                   aria-label={t("dashboard:aria.newsList")}
                 >
                   {news.map((n) => (
-                    <Stack
-                      key={n.id}
-                      component="li"
-                      direction="row"
-                      spacing={1.2}
-                      alignItems="center"
-                      style={{ textDecoration: "none", color: "inherit" }}
-                      onClick={() => navigate(`/news/${n.id}`)}
-                      role="link"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") navigate(`/news/${n.id}`)
-                      }}
-                      title={n.title}
-                      aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-                    >
-                      <DateBullet date={n.created_at} locale={locale} />
-                      <Box>
-                        <Typography
-                          sx={{ fontWeight: 700, fontSize: "clamp(.98rem, .9rem + .4vw, 1.06rem)" }}
-                        >
-                          {n.title}
-                        </Typography>
-                        <Typography color="text.secondary" sx={{ fontSize: ".95rem" }}>
-                          {(n.content || "").slice(0, 110)}
-                          {(n.content || "").length > 110 ? "…" : ""}
-                        </Typography>
-                      </Box>
-                    </Stack>
+                    <li key={n.id} className="py-3 first:pt-0 last:pb-0">
+                      <button
+                        type="button"
+                        className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-2 text-left transition-colors duration-200 ease-out hover:bg-surface-accent/60 focus-visible:outline-none focus-visible:shadow-focus"
+                        onClick={() => navigate(`/news/${n.id}`)}
+                        title={n.title}
+                        aria-label={t("dashboard:aria.newsItem", { title: n.title })}
+                      >
+                        <DateBullet date={n.created_at} locale={locale} />
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-page-foreground">
+                            {n.title}
+                          </span>
+                          <span className="text-sm text-secondary">
+                            {(n.content || "").slice(0, 110)}
+                            {(n.content || "").length > 110 ? "…" : ""}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
                   ))}
-                </Stack>
+                </ul>
               )}
-            </Box>
+            </Card>
 
-            <Box
+            <Card
               data-fade
-              className={cardHoverBase.className}
-              style={{
-                ...cardHoverStyle,
-                ...fadeDelayStyle("260ms"),
-              }}
-              sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" } }}
+              style={fadeDelayStyle("260ms")}
+              className="lg:col-span-4"
+              padding="lg"
               aria-busy={loadingEvents}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mb: 1 }}
-              >
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
                   {t("dashboard:events.heading")}
-                </Typography>
+                </h2>
                 <Button
                   as={Link}
                   to="/events"
@@ -855,8 +738,8 @@ export default function Dashboard() {
                 >
                   {t("dashboard:viewAll")}
                 </Button>
-              </Stack>
-              <Stack direction="row" gap={1} sx={{ mb: 1 }}>
+              </div>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant={eventsScope === "today" ? "solid" : "outline"}
@@ -875,22 +758,21 @@ export default function Dashboard() {
                 >
                   {t("dashboard:scope.week")}
                 </Button>
-              </Stack>
-              <Divider sx={{ my: 1.5 }} />
+              </div>
+              <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
               {loadingEvents && (
-                <Stack spacing={1.2}>
+                <div className="space-y-3" role="presentation">
                   <Skeleton height={24} />
                   <Skeleton height={24} width="80%" />
                   <Skeleton height={24} width="70%" />
-                </Stack>
+                </div>
               )}
               {!loadingEvents && scopedEvents.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:events.empty")}</Typography>
+                <p className="text-sm text-secondary">{t("dashboard:events.empty")}</p>
               )}
               {!loadingEvents && scopedEvents.length > 0 && (
-                <List
-                  dense
-                  sx={{ py: 0 }}
+                <ul
+                  className="divide-y divide-[color:var(--slate-10)]"
                   aria-label={
                     eventsScope === "today"
                       ? t("dashboard:aria.eventsToday")
@@ -900,51 +782,44 @@ export default function Dashboard() {
                   {scopedEvents.map((e) => {
                     const d = parseLocalDate(String(e.starts_at))
                     return (
-                      <ListItem
-                        key={e.id}
-                        disablePadding
-                        sx={{ mb: 0.6, cursor: "pointer" }}
-                        onClick={() => navigate(`/events/${e.id}`)}
-                        onKeyDown={(ev) => {
-                          if (ev.key === "Enter") navigate(`/events/${e.id}`)
-                        }}
-                        tabIndex={0}
-                        aria-label={t("dashboard:aria.eventItem", { title: e.title })}
-                      >
-                        <ListItemText
-                          primary={<Typography sx={{ fontWeight: 700 }}>{e.title}</Typography>}
-                          secondary={
-                            <Stack direction="row" gap={1} flexWrap="wrap">
-                              <Chip
-                                size="sm"
-                                className="chip-time"
-                                label={
-                                  d
-                                    ? d.toLocaleString(locale, {
-                                        day: "2-digit",
-                                        month: "long",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })
-                                    : ""
-                                }
-                              />
-                              {!!e.location && (
-                                <Chip size="sm" variant="outline" label={e.location} />
-                              )}
-                            </Stack>
-                          }
-                          primaryTypographyProps={{ component: "div" }}
-                          secondaryTypographyProps={{ component: "div" }}
-                        />
-                      </ListItem>
+                      <li key={e.id} className="py-3 first:pt-0 last:pb-0">
+                        <button
+                          type="button"
+                          className="group flex w-full flex-col gap-2 rounded-ue-lg px-2 py-2 text-left transition-colors duration-200 ease-out hover:bg-surface-accent/60 focus-visible:outline-none focus-visible:shadow-focus"
+                          onClick={() => navigate(`/events/${e.id}`)}
+                          aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                        >
+                          <span className="text-base font-semibold text-page-foreground">
+                            {e.title}
+                          </span>
+                          <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
+                            <Badge
+                              size="sm"
+                              className="chip-time"
+                              label={
+                                d
+                                  ? d.toLocaleString(locale, {
+                                      day: "2-digit",
+                                      month: "long",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : ""
+                              }
+                            />
+                            {!!e.location && (
+                              <Badge size="sm" variant="outline" label={e.location} />
+                            )}
+                          </span>
+                        </button>
+                      </li>
                     )
                   })}
-                </List>
+                </ul>
               )}
-            </Box>
-          </Box>
-        </Box>
+            </Card>
+          </section>
+        </section>
       </PageFadeIn>
     </Layout>
   )
