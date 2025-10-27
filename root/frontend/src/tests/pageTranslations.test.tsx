@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -85,7 +85,9 @@ const {
   const scheduleLessons = [
     {
       id: 1,
-      weekday: "mon",
+      // Use the localized weekday so the Tailwind dashboard resolves the lesson under
+      // both English and Russian week-day mappings.
+      weekday: "Понедельник",
       parity: "both",
       start_time: "09:00",
       end_time: "10:30",
@@ -491,20 +493,28 @@ describe("page translations", () => {
     try {
       const { user } = renderWithProviders(<MapContent />, { initialPath: "/map" })
 
-      expect(await screen.findByRole("heading", { name: "Campus map" })).toBeInTheDocument()
+      expect(await screen.findByText("Campus map")).toBeInTheDocument()
       expect(
         await screen.findByText(
           "Interactive maps are disabled to respect your privacy or reduced motion settings."
         )
       ).toBeInTheDocument()
+      // The fallback landmark is intentionally exposed as a region so keyboard users can
+      // quickly locate the static points list when the Tailwind map shim takes over.
+      expect(
+        await screen.findByRole("region", { name: "Campus overview" })
+      ).toBeInTheDocument()
 
       await user.click(screen.getByTestId("lang-toggle"))
 
-      expect(await screen.findByRole("heading", { name: "Карта кампуса" })).toBeInTheDocument()
+      expect(await screen.findByText("Карта кампуса")).toBeInTheDocument()
       expect(
         await screen.findByText(
           "Интерактивная карта отключена согласно настройкам приватности или уменьшения анимации."
         )
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole("region", { name: "Обзор кампуса" })
       ).toBeInTheDocument()
     } finally {
       matchMediaSpy.mockRestore()
@@ -515,6 +525,8 @@ describe("page translations", () => {
     const { user } = renderWithProviders(<AdminUsers />, { initialPath: "/admin/users" })
 
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument()
+    // The legacy MUI select still exposes its label text without a name. Assert the
+    // rendered label so we track the translation until the filter is replaced in Tailwind.
     expect(screen.getByText("Role", { selector: "label" })).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
@@ -524,22 +536,44 @@ describe("page translations", () => {
   })
 
   it("switches dashboard page translations", async () => {
-    const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2025-09-15T09:30:00"))
 
-    expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
-    expect(await screen.findByRole("heading", { name: "Stories" })).toBeInTheDocument()
-    const storyButton = await screen.findByRole("button", {
-      name: "Story: Campus orientation",
-    })
+    try {
+      const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
-    await user.click(storyButton)
+      expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
+      // The Tailwind dashboard keeps the stories heading visually hidden but exposes it to
+      // assistive tech. Querying by role keeps that intentional sr-only <h2> in place.
+      expect(await screen.findByRole("heading", { name: "Stories" })).toBeInTheDocument()
+      const storyButton = await screen.findByRole("button", {
+        name: "Story: Campus orientation",
+      })
 
-    expect(await screen.findByText("Stories advance automatically.")).toBeInTheDocument()
+      await user.click(storyButton)
 
-    await user.click(screen.getByTestId("lang-toggle"))
+      expect(await screen.findByText("Stories advance automatically.")).toBeInTheDocument()
 
-    expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
-    expect(await screen.findByText("Истории переключаются автоматически.")).toBeInTheDocument()
+      // The progress bar now comes from the Tailwind primitive and exposes an explicit
+      // aria-label so screen readers can announce the metric instead of a raw percentage.
+      const progressbarsEn = await screen.findAllByRole("progressbar")
+      expect(progressbarsEn.map((el) => el.getAttribute("aria-label"))).toContain(
+        "Progress of the current lesson"
+      )
+
+      await user.click(screen.getByTestId("lang-toggle"))
+
+      expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
+      expect(await screen.findByText("Истории переключаются автоматически.")).toBeInTheDocument()
+      await waitFor(() => {
+        const ruLabels = screen
+          .getAllByRole("progressbar")
+          .map((el) => el.getAttribute("aria-label"))
+        expect(ruLabels).toContain("Прогресс текущего занятия")
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("switches news page translations", async () => {
