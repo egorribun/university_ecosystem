@@ -155,7 +155,9 @@ function setCache<T>(key: string, data: T) {
 export default function Dashboard() {
   const { user } = useAuth()
   const [isNarrow, setIsNarrow] = useState(() => {
-    if (typeof window === "undefined") return false
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false
+    }
     return window.matchMedia("(max-width:1100px)").matches
   })
   const navigate = useNavigate()
@@ -391,7 +393,9 @@ export default function Dashboard() {
   }, [fetchSchedule])
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined
+    }
     const media = window.matchMedia("(max-width:1100px)")
     const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
       setIsNarrow(event.matches)
