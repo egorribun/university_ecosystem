@@ -212,7 +212,9 @@ async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatc
         {"kind": "news"},
     ) in (None, pytest.approx(0.0))
     assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(0.0)
-    assert _metric_value("notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}) in (
+    assert _metric_value(
+        "notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}
+    ) in (
         None,
         pytest.approx(0.0),
     )
