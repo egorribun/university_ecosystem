@@ -792,9 +792,8 @@ export async function useMockApi(page: Page) {
         }
       }
 
-      const encodeCursor = (
-        event: { id: number; starts_at?: string | null } | undefined
-      ) => (event ? JSON.stringify({ id: event.id, starts_at: event.starts_at ?? null }) : null)
+      const encodeCursor = (event: { id: number; starts_at?: string | null } | undefined) =>
+        event ? JSON.stringify({ id: event.id, starts_at: event.starts_at ?? null }) : null
 
       const decodedCursor = decodeCursor(cursorParam)
 
