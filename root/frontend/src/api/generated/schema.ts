@@ -4721,7 +4721,7 @@ export interface operations {
         location?: string
         is_active?: boolean
         limit?: number
-        cursor?: number
+        cursor?: string | null
       }
       header?: {
         "if-none-match"?: string | null
