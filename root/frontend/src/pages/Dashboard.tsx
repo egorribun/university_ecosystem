@@ -14,6 +14,7 @@ import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
 import { Link, useNavigate } from "react-router-dom"
 import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -440,385 +441,460 @@ export default function Dashboard() {
       <PageFadeIn>
         <section
           id="main"
-          className="mx-auto w-full max-w-[min(1800px,100%)] px-4 py-4 sm:px-6 md:px-10 lg:px-16"
+          className="relative mx-auto w-full max-w-[min(1800px,100%)] overflow-hidden px-4 py-6 sm:px-6 md:px-10 lg:px-16"
         >
-          <header
-            data-fade
-            style={fadeDelayStyle("40ms")}
-            className={cn(
-              "group relative isolate overflow-hidden rounded-[var(--radius-lg)] p-6 shadow-surface transition-transform duration-500 ease-out focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus md:p-8",
-              headerGradientClass,
-              "hover:animate-card-hover motion-reduce:hover:animate-none"
-            )}
-          >
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.28),transparent_65%)] opacity-70 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[160%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-60"
-            >
-              <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/55 to-transparent" />
-            </span>
-            <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
-              <div className="space-y-3 text-nav-text lg:col-span-8">
-                <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
-                  {greeting}
-                  {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
-                </h1>
-                <div
-                  className="flex flex-wrap items-center gap-3 text-sm text-nav-text/90"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <Badge
-                    size="sm"
-                    className="chip-clock font-mono text-base"
-                    aria-label={t("common:ariaCurrentTime")}
-                  >
-                    <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
-                      <span>{hh}</span>
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "transition-opacity duration-300 ease-out",
-                          showColon ? "opacity-100" : "opacity-0"
-                        )}
-                      >
-                        :
-                      </span>
-                      <span>{mm}</span>
-                    </span>
-                  </Badge>
-                  <span className="text-sm font-medium tracking-tight">{dateStr}</span>
-                </div>
-              </div>
-              <div className="hidden justify-end md:flex lg:col-span-4">
-                <Button
-                  variant="outline"
-                  size="md"
-                  className="whitespace-nowrap px-5"
-                  onClick={() => navigate("/profile")}
-                  aria-label={t("navigation:aria.openProfile")}
-                >
-                  {t("navigation:menu.profile")}
-                </Button>
-              </div>
-            </div>
-          </header>
-
-          <DashboardStories
-            stories={stories}
-            loading={loadingStories}
-            onPrefetch={triggerStoriesPrefetch}
-            onStoryOpen={handleStoryOpen}
-          />
-          <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
-            <Card
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+            <div className="absolute -top-36 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.35),rgba(59,130,246,0))] blur-[120px]" />
+            <div className="absolute bottom-[-8rem] right-[-6rem] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.3),rgba(16,185,129,0))] blur-[120px]" />
+            <div className="absolute left-16 top-1/2 h-40 w-40 -translate-y-1/2 animate-[pulse_8s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.35),rgba(244,114,182,0))] blur-[90px]" />
+          </div>
+          <div className="relative z-[1] space-y-6">
+            <header
               data-fade
-              style={fadeDelayStyle("140ms")}
-              className="lg:col-span-4"
-              padding="lg"
-              aria-busy={loadingSched}
+              style={fadeDelayStyle("40ms")}
+              className={cn(
+                "group relative isolate overflow-hidden rounded-[var(--radius-lg)] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.38),rgba(17,24,39,0.82))] p-6 shadow-surface shadow-[0_45px_120px_-60px_rgba(37,99,235,0.75)] backdrop-blur-sm transition-all duration-500 ease-out focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus md:p-9",
+                headerGradientClass,
+                "hover:-translate-y-[2px] hover:shadow-[0_35px_120px_-70px_rgba(147,197,253,0.8)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-surface"
+              )}
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
-                  {t("dashboard:todaySchedule")}
-                </h2>
-                <div className="flex items-center gap-2">
-                  <Button
-                    as={Link}
-                    to="/schedule"
-                    size="sm"
-                    variant="outline"
-                    className="whitespace-nowrap px-5"
-                    aria-label={t("dashboard:aria.openFullSchedule")}
-                    onPointerDown={warmSchedulePage}
-                    onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.35),transparent_65%)] opacity-70 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-y-28 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
+              >
+                <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/55 to-transparent" />
+              </span>
+              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.45),rgba(14,165,233,0))] opacity-70 blur-3xl" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,rgba(59,130,246,0.35),rgba(59,130,246,0),rgba(14,165,233,0.35),rgba(59,130,246,0.35))] opacity-50 blur-[100px]" />
+              <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
+                <div className="space-y-3 text-nav-text lg:col-span-8">
+                  <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
+                    {greeting}
+                    {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
+                  </h1>
+                  <div
+                    className="flex flex-wrap items-center gap-3 text-sm text-nav-text/90"
+                    role="status"
+                    aria-live="polite"
                   >
-                    {t("dashboard:fullSchedule")}
+                    <Badge
+                      size="sm"
+                      className="chip-clock font-mono text-base"
+                      aria-label={t("common:ariaCurrentTime")}
+                    >
+                      <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
+                        <span>{hh}</span>
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "transition-opacity duration-300 ease-out",
+                            showColon ? "opacity-100" : "opacity-0"
+                          )}
+                        >
+                          :
+                        </span>
+                        <span>{mm}</span>
+                      </span>
+                    </Badge>
+                    <span className="text-sm font-medium tracking-tight">{dateStr}</span>
+                  </div>
+                </div>
+                <div className="hidden justify-end md:flex lg:col-span-4">
+                  <Button
+                    variant="outline"
+                    size="md"
+                    className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+                    onClick={() => navigate("/profile")}
+                    aria-label={t("navigation:aria.openProfile")}
+                  >
+                    {t("navigation:menu.profile")}
                   </Button>
                 </div>
               </div>
-              {currentLesson && (
-                <div className="mb-6">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <Badge size="sm" tone="primary" label={t("dashboard:now")} />
-                    <span className="text-base font-semibold text-page-foreground">
-                      {currentLesson.subject}
-                    </span>
-                    <Badge
-                      size="sm"
-                      className="chip-time"
-                      label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
-                    />
+            </header>
+
+            <div
+              data-fade
+              style={fadeDelayStyle("100ms")}
+              className="relative overflow-hidden rounded-[var(--radius-lg)] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.18),rgba(15,23,42,0.75))] p-2 shadow-surface shadow-[0_35px_100px_-70px_rgba(59,130,246,0.6)] backdrop-blur-sm"
+            >
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.24),transparent_70%)] opacity-80"
+              />
+              <div className="relative z-[1]">
+                <DashboardStories
+                  stories={stories}
+                  loading={loadingStories}
+                  onPrefetch={triggerStoriesPrefetch}
+                  onStoryOpen={handleStoryOpen}
+                />
+              </div>
+            </div>
+            <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
+              <Card
+                data-fade
+                style={fadeDelayStyle("140ms")}
+                className={cn(
+                  "group relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.95),rgba(30,41,59,0.75))] shadow-surface shadow-[0_35px_90px_-65px_rgba(14,116,144,0.7)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_38px_110px_-70px_rgba(59,130,246,0.55)]",
+                  "lg:col-span-4"
+                )}
+                padding="lg"
+                aria-busy={loadingSched}
+              >
+                <div className="relative z-[1] space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
+                      {t("dashboard:todaySchedule")}
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        as={Link}
+                        to="/schedule"
+                        size="sm"
+                        variant="outline"
+                        className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+                        aria-label={t("dashboard:aria.openFullSchedule")}
+                        onPointerDown={warmSchedulePage}
+                        onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
+                      >
+                        {t("dashboard:fullSchedule")}
+                      </Button>
+                    </div>
                   </div>
-                  <ProgressBar
-                    value={currentProgress}
-                    className="h-2.5"
-                    ariaLabel={t("common:ariaCurrentLessonProgress")}
-                  />
-                </div>
-              )}
-              {!currentLesson && nextLesson && (
-                <div className="mb-6">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      size="sm"
-                      variant="outline"
-                      tone="primary"
-                      className="font-bold uppercase tracking-wide"
-                      label={t("dashboard:next")}
-                    />
-                    <span className="text-base font-semibold text-page-foreground">
-                      {nextLesson.subject}
-                    </span>
-                    <Badge
-                      size="sm"
-                      className="chip-time"
-                      label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
-                    />
-                  </div>
-                </div>
-              )}
-              <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
-              {loadingSched && (
-                <div className="space-y-3" role="presentation">
-                  <Skeleton height={22} />
-                  <Skeleton height={22} />
-                  <Skeleton height={22} />
-                </div>
-              )}
-              {!loadingSched && todayLessons.length === 0 && (
-                <p className="text-sm text-secondary">{t("dashboard:noClasses")}</p>
-              )}
-              {!loadingSched && todayLessons.length > 0 && (
-                <ul className="space-y-3">
-                  {todayLessons.map((l) => (
-                    <li key={l.id} className="flex flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-2 text-sm">
-                        <Badge
-                          size="sm"
-                          className="chip-time"
-                          label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                        />
+                  {currentLesson && (
+                    <div>
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <Badge size="sm" tone="primary" label={t("dashboard:now")} />
                         <span className="text-base font-semibold text-page-foreground">
-                          {l.subject}
+                          {currentLesson.subject}
                         </span>
                         <Badge
                           size="sm"
-                          className="chip-type"
-                          variant="outline"
-                          label={l.lesson_type}
+                          className="chip-time"
+                          label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                         />
                       </div>
-                      <p className="text-sm text-secondary">
-                        {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-
-            <Card
-              data-fade
-              style={fadeDelayStyle("200ms")}
-              className="lg:col-span-4"
-              padding="lg"
-              aria-busy={loadingNews}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
-                  {t("dashboard:news.heading")}
-                </h2>
-                <Button
-                  as={Link}
-                  to="/news"
-                  size="sm"
-                  variant="outline"
-                  className="whitespace-nowrap px-5"
-                  aria-label={t("dashboard:aria.viewAllNews")}
-                  onPointerDown={() => {
-                    warmNewsPage()
-                    prefetchData("news")
-                  }}
-                  onKeyDown={(event) => {
-                    prepareOnKey(event, () => {
-                      warmNewsPage()
-                      prefetchData("news")
-                    })
-                  }}
-                >
-                  {t("dashboard:viewAll")}
-                </Button>
-              </div>
-              <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
-              {loadingNews && (
-                <div className="space-y-4" role="presentation">
-                  <div className="flex items-center gap-3">
-                    <Skeleton width={44} height={44} rounded="9999px" />
-                    <div className="flex-1 space-y-2">
+                      <ProgressBar
+                        value={currentProgress}
+                        className="h-2.5"
+                        ariaLabel={t("common:ariaCurrentLessonProgress")}
+                      />
+                    </div>
+                  )}
+                  {!currentLesson && nextLesson && (
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          size="sm"
+                          variant="outline"
+                          tone="primary"
+                          className="font-bold uppercase tracking-wide"
+                          label={t("dashboard:next")}
+                        />
+                        <span className="text-base font-semibold text-page-foreground">
+                          {nextLesson.subject}
+                        </span>
+                        <Badge
+                          size="sm"
+                          className="chip-time"
+                          label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
+                  {loadingSched && (
+                    <div className="space-y-3" role="presentation">
                       <Skeleton height={22} />
-                      <Skeleton height={18} width="60%" />
+                      <Skeleton height={22} />
+                      <Skeleton height={22} />
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Skeleton width={44} height={44} rounded="9999px" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton height={22} width="80%" />
-                      <Skeleton height={18} width="50%" />
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!loadingNews && news.length === 0 && (
-                <p className="text-sm text-secondary">{t("dashboard:news.empty")}</p>
-              )}
-              {!loadingNews && news.length > 0 && (
-                <ul
-                  className="divide-y divide-[color:var(--slate-10)]"
-                  aria-label={t("dashboard:aria.newsList")}
-                >
-                  {news.map((n) => (
-                    <li key={n.id} className="py-3 first:pt-0 last:pb-0">
-                      <button
-                        type="button"
-                        className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-2 text-left transition-colors duration-200 ease-out hover:bg-surface-accent/60 focus-visible:outline-none focus-visible:shadow-focus"
-                        onClick={() => navigate(`/news/${n.id}`)}
-                        title={n.title}
-                        aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-                      >
-                        <DateBullet date={n.created_at} locale={locale} />
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-page-foreground">
-                            {n.title}
-                          </span>
-                          <span className="text-sm text-secondary">
-                            {(n.content || "").slice(0, 110)}
-                            {(n.content || "").length > 110 ? "…" : ""}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-
-            <Card
-              data-fade
-              style={fadeDelayStyle("260ms")}
-              className="lg:col-span-4"
-              padding="lg"
-              aria-busy={loadingEvents}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
-                  {t("dashboard:events.heading")}
-                </h2>
-                <Button
-                  as={Link}
-                  to="/events"
-                  size="sm"
-                  variant="outline"
-                  className="whitespace-nowrap px-5"
-                  aria-label={t("dashboard:aria.viewAllEvents")}
-                  onPointerDown={() => {
-                    warmEventsPage()
-                    prefetchData("events")
-                  }}
-                  onKeyDown={(event) => {
-                    prepareOnKey(event, () => {
-                      warmEventsPage()
-                      prefetchData("events")
-                    })
-                  }}
-                >
-                  {t("dashboard:viewAll")}
-                </Button>
-              </div>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={eventsScope === "today" ? "solid" : "outline"}
-                  className="whitespace-nowrap"
-                  onClick={() => setEventsScope("today")}
-                  aria-pressed={eventsScope === "today"}
-                >
-                  {t("dashboard:scope.today")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={eventsScope === "week" ? "solid" : "outline"}
-                  className="whitespace-nowrap"
-                  onClick={() => setEventsScope("week")}
-                  aria-pressed={eventsScope === "week"}
-                >
-                  {t("dashboard:scope.week")}
-                </Button>
-              </div>
-              <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
-              {loadingEvents && (
-                <div className="space-y-3" role="presentation">
-                  <Skeleton height={24} />
-                  <Skeleton height={24} width="80%" />
-                  <Skeleton height={24} width="70%" />
-                </div>
-              )}
-              {!loadingEvents && scopedEvents.length === 0 && (
-                <p className="text-sm text-secondary">{t("dashboard:events.empty")}</p>
-              )}
-              {!loadingEvents && scopedEvents.length > 0 && (
-                <ul
-                  className="divide-y divide-[color:var(--slate-10)]"
-                  aria-label={
-                    eventsScope === "today"
-                      ? t("dashboard:aria.eventsToday")
-                      : t("dashboard:aria.eventsWeek")
-                  }
-                >
-                  {scopedEvents.map((e) => {
-                    const d = parseLocalDate(String(e.starts_at))
-                    return (
-                      <li key={e.id} className="py-3 first:pt-0 last:pb-0">
-                        <button
-                          type="button"
-                          className="group flex w-full flex-col gap-2 rounded-ue-lg px-2 py-2 text-left transition-colors duration-200 ease-out hover:bg-surface-accent/60 focus-visible:outline-none focus-visible:shadow-focus"
-                          onClick={() => navigate(`/events/${e.id}`)}
-                          aria-label={t("dashboard:aria.eventItem", { title: e.title })}
-                        >
-                          <span className="text-base font-semibold text-page-foreground">
-                            {e.title}
-                          </span>
-                          <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
+                  )}
+                  {!loadingSched && todayLessons.length === 0 && (
+                    <p className="text-sm text-secondary">{t("dashboard:noClasses")}</p>
+                  )}
+                  {!loadingSched && todayLessons.length > 0 && (
+                    <ul className="space-y-3">
+                      {todayLessons.map((l) => (
+                        <li key={l.id} className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
                             <Badge
                               size="sm"
                               className="chip-time"
-                              label={
-                                d
-                                  ? d.toLocaleString(locale, {
-                                      day: "2-digit",
-                                      month: "long",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : ""
-                              }
+                              label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
                             />
-                            {!!e.location && (
-                              <Badge size="sm" variant="outline" label={e.location} />
-                            )}
-                          </span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </Card>
-          </section>
+                            <span className="text-base font-semibold text-page-foreground">
+                              {l.subject}
+                            </span>
+                            <Badge
+                              size="sm"
+                              className="chip-type"
+                              variant="outline"
+                              label={l.lesson_type}
+                            />
+                          </div>
+                          <p className="text-sm text-secondary">
+                            {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-24 right-10 z-0 h-32 w-32 rounded-full bg-[radial-gradient(circle,rgba(96,165,250,0.45),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-75"
+                />
+              </Card>
+
+              <Card
+                data-fade
+                style={fadeDelayStyle("200ms")}
+                className={cn(
+                  "group relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.96),rgba(17,24,39,0.78))] shadow-surface shadow-[0_30px_95px_-70px_rgba(59,130,246,0.65)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_42px_120px_-75px_rgba(96,165,250,0.55)]",
+                  "lg:col-span-4"
+                )}
+                padding="lg"
+                aria-busy={loadingNews}
+              >
+                <div className="relative z-[1] space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
+                      {t("dashboard:news.heading")}
+                    </h2>
+                    <Button
+                      as={Link}
+                      to="/news"
+                      size="sm"
+                      variant="outline"
+                      className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+                      aria-label={t("dashboard:aria.viewAllNews")}
+                      onPointerDown={() => {
+                        warmNewsPage()
+                        prefetchData("news")
+                      }}
+                      onKeyDown={(event) => {
+                        prepareOnKey(event, () => {
+                          warmNewsPage()
+                          prefetchData("news")
+                        })
+                      }}
+                    >
+                      {t("dashboard:viewAll")}
+                    </Button>
+                  </div>
+                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
+                  {loadingNews && (
+                    <div className="space-y-4" role="presentation">
+                      <div className="flex items-center gap-3">
+                        <Skeleton width={44} height={44} rounded="9999px" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton height={22} />
+                          <Skeleton height={18} width="60%" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Skeleton width={44} height={44} rounded="9999px" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton height={22} width="80%" />
+                          <Skeleton height={18} width="50%" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!loadingNews && news.length === 0 && (
+                    <p className="text-sm text-secondary">{t("dashboard:news.empty")}</p>
+                  )}
+                  {!loadingNews && news.length > 0 && (
+                    <ul
+                      className="divide-y divide-[color:var(--slate-10)]"
+                      aria-label={t("dashboard:aria.newsList")}
+                    >
+                      {news.map((n) => (
+                        <li key={n.id} className="py-3 first:pt-0 last:pb-0">
+                          <button
+                            type="button"
+                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-white/5 focus-visible:outline-none focus-visible:shadow-focus"
+                            onClick={() => navigate(`/news/${n.id}`)}
+                            title={n.title}
+                            aria-label={t("dashboard:aria.newsItem", { title: n.title })}
+                          >
+                            <DateBullet date={n.created_at} locale={locale} />
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-page-foreground">
+                                {n.title}
+                              </span>
+                              <span className="text-sm text-secondary">
+                                {(n.content || "").slice(0, 110)}
+                                {(n.content || "").length > 110 ? "…" : ""}
+                              </span>
+                            </div>
+                            <span
+                              aria-hidden="true"
+                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-xs font-semibold uppercase tracking-[0.2em] text-white/70 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                            >
+                              →
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.2),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.55),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
+                />
+              </Card>
+
+              <Card
+                data-fade
+                style={fadeDelayStyle("260ms")}
+                className={cn(
+                  "group relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top,rgba(17,24,39,0.94),rgba(30,41,59,0.76))] shadow-surface shadow-[0_28px_95px_-70px_rgba(59,130,246,0.6)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_40px_120px_-75px_rgba(56,189,248,0.55)]",
+                  "lg:col-span-4"
+                )}
+                padding="lg"
+                aria-busy={loadingEvents}
+              >
+                <div className="relative z-[1] space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
+                      {t("dashboard:events.heading")}
+                    </h2>
+                    <Button
+                      as={Link}
+                      to="/events"
+                      size="sm"
+                      variant="outline"
+                      className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+                      aria-label={t("dashboard:aria.viewAllEvents")}
+                      onPointerDown={() => {
+                        warmEventsPage()
+                        prefetchData("events")
+                      }}
+                      onKeyDown={(event) => {
+                        prepareOnKey(event, () => {
+                          warmEventsPage()
+                          prefetchData("events")
+                        })
+                      }}
+                    >
+                      {t("dashboard:viewAll")}
+                    </Button>
+                  </div>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={eventsScope === "today" ? "solid" : "outline"}
+                      className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-[1px]"
+                      onClick={() => setEventsScope("today")}
+                      aria-pressed={eventsScope === "today"}
+                    >
+                      {t("dashboard:scope.today")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={eventsScope === "week" ? "solid" : "outline"}
+                      className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-[1px]"
+                      onClick={() => setEventsScope("week")}
+                      aria-pressed={eventsScope === "week"}
+                    >
+                      {t("dashboard:scope.week")}
+                    </Button>
+                  </div>
+                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
+                  {loadingEvents && (
+                    <div className="space-y-3" role="presentation">
+                      <Skeleton height={24} />
+                      <Skeleton height={24} width="80%" />
+                      <Skeleton height={24} width="70%" />
+                    </div>
+                  )}
+                  {!loadingEvents && scopedEvents.length === 0 && (
+                    <p className="text-sm text-secondary">{t("dashboard:events.empty")}</p>
+                  )}
+                  {!loadingEvents && scopedEvents.length > 0 && (
+                    <ul
+                      className="divide-y divide-[color:var(--slate-10)]"
+                      aria-label={
+                        eventsScope === "today"
+                          ? t("dashboard:aria.eventsToday")
+                          : t("dashboard:aria.eventsWeek")
+                      }
+                    >
+                      {scopedEvents.map((e) => {
+                        const d = parseLocalDate(String(e.starts_at))
+                        return (
+                          <li key={e.id} className="py-3 first:pt-0 last:pb-0">
+                            <button
+                              type="button"
+                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-white/5 focus-visible:outline-none focus-visible:shadow-focus"
+                              onClick={() => navigate(`/events/${e.id}`)}
+                              aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                            >
+                              <span className="flex items-center gap-3">
+                                <span className="text-base font-semibold text-page-foreground">
+                                  {e.title}
+                                </span>
+                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-white/20 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white/70 transition-colors duration-300 group-hover:border-white/60 group-hover:text-white">
+                                  <AutoAwesomeRoundedIcon
+                                    aria-hidden="true"
+                                    fontSize="inherit"
+                                    className="h-3.5 w-3.5"
+                                  />
+                                </span>
+                              </span>
+                              <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
+                                <Badge
+                                  size="sm"
+                                  className="chip-time"
+                                  label={
+                                    d
+                                      ? d.toLocaleString(locale, {
+                                          day: "2-digit",
+                                          month: "long",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : ""
+                                  }
+                                />
+                                {!!e.location && (
+                                  <Badge size="sm" variant="outline" label={e.location} />
+                                )}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(167,139,250,0.5),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-85"
+                />
+              </Card>
+            </section>
+          </div>
         </section>
       </PageFadeIn>
     </Layout>
