@@ -31,6 +31,7 @@ type DashboardStoriesProps = {
   onPrefetch?: () => void
   onStoryOpen?: (story: StoryItem) => void
   maxVisibleStories?: number
+  circleScale?: number
 }
 
 export default function DashboardStories({
@@ -39,6 +40,7 @@ export default function DashboardStories({
   onPrefetch,
   onStoryOpen,
   maxVisibleStories = 12,
+  circleScale = 1,
 }: DashboardStoriesProps) {
   const { t } = useTranslation("dashboard")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -47,6 +49,21 @@ export default function DashboardStories({
   useEffect(() => setIsClient(true), [])
 
   const listLabel = t("aria.storiesList")
+
+  const normalizedCircleScale = useMemo(() => {
+    if (!Number.isFinite(circleScale) || circleScale <= 0) {
+      return 1
+    }
+    return circleScale
+  }, [circleScale])
+
+  const baseCircleSize = 76
+  const baseItemWidth = 92
+  const baseItemMinHeight = 112
+
+  const scaledCircleSize = baseCircleSize * normalizedCircleScale
+  const scaledItemWidth = baseItemWidth * normalizedCircleScale
+  const scaledItemMinHeight = baseItemMinHeight * normalizedCircleScale
 
   const displayStories = useMemo(() => {
     const filtered = Array.isArray(stories) ? stories.filter(Boolean) : []
@@ -472,8 +489,17 @@ export default function DashboardStories({
         {loading && (
           <div className="flex flex-wrap gap-x-6 gap-y-6 py-3">
             {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
-              <div key={index} className="flex w-[92px] min-h-[112px] items-center justify-center">
-                <Skeleton width={76} height={76} rounded="9999px" />
+              <div
+                key={index}
+                className="flex items-center justify-center"
+                style={{
+                  width: scaledItemWidth,
+                  minWidth: scaledItemWidth,
+                  minHeight: scaledItemMinHeight,
+                  flexBasis: scaledItemWidth,
+                }}
+              >
+                <Skeleton width={scaledCircleSize} height={scaledCircleSize} rounded="9999px" />
               </div>
             ))}
           </div>
@@ -490,15 +516,27 @@ export default function DashboardStories({
                 <li
                   key={story.id}
                   className={cn(
-                    "flex min-h-[112px] w-[92px] flex-shrink-0 flex-col items-center justify-center overflow-visible sm:basis-[92px]",
+                    "flex flex-shrink-0 flex-col items-center justify-center overflow-visible sm:basis-[92px]",
                     index === 0 ? "ml-3 sm:ml-2" : ""
                   )}
+                  style={{
+                    width: scaledItemWidth,
+                    minWidth: scaledItemWidth,
+                    minHeight: scaledItemMinHeight,
+                    flexBasis: scaledItemWidth,
+                  }}
                 >
                   <StoryCircle
                     as="button"
                     type="button"
                     size="md"
                     borderWidth={2}
+                    style={{
+                      width: scaledCircleSize,
+                      height: scaledCircleSize,
+                      minWidth: scaledCircleSize,
+                      minHeight: scaledCircleSize,
+                    }}
                     onClick={() => openStory(story, index)}
                     onFocus={onPrefetch}
                     onMouseEnter={onPrefetch}

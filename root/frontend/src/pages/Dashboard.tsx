@@ -550,6 +550,7 @@ export default function Dashboard() {
                 loading={loadingStories}
                 onPrefetch={triggerStoriesPrefetch}
                 onStoryOpen={handleStoryOpen}
+                circleScale={2}
               />
             </div>
             <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
