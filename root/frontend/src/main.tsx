@@ -21,6 +21,7 @@ async function bootstrap() {
   const { queryClient } = QueryClientLocal
   const ThemeMod = await import("./theme")
   const { default: theme } = ThemeMod
+  await import("./assets/tailwind.css")
   await import("./assets/themes.css")
   await import("./i18n/config")
   await import("dayjs/locale/ru")

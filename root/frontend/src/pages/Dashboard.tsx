@@ -6,30 +6,14 @@ import {
   useRef,
   type KeyboardEvent,
   type CSSProperties,
+  type MediaQueryListEvent,
 } from "react"
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
-import SmartImage from "@/components/SmartImage"
 import DashboardStories from "@/components/DashboardStories"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../api/client"
-import {
-  Box,
-  Typography,
-  Chip,
-  Stack,
-  Button,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  Skeleton,
-  useMediaQuery,
-  Tooltip,
-  LinearProgress,
-} from "@mui/material"
 import { Link, useNavigate } from "react-router-dom"
-import { cardHoverSx } from "@/constants/cardHover"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
@@ -94,31 +78,15 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
       })
     : fallback
   return (
-    <Tooltip title={full} enterDelay={150}>
-      <Box
-        aria-label={t("ariaDatePublished", { date: full })}
-        sx={{
-          width: 44,
-          height: 44,
-          minWidth: 44,
-          minHeight: 44,
-          flex: "0 0 44px",
-          borderRadius: "50%",
-          background: "linear-gradient(120deg,#1d5fff,#65b2ff)",
-          color: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 800,
-          lineHeight: 1,
-          userSelect: "none",
-        }}
-      >
-        <Box sx={{ fontSize: 14 }}>{dd}</Box>
-        <Box sx={{ fontSize: 10, opacity: 0.9 }}>{mm}</Box>
-      </Box>
-    </Tooltip>
+    <span
+      className="flex h-11 w-11 flex-none select-none flex-col items-center justify-center rounded-full bg-[linear-gradient(120deg,#1d5fff,#65b2ff)] text-sm font-extrabold leading-none text-white"
+      aria-label={t("ariaDatePublished", { date: full })}
+      title={full}
+      style={{ minWidth: 44, minHeight: 44 }}
+    >
+      <span className="text-sm leading-none">{dd}</span>
+      <span className="text-[10px] leading-tight opacity-90">{mm}</span>
+    </span>
   )
 }
 
@@ -187,7 +155,10 @@ function setCache<T>(key: string, data: T) {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const isNarrow = useMediaQuery("(max-width:1100px)")
+  const [isNarrow, setIsNarrow] = useState(() => {
+    if (typeof window === "undefined") return false
+    return window.matchMedia("(max-width:1100px)").matches
+  })
   const navigate = useNavigate()
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
@@ -420,25 +391,39 @@ export default function Dashboard() {
     fetchSchedule()
   }, [fetchSchedule])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined
+    const media = window.matchMedia("(max-width:1100px)")
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsNarrow(event.matches)
+    }
+    handleChange(media)
+    if (typeof media.addEventListener === "function") {
+      const listener = (event: MediaQueryListEvent) => handleChange(event)
+      media.addEventListener("change", listener)
+      return () => media.removeEventListener("change", listener)
+    }
+    if (typeof media.addListener === "function") {
+      const legacyListener = (event: MediaQueryListEvent) => handleChange(event)
+      media.addListener(legacyListener)
+      return () => media.removeListener(legacyListener)
+    }
+    return undefined
+  }, [])
+
   const headerGradient = isNarrow
     ? "linear-gradient(100deg,var(--hero-grad-start) 50%,var(--hero-grad-end) 100%)"
     : "linear-gradient(100deg,var(--hero-grad-start) 40%,var(--hero-grad-end) 100%)"
-  const focusRing = "0 0 0 3px #2563eb33, 0 0 0 6px #2563eb1f"
-  const btnSx = {
-    borderRadius: 2,
-    fontWeight: 700,
-    px: 1.8,
-    py: 0.5,
-    whiteSpace: "nowrap",
-    transition: "background .16s,color .16s,border-color .16s,box-shadow .16s, transform .16s",
-    "&:hover": {
-      background: "linear-gradient(100deg,#1976d2 20%,#449aff 100%)",
-      color: "#fff",
-      borderColor: "transparent",
-      transform: "translateY(-1px)",
-    },
-    "&:active": { transform: "translateY(0)" },
-    "&:focus-visible": { boxShadow: focusRing, outline: "none" },
+  const buttonClasses =
+    "inline-flex items-center justify-center whitespace-nowrap rounded-2xl border border-transparent px-4 py-2 font-semibold tracking-wide text-[color:var(--page-text)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-transparent hover:bg-[linear-gradient(100deg,#1976d2_20%,#449aff_100%)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb55] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent active:translate-y-0"
+  const pillButtonClasses =
+    "inline-flex items-center justify-center whitespace-nowrap rounded-full border border-transparent px-4 py-1.5 text-sm font-semibold tracking-wide text-[color:var(--page-text)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[linear-gradient(100deg,#1976d2_20%,#449aff_100%)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb55] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent active:translate-y-0"
+  const cardBaseClasses =
+    "rounded-[2rem] bg-[var(--card-bg)] p-6 shadow-[0_16px_40px_rgba(0,0,0,0.22)] transition-all duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(0,0,0,0.18)] md:p-8 md:shadow-[var(--shadow-1)]"
+  const softBorderColor = "color-mix(in srgb, var(--page-text) 12%, transparent)"
+  const mutedSurface = "color-mix(in srgb, var(--page-text) 8%, transparent)"
+  const skeletonBase: CSSProperties = {
+    background: "color-mix(in srgb, var(--page-text) 14%, transparent)",
   }
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
@@ -478,283 +463,211 @@ export default function Dashboard() {
     }
   }
 
-  const cardHoverBase = cardHoverSx()
-  const homeCardSx = {
-    ...cardHoverBase,
-    p: 2.2,
-    borderRadius: "2rem",
-    background: "var(--card-bg)",
-    boxShadow: {
-      xs: "0 16px 40px rgba(0,0,0,.22), 0 6px 16px rgba(0,0,0,.12)",
-      md: "var(--shadow-1)",
-    },
-    border: {
-      xs: "1px solid color-mix(in srgb, var(--page-text) 12%, transparent)",
-      md: "1px solid transparent",
-    },
-    backdropFilter: { xs: "saturate(110%)", md: "none" },
-  } as const
+  const cardBaseClasses =
+    "rounded-[2rem] bg-[var(--card-bg)] p-6 shadow-[0_16px_40px_rgba(0,0,0,0.22)] transition-all duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(0,0,0,0.18)] md:p-8 md:shadow-[var(--shadow-1)]"
 
   return (
     <Layout>
-      <a
-        href="#main"
-        style={{
-          position: "fixed",
-          left: 8,
-          top: 8,
-          padding: "8px 12px",
-          background: "#1d5fff",
-          color: "#fff",
-          borderRadius: 8,
-          transform: "translateY(-200%)",
-          transition: "transform .2s",
-          zIndex: 5000,
-        }}
-        onFocus={(e) => {
-          ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)"
-        }}
-        onBlur={(e) => {
-          ;(e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-200%)"
-        }}
-      >
+      <a href="#main" className="skip-link">
         {t("common:skipToMain")}
       </a>
       <PageFadeIn>
-        <Box
+        <div
           id="main"
-          sx={{
-            width: "100%",
-            maxWidth: "min(1800px, 100%)",
-            px: { xs: 2, sm: 3, md: 5, lg: 8 },
-            py: { xs: 2, md: 3 },
-            mx: "auto",
-          }}
+          className="mx-auto flex w-full max-w-[min(1800px,100%)] flex-col gap-6 px-4 py-4 sm:px-6 md:gap-8 md:px-10 md:py-6 lg:px-16"
         >
-          <Box
+          <div
             data-fade
-            style={{ "--fade-delay": "40ms" } as CSSProperties}
-            sx={{
-              background: headerGradient,
-              borderRadius: "2rem",
-              p: { xs: 2.2, md: 3 },
-              boxShadow: "0 12px 36px #1d5fff16, 0 4px 14px #0000000a",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 2,
-              ...cardHoverBase,
-              border: { xs: "1px solid color-mix(in srgb, var(--page-text) 10%, transparent)" },
-            }}
+            style={
+              {
+                "--fade-delay": "40ms",
+                background: headerGradient,
+                borderColor: isNarrow ? softBorderColor : "transparent",
+                borderWidth: 1,
+                borderStyle: "solid",
+              } as CSSProperties
+            }
+            className={`${cardBaseClasses} flex flex-col gap-5 md:flex-row md:items-center md:justify-between`}
           >
-            <Box>
-              <Typography sx={{ fontSize: "clamp(1.4rem, 2.2vw, 2.4rem)", fontWeight: 800 }}>
+            <div className="space-y-3">
+              <h1 className="text-[clamp(1.4rem,2.2vw,2.4rem)] font-extrabold leading-snug text-[color:var(--page-text)]">
                 {greeting}
                 {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
-              </Typography>
-              <Stack
-                direction="row"
-                alignItems="center"
-                gap={1}
-                mt={1}
+              </h1>
+              <div
+                className="flex flex-wrap items-center gap-3 text-[color:var(--secondary-text)]"
                 role="status"
                 aria-live="polite"
               >
-                <Chip
-                  size="small"
-                  className="chip-clock"
+                <span
+                  className="chip-clock inline-flex items-baseline gap-2 rounded-full px-3 py-1 text-sm font-semibold tracking-wide"
                   aria-label={t("common:ariaCurrentTime")}
-                  label={
-                    <Box
-                      sx={{
-                        display: "inline-flex",
-                        alignItems: "baseline",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
+                >
+                  <span
+                    className="flex items-baseline gap-1"
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    <span>{hh}</span>
+                    <span
+                      aria-hidden="true"
+                      className="transition-opacity duration-300"
+                      style={{ opacity: showColon ? 1 : 0 }}
                     >
-                      <Box>{hh}</Box>
-                      <Box sx={{ mx: 0.2, transition: "opacity .28s", opacity: showColon ? 1 : 0 }}>
-                        :
-                      </Box>
-                      <Box>{mm}</Box>
-                    </Box>
-                  }
-                />
-                <Typography sx={{ opacity: 0.9 }}>{dateStr}</Typography>
-              </Stack>
-            </Box>
-            <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
-              <Button
-                variant="outlined"
-                onClick={() => navigate("/profile")}
-                sx={{ ...btnSx, px: 2.2, py: 0.9 }}
+                      :
+                    </span>
+                    <span>{mm}</span>
+                  </span>
+                </span>
+                <span className="text-base opacity-90">{dateStr}</span>
+              </div>
+            </div>
+            <div className="hidden items-center gap-3 md:flex">
+              <Link
+                to="/profile"
+                className={buttonClasses}
+                style={{ borderColor: softBorderColor }}
                 aria-label={t("navigation:aria.openProfile")}
               >
                 {t("navigation:menu.profile")}
-              </Button>
-            </Box>
-          </Box>
+              </Link>
+            </div>
+          </div>
 
-          <DashboardStories
-            stories={stories}
-            loading={loadingStories}
-            onPrefetch={triggerStoriesPrefetch}
-            onStoryOpen={handleStoryOpen}
-          />
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(12, 1fr)",
-              gap: { xs: 2, md: 3 },
-            }}
-          >
-            <Box
+          <div data-fade style={{ "--fade-delay": "90ms" } as CSSProperties}>
+            <DashboardStories
+              stories={stories}
+              loading={loadingStories}
+              onPrefetch={triggerStoriesPrefetch}
+              onStoryOpen={handleStoryOpen}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+            <section
               data-fade
               style={{ "--fade-delay": "140ms" } as CSSProperties}
-              sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "1 / span 4" } }}
+              className={`${cardBaseClasses} lg:col-span-4`}
               aria-busy={loadingSched}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mb: 1 }}
-              >
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-[color:var(--page-text)]">
                   {t("dashboard:todaySchedule")}
-                </Typography>
-                <Stack direction="row" gap={1}>
-                  <Button
-                    component={Link}
-                    to="/schedule"
-                    size="small"
-                    variant="outlined"
-                    sx={{ ...btnSx, px: 3, py: 0.9 }}
-                    aria-label={t("dashboard:aria.openFullSchedule")}
-                    onPointerDown={warmSchedulePage}
-                    onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
-                  >
-                    {t("dashboard:fullSchedule")}
-                  </Button>
-                </Stack>
-              </Stack>
-              {currentLesson && (
-                <Box sx={{ mb: 1.5 }}>
-                  <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
-                    <Chip size="small" color="primary" label={t("dashboard:now")} />
-                    <Typography sx={{ fontWeight: 700 }}>{currentLesson.subject}</Typography>
-                    <Chip
-                      size="small"
-                      className="chip-time"
-                      label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
-                    />
-                  </Stack>
-                  <LinearProgress
-                    variant="determinate"
-                    value={currentProgress}
-                    sx={{ height: 8, borderRadius: 6 }}
-                    aria-label={t("common:ariaCurrentLessonProgress")}
-                  />
-                </Box>
-              )}
-              {!currentLesson && nextLesson && (
-                <Box sx={{ mb: 1.5 }}>
-                  <Stack direction="row" alignItems="center" gap={1}>
-                    <Chip
-                      size="small"
-                      label={t("dashboard:next")}
-                      sx={(theme) => ({
-                        fontWeight: 700,
-                        bgcolor:
-                          theme.palette.mode === "dark"
-                            ? "rgba(99,102,241,.18)"
-                            : "rgba(25,118,210,.08)",
-                        color:
-                          theme.palette.mode === "dark" ? "#a5b4fc" : theme.palette.primary.main,
-                        border: "1px solid",
-                        borderColor:
-                          theme.palette.mode === "dark"
-                            ? "rgba(99,102,241,.38)"
-                            : "rgba(25,118,210,.3)",
-                        "& .MuiChip-label": { px: 1.1 },
-                      })}
-                    />
-                    <Typography sx={{ fontWeight: 700 }}>{nextLesson.subject}</Typography>
-                    <Chip
-                      size="small"
-                      className="chip-time"
-                      label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
-                    />
-                  </Stack>
-                </Box>
-              )}
-              <Divider sx={{ my: 1.5 }} />
-              {loadingSched && (
-                <Stack spacing={1.2}>
-                  <Skeleton height={22} />
-                  <Skeleton height={22} />
-                  <Skeleton height={22} />
-                </Stack>
-              )}
-              {!loadingSched && todayLessons.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:noClasses")}</Typography>
-              )}
-              {!loadingSched && todayLessons.length > 0 && (
-                <List dense sx={{ py: 0 }}>
-                  {todayLessons.map((l) => (
-                    <ListItem key={l.id} disablePadding sx={{ mb: 0.5 }}>
-                      <ListItemText
-                        primary={
-                          <Stack
-                            direction="row"
-                            alignItems="center"
-                            gap={1}
-                            sx={{ flexWrap: "wrap" }}
-                          >
-                            <Chip
-                              size="small"
-                              className="chip-time"
-                              label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                            />
-                            <Typography sx={{ fontWeight: 700 }}>{l.subject}</Typography>
-                            <Chip
-                              size="small"
-                              className="chip-type"
-                              label={l.lesson_type}
-                              variant="outlined"
-                            />
-                          </Stack>
-                        }
-                        secondary={
-                          <Typography sx={{ opacity: 0.85 }}>
-                            {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
-                          </Typography>
-                        }
-                        primaryTypographyProps={{ component: "div" }}
-                        secondaryTypographyProps={{ component: "span" }}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Box>
+                </h2>
+                <Link
+                  to="/schedule"
+                  className={buttonClasses}
+                  style={{ borderColor: softBorderColor }}
+                  aria-label={t("dashboard:aria.openFullSchedule")}
+                  onPointerDown={warmSchedulePage}
+                  onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
+                >
+                  {t("dashboard:fullSchedule")}
+                </Link>
+              </div>
 
-            <Box
+              {currentLesson && (
+                <div className="mt-5">
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                    <span
+                      className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+                      style={{ background: mutedSurface, borderColor: softBorderColor }}
+                    >
+                      {t("dashboard:now")}
+                    </span>
+                    <span className="text-base font-semibold text-[color:var(--page-text)]">
+                      {currentLesson.subject}
+                    </span>
+                    <span className="chip-time inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">
+                      {`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
+                    </span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-label={t("common:ariaCurrentLessonProgress")}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={currentProgress}
+                    className="relative h-2 w-full overflow-hidden rounded-full bg-[var(--progress-track)]"
+                  >
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full bg-[var(--progress-bar)] transition-[width] duration-500 ease-out"
+                      style={{ width: `${currentProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!currentLesson && nextLesson && (
+                <div className="mt-5">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span
+                      className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+                      style={{ background: mutedSurface, borderColor: softBorderColor }}
+                    >
+                      {t("dashboard:next")}
+                    </span>
+                    <span className="text-base font-semibold text-[color:var(--page-text)]">
+                      {nextLesson.subject}
+                    </span>
+                    <span className="chip-time inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">
+                      {`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <hr className="my-6 h-px border-none" style={{ background: mutedSurface }} />
+
+              {loadingSched && (
+                <div className="flex flex-col gap-3">
+                  <div className="h-5 w-full animate-pulse rounded-lg" style={skeletonBase} />
+                  <div className="h-5 w-11/12 animate-pulse rounded-lg" style={skeletonBase} />
+                  <div className="h-5 w-10/12 animate-pulse rounded-lg" style={skeletonBase} />
+                </div>
+              )}
+
+              {!loadingSched && todayLessons.length === 0 && (
+                <p className="text-[color:var(--secondary-text)]">{t("dashboard:noClasses")}</p>
+              )}
+
+              {!loadingSched && todayLessons.length > 0 && (
+                <ul className="flex flex-col gap-3">
+                  {todayLessons.map((l) => (
+                    <li key={l.id} className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="chip-time inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">
+                          {`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
+                        </span>
+                        <span className="text-base font-semibold text-[color:var(--page-text)]">
+                          {l.subject}
+                        </span>
+                        <span className="chip-type inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                          {l.lesson_type}
+                        </span>
+                      </div>
+                      <span className="text-sm text-[color:var(--secondary-text)]">
+                        {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section
               data-fade
               style={{ "--fade-delay": "200ms" } as CSSProperties}
-              sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "5 / span 4" } }}
+              className={`${cardBaseClasses} lg:col-span-4`}
               aria-busy={loadingNews}
             >
-              <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-[color:var(--page-text)]">
                   {t("dashboard:news.heading")}
-                </Typography>
-                <Button
-                  component={Link}
+                </h2>
+                <Link
                   to="/news"
-                  size="small"
-                  variant="outlined"
-                  sx={btnSx}
+                  className={buttonClasses}
+                  style={{ borderColor: softBorderColor }}
                   aria-label={t("dashboard:aria.viewAllNews")}
                   onPointerDown={() => {
                     warmNewsPage()
@@ -768,93 +681,75 @@ export default function Dashboard() {
                   }}
                 >
                   {t("dashboard:viewAll")}
-                </Button>
-              </Stack>
-              <Divider sx={{ my: 1.5 }} />
-              {loadingNews && (
-                <Stack spacing={1.2}>
-                  <Stack direction="row" gap={1.2} alignItems="center">
-                    <Skeleton variant="circular" width={44} height={44} />
-                    <Box sx={{ flex: 1 }}>
-                      <Skeleton height={22} />
-                      <Skeleton height={18} width="60%" />
-                    </Box>
-                  </Stack>
-                  <Stack direction="row" gap={1.2} alignItems="center">
-                    <Skeleton variant="circular" width={44} height={44} />
-                    <Box sx={{ flex: 1 }}>
-                      <Skeleton height={22} width="80%" />
-                      <Skeleton height={18} width="50%" />
-                    </Box>
-                  </Stack>
-                </Stack>
-              )}
-              {!loadingNews && news.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:news.empty")}</Typography>
-              )}
-              {!loadingNews && news.length > 0 && (
-                <Stack
-                  component="ul"
-                  spacing={1.1}
-                  sx={{ m: 0, p: 0, listStyle: "none" }}
-                  aria-label={t("dashboard:aria.newsList")}
-                >
-                  {news.map((n) => (
-                    <Stack
-                      key={n.id}
-                      component="li"
-                      direction="row"
-                      spacing={1.2}
-                      alignItems="center"
-                      style={{ textDecoration: "none", color: "inherit" }}
-                      onClick={() => navigate(`/news/${n.id}`)}
-                      role="link"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") navigate(`/news/${n.id}`)
-                      }}
-                      title={n.title}
-                      aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-                    >
-                      <DateBullet date={n.created_at} locale={locale} />
-                      <Box>
-                        <Typography
-                          sx={{ fontWeight: 700, fontSize: "clamp(.98rem, .9rem + .4vw, 1.06rem)" }}
-                        >
-                          {n.title}
-                        </Typography>
-                        <Typography color="text.secondary" sx={{ fontSize: ".95rem" }}>
-                          {(n.content || "").slice(0, 110)}
-                          {(n.content || "").length > 110 ? "…" : ""}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  ))}
-                </Stack>
-              )}
-            </Box>
+                </Link>
+              </div>
 
-            <Box
+              <hr className="my-6 h-px border-none" style={{ background: mutedSurface }} />
+
+              {loadingNews && (
+                <div className="flex flex-col gap-4">
+                  {[0, 1].map((key) => (
+                    <div key={key} className="flex items-center gap-3">
+                      <div className="h-11 w-11 rounded-full animate-pulse" style={skeletonBase} />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-5 w-4/5 rounded-lg animate-pulse" style={skeletonBase} />
+                        <div className="h-4 w-3/5 rounded-lg animate-pulse" style={skeletonBase} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!loadingNews && news.length === 0 && (
+                <p className="text-[color:var(--secondary-text)]">{t("dashboard:news.empty")}</p>
+              )}
+
+              {!loadingNews && news.length > 0 && (
+                <ul className="flex flex-col gap-4" aria-label={t("dashboard:aria.newsList")}>
+                  {news.map((n) => (
+                    <li key={n.id}>
+                      <div
+                        className="flex cursor-pointer items-start gap-3 rounded-2xl p-2 transition-transform duration-200 ease-out hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb55]"
+                        onClick={() => navigate(`/news/${n.id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") navigate(`/news/${n.id}`)
+                        }}
+                        role="link"
+                        tabIndex={0}
+                        title={n.title}
+                        aria-label={t("dashboard:aria.newsItem", { title: n.title })}
+                      >
+                        <DateBullet date={n.created_at} locale={locale} />
+                        <div className="space-y-1">
+                          <h3 className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-semibold text-[color:var(--page-text)]">
+                            {n.title}
+                          </h3>
+                          <p className="text-sm text-[color:var(--secondary-text)]">
+                            {(n.content || "").slice(0, 110)}
+                            {(n.content || "").length > 110 ? "…" : ""}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section
               data-fade
               style={{ "--fade-delay": "260ms" } as CSSProperties}
-              sx={{ ...homeCardSx, gridColumn: { xs: "1 / -1", lg: "9 / span 4" } }}
+              className={`${cardBaseClasses} lg:col-span-4`}
               aria-busy={loadingEvents}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mb: 1 }}
-              >
-                <Typography sx={{ fontWeight: 800, fontSize: "clamp(1.05rem, 2vw, 1.4rem)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-[color:var(--page-text)]">
                   {t("dashboard:events.heading")}
-                </Typography>
-                <Button
-                  component={Link}
+                </h2>
+                <Link
                   to="/events"
-                  size="small"
-                  variant="outlined"
-                  sx={btnSx}
+                  className={buttonClasses}
+                  style={{ borderColor: softBorderColor }}
                   aria-label={t("dashboard:aria.viewAllEvents")}
                   onPointerDown={() => {
                     warmEventsPage()
@@ -868,43 +763,63 @@ export default function Dashboard() {
                   }}
                 >
                   {t("dashboard:viewAll")}
-                </Button>
-              </Stack>
-              <Stack direction="row" gap={1} sx={{ mb: 1 }}>
-                <Button
-                  size="small"
-                  variant={eventsScope === "today" ? "contained" : "outlined"}
+                </Link>
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  className={pillButtonClasses}
+                  style={
+                    eventsScope === "today"
+                      ? {
+                          background: "linear-gradient(100deg,#1976d2 20%,#449aff 100%)",
+                          color: "#fff",
+                          borderColor: "transparent",
+                        }
+                      : { background: mutedSurface, borderColor: softBorderColor }
+                  }
                   onClick={() => setEventsScope("today")}
-                  sx={btnSx}
                   aria-pressed={eventsScope === "today"}
                 >
                   {t("dashboard:scope.today")}
-                </Button>
-                <Button
-                  size="small"
-                  variant={eventsScope === "week" ? "contained" : "outlined"}
+                </button>
+                <button
+                  type="button"
+                  className={pillButtonClasses}
+                  style={
+                    eventsScope === "week"
+                      ? {
+                          background: "linear-gradient(100deg,#1976d2 20%,#449aff 100%)",
+                          color: "#fff",
+                          borderColor: "transparent",
+                        }
+                      : { background: mutedSurface, borderColor: softBorderColor }
+                  }
                   onClick={() => setEventsScope("week")}
-                  sx={btnSx}
                   aria-pressed={eventsScope === "week"}
                 >
                   {t("dashboard:scope.week")}
-                </Button>
-              </Stack>
-              <Divider sx={{ my: 1.5 }} />
+                </button>
+              </div>
+
+              <hr className="my-6 h-px border-none" style={{ background: mutedSurface }} />
+
               {loadingEvents && (
-                <Stack spacing={1.2}>
-                  <Skeleton height={24} />
-                  <Skeleton height={24} width="80%" />
-                  <Skeleton height={24} width="70%" />
-                </Stack>
+                <div className="flex flex-col gap-3">
+                  <div className="h-6 w-full animate-pulse rounded-lg" style={skeletonBase} />
+                  <div className="h-6 w-5/6 animate-pulse rounded-lg" style={skeletonBase} />
+                  <div className="h-6 w-4/6 animate-pulse rounded-lg" style={skeletonBase} />
+                </div>
               )}
+
               {!loadingEvents && scopedEvents.length === 0 && (
-                <Typography color="text.secondary">{t("dashboard:events.empty")}</Typography>
+                <p className="text-[color:var(--secondary-text)]">{t("dashboard:events.empty")}</p>
               )}
+
               {!loadingEvents && scopedEvents.length > 0 && (
-                <List
-                  dense
-                  sx={{ py: 0 }}
+                <ul
+                  className="flex flex-col gap-3"
                   aria-label={
                     eventsScope === "today"
                       ? t("dashboard:aria.eventsToday")
@@ -914,49 +829,47 @@ export default function Dashboard() {
                   {scopedEvents.map((e) => {
                     const d = parseLocalDate(String(e.starts_at))
                     return (
-                      <ListItem
-                        key={e.id}
-                        disablePadding
-                        sx={{ mb: 0.6, cursor: "pointer" }}
-                        onClick={() => navigate(`/events/${e.id}`)}
-                        onKeyDown={(ev) => {
-                          if (ev.key === "Enter") navigate(`/events/${e.id}`)
-                        }}
-                        tabIndex={0}
-                        aria-label={t("dashboard:aria.eventItem", { title: e.title })}
-                      >
-                        <ListItemText
-                          primary={<Typography sx={{ fontWeight: 700 }}>{e.title}</Typography>}
-                          secondary={
-                            <Stack direction="row" gap={1} flexWrap="wrap">
-                              <Chip
-                                size="small"
-                                className="chip-time"
-                                label={
-                                  d
-                                    ? d.toLocaleString(locale, {
-                                        day: "2-digit",
-                                        month: "long",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })
-                                    : ""
-                                }
-                              />
-                              {!!e.location && <Chip size="small" label={e.location} />}
-                            </Stack>
-                          }
-                          primaryTypographyProps={{ component: "div" }}
-                          secondaryTypographyProps={{ component: "div" }}
-                        />
-                      </ListItem>
+                      <li key={e.id}>
+                        <div
+                          className="flex cursor-pointer flex-col gap-2 rounded-2xl p-2 transition-transform duration-200 ease-out hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb55]"
+                          onClick={() => navigate(`/events/${e.id}`)}
+                          onKeyDown={(ev) => {
+                            if (ev.key === "Enter") navigate(`/events/${e.id}`)
+                          }}
+                          tabIndex={0}
+                          role="link"
+                          aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                        >
+                          <h3 className="text-base font-semibold text-[color:var(--page-text)]">{e.title}</h3>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="chip-time inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold">
+                              {d
+                                ? d.toLocaleString(locale, {
+                                    day: "2-digit",
+                                    month: "long",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : ""}
+                            </span>
+                            {!!e.location && (
+                              <span
+                                className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold"
+                                style={{ background: mutedSurface, borderColor: softBorderColor }}
+                              >
+                                {e.location}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </li>
                     )
                   })}
-                </List>
+                </ul>
               )}
-            </Box>
-          </Box>
-        </Box>
+            </section>
+          </div>
+        </div>
       </PageFadeIn>
     </Layout>
   )
