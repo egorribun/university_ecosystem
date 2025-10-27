@@ -52,14 +52,13 @@ async def start_notifications_retention_scheduler(
             while True:
                 try:
                     async with _METRICS.track_execution() as run:
-                        deleted_notifications, deleted_deliveries = (
-                            await cleanup_stale_notifications(
-                                retention_days=retention_days
-                            )
+                        (
+                            deleted_notifications,
+                            deleted_deliveries,
+                        ) = await cleanup_stale_notifications(
+                            retention_days=retention_days
                         )
-                        run.observe_deleted(
-                            (deleted_notifications, deleted_deliveries)
-                        )
+                        run.observe_deleted((deleted_notifications, deleted_deliveries))
                 except asyncio.CancelledError:
                     raise
                 except Exception:  # pragma: no cover - defensive logging

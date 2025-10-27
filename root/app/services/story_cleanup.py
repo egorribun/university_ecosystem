@@ -12,8 +12,8 @@ from typing import Awaitable, Callable
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.observability import get_periodic_task_metrics
 from app.core.database import async_session
+from app.core.observability import get_periodic_task_metrics
 from app.models.models import Story
 
 logger = logging.getLogger(__name__)
@@ -100,4 +100,3 @@ async def start_story_cleanup_scheduler(
 
 if __name__ == "__main__":  # pragma: no cover - convenience entrypoint
     asyncio.run(cleanup_expired_stories())
-

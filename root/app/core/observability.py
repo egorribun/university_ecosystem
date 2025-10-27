@@ -7,10 +7,10 @@ import re
 import socket
 import time
 import uuid
+from collections.abc import Iterable
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
-from collections.abc import Iterable
 from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
 
 import uvicorn

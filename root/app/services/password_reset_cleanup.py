@@ -12,8 +12,8 @@ from typing import Awaitable, Callable
 from sqlalchemy import and_, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.observability import get_periodic_task_metrics
 from app.core.database import async_session
+from app.core.observability import get_periodic_task_metrics
 from app.models.models import PasswordResetToken
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
@@ -126,4 +126,3 @@ async def start_password_reset_cleanup_scheduler(
 
 if __name__ == "__main__":  # pragma: no cover - convenience entrypoint
     asyncio.run(cleanup_stale_password_reset_tokens())
-
