@@ -548,24 +548,13 @@ export default function Dashboard() {
               data-fade="up"
               data-pop="true"
               style={fadeDelayStyle("100ms")}
-              className={cn(panelBase, panelHover, "p-2 md:p-3")}
             >
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,var(--dash-stories-radial),transparent_65%)] opacity-80"
+              <DashboardStories
+                stories={stories}
+                loading={loadingStories}
+                onPrefetch={triggerStoriesPrefetch}
+                onStoryOpen={handleStoryOpen}
               />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-10 top-0 h-2 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-60"
-              />
-              <div className="relative z-[1]">
-                <DashboardStories
-                  stories={stories}
-                  loading={loadingStories}
-                  onPrefetch={triggerStoriesPrefetch}
-                  onStoryOpen={handleStoryOpen}
-                />
-              </div>
             </div>
             <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
               <Card
