@@ -1,10 +1,4 @@
-export type WeatherAnimationVariant =
-  | "none"
-  | "glow"
-  | "breeze"
-  | "drizzle"
-  | "snow"
-  | "storm"
+export type WeatherAnimationVariant = "none" | "glow" | "breeze" | "drizzle" | "snow" | "storm"
 
 export interface WeatherIconMeta {
   /** Provider-specific condition identifier. */
@@ -46,7 +40,10 @@ const CODE_GROUPS: Array<{ codes: number[]; meta: WeatherIconMeta }> = [
   { codes: [80, 81, 82], meta: createMeta("Rain showers", "rainShowers", "🌦️", "drizzle") },
   { codes: [85, 86], meta: createMeta("Snow showers", "snowShowers", "🌨️", "snow") },
   { codes: [95], meta: createMeta("Thunderstorm", "thunderstorm", "⛈️", "storm") },
-  { codes: [96, 99], meta: createMeta("Thunderstorm with hail", "thunderstormHail", "⛈️", "storm") },
+  {
+    codes: [96, 99],
+    meta: createMeta("Thunderstorm with hail", "thunderstormHail", "⛈️", "storm"),
+  },
 ]
 
 const WEATHER_CODE_META: Record<number, WeatherIconMeta> = {}

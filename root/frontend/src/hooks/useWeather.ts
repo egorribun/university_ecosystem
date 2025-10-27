@@ -39,10 +39,7 @@ const toSignature = (coordinates: WeatherCoordinates): string => {
   return `${lat},${lon}`
 }
 
-const normalizeError = (
-  error: unknown,
-  coordinates: WeatherCoordinates
-): WeatherFetchError => {
+const normalizeError = (error: unknown, coordinates: WeatherCoordinates): WeatherFetchError => {
   if (error instanceof WeatherFetchError) return error
   const fallback = readWeatherCache(coordinates, { allowExpired: true })?.data ?? null
   return new WeatherFetchError("Failed to fetch weather", { fallback, cause: error })
@@ -61,7 +58,10 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const abortRef = useRef<AbortController | null>(null)
 
-  const initialCached = useMemo(() => readWeatherCache(coordinates, { allowExpired: true }), [signature])
+  const initialCached = useMemo(
+    () => readWeatherCache(coordinates, { allowExpired: true }),
+    [signature]
+  )
   const hasFreshCache = Boolean(initialCached && initialCached.expiresAt > Date.now())
 
   const [snapshot, setSnapshot] = useState<WeatherSnapshot | null>(initialCached?.data ?? null)
