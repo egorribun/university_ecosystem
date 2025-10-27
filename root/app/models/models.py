@@ -568,6 +568,16 @@ class NotificationQueueJob(Base):
             "kind", "record_id", name="uq_notification_queue_jobs_kind_record"
         ),
         Index("ix_notification_queue_jobs_kind_record", "kind", "record_id"),
+        Index(
+            "ix_notification_queue_jobs_pending_claim",
+            "next_retry_at",
+            "enqueued_at",
+            "id",
+            sqlite_where=text("dead_lettered = 0 AND claimed_at IS NULL"),
+            postgresql_where=text(
+                "dead_lettered = false AND claimed_at IS NULL"
+            ),
+        ),
     )
 
 
