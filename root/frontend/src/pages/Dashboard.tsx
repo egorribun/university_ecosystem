@@ -603,7 +603,9 @@ export default function Dashboard() {
                           className="chip-time"
                           label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
                         />
-                        <span className="text-base font-semibold text-page-foreground">{l.subject}</span>
+                        <span className="text-base font-semibold text-page-foreground">
+                          {l.subject}
+                        </span>
                         <Badge
                           size="sm"
                           className="chip-type"
@@ -787,7 +789,9 @@ export default function Dashboard() {
                           onClick={() => navigate(`/events/${e.id}`)}
                           aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                         >
-                          <span className="text-base font-semibold text-page-foreground">{e.title}</span>
+                          <span className="text-base font-semibold text-page-foreground">
+                            {e.title}
+                          </span>
                           <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
                             <Badge
                               size="sm"
