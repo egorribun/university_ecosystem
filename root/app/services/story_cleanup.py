@@ -13,9 +13,13 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
+from app.core.observability import get_periodic_task_metrics
 from app.models.models import Story
 
 logger = logging.getLogger(__name__)
+
+
+_METRICS = get_periodic_task_metrics("story_cleanup")
 
 
 def _now() -> datetime:
@@ -67,7 +71,9 @@ async def start_story_cleanup_scheduler(
         try:
             while True:
                 try:
-                    await cleanup_expired_stories()
+                    async with _METRICS.track_execution() as run:
+                        deleted = await cleanup_expired_stories()
+                        run.observe_deleted(deleted)
                 except asyncio.CancelledError:
                     raise
                 except Exception:  # pragma: no cover - defensive logging

@@ -13,10 +13,14 @@ from sqlalchemy import and_, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
+from app.core.observability import get_periodic_task_metrics
 from app.models.models import PasswordResetToken
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
 logger = logging.getLogger(__name__)
+
+
+_METRICS = get_periodic_task_metrics("password_reset_cleanup")
 
 
 def _now() -> datetime:
@@ -91,9 +95,11 @@ async def start_password_reset_cleanup_scheduler(
         try:
             while True:
                 try:
-                    await cleanup_stale_password_reset_tokens(
-                        retention_minutes=retention
-                    )
+                    async with _METRICS.track_execution() as run:
+                        deleted = await cleanup_stale_password_reset_tokens(
+                            retention_minutes=retention
+                        )
+                        run.observe_deleted(deleted)
                 except asyncio.CancelledError:
                     raise
                 except Exception:  # pragma: no cover - defensive logging

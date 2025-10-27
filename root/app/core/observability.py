@@ -7,10 +7,11 @@ import re
 import socket
 import time
 import uuid
-from contextlib import suppress
+from collections.abc import Iterable
+from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Iterable, Mapping
+from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
 
 import uvicorn
 from fastapi import FastAPI
@@ -80,6 +81,7 @@ _sqlalchemy_instrumented = False
 _otel_logger_provider: LoggerProvider | None = None
 _otel_logging_handler: LoggingHandler | None = None
 _notification_queue_metrics: "NotificationQueueMetrics | None" = None
+_periodic_task_metrics: dict[str, "PeriodicTaskMetrics"] = {}
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
@@ -449,6 +451,117 @@ def create_worker_metrics(name: str) -> WorkerMetrics:
         heartbeat_timestamp=heartbeat,
     )
     metrics.mark_startup()
+    return metrics
+
+
+@dataclass(slots=True)
+class PeriodicTaskRun:
+    metrics: "PeriodicTaskMetrics"
+    _deleted_total: int = 0
+
+    def observe_deleted(self, value: int | Iterable[int | None] | None) -> None:
+        total = 0
+        if value is None:
+            total = 0
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+            for item in value:
+                total += _coerce_deleted_value(item)
+        else:
+            total = _coerce_deleted_value(value)
+        if total > 0:
+            self._deleted_total += total
+
+    @property
+    def deleted_total(self) -> int:
+        return self._deleted_total
+
+
+def _coerce_deleted_value(value: object) -> int:
+    try:
+        number = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
+
+
+@dataclass(slots=True)
+class PeriodicTaskMetrics:
+    name: str
+    metric_prefix: str
+    runs_total: Counter
+    errors_total: Counter
+    deleted_total: Counter
+    duration_seconds: Histogram
+
+    @asynccontextmanager
+    async def track_execution(self) -> AsyncIterator[PeriodicTaskRun]:
+        run = PeriodicTaskRun(self)
+        start = time.perf_counter()
+        try:
+            yield run
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            elapsed = max(time.perf_counter() - start, 0.0)
+            self.errors_total.inc()
+            self.duration_seconds.observe(elapsed)
+            raise
+        else:
+            elapsed = max(time.perf_counter() - start, 0.0)
+            self.runs_total.inc()
+            if run.deleted_total > 0:
+                self.deleted_total.inc(run.deleted_total)
+            self.duration_seconds.observe(elapsed)
+
+
+def get_periodic_task_metrics(name: str) -> PeriodicTaskMetrics:
+    if Counter is None or Histogram is None:  # pragma: no cover - safety
+        raise RuntimeError("prometheus-client is required for periodic task metrics")
+
+    metric_key = _sanitize_metric_name(name)
+    if metric_key in _periodic_task_metrics:
+        return _periodic_task_metrics[metric_key]
+
+    prefix = f"periodic_task_{metric_key}"
+    runs = Counter(
+        f"{prefix}_runs_total",
+        "Total successful executions of the periodic task",
+    )
+    errors = Counter(
+        f"{prefix}_errors_total",
+        "Total exceptions raised by the periodic task",
+    )
+    deleted = Counter(
+        f"{prefix}_deleted_total",
+        "Total database rows deleted by the periodic task",
+    )
+    duration = Histogram(
+        f"{prefix}_duration_seconds",
+        "Runtime of the periodic task execution in seconds",
+        buckets=(
+            0.01,
+            0.05,
+            0.1,
+            0.5,
+            1.0,
+            2.5,
+            5.0,
+            10.0,
+            30.0,
+            60.0,
+            120.0,
+        ),
+    )
+
+    metrics = PeriodicTaskMetrics(
+        name=name,
+        metric_prefix=prefix,
+        runs_total=runs,
+        errors_total=errors,
+        deleted_total=deleted,
+        duration_seconds=duration,
+    )
+    _periodic_task_metrics[metric_key] = metrics
     return metrics
 
 
