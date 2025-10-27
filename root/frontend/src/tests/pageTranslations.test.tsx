@@ -501,9 +501,7 @@ describe("page translations", () => {
       ).toBeInTheDocument()
       // The fallback landmark is intentionally exposed as a region so keyboard users can
       // quickly locate the static points list when the Tailwind map shim takes over.
-      expect(
-        await screen.findByRole("region", { name: "Campus overview" })
-      ).toBeInTheDocument()
+      expect(await screen.findByRole("region", { name: "Campus overview" })).toBeInTheDocument()
 
       await user.click(screen.getByTestId("lang-toggle"))
 
@@ -513,9 +511,7 @@ describe("page translations", () => {
           "Интерактивная карта отключена согласно настройкам приватности или уменьшения анимации."
         )
       ).toBeInTheDocument()
-      expect(
-        await screen.findByRole("region", { name: "Обзор кампуса" })
-      ).toBeInTheDocument()
+      expect(await screen.findByRole("region", { name: "Обзор кампуса" })).toBeInTheDocument()
     } finally {
       matchMediaSpy.mockRestore()
     }
