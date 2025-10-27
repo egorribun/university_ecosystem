@@ -1,4 +1,3 @@
-import { Box } from "@mui/material"
 import { ReactNode } from "react"
 
 type LayoutProps = {
@@ -6,19 +5,12 @@ type LayoutProps = {
 }
 
 const Layout = ({ children }: LayoutProps) => (
-  <Box
-    component="main"
+  <main
     id="main"
-    sx={{
-      minHeight: "100vh",
-      bgcolor: "var(--page-bg)",
-      color: "var(--page-text)",
-      width: "100vw",
-      boxSizing: "border-box",
-    }}
+    className="min-h-screen w-screen box-border bg-[var(--page-bg)] text-[var(--page-text)]"
   >
     {children}
-  </Box>
+  </main>
 )
 
 export default Layout

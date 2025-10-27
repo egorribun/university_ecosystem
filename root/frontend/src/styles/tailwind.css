@@ -95,4 +95,37 @@
       fade-in var(--anim-med, 0.3s ease) forwards,
       skeleton-wave 1.6s ease-in-out infinite;
   }
+
+  [data-page-fade] {
+    --page-fade-delay: var(--page-fade-delay, 80ms);
+  }
+
+  [data-page-fade] [data-fade] {
+    opacity: 0;
+    transform: translateY(22px);
+    transition-property: opacity, transform;
+    transition-duration: 560ms;
+    transition-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+    transition-delay: calc(var(--fade-delay, 120ms) + var(--page-fade-delay));
+    will-change: opacity, transform;
+  }
+
+  [data-page-fade][data-ready="true"] [data-fade] {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-page-fade] {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+
+    [data-page-fade] [data-fade] {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+  }
 }
