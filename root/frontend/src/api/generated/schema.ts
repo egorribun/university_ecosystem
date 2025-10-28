@@ -934,6 +934,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/users/me/email/confirm": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm Email Change */
+    post: operations["confirm_email_change_users_me_email_confirm_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/users/me/password": {
     parameters: {
       query?: never
@@ -2568,6 +2585,11 @@ export interface components {
       /** Password */
       password: string
     }
+    /** UserEmailConfirmIn */
+    UserEmailConfirmIn: {
+      /** Token */
+      token: string
+    }
     /** UserMfaMethodsOut */
     UserMfaMethodsOut: {
       /** Totp Enrollments */
@@ -2586,8 +2608,6 @@ export interface components {
        * Format: email
        */
       email: string
-      /** Pending Email */
-      pending_email?: string | null
       /** Full Name */
       full_name?: string | null
       /** @default student */
@@ -2644,6 +2664,8 @@ export interface components {
       id: number
       /** Is Active */
       is_active: boolean
+      /** Pending Email */
+      pending_email?: string | null
       /** Spotify Is Connected */
       spotify_is_connected?: boolean | null
       /**
@@ -4359,6 +4381,39 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["UserEmailChangeIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  confirm_email_change_users_me_email_confirm_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserEmailConfirmIn"]
       }
     }
     responses: {
