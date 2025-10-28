@@ -81,6 +81,25 @@
       }
     }
   },
+  "weather": {
+    "conditions": {
+      "clear": "Ясно",
+      "mostlyClear": "Переменная облачность",
+      "cloudy": "Пасмурно",
+      "fog": "Туман",
+      "drizzle": "Морось",
+      "freezingDrizzle": "Переохлаждённая морось",
+      "rain": "Дождь",
+      "freezingRain": "Ледяной дождь",
+      "snow": "Снегопад",
+      "snowGrains": "Снежная крупа",
+      "rainShowers": "Ливневый дождь",
+      "snowShowers": "Снегопад с порывами",
+      "thunderstorm": "Гроза",
+      "thunderstormHail": "Гроза с градом",
+      "unknown": "Погода недоступна"
+    }
+  },
   "installPrompt": {
     "installTitle": "Установить «{{appName}}»",
     "title": "{{appName}}",

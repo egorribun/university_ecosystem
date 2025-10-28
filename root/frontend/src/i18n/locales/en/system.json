@@ -81,6 +81,25 @@
       }
     }
   },
+  "weather": {
+    "conditions": {
+      "clear": "Clear sky",
+      "mostlyClear": "Mostly clear",
+      "cloudy": "Overcast",
+      "fog": "Fog",
+      "drizzle": "Drizzle",
+      "freezingDrizzle": "Freezing drizzle",
+      "rain": "Rain",
+      "freezingRain": "Freezing rain",
+      "snow": "Snowfall",
+      "snowGrains": "Snow grains",
+      "rainShowers": "Rain showers",
+      "snowShowers": "Snow showers",
+      "thunderstorm": "Thunderstorm",
+      "thunderstormHail": "Thunderstorm with hail",
+      "unknown": "Weather unavailable"
+    }
+  },
   "installPrompt": {
     "installTitle": "Install “{{appName}}”",
     "title": "{{appName}}",
