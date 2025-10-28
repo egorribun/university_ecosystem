@@ -129,7 +129,7 @@ async def test_events_localization(async_client, db_session, user_factory):
 async def test_events_etag_and_not_modified(
     async_client, db_session, user_factory, fake_cache
 ):
-    events._reset_events_cache_registry()
+    await events._reset_events_list_cache_version()
     assert fake_cache is not None
     password = "TestEvent456!"
     hashed = get_password_hash(password)
@@ -299,7 +299,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
 async def test_events_cache_invalidation_on_mutations(
     async_client, db_session, user_factory, fake_cache
 ):
-    events._reset_events_cache_registry()
+    await events._reset_events_list_cache_version()
 
     admin_password = "CacheAdmin123!"
     student_password = "CacheStudent123!"
@@ -329,9 +329,17 @@ async def test_events_cache_invalidation_on_mutations(
 
     first_response = await async_client.get("/events", headers=list_headers)
     assert first_response.status_code == status.HTTP_200_OK
-    keys_after_first = events._events_cache_keys_snapshot()
-    assert keys_after_first
-    tracked_key = keys_after_first[0]
+    version_after_first = await events._read_events_list_version(fake_cache)
+    tracked_key = events._events_list_cache_key(
+        locale="en",
+        search="",
+        event_type="",
+        location="",
+        is_active=True,
+        limit=first_response.json()["limit"],
+        cursor=None,
+        version=str(version_after_first),
+    )
     cached_entry = await fake_cache.get(tracked_key)
     assert cached_entry is not None
 
@@ -359,14 +367,22 @@ async def test_events_cache_invalidation_on_mutations(
     assert create_response.status_code == status.HTTP_200_OK
     created_event_id = create_response.json()["id"]
 
-    assert await fake_cache.get(tracked_key) is None
-    assert not events._events_cache_keys_snapshot()
+    version_after_create = await events._read_events_list_version(fake_cache)
+    assert version_after_create == version_after_first + 1
+    assert await fake_cache.get(tracked_key) is not None
 
     after_create = await async_client.get("/events", headers=list_headers)
     assert after_create.status_code == status.HTTP_200_OK
-    keys_after_create = events._events_cache_keys_snapshot()
-    assert keys_after_create
-    active_key = keys_after_create[0]
+    active_key = events._events_list_cache_key(
+        locale="en",
+        search="",
+        event_type="",
+        location="",
+        is_active=True,
+        limit=after_create.json()["limit"],
+        cursor=None,
+        version=str(version_after_create),
+    )
     assert await fake_cache.get(active_key) is not None
 
     update_response = await async_client.patch(
@@ -375,19 +391,103 @@ async def test_events_cache_invalidation_on_mutations(
         json={"title": "Updated cached event"},
     )
     assert update_response.status_code == status.HTTP_200_OK
-    assert await fake_cache.get(active_key) is None
-    assert not events._events_cache_keys_snapshot()
+    version_after_update = await events._read_events_list_version(fake_cache)
+    assert version_after_update == version_after_create + 1
+    assert await fake_cache.get(active_key) is not None
 
     after_update = await async_client.get("/events", headers=list_headers)
     assert after_update.status_code == status.HTTP_200_OK
-    keys_after_update = events._events_cache_keys_snapshot()
-    assert keys_after_update
-    post_update_key = keys_after_update[0]
+    post_update_key = events._events_list_cache_key(
+        locale="en",
+        search="",
+        event_type="",
+        location="",
+        is_active=True,
+        limit=after_update.json()["limit"],
+        cursor=None,
+        version=str(version_after_update),
+    )
     assert await fake_cache.get(post_update_key) is not None
 
     delete_response = await async_client.delete(
         f"/events/{created_event_id}", headers=admin_headers
     )
     assert delete_response.status_code == status.HTTP_200_OK
-    assert await fake_cache.get(post_update_key) is None
-    assert not events._events_cache_keys_snapshot()
+    version_after_delete = await events._read_events_list_version(fake_cache)
+    assert version_after_delete == version_after_update + 1
+    assert await fake_cache.get(post_update_key) is not None
+
+
+@pytest.mark.anyio
+async def test_events_cache_uses_version_from_redis(
+    async_client, db_session, user_factory, fake_cache
+):
+    await events._reset_events_list_cache_version()
+
+    password = "VersionPass123!"
+    hashed = get_password_hash(password)
+    admin = await user_factory(role="admin")
+    student = await user_factory(hashed_password=hashed, is_active=True)
+
+    now = datetime.now(timezone.utc)
+    event = models.Event(
+        title="Original title",
+        description="Original description",
+        location="Campus",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=2),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    headers = await _login(async_client, student.email, password)
+    list_headers = {**headers, "Accept-Language": "en"}
+
+    initial_response = await async_client.get("/events", headers=list_headers)
+    assert initial_response.status_code == status.HTTP_200_OK
+    initial_data = initial_response.json()
+    initial_items = {item["id"]: item for item in initial_data["items"]}
+    assert initial_items[event.id]["title"] == "Original title"
+
+    initial_version = await events._read_events_list_version(fake_cache)
+    initial_key = events._events_list_cache_key(
+        locale="en",
+        search="",
+        event_type="",
+        location="",
+        is_active=True,
+        limit=initial_data["limit"],
+        cursor=None,
+        version=str(initial_version),
+    )
+    assert await fake_cache.get(initial_key) is not None
+
+    event.title = "Updated title"
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    await events._increment_events_list_version(fake_cache)
+
+    refreshed = await async_client.get("/events", headers=list_headers)
+    assert refreshed.status_code == status.HTTP_200_OK
+    refreshed_data = refreshed.json()
+    refreshed_items = {item["id"]: item for item in refreshed_data["items"]}
+    assert refreshed_items[event.id]["title"] == "Updated title"
+
+    refreshed_version = await events._read_events_list_version(fake_cache)
+    assert refreshed_version == initial_version + 1
+    refreshed_key = events._events_list_cache_key(
+        locale="en",
+        search="",
+        event_type="",
+        location="",
+        is_active=True,
+        limit=refreshed_data["limit"],
+        cursor=None,
+        version=str(refreshed_version),
+    )
+    assert await fake_cache.get(refreshed_key) is not None
