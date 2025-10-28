@@ -19,6 +19,7 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
+from redis.exceptions import RedisError
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +27,7 @@ from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
 from app.core.database import get_db
-from app.deps.cache import etag_matches, format_etag, get_cache
+from app.deps.cache import RedisCache, etag_matches, format_etag, get_cache
 from app.localization import normalize_locale, resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
@@ -39,28 +40,96 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
 
 _EVENTS_LIST_CACHE_PREFIX = "events:list"
-_events_list_cache_keys: set[str] = set()
+_EVENTS_LIST_VERSION_KEY = f"{_EVENTS_LIST_CACHE_PREFIX}:version"
+_LOCAL_EVENTS_LIST_VERSION = 0
 
 
-def _register_events_cache_key(key: str) -> None:
-    if key:
-        _events_list_cache_keys.add(key)
+async def _reset_events_list_cache_version() -> None:
+    global _LOCAL_EVENTS_LIST_VERSION
+    _LOCAL_EVENTS_LIST_VERSION = 0
+    cache = get_cache()
+    if isinstance(cache, RedisCache):
+        try:
+            client = await cache._get_client()
+            await client.delete(_EVENTS_LIST_VERSION_KEY)
+        except (RedisError, OSError):
+            logger.debug("Failed to reset events cache version in Redis", exc_info=True)
 
 
-def _consume_events_cache_keys() -> list[str]:
-    if not _events_list_cache_keys:
-        return []
-    keys = list(_events_list_cache_keys)
-    _events_list_cache_keys.clear()
-    return keys
+async def _get_events_list_version(cache) -> str:
+    if not cache.enabled:
+        return str(_LOCAL_EVENTS_LIST_VERSION)
+    if isinstance(cache, RedisCache):
+        try:
+            client = await cache._get_client()
+            raw = await client.get(_EVENTS_LIST_VERSION_KEY)
+        except (RedisError, OSError):
+            logger.warning(
+                "Failed to read events cache version from Redis", exc_info=True
+            )
+            return "0"
+        try:
+            return str(int(raw)) if raw is not None else "0"
+        except (TypeError, ValueError):
+            logger.debug(
+                "Invalid events cache version %s, using zero", raw, exc_info=True
+            )
+            return "0"
+    return "0"
 
 
-def _events_cache_keys_snapshot() -> tuple[str, ...]:
-    return tuple(sorted(_events_list_cache_keys))
+async def _read_events_list_version(cache) -> int:
+    if not cache.enabled:
+        return _LOCAL_EVENTS_LIST_VERSION
+    if isinstance(cache, RedisCache):
+        try:
+            client = await cache._get_client()
+            raw = await client.get(_EVENTS_LIST_VERSION_KEY)
+        except (RedisError, OSError):
+            logger.debug(
+                "Failed to read events cache version for inspection", exc_info=True
+            )
+            return 0
+        try:
+            return int(raw) if raw is not None else 0
+        except (TypeError, ValueError):
+            logger.debug(
+                "Invalid cached events version %s during inspection",
+                raw,
+                exc_info=True,
+            )
+            return 0
+    return 0
 
 
-def _reset_events_cache_registry() -> None:
-    _events_list_cache_keys.clear()
+async def _increment_events_list_version(cache) -> None:
+    global _LOCAL_EVENTS_LIST_VERSION
+    if not cache.enabled:
+        _LOCAL_EVENTS_LIST_VERSION += 1
+        return
+    if isinstance(cache, RedisCache):
+        try:
+            client = await cache._get_client()
+            increment = getattr(client, "incr", None)
+            if callable(increment):
+                await increment(_EVENTS_LIST_VERSION_KEY)
+            else:
+                await _manual_increment_events_version(client)
+        except (RedisError, OSError):
+            logger.warning(
+                "Failed to increment events cache version in Redis", exc_info=True
+            )
+        return
+    _LOCAL_EVENTS_LIST_VERSION += 1
+
+
+async def _manual_increment_events_version(client) -> None:
+    raw = await client.get(_EVENTS_LIST_VERSION_KEY)
+    try:
+        current = int(raw) if raw is not None else 0
+    except (TypeError, ValueError):
+        current = 0
+    await client.set(_EVENTS_LIST_VERSION_KEY, current + 1)
 
 
 def _events_list_cache_key(
@@ -72,12 +141,14 @@ def _events_list_cache_key(
     is_active: bool,
     limit: int,
     cursor: str | None,
+    version: str,
 ) -> str:
     normalized_locale = normalize_locale(locale)
     normalized_search = (search or "").strip().lower()
     normalized_type = (event_type or "").strip().lower()
     normalized_location = (location or "").strip().lower()
     normalized_cursor = (cursor or "").strip()
+    normalized_version = str(version or "0").strip() or "0"
     signature = json.dumps(
         {
             "search": normalized_search,
@@ -92,16 +163,14 @@ def _events_list_cache_key(
         sort_keys=True,
     ).encode("utf-8")
     digest = hashlib.sha256(signature).hexdigest()
-    return f"{_EVENTS_LIST_CACHE_PREFIX}:{normalized_locale}:{digest}"
+    return (
+        f"{_EVENTS_LIST_CACHE_PREFIX}:{normalized_version}:{normalized_locale}:{digest}"
+    )
 
 
 async def _invalidate_events_list_cache() -> None:
-    keys = _consume_events_cache_keys()
-    if not keys:
-        return
     cache = get_cache()
-    if cache.enabled:
-        await cache.invalidate(*keys)
+    await _increment_events_list_version(cache)
 
 
 @lru_cache(maxsize=1)
@@ -181,7 +250,9 @@ async def all_events(
     _set_language_headers(response, locale)
     cache = get_cache()
     cache_key: str | None = None
+    cache_version: str | None = None
     if cache.enabled:
+        cache_version = await _get_events_list_version(cache)
         cache_key = _events_list_cache_key(
             locale=locale,
             search=search,
@@ -190,8 +261,8 @@ async def all_events(
             is_active=is_active,
             limit=limit,
             cursor=cursor,
+            version=cache_version,
         )
-        _register_events_cache_key(cache_key)
         cached = await cache.get(cache_key)
         if cached:
             etag_header = format_etag(cached.etag)
