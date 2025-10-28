@@ -107,7 +107,9 @@ async def test_email_change_requires_confirmation(
     def fake_blocking(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr("app.api.users.secrets.token_urlsafe", lambda *_args, **_kwargs: token_value)
+    monkeypatch.setattr(
+        "app.api.users.secrets.token_urlsafe", lambda *_args, **_kwargs: token_value
+    )
     monkeypatch.setattr("app.api.users._send_reset_email_blocking", fake_blocking)
 
     response = await async_client.post(
@@ -125,7 +127,9 @@ async def test_email_change_requires_confirmation(
     assert user.email == "change-me@example.com"
 
     result = await db_session.execute(
-        select(models.EmailChangeToken).where(models.EmailChangeToken.user_id == user.id)
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.user_id == user.id
+        )
     )
     record = result.scalar_one_or_none()
     assert record is not None
@@ -153,7 +157,9 @@ async def test_email_change_requires_confirmation(
     assert user.email == "new.confirm@example.com"
 
     final = await db_session.execute(
-        select(models.EmailChangeToken).where(models.EmailChangeToken.user_id == user.id)
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.user_id == user.id
+        )
     )
     final_record = final.scalar_one_or_none()
     assert final_record is not None

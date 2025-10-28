@@ -475,11 +475,7 @@ async def confirm_email_change(
         )
     )
     record = result.scalar_one_or_none()
-    if (
-        record is None
-        or record.user_id != user.id
-        or record.used
-    ):
+    if record is None or record.user_id != user.id or record.used:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             detail=translate("errors.users.email_confirmation_invalid", locale=locale),

@@ -531,7 +531,9 @@ class EmailChangeToken(Base):
 
     @property
     def is_active(self) -> bool:
-        return not self.used and (self.expires_at is None or self.expires_at > datetime.now(UTC))
+        return not self.used and (
+            self.expires_at is None or self.expires_at > datetime.now(UTC)
+        )
 
 
 class Notification(Base):
