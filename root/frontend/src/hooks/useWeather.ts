@@ -12,7 +12,7 @@ import { getWeatherIconMeta } from "@/utils/weatherIcons"
 import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
 import useMediaQuery from "./useMediaQuery"
 
-const WEATHER_TRANSLATION_BASE = "system:weather.conditions"
+const WEATHER_TRANSLATION_BASE = "dashboard:weather.conditions"
 
 export interface UseWeatherOptions {
   coordinates?: WeatherCoordinates

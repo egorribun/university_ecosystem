@@ -32,6 +32,19 @@ The dashboard "stories" carousel now exposes additional localized strings in
 Whenever you adjust these phrases, update both `en` and `ru` locales so the
 dashboard and accessibility hints stay in sync across languages.
 
+## Dashboard weather
+
+The dashboard weather chip uses new entries under `dashboard.weather` for both
+languages:
+
+- `label` — short name for the widget, reused in aria-labels.
+- `tooltip` — compact summary shown on hover/focus (`Weather · Clear sky · +21°`).
+- `conditions.*` — human-friendly descriptions for each weather code.
+- `aria.status` and `aria.statusNoTemp` — announcements for screen readers.
+
+Ensure any changes land in both locale files so the tooltip and aria-labels do
+not fall back to raw translation keys.
+
 ## Campus map fallback
 
 Privacy settings, reduced-motion preferences, or offline conditions can disable

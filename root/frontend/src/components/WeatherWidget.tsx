@@ -18,7 +18,7 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
   const { data, isLoading } = useWeather()
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
-  const { t, i18n } = useTranslation(["system", "common"])
+  const { t, i18n } = useTranslation(["dashboard", "common"])
 
   const formatter = useMemo(
     () =>
@@ -53,11 +53,23 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
     defaultValue: data.conditionLabel,
   })
 
+  const labelText = t("dashboard:weather.label", {
+    defaultValue: "Weather",
+  })
+
   const roundedTemperature = Math.round(data.temperatureC)
   const signedTemperature = formatter.format(roundedTemperature)
   const displayTemperature = `${signedTemperature}°`
 
-  const ariaLabel = t("system:weather.aria.status", {
+  const tooltipContent = t("dashboard:weather.tooltip", {
+    label: labelText,
+    condition: conditionText,
+    temperature: displayTemperature,
+    defaultValue: `${conditionText} · ${displayTemperature}`,
+  })
+
+  const ariaLabel = t("dashboard:weather.aria.status", {
+    label: labelText,
     condition: conditionText,
     temperature: signedTemperature,
     defaultValue: `${conditionText}. Temperature ${signedTemperature}°C.`,
@@ -65,7 +77,7 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
 
   return (
     <span className={wrapperClassName}>
-      <Tooltip content={conditionText}>
+      <Tooltip content={tooltipContent}>
         <Badge
           size="sm"
           className="chip-weather focus-visible:outline-none focus-visible:shadow-[var(--ue-focus-ring)]"

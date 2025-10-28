@@ -18,6 +18,31 @@
     "eventsWeek": "Events this week",
     "eventItem": "Event: {{title}}"
   },
+  "weather": {
+    "label": "Weather",
+    "tooltip": "{{label}} · {{condition}} · {{temperature}}",
+    "conditions": {
+      "clear": "Clear sky",
+      "mostlyClear": "Mostly clear",
+      "cloudy": "Overcast",
+      "fog": "Fog",
+      "drizzle": "Drizzle",
+      "freezingDrizzle": "Freezing drizzle",
+      "rain": "Rain",
+      "freezingRain": "Freezing rain",
+      "snow": "Snowfall",
+      "snowGrains": "Snow grains",
+      "rainShowers": "Rain showers",
+      "snowShowers": "Snow showers",
+      "thunderstorm": "Thunderstorm",
+      "thunderstormHail": "Thunderstorm with hail",
+      "unknown": "Weather unavailable"
+    },
+    "aria": {
+      "status": "{{label}}. {{condition}}. Temperature {{temperature}}°C.",
+      "statusNoTemp": "{{label}}. {{condition}}. Temperature unavailable."
+    }
+  },
   "fullSchedule": "Full schedule",
   "now": "Now",
   "next": "Next",
