@@ -4,6 +4,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import func, select
 
+from app.core.config import settings
 from app.models.models import PasswordResetToken, User
 from app.services import password_reset_cleanup
 from app.services.password_reset_cleanup import (
@@ -12,7 +13,6 @@ from app.services.password_reset_cleanup import (
     start_password_reset_cleanup_scheduler,
 )
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
-from app.core.config import settings
 
 
 @pytest.mark.asyncio

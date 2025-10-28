@@ -310,9 +310,7 @@ class Settings(BaseSettings):
     @field_validator("password_reset_max_active_tokens")
     @classmethod
     def _validate_password_reset_max_active_tokens(cls, value: int) -> int:
-        return _validate_positive_int(
-            value, label="PASSWORD_RESET_MAX_ACTIVE_TOKENS"
-        )
+        return _validate_positive_int(value, label="PASSWORD_RESET_MAX_ACTIVE_TOKENS")
 
     @field_validator("mfa_totp_initial_skew_windows")
     @classmethod
