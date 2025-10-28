@@ -98,6 +98,10 @@
       "thunderstorm": "Гроза",
       "thunderstormHail": "Гроза с градом",
       "unknown": "Погода недоступна"
+    },
+    "aria": {
+      "status": "{{condition}}. Температура {{temperature}}°C.",
+      "statusNoTemp": "{{condition}}. Температура недоступна."
     }
   },
   "installPrompt": {

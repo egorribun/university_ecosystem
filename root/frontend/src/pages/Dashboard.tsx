@@ -22,6 +22,7 @@ import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
 import type { StoryItem } from "@/types/Story"
 import { fetchStories as fetchStoriesRequest } from "@/api/stories"
+import WeatherWidget from "@/components/WeatherWidget"
 
 type NewsItem = {
   id: number
@@ -504,13 +505,13 @@ export default function Dashboard() {
                     {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
                   </h1>
                   <div
-                    className="flex flex-wrap items-center gap-3 text-sm text-nav-text/90"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-nav-text/90"
                     role="status"
                     aria-live="polite"
                   >
                     <Badge
                       size="sm"
-                      className="chip-clock font-mono text-base"
+                      className="chip-clock flex-shrink-0 font-mono text-base"
                       aria-label={t("common:ariaCurrentTime")}
                     >
                       <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
@@ -527,7 +528,10 @@ export default function Dashboard() {
                         <span>{mm}</span>
                       </span>
                     </Badge>
-                    <span className="text-sm font-medium tracking-tight">{dateStr}</span>
+                    <WeatherWidget className="flex-shrink-0" />
+                    <span className="text-sm font-medium tracking-tight leading-tight">
+                      {dateStr}
+                    </span>
                   </div>
                 </div>
                 <div className="hidden justify-end md:flex lg:col-span-4">
