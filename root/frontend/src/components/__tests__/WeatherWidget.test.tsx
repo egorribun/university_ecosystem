@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
 import WeatherWidget from "../WeatherWidget"
+import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
 
 const translations: Record<string, string> = {
   "common:loading": "Loading",
@@ -15,8 +16,19 @@ const translations: Record<string, string> = {
 
 let mockLanguage: "en" | "ru" = "en"
 
+type WeatherSnapshotMock = {
+  conditionCode: number
+  conditionLabel: string
+  temperatureC: number
+  observedAt: string
+  icon: string
+  translationKeySuffix: string
+  translationKey: string
+  animation: WeatherAnimationVariant
+}
+
 const weatherStore = vi.hoisted(() => {
-  function baseSnapshot() {
+  function baseSnapshot(): WeatherSnapshotMock {
     return {
       conditionCode: 0,
       conditionLabel: "Clear sky",
@@ -25,17 +37,17 @@ const weatherStore = vi.hoisted(() => {
       icon: "☀️",
       translationKeySuffix: "clear",
       translationKey: "dashboard:weather.conditions.clear",
-      animation: "glow" as const,
+      animation: "glow",
     }
   }
 
-  const createData = (overrides: Partial<ReturnType<typeof baseSnapshot>> = {}) => ({
+  const createData = (overrides: Partial<WeatherSnapshotMock> = {}) => ({
     ...baseSnapshot(),
     ...overrides,
   })
 
   type WeatherState = {
-    data: ReturnType<typeof baseSnapshot> | null
+    data: WeatherSnapshotMock | null
     isLoading: boolean
     error: Error | null
     refresh: ReturnType<typeof vi.fn>
