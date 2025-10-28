@@ -186,13 +186,16 @@ const {
     present: 17,
     total: 20,
     trend: 4,
-    window_label: "last 30 days",
+    period_key: "30d",
+    period_label: "Last 30 days",
     recent: [{ date: "2025-09-19", status: "present", course: "Physics" }],
   }
   const gradeSummary = {
     average: 4.6,
     scale: "5" as const,
     trend: 2,
+    period_key: "30d",
+    period_label: "Last 30 days",
     recent: [{ course: "Physics", score: 5, date: "2025-09-10" }],
   }
   const participationSummary = {
@@ -200,6 +203,8 @@ const {
     hours: 6,
     groups: 2,
     trend: 1,
+    period_key: "30d",
+    period_label: "Last 30 days",
     recent: [{ title: "Volunteer Day", date: "2025-09-12", role: "helper" }],
   }
 

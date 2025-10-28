@@ -841,7 +841,11 @@ def _dt_to_iso(value: datetime | None) -> str:
 
 
 async def get_attendance_stats(
-    db: AsyncSession, *, user_id: int, period_days: int
+    db: AsyncSession,
+    *,
+    user_id: int,
+    period_days: int,
+    period_key: str | None = None,
 ) -> Dict[str, Any]:
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
@@ -926,7 +930,7 @@ async def get_attendance_stats(
         "present": attended_events,
         "total": total_events,
         "trend": round(percent - previous_percent, 2),
-        "window_label": f"last {period_days} days",
+        "period_key": period_key or f"{period_days}d",
         "recent": recent,
     }
 
