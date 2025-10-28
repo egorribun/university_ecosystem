@@ -2586,6 +2586,8 @@ export interface components {
        * Format: email
        */
       email: string
+      /** Pending Email */
+      pending_email?: string | null
       /** Full Name */
       full_name?: string | null
       /** @default student */

@@ -663,10 +663,6 @@ export default function Settings() {
     return fresh
   }, [queryClient, setUser])
 
-  useEffect(() => {
-    setEmailValue(user?.email ?? "")
-  }, [user?.email])
-
   const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStartResponse | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
@@ -674,6 +670,7 @@ export default function Settings() {
   const [webAuthnName, setWebAuthnName] = useState("")
   const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[]>([])
   const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState<string | null>(user?.pending_email ?? null)
   const [emailValue, setEmailValue] = useState(user?.email ?? "")
   const [emailPassword, setEmailPassword] = useState("")
   const [emailBusy, setEmailBusy] = useState(false)
@@ -687,6 +684,14 @@ export default function Settings() {
   const [currentPasswordError, setCurrentPasswordError] = useState<string | null>(null)
   const [stepUpOpen, setStepUpOpen] = useState(false)
   const stepUpActionRef = useRef<(() => Promise<void>) | null>(null)
+
+  useEffect(() => {
+    setEmailValue(user?.email ?? "")
+  }, [user?.email])
+
+  useEffect(() => {
+    setPendingEmail(user?.pending_email ?? null)
+  }, [user?.pending_email])
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
@@ -895,6 +900,14 @@ export default function Settings() {
       } else if (user?.email && trimmedEmail.toLowerCase() === user.email.toLowerCase()) {
         setEmailError(t("settings:security.email.noChange"))
         hasError = true
+      } else if (
+        pendingEmail &&
+        trimmedEmail.toLowerCase() === pendingEmail.toLowerCase()
+      ) {
+        setEmailError(
+          t("settings:security.email.pendingSame", { email: pendingEmail })
+        )
+        hasError = true
       }
       if (!emailPassword) {
         setEmailPasswordError(t("settings:security.email.errors.passwordRequired"))
@@ -908,9 +921,13 @@ export default function Settings() {
           email: trimmedEmail,
           password: emailPassword,
         })
+        setPendingEmail(trimmedEmail.toLowerCase())
         await refreshMe()
         setEmailPassword("")
-        setSnack({ text: t("settings:security.email.updated"), sev: "success" })
+        setSnack({
+          text: t("settings:security.email.confirmationSent", { email: trimmedEmail }),
+          sev: "success",
+        })
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error)) {
           openStepUpFor(async () => {
@@ -948,6 +965,7 @@ export default function Settings() {
       openStepUpFor,
       refreshMe,
       resolveDetailMessage,
+      pendingEmail,
       setSnack,
       t,
       user?.email,
@@ -1799,6 +1817,11 @@ export default function Settings() {
                     {t("settings:security.email.subtitle")}
                   </SectionSubtitle>
                 </Stack>
+                {pendingEmail ? (
+                  <Alert severity="info" variant="outlined">
+                    {t("settings:security.email.pendingNotice", { email: pendingEmail })}
+                  </Alert>
+                ) : null}
                 <Stack
                   direction={{ xs: "column", sm: "row" }}
                   spacing={1.2}

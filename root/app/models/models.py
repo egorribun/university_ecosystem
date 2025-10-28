@@ -129,6 +129,12 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    email_change_tokens = relationship(
+        "EmailChangeToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def spotify_connected(self) -> bool:
@@ -506,6 +512,26 @@ class PasswordResetToken(Base):
     @staticmethod
     def issue_token() -> str:
         return secrets.token_urlsafe(32)
+
+
+class EmailChangeToken(Base):
+    __tablename__ = "email_change_tokens"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    new_email = Column(String, nullable=False, index=True)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    used = Column(Boolean, nullable=False, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    user = relationship("User", back_populates="email_change_tokens")
+
+    @property
+    def is_active(self) -> bool:
+        return not self.used and (self.expires_at is None or self.expires_at > datetime.now(UTC))
 
 
 class Notification(Base):

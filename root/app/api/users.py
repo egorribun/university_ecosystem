@@ -5,7 +5,7 @@ import json
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import anyio
 from fastapi import (
@@ -120,6 +120,60 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def _get_active_email_change_request(
+    db: AsyncSession, user_id: int
+) -> models.EmailChangeToken | None:
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(models.EmailChangeToken)
+        .where(
+            models.EmailChangeToken.user_id == user_id,
+            models.EmailChangeToken.used.is_(False),
+            models.EmailChangeToken.expires_at > now,
+        )
+        .order_by(models.EmailChangeToken.created_at.desc())
+    )
+    return result.scalars().first()
+
+
+async def _attach_pending_email(
+    db: AsyncSession, user: models.User | None
+) -> models.User | None:
+    if user is None:
+        return None
+    pending = await _get_active_email_change_request(db, user.id)
+    setattr(user, "pending_email", pending.new_email if pending else None)
+    return user
+
+
+async def _create_email_change_request(
+    db: AsyncSession, user: models.User, new_email: str
+) -> tuple[models.EmailChangeToken, str]:
+    token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(token)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+
+    await db.execute(
+        update(models.EmailChangeToken)
+        .where(
+            models.EmailChangeToken.user_id == user.id,
+            models.EmailChangeToken.used.is_(False),
+        )
+        .values(used=True)
+    )
+
+    record = models.EmailChangeToken(
+        user_id=user.id,
+        new_email=new_email,
+        token_hash=token_hash,
+        expires_at=expires,
+        used=False,
+    )
+    db.add(record)
+    await db.flush()
+    return record, token
 
 
 def _send_reset_email_blocking(
@@ -274,8 +328,13 @@ async def reset_password(
 
 
 @users_router.get("/me", response_model=schemas.UserOut)
-async def me(request: Request, user: models.User = Depends(get_current_user)):
+async def me(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
     _enforce_profile_cache_integrity(request)
+    await _attach_pending_email(db, user)
     return user
 
 
@@ -322,6 +381,7 @@ async def update_me(
     await db.commit()
     await db.refresh(db_user)
     await ensure_mfa_relationships_loaded(db, db_user)
+    await _attach_pending_email(db, db_user)
     return db_user
 
 
@@ -329,6 +389,7 @@ async def update_me(
 async def change_email(
     payload: schemas.UserEmailChangeIn,
     request: Request,
+    bg: BackgroundTasks,
     _: None = Depends(require_fresh_mfa),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
@@ -369,17 +430,122 @@ async def change_email(
         )
 
     db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
-    db_user.email = validated_email
+    _, token = await _create_email_change_request(db, db_user, validated_email)
+
     await db.commit()
     await db.refresh(db_user)
     await ensure_mfa_relationships_loaded(db, db_user)
-    user.email = validated_email
+    await _attach_pending_email(db, db_user)
+    await _attach_pending_email(db, user)
+
+    base = settings.app_base_url_clean
+    confirm_link = f"{base}/settings/email-confirm?token={token}"
+    bg.add_task(
+        _send_reset_email,
+        validated_email,
+        confirm_link,
+        user.full_name or "",
+        locale,
+    )
+
+    _audit_log(
+        "users.email.change_requested",
+        request,
+        user_id=user.id,
+        reason="pending_confirmation",
+        extra={"email": validated_email},
+    )
+    return db_user
+
+
+@users_router.post("/me/email/confirm", response_model=schemas.UserOut)
+async def confirm_email_change(
+    payload: schemas.UserEmailConfirmIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    token_hash = _hash_token(payload.token)
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.token_hash == token_hash
+        )
+    )
+    record = result.scalar_one_or_none()
+    if (
+        record is None
+        or record.user_id != user.id
+        or record.used
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.email_confirmation_invalid", locale=locale),
+        )
+
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= now:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.email_confirmation_invalid", locale=locale),
+        )
+
+    existing = await db.execute(
+        select(models.User.id).where(
+            models.User.email == record.new_email,
+            models.User.id != user.id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        record.used = True
+        await db.execute(
+            update(models.EmailChangeToken)
+            .where(
+                models.EmailChangeToken.user_id == user.id,
+                models.EmailChangeToken.id != record.id,
+            )
+            .values(used=True)
+        )
+        await db.commit()
+        await _attach_pending_email(db, user)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.email_confirmation_conflict", locale=locale),
+        )
+
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+    db_user.email = record.new_email
+    await db.execute(
+        update(models.EmailChangeToken)
+        .where(models.EmailChangeToken.id == record.id)
+        .values(used=True)
+    )
+    await db.execute(
+        update(models.EmailChangeToken)
+        .where(
+            models.EmailChangeToken.user_id == user.id,
+            models.EmailChangeToken.id != record.id,
+        )
+        .values(used=True)
+    )
+
+    await db.commit()
+    await db.refresh(db_user)
+    await ensure_mfa_relationships_loaded(db, db_user)
+    await _attach_pending_email(db, db_user)
+    await _attach_pending_email(db, user)
+    user.email = record.new_email
+
     _audit_log(
         "users.email.changed",
         request,
         user_id=user.id,
-        reason="user_update",
-        extra={"email": validated_email},
+        reason="confirmed",
+        extra={"email": record.new_email},
     )
     return db_user
 
@@ -731,6 +897,7 @@ def _audit_log(
     level: int = logging.INFO,
     user_id: int | str | None = None,
     reason: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     request_id = get_request_id() or request.headers.get("x-request-id")
     client_ip = request.client.host if request.client else None
@@ -743,4 +910,6 @@ def _audit_log(
         payload["ip"] = client_ip
     if reason:
         payload["reason"] = reason
+    if extra:
+        payload.update({str(key): str(value) for key, value in extra.items()})
     audit_logger.log(level, json.dumps(payload, ensure_ascii=False))
