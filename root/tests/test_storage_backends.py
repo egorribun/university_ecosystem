@@ -8,7 +8,9 @@ from app.services.storage import S3Storage, StaticFSStorage
 @pytest.mark.asyncio
 async def test_static_storage_saves_and_deletes(tmp_path):
     backend = StaticFSStorage(tmp_path, base_url="/static")
-    url = await backend.save_file("avatars/test.png", b"payload", content_type="image/png")
+    url = await backend.save_file(
+        "avatars/test.png", b"payload", content_type="image/png"
+    )
 
     assert url == "/static/avatars/test.png"
     stored = tmp_path / "avatars" / "test.png"
@@ -41,7 +43,9 @@ async def test_s3_storage_uses_client():
         base_url="https://cdn.example/test-bucket",
     )
 
-    url = await backend.save_file("avatars/test.png", b"payload", content_type="image/png")
+    url = await backend.save_file(
+        "avatars/test.png", b"payload", content_type="image/png"
+    )
     assert url == "https://cdn.example/test-bucket/avatars/test.png"
 
     assert client.put_calls

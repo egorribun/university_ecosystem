@@ -30,10 +30,14 @@ class RecordingStorage:
     async def save_file(
         self, relative_path: str, data: bytes, *, content_type: str | None = None
     ) -> str:
-        self.calls.append(("save", (relative_path, data), {"content_type": content_type}))
+        self.calls.append(
+            ("save", (relative_path, data), {"content_type": content_type})
+        )
         return f"https://cdn.example/{relative_path}"
 
-    async def delete_file(self, file_url: str) -> None:  # pragma: no cover - unused in tests
+    async def delete_file(
+        self, file_url: str
+    ) -> None:  # pragma: no cover - unused in tests
         self.calls.append(("delete", (file_url,), {}))
 
 
