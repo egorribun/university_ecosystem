@@ -152,6 +152,18 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Уведомление",
         "en": "Notification",
     },
+    "stats.period.30d": {
+        "ru": "За последние {days} дней",
+        "en": "Last {days} days",
+    },
+    "stats.period.90d": {
+        "ru": "За последние {days} дней",
+        "en": "Last {days} days",
+    },
+    "stats.period.180d": {
+        "ru": "За последние {days} дней",
+        "en": "Last {days} days",
+    },
     "errors.auth.credentials_invalid": {
         "ru": "Не удалось подтвердить учётные данные",
         "en": "Could not validate credentials",

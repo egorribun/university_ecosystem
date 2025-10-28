@@ -944,7 +944,8 @@ export async function useMockApi(page: Page) {
           present: 18,
           total: 22,
           trend: 6.5,
-          window_label: "last 30 days",
+          period_key: "30d",
+          period_label: "Last 30 days",
           recent: [
             {
               date: new Date().toISOString(),
@@ -965,6 +966,8 @@ export async function useMockApi(page: Page) {
           average: 4.7,
           scale: "5",
           trend: 0.4,
+          period_key: "30d",
+          period_label: "Last 30 days",
           recent: [
             {
               course: "Physics",
@@ -987,6 +990,8 @@ export async function useMockApi(page: Page) {
           hours: 12,
           groups: 3,
           trend: 1,
+          period_key: "30d",
+          period_label: "Last 30 days",
           recent: [
             {
               title: "Volunteer Day",

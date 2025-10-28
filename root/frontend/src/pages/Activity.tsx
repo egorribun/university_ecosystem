@@ -64,12 +64,16 @@ const periodDayCount = (key: PeriodKey): number => {
   }
 }
 
+const isPeriodKey = (value: unknown): value is PeriodKey =>
+  typeof value === "string" && periodValues.includes(value as PeriodKey)
+
 type AttendanceStats = {
   percent: number
   present: number
   total: number
   trend: number
-  windowLabel: string
+  periodLabel: string
+  periodKey: string
   recent: Array<{ date: string; status: "present" | "absent" | "late"; course?: string }>
 }
 type GradeStats = {
@@ -171,7 +175,8 @@ type AttendanceSummaryResponse = {
   present?: unknown
   total?: unknown
   trend?: unknown
-  window_label?: string
+  period_key?: unknown
+  period_label?: unknown
   recent?: unknown
 }
 
@@ -361,11 +366,6 @@ export default function Activity() {
       t(`activity:sections.attendance.status.${status}`, { defaultValue: status }),
     [t]
   )
-  const tRef = useRef(t)
-  useEffect(() => {
-    tRef.current = t
-  }, [t])
-
   const fallbackAttendanceRecentRef = useRef(defaultAttendanceRecent)
   const fallbackGradeRecentRef = useRef(defaultGradeRecent)
   const fallbackParticipationRecentRef = useRef(defaultParticipationRecent)
@@ -398,10 +398,6 @@ export default function Activity() {
     summaryRequestRef.current = controller
 
     setLoading(true)
-    const windowLabel = tRef.current(`activity:period.labels.${period}`, {
-      defaultValue: period,
-      count: periodDayCount(period),
-    })
 
     try {
       const [a, g, p] = await Promise.allSettled([
@@ -425,12 +421,20 @@ export default function Activity() {
 
       if (a.status === "fulfilled" && a.value?.data) {
         const d = a.value.data
+        const resolvedPeriodKey: PeriodKey = isPeriodKey(d.period_key)
+          ? d.period_key
+          : period
+        const periodLabel =
+          typeof d.period_label === "string" && d.period_label.trim()
+            ? d.period_label
+            : labelByPeriod(resolvedPeriodKey)
         setAttendance({
           percent: toNumber(d.percent),
           present: toNumber(d.present),
           total: toNumber(d.total),
           trend: toNumber(d.trend),
-          windowLabel,
+          periodKey: resolvedPeriodKey,
+          periodLabel,
           recent: Array.isArray(d.recent) ? d.recent : [],
         })
       } else {
@@ -440,7 +444,8 @@ export default function Activity() {
           present: 83,
           total: 90,
           trend: 1.4,
-          windowLabel,
+          periodKey: period,
+          periodLabel: labelByPeriod(period),
           recent: fallbackRecent.map((item) => ({ ...item })),
         })
       }
@@ -488,7 +493,7 @@ export default function Activity() {
         setLoading(false)
       }
     }
-  }, [period])
+  }, [period, labelByPeriod])
 
   useEffect(() => {
     void fetchSummary()
@@ -866,7 +871,7 @@ export default function Activity() {
                     {t("activity:sections.attendance.summary", {
                       present: attendance?.present ?? 0,
                       total: attendance?.total ?? 0,
-                      period: attendance?.windowLabel || labelByPeriod(period),
+                      period: attendance?.periodLabel || labelByPeriod(period),
                     })}
                   </Typography>
                 </Stack>
@@ -1198,7 +1203,7 @@ export default function Activity() {
                   {t("activity:sections.attendance.dialogTotal", {
                     present: attendance?.present ?? 0,
                     total: attendance?.total ?? 0,
-                    period: attendance?.windowLabel || labelByPeriod(period),
+                    period: attendance?.periodLabel || labelByPeriod(period),
                   })}
                 </Typography>
                 <LinearProgress

@@ -130,10 +130,28 @@ async def test_attendance_stats_returns_expected_payload(
     assert payload["total"] == 3
     assert payload["percent"] == pytest.approx(66.67, rel=1e-2)
     assert payload["trend"] == pytest.approx(16.67, rel=1e-2)
-    assert payload["window_label"].startswith("last ")
+    assert payload["period_key"] == "30d"
+    assert payload["period_label"] == "Last 30 days"
     assert len(payload["recent"]) == 2
     assert payload["recent"][0]["status"] == "present"
     assert payload["recent"][0]["course"] == "Modern Physics"
+
+
+@pytest.mark.anyio
+async def test_attendance_stats_period_label_localized(async_client, user_factory):
+    password = "LocalizedPass123!"
+    hashed = get_password_hash(password)
+    student = await user_factory(hashed_password=hashed, is_active=True)
+
+    headers = await _login(async_client, student.email, password)
+    headers["Accept-Language"] = "ru"
+
+    response = await async_client.get("/stats/attendance", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["period_key"] == "30d"
+    assert payload["period_label"] == "За последние 30 дней"
 
 
 @pytest.mark.anyio
