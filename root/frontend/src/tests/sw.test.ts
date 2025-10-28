@@ -112,9 +112,11 @@ const createServiceWorkerScope = () => {
 }
 
 const loadServiceWorker = async () => {
-  const testing = (self as unknown as ServiceWorkerGlobalScope & {
-    __SW_TESTING__?: ServiceWorkerTestingApi
-  }).__SW_TESTING__
+  const testing = (
+    self as unknown as ServiceWorkerGlobalScope & {
+      __SW_TESTING__?: ServiceWorkerTestingApi
+    }
+  ).__SW_TESTING__
   if (!testing) {
     throw new Error("Service worker testing helpers were not registered")
   }
@@ -139,7 +141,9 @@ afterEach(async () => {
   await deleteDatabase()
   vi.restoreAllMocks()
   vi.clearAllMocks()
-  Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, { self: originalSelf })
+  Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, {
+    self: originalSelf,
+  })
 })
 
 const getListener = (type: string) => {
