@@ -19,6 +19,7 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
+from redis.exceptions import RedisError
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,8 +27,6 @@ from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
 from app.core.database import get_db
-from redis.exceptions import RedisError
-
 from app.deps.cache import RedisCache, etag_matches, format_etag, get_cache
 from app.localization import normalize_locale, resolve_locale, translate
 from app.models import models
@@ -54,9 +53,7 @@ async def _reset_events_list_cache_version() -> None:
             client = await cache._get_client()
             await client.delete(_EVENTS_LIST_VERSION_KEY)
         except (RedisError, OSError):
-            logger.debug(
-                "Failed to reset events cache version in Redis", exc_info=True
-            )
+            logger.debug("Failed to reset events cache version in Redis", exc_info=True)
 
 
 async def _get_events_list_version(cache) -> str:
@@ -97,7 +94,8 @@ async def _read_events_list_version(cache) -> int:
             return int(raw) if raw is not None else 0
         except (TypeError, ValueError):
             logger.debug(
-                "Invalid cached events version %s during inspection", raw,
+                "Invalid cached events version %s during inspection",
+                raw,
                 exc_info=True,
             )
             return 0
