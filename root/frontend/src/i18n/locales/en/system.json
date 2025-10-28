@@ -98,6 +98,10 @@
       "thunderstorm": "Thunderstorm",
       "thunderstormHail": "Thunderstorm with hail",
       "unknown": "Weather unavailable"
+    },
+    "aria": {
+      "status": "{{condition}}. Temperature {{temperature}}°C.",
+      "statusNoTemp": "{{condition}}. Temperature unavailable."
     }
   },
   "installPrompt": {

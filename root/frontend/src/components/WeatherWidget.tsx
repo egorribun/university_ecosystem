@@ -1,0 +1,87 @@
+import { useMemo } from "react"
+import { Badge, Skeleton, Tooltip } from "@/components/ui"
+import { useWeather } from "@/hooks/useWeather"
+import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
+import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
+
+type WeatherWidgetProps = {
+  className?: string
+}
+
+const TEMPERATURE_PRECISION = 0
+
+const isFiniteNumber = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value)
+
+export default function WeatherWidget({ className }: WeatherWidgetProps) {
+  const { data, isLoading } = useWeather()
+  const { language } = useLanguage()
+  const locale = getLocaleForLanguage(language)
+  const { t, i18n } = useTranslation(["system", "common"])
+
+  const formatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale ?? i18n.language, {
+        maximumFractionDigits: TEMPERATURE_PRECISION,
+        signDisplay: "always",
+      }),
+    [i18n.language, locale]
+  )
+
+  const wrapperClassName = cn("inline-flex", className)
+
+  if (isLoading) {
+    return (
+      <span className={wrapperClassName}>
+        <Skeleton
+          width={88}
+          height={30}
+          rounded="999px"
+          ariaLabel={t("common:loading")}
+          className="chip-weather__skeleton"
+        />
+      </span>
+    )
+  }
+
+  if (!data || !isFiniteNumber(data.temperatureC)) {
+    return null
+  }
+
+  const conditionText = t(data.translationKey, {
+    defaultValue: data.conditionLabel,
+  })
+
+  const roundedTemperature = Math.round(data.temperatureC)
+  const signedTemperature = formatter.format(roundedTemperature)
+  const displayTemperature = `${signedTemperature}°`
+
+  const ariaLabel = t("system:weather.aria.status", {
+    condition: conditionText,
+    temperature: signedTemperature,
+    defaultValue: `${conditionText}. Temperature ${signedTemperature}°C.`,
+  })
+
+  return (
+    <span className={wrapperClassName}>
+      <Tooltip content={conditionText}>
+        <Badge
+          size="sm"
+          className="chip-weather focus-visible:outline-none focus-visible:shadow-[var(--ue-focus-ring)]"
+          aria-live="polite"
+          aria-label={ariaLabel}
+          tabIndex={0}
+          data-animation={data.animation}
+        >
+          <span aria-hidden className="chip-weather__icon">
+            {data.icon}
+          </span>
+          <span className="chip-weather__temp" aria-hidden>
+            {displayTemperature}
+          </span>
+        </Badge>
+      </Tooltip>
+    </span>
+  )
+}
