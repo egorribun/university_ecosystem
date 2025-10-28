@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.models import models
 from app.localization import resolve_locale, translate
+from app.models import models
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -101,9 +101,7 @@ async def participation_summary(
     user: models.User = Depends(get_current_user),
 ):
     period_key, days = _resolve_period(period)
-    stats = await crud.get_participation_stats(
-        db, user_id=user.id, period_days=days
-    )
+    stats = await crud.get_participation_stats(db, user_id=user.id, period_days=days)
     return _period_response_payload(
         stats=stats,
         period_key=period_key,
