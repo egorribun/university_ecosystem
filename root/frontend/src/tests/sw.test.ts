@@ -204,7 +204,9 @@ describe("service worker offline queues", () => {
 
     scope.navigator.setOnline(false)
     scope.clients.matchAll = vi.fn(async () => [])
-    scope.clients.openWindow = vi.fn(async () => null)
+    scope.clients.openWindow = vi.fn(async () => {
+      throw new Error("offline")
+    })
 
     const notificationClick = getListener("notificationclick")
     const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
