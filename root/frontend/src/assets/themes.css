@@ -919,7 +919,9 @@ body.dark .chip-weather {
   font-size: 1.1em;
   line-height: 1;
   filter: drop-shadow(0 3px 6px rgba(255, 255, 255, 0.4));
-  transition: transform var(--anim-med), filter var(--anim-med);
+  transition:
+    transform var(--anim-med),
+    filter var(--anim-med);
 }
 .chip-weather__temp {
   font-variant-numeric: tabular-nums;
