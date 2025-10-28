@@ -394,6 +394,34 @@ async function processAllQueues(): Promise<void> {
   await processPendingReports()
 }
 
+type ServiceWorkerTestingApi = {
+  storePendingNavigation: typeof storePendingNavigation
+  storePendingReport: typeof storePendingReport
+  readPendingNavigations: typeof readPendingNavigations
+  readPendingReports: typeof readPendingReports
+  processPendingNavigations: typeof processPendingNavigations
+  processPendingReports: typeof processPendingReports
+  processAllQueues: typeof processAllQueues
+}
+
+declare global {
+  interface ServiceWorkerGlobalScope {
+    __SW_TESTING__?: ServiceWorkerTestingApi
+  }
+}
+
+if (import.meta.env.MODE === "test") {
+  self.__SW_TESTING__ = {
+    storePendingNavigation,
+    storePendingReport,
+    readPendingNavigations,
+    readPendingReports,
+    processPendingNavigations,
+    processPendingReports,
+    processAllQueues,
+  }
+}
+
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
 clientsClaim()

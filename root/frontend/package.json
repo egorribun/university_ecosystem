@@ -85,6 +85,7 @@
     "eslint-plugin-react": "^7.36.1",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-security": "^3.0.1",
+    "fake-indexeddb": "^6.2.4",
     "husky": "^9.1.7",
     "jest-axe": "^10.0.0",
     "jsdom": "^27.0.0",

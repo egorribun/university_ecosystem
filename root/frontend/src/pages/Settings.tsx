@@ -900,13 +900,8 @@ export default function Settings() {
       } else if (user?.email && trimmedEmail.toLowerCase() === user.email.toLowerCase()) {
         setEmailError(t("settings:security.email.noChange"))
         hasError = true
-      } else if (
-        pendingEmail &&
-        trimmedEmail.toLowerCase() === pendingEmail.toLowerCase()
-      ) {
-        setEmailError(
-          t("settings:security.email.pendingSame", { email: pendingEmail })
-        )
+      } else if (pendingEmail && trimmedEmail.toLowerCase() === pendingEmail.toLowerCase()) {
+        setEmailError(t("settings:security.email.pendingSame", { email: pendingEmail }))
         hasError = true
       }
       if (!emailPassword) {
