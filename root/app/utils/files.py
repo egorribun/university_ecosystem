@@ -5,16 +5,18 @@ import re
 import secrets
 from pathlib import Path
 from typing import Any, Final
-from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.localization import translate
 from app.services.file_scanner import scan_for_malware
+from app.services.storage import get_storage_backend
 from app.utils.images import optimize_image
 
 logger = logging.getLogger(__name__)
+
+storage_backend = get_storage_backend(settings)
 
 ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
@@ -33,10 +35,6 @@ except ImportError:  # pragma: no cover - handled at runtime
 
 _MAGIC_NOT_INITIALIZED: Final[object] = object()
 _magic_mime_detector: Any = _MAGIC_NOT_INITIALIZED
-
-
-def _ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
 
 
 async def _read_limited(
@@ -184,14 +182,11 @@ async def save_image(
 
     ext = _PREFERRED_EXTENSIONS.get(optimized_type) or _ext_from_mime(optimized_type)
     name = _gen_name(prefix, ext)
-    base = settings.static_dir_path
     sanitized_subdir = subdir.strip("/ ")
-    target_dir = base / sanitized_subdir
-    await asyncio.to_thread(_ensure_dir, target_dir)
-    path = target_dir / name
-    await asyncio.to_thread(path.write_bytes, optimized_data)
-    # Return canonical public URL without accidental duplicate slashes.
-    return f"/static/{sanitized_subdir}/{name}"
+    relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
+    return await storage_backend.save_file(
+        relative_path, optimized_data, content_type=optimized_type
+    )
 
 
 async def save_attachment(
@@ -280,57 +275,12 @@ async def save_attachment(
     ext_for_name = f".{chosen_ext_without_dot}" if chosen_ext_without_dot else ""
     name = _gen_name(prefix, ext_for_name)
     await scan_for_malware(data, locale=locale)
-    base = settings.static_dir_path
     sanitized_subdir = subdir.strip("/ ")
-    target_dir = base / sanitized_subdir
-    path = target_dir / name
-    await asyncio.to_thread(_ensure_dir, target_dir)
-    await asyncio.to_thread(path.write_bytes, data)
-    return f"/static/{sanitized_subdir}/{name}"
-
-
-def _resolve_static_file_path(file_url: str) -> Path | None:
-    if not file_url:
-        return None
-
-    parsed = urlparse(file_url)
-    raw_path = unquote(parsed.path or "")
-    if not raw_path:
-        return None
-
-    trimmed = raw_path.lstrip("/")
-    if not trimmed:
-        return None
-
-    parts = Path(trimmed).parts
-    if not parts or parts[0] != "static":
-        return None
-
-    relative = Path(*parts[1:])
-    if not relative.parts:
-        return None
-
-    base = settings.static_dir_path
-    base_resolved = base.resolve()
-    target = (base_resolved / relative).resolve()
-    try:
-        target.relative_to(base_resolved)
-    except ValueError:
-        return None
-    return target
-
-
-def _unlink_ignore_missing(path: Path) -> None:
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        return
-    except OSError:
-        logger.warning("Failed to remove file at %s", path, exc_info=True)
+    relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
+    return await storage_backend.save_file(
+        relative_path, data, content_type=declared_type or detected_type or None
+    )
 
 
 async def delete_static_file(file_url: str) -> None:
-    path = _resolve_static_file_path(file_url)
-    if path is None:
-        return
-    await asyncio.to_thread(_unlink_ignore_missing, path)
+    await storage_backend.delete_file(file_url)
