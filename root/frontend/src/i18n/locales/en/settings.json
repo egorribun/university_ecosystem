@@ -145,8 +145,11 @@
       "label": "New email",
       "passwordLabel": "Current password",
       "updateButton": "Update email",
-      "helper": "We'll verify updates instantly.",
+      "helper": "We'll email you a confirmation link to finish the update.",
       "updated": "Email updated",
+      "confirmationSent": "We sent a confirmation link to {{email}}. Follow it to finish updating your email.",
+      "pendingNotice": "Confirmation pending for {{email}}. Check your inbox to finalize the change.",
+      "pendingSame": "We're already waiting for confirmation at {{email}}",
       "failed": "Couldn't update email",
       "noChange": "Enter a different email address",
       "errors": {

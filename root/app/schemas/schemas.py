@@ -38,6 +38,10 @@ class UserEmailChangeIn(BaseModel):
     password: str
 
 
+class UserEmailConfirmIn(BaseModel):
+    token: str
+
+
 class UserPasswordChangeIn(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=200)
@@ -122,6 +126,7 @@ class MfaChallengeOut(OrmModel):
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool
+    pending_email: Optional[EmailStr] = None
     spotify_is_connected: Optional[bool] = None
     mfa_required: bool = False
     mfa_default_method: Optional[str] = None

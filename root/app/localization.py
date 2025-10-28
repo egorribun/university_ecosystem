@@ -312,6 +312,14 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Новый email должен отличаться от текущего",
         "en": "The new email must be different from your current address",
     },
+    "errors.users.email_confirmation_invalid": {
+        "ru": "Ссылка для подтверждения email недействительна или устарела",
+        "en": "The email confirmation link is invalid or has expired",
+    },
+    "errors.users.email_confirmation_conflict": {
+        "ru": "Этот email уже используется другим аккаунтом",
+        "en": "That email is already used by another account",
+    },
     "errors.users.invalid_password": {
         "ru": "Текущий пароль указан неверно",
         "en": "The current password is incorrect",

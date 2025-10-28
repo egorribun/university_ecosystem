@@ -6,6 +6,7 @@ import pytest
 from fastapi import UploadFile
 from httpx import AsyncClient
 from PIL import Image
+from sqlalchemy import select
 from starlette.datastructures import Headers
 
 from app.api import users
@@ -85,6 +86,85 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
 
     await db_session.refresh(user)
     assert user.email == "first-user@example.com"
+
+
+@pytest.mark.anyio
+async def test_email_change_requires_confirmation(
+    async_client, user_factory, db_session, monkeypatch
+):
+    password = "ConfirmEmail123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(
+        email="change-me@example.com",
+        hashed_password=hashed,
+        is_active=True,
+    )
+
+    headers = await _login(async_client, user.email, password)
+
+    token_value = "confirm-token"
+
+    def fake_blocking(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.api.users.secrets.token_urlsafe", lambda *_args, **_kwargs: token_value
+    )
+    monkeypatch.setattr("app.api.users._send_reset_email_blocking", fake_blocking)
+
+    response = await async_client.post(
+        "/users/me/email",
+        json={"email": "new.confirm@example.com", "password": password},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == "change-me@example.com"
+    assert body.get("pending_email") == "new.confirm@example.com"
+
+    await db_session.refresh(user)
+    assert user.email == "change-me@example.com"
+
+    result = await db_session.execute(
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.user_id == user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+    assert record is not None
+    assert not record.used
+
+    bad_response = await async_client.post(
+        "/users/me/email/confirm",
+        json={"token": "wrong-token"},
+        headers=headers,
+    )
+    assert bad_response.status_code == 400
+
+    confirm_response = await async_client.post(
+        "/users/me/email/confirm",
+        json={"token": token_value},
+        headers=headers,
+    )
+
+    assert confirm_response.status_code == 200
+    confirmed = confirm_response.json()
+    assert confirmed["email"] == "new.confirm@example.com"
+    assert confirmed.get("pending_email") is None
+
+    await db_session.refresh(user)
+    assert user.email == "new.confirm@example.com"
+
+    final = await db_session.execute(
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.user_id == user.id
+        )
+    )
+    final_record = final.scalar_one_or_none()
+    assert final_record is not None
+    await db_session.refresh(final_record)
+    assert final_record.used
 
 
 @pytest.mark.anyio
