@@ -663,18 +663,31 @@ class NotificationQueueMetrics:
         self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
         for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
             bucket.set(0)
+        # Clear any cached sample collections to avoid stale histogram state
+        for attr in ("_samples", "_child_samples", "_multi_samples"):
+            samples = getattr(self.processing_latency_seconds, attr, None)
+            if hasattr(samples, "clear"):
+                samples.clear()
         queue_wait_metrics = getattr(self.queue_wait_time_seconds, "_metrics", None)
         if queue_wait_metrics:
             for metric in queue_wait_metrics.values():
                 metric._sum.set(0)  # type: ignore[attr-defined]
                 for bucket in getattr(metric, "_buckets", []):
                     bucket.set(0)
+                for attr in ("_samples", "_child_samples", "_multi_samples"):
+                    samples = getattr(metric, attr, None)
+                    if hasattr(samples, "clear"):
+                        samples.clear()
         retry_delay_metrics = getattr(self.retry_delay_seconds, "_metrics", None)
         if retry_delay_metrics:
             for metric in retry_delay_metrics.values():
                 metric._sum.set(0)  # type: ignore[attr-defined]
                 for bucket in getattr(metric, "_buckets", []):
                     bucket.set(0)
+                for attr in ("_samples", "_child_samples", "_multi_samples"):
+                    samples = getattr(metric, attr, None)
+                    if hasattr(samples, "clear"):
+                        samples.clear()
         self.dead_lettered_jobs.set(0)
         histogram = self.oldest_dead_letter_age_seconds
         if histogram is not None:
