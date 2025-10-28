@@ -2,7 +2,7 @@ import asyncio
 import datetime as dt
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.models import PasswordResetToken, User
 from app.services import password_reset_cleanup
@@ -12,6 +12,7 @@ from app.services.password_reset_cleanup import (
     start_password_reset_cleanup_scheduler,
 )
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
+from app.core.config import settings
 
 
 @pytest.mark.asyncio
@@ -115,3 +116,29 @@ async def test_start_password_reset_cleanup_scheduler(monkeypatch):
 
     assert calls
     assert calls[0] == config.normalized_retention_minutes()
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_limits_active_tokens(
+    async_client, user_factory, db_session
+):
+    user = await user_factory(email="limit-reset@example.com")
+
+    iterations = settings.password_reset_max_active_tokens + 2
+    for _ in range(iterations):
+        response = await async_client.post(
+            "/password/forgot", json={"email": user.email}
+        )
+        assert response.status_code == 200
+
+    active = await db_session.execute(
+        select(func.count())
+        .select_from(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used.is_(False),
+        )
+    )
+    active_count = active.scalar_one()
+
+    assert active_count <= max(1, settings.password_reset_max_active_tokens)

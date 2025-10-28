@@ -96,6 +96,7 @@ Key settings you may want to adjust for local development:
 | `NOTIFICATIONS_RETENTION_CLEANUP_INTERVAL_SECONDS` | Interval between background retention cleanup runs. | `86400` |
 | `PASSWORD_RESET_CLEANUP_INTERVAL_SECONDS` | Interval between password reset token cleanup runs (`0` disables the scheduler). | `3600` |
 | `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES` | Minutes to keep used reset tokens before purging them (`0` deletes immediately). | `45` |
+| `PASSWORD_RESET_MAX_ACTIVE_TOKENS` | Maximum number of active (unused) password reset tokens kept per user. | `1` |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |
@@ -107,10 +108,11 @@ Key settings you may want to adjust for local development:
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. The `.env` file is loaded automatically when you start the backend or worker.
 
-Password reset tokens are trimmed during startup and by a periodic background job. By default, used tokens are purged after
-`PASSWORD_RESET_CLEANUP_RETENTION_MINUTES` (matching the 45&nbsp;minute expiry window) and the scheduler runs every
-`PASSWORD_RESET_CLEANUP_INTERVAL_SECONDS`. Set either value to `0` to disable automatic cleanup, or increase the interval if you
-prefer less frequent maintenance.
+Password reset tokens are trimmed during startup and by a periodic background job. The API always keeps the most recent
+`PASSWORD_RESET_MAX_ACTIVE_TOKENS` unused tokens for each user (default: one token) and reuses existing records when that limit is
+reached. By default, used tokens are purged after `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES` (matching the 45&nbsp;minute expiry
+window) and the scheduler runs every `PASSWORD_RESET_CLEANUP_INTERVAL_SECONDS`. Set either value to `0` to disable automatic
+cleanup, or increase the interval if you prefer less frequent maintenance.
 
 > **Security note:** When exposing the metrics endpoint, set `METRICS_BASIC_AUTH_USERNAME` and
 > `METRICS_BASIC_AUTH_PASSWORD` in your `.env` file (or Compose override) to unique, strong values.

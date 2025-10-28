@@ -122,6 +122,47 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+async def _prepare_password_reset_token(
+    db: AsyncSession,
+    user: models.User,
+    *,
+    token_hash: str,
+    expires_at: datetime,
+) -> None:
+    max_active = max(1, int(settings.password_reset_max_active_tokens))
+    result = await db.execute(
+        select(models.PasswordResetToken)
+        .where(
+            models.PasswordResetToken.user_id == user.id,
+            models.PasswordResetToken.used.is_(False),
+        )
+        .order_by(
+            models.PasswordResetToken.created_at.desc(),
+            models.PasswordResetToken.id.desc(),
+        )
+    )
+    active_tokens = list(result.scalars())
+
+    for stale in active_tokens[max_active:]:
+        stale.used = True
+
+    if len(active_tokens) >= max_active:
+        target = active_tokens[max_active - 1]
+        target.token_hash = token_hash
+        target.expires_at = expires_at
+        target.used = False
+        target.created_at = datetime.now(timezone.utc)
+        return
+
+    record = models.PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        used=False,
+    )
+    db.add(record)
+
+
 async def _get_active_email_change_request(
     db: AsyncSession, user_id: int
 ) -> models.EmailChangeToken | None:
@@ -214,10 +255,11 @@ async def forgot_password(
         expires = datetime.now(timezone.utc) + timedelta(
             minutes=RESET_TOKEN_EXPIRY_MINUTES
         )
-        db.add(
-            models.PasswordResetToken(
-                user_id=user.id, token_hash=token_hash, expires_at=expires, used=False
-            )
+        await _prepare_password_reset_token(
+            db,
+            user,
+            token_hash=token_hash,
+            expires_at=expires,
         )
         await db.commit()
         base = settings.app_base_url_clean
