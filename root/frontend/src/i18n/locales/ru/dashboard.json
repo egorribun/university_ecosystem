@@ -18,6 +18,31 @@
     "eventsWeek": "События на этой неделе",
     "eventItem": "Событие: {{title}}"
   },
+  "weather": {
+    "label": "Погода",
+    "tooltip": "{{label}} · {{condition}} · {{temperature}}",
+    "conditions": {
+      "clear": "Ясно",
+      "mostlyClear": "Переменная облачность",
+      "cloudy": "Пасмурно",
+      "fog": "Туман",
+      "drizzle": "Морось",
+      "freezingDrizzle": "Переохлаждённая морось",
+      "rain": "Дождь",
+      "freezingRain": "Ледяной дождь",
+      "snow": "Снегопад",
+      "snowGrains": "Снежная крупа",
+      "rainShowers": "Ливневый дождь",
+      "snowShowers": "Снегопад с порывами",
+      "thunderstorm": "Гроза",
+      "thunderstormHail": "Гроза с градом",
+      "unknown": "Погода недоступна"
+    },
+    "aria": {
+      "status": "{{label}}. {{condition}}. Температура {{temperature}}°C.",
+      "statusNoTemp": "{{label}}. {{condition}}. Температура недоступна."
+    }
+  },
   "fullSchedule": "Полное расписание",
   "now": "Сейчас",
   "next": "Далее",

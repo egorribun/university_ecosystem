@@ -253,6 +253,26 @@ const {
   }
 })
 
+const { weatherResult } = vi.hoisted(() => {
+  const weatherResult = {
+    data: {
+      conditionCode: 0,
+      conditionLabel: "Clear sky",
+      temperatureC: 21,
+      observedAt: new Date("2025-09-15T08:45:00Z").toISOString(),
+      icon: "☀️",
+      translationKeySuffix: "clear",
+      translationKey: "dashboard:weather.conditions.clear",
+      animation: "glow" as const,
+    },
+    isLoading: false,
+    error: null,
+    refresh: vi.fn(),
+  }
+
+  return { weatherResult }
+})
+
 const authState = {
   isAuth: true,
   login: vi.fn(),
@@ -277,6 +297,10 @@ vi.mock("@/hooks/useNowPlaying", () => ({
     refetch: vi.fn(),
   }),
   nowPlayingQueryKey: ["now-playing"],
+}))
+
+vi.mock("@/hooks/useWeather", () => ({
+  useWeather: vi.fn(() => weatherResult),
 }))
 
 const pushPreferencesMock = {
@@ -410,6 +434,7 @@ beforeEach(() => {
   apiPutMock.mockClear()
   pushPreferencesMock.enableNotifications.mockClear()
   pushPreferencesMock.disableNotifications.mockClear()
+  weatherResult.refresh.mockClear()
 })
 
 afterEach(() => {
@@ -539,6 +564,11 @@ describe("page translations", () => {
       const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
       expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
+      const weatherBadgeEn = await screen.findByLabelText(
+        "Weather. Clear sky. Temperature +21°C."
+      )
+      expect(weatherBadgeEn).toHaveAttribute("data-animation", "glow")
+      expect(weatherBadgeEn).toHaveAttribute("title", "Weather · Clear sky · +21°")
       // The Tailwind dashboard keeps the stories heading visually hidden but exposes it to
       // assistive tech. Querying by role keeps that intentional sr-only <h2> in place.
       expect(await screen.findByRole("heading", { name: "Stories" })).toBeInTheDocument()
@@ -560,6 +590,13 @@ describe("page translations", () => {
       await user.click(screen.getByTestId("lang-toggle"))
 
       expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
+      await waitFor(() => {
+        const weatherBadgeRu = screen.getByLabelText(
+          "Погода. Ясно. Температура +21°C."
+        )
+        expect(weatherBadgeRu).toHaveAttribute("data-animation", "glow")
+        expect(weatherBadgeRu).toHaveAttribute("title", "Погода · Ясно · +21°")
+      })
       expect(await screen.findByText("Истории переключаются автоматически.")).toBeInTheDocument()
       await waitFor(() => {
         const ruLabels = screen
