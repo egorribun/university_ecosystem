@@ -9,6 +9,7 @@ from starlette.datastructures import Headers
 
 from app.core.config import settings
 from app.localization import translate
+from app.services.storage import StaticFSStorage
 from app.utils import files
 
 
@@ -22,8 +23,26 @@ def test_normalize_filename_prefix_compacts_symbols():
     assert not re.search(r"\s", value)
 
 
+class RecordingStorage:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    async def save_file(
+        self, relative_path: str, data: bytes, *, content_type: str | None = None
+    ) -> str:
+        self.calls.append(
+            ("save", (relative_path, data), {"content_type": content_type})
+        )
+        return f"https://cdn.example/{relative_path}"
+
+    async def delete_file(
+        self, file_url: str
+    ) -> None:  # pragma: no cover - unused in tests
+        self.calls.append(("delete", (file_url,), {}))
+
+
 @pytest.mark.asyncio
-async def test_save_image_offloads_io(tmp_path, monkeypatch):
+async def test_save_image_uses_storage_backend(monkeypatch):
     buffer = io.BytesIO()
     Image.new("RGB", (2, 2), color=(255, 0, 0)).save(buffer, format="PNG")
     buffer.seek(0)
@@ -33,24 +52,24 @@ async def test_save_image_offloads_io(tmp_path, monkeypatch):
         headers=Headers({"content-type": "image/png"}),
     )
 
-    calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+    backend = RecordingStorage()
 
     async def fake_to_thread(func, /, *args, **kwargs):  # type: ignore[override]
-        calls.append((func, args, kwargs))
         return func(*args, **kwargs)
 
     monkeypatch.setattr(files, "asyncio", asyncio)
     monkeypatch.setattr(files.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(files, "storage_backend", backend)
 
     url = await files.save_image(upload, "avatars", "Profile Pic")
 
-    assert url.startswith("/static/avatars/")
-    stored = tmp_path / "avatars"
-    assert stored.exists()
-    assert any(stored.iterdir())
-    assert any(func is files._ensure_dir for func, _, _ in calls)
-    assert any(func.__name__ == "write_bytes" for func, _, _ in calls)
+    assert url.startswith("https://cdn.example/avatars/")
+    assert backend.calls
+    method, (relative_path, data), kwargs = backend.calls[0]
+    assert method == "save"
+    assert relative_path.startswith("avatars/")
+    assert isinstance(data, (bytes, bytearray))
+    assert kwargs["content_type"] in {"image/webp", "image/png"}
 
 
 @pytest.mark.parametrize(
@@ -103,13 +122,17 @@ async def test_save_image_resizes_and_converts_large_images(tmp_path, monkeypatc
         headers=Headers({"content-type": "image/png"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(
+        files,
+        "storage_backend",
+        StaticFSStorage(tmp_path, base_url="/static"),
+    )
     monkeypatch.setattr(settings, "image_max_width", 512)
     monkeypatch.setattr(settings, "image_max_height", 512)
 
     url = await files.save_image(upload, "avatars", "Large Pic")
     rel_path = url.removeprefix("/static/")
-    stored_path = settings.static_dir_path / rel_path
+    stored_path = files.storage_backend.base_dir / rel_path  # type: ignore[attr-defined]
 
     assert stored_path.suffix == ".webp"
     with Image.open(stored_path) as saved:
@@ -132,13 +155,17 @@ async def test_save_image_preserves_transparency_with_png(tmp_path, monkeypatch)
         headers=Headers({"content-type": "image/png"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(
+        files,
+        "storage_backend",
+        StaticFSStorage(tmp_path, base_url="/static"),
+    )
     monkeypatch.setattr(settings, "image_max_width", 512)
     monkeypatch.setattr(settings, "image_max_height", 512)
 
     url = await files.save_image(upload, "avatars", "Transparent Pic")
     rel_path = url.removeprefix("/static/")
-    stored_path = settings.static_dir_path / rel_path
+    stored_path = files.storage_backend.base_dir / rel_path  # type: ignore[attr-defined]
 
     assert stored_path.suffix == ".png"
     with Image.open(stored_path) as saved:

@@ -198,6 +198,14 @@ class Settings(BaseSettings):
     notifications_webpush_concurrency_limit: int = 10
     notifications_retention_days: int = 90
     notifications_retention_cleanup_interval_seconds: int = 86_400
+    storage_backend: str = "static"
+    storage_static_base_url: str = "/static"
+    storage_s3_bucket: str = ""
+    storage_s3_region: str = ""
+    storage_s3_access_key_id: str = ""
+    storage_s3_secret_access_key: str = ""
+    storage_s3_endpoint_url: str = ""
+    storage_s3_base_url: str = ""
     notifications_queue_max_size: int = 1024
     notifications_queue_enqueue_timeout_seconds: float = 0.5
     notifications_queue_in_memory_only: bool = False
@@ -243,6 +251,16 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"memory", "redis"}:
             raise ValueError("RATE_LIMIT_STORAGE_BACKEND must be 'memory' or 'redis'")
+        return normalized
+
+    @field_validator("storage_backend")
+    @classmethod
+    def _validate_storage_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"static", "filesystem", "local", "s3", "minio"}:
+            raise ValueError(
+                "STORAGE_BACKEND must be one of static, filesystem, local, s3, or minio"
+            )
         return normalized
 
     @field_validator("mfa_totp_issuer")
