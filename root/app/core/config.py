@@ -216,6 +216,7 @@ class Settings(BaseSettings):
     session_cleanup_interval_seconds: int = 900
     password_reset_cleanup_interval_seconds: int = 3_600
     password_reset_cleanup_retention_minutes: int = 45
+    password_reset_max_active_tokens: int = 1
     stories_cleanup_enabled: bool = True
     stories_retention_cleanup_interval_seconds: int = 86_400
     event_file_allowed_mime_types: str | list[str] = (
@@ -305,6 +306,11 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_positive_mfa_values(cls, value: int, info):
         return _validate_positive_int(value, label=info.field_name.upper())
+
+    @field_validator("password_reset_max_active_tokens")
+    @classmethod
+    def _validate_password_reset_max_active_tokens(cls, value: int) -> int:
+        return _validate_positive_int(value, label="PASSWORD_RESET_MAX_ACTIVE_TOKENS")
 
     @field_validator("mfa_totp_initial_skew_windows")
     @classmethod
