@@ -127,18 +127,19 @@ describe("WeatherWidget", () => {
       })
     }
 
-    const matchMediaSpy = vi
-      .spyOn(window, "matchMedia")
-      .mockImplementation((query: string) => ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        onchange: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }) as unknown as MediaQueryList)
+    const matchMediaSpy = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes("prefers-reduced-motion"),
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
 
     weatherStore.setState({ data: weatherStore.createData({ animation: "none" }) })
 

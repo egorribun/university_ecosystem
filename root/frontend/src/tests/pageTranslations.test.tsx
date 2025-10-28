@@ -564,9 +564,7 @@ describe("page translations", () => {
       const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
       expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
-      const weatherBadgeEn = await screen.findByLabelText(
-        "Weather. Clear sky. Temperature +21°C."
-      )
+      const weatherBadgeEn = await screen.findByLabelText("Weather. Clear sky. Temperature +21°C.")
       expect(weatherBadgeEn).toHaveAttribute("data-animation", "glow")
       expect(weatherBadgeEn).toHaveAttribute("title", "Weather · Clear sky · +21°")
       // The Tailwind dashboard keeps the stories heading visually hidden but exposes it to
@@ -591,9 +589,7 @@ describe("page translations", () => {
 
       expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
       await waitFor(() => {
-        const weatherBadgeRu = screen.getByLabelText(
-          "Погода. Ясно. Температура +21°C."
-        )
+        const weatherBadgeRu = screen.getByLabelText("Погода. Ясно. Температура +21°C.")
         expect(weatherBadgeRu).toHaveAttribute("data-animation", "glow")
         expect(weatherBadgeRu).toHaveAttribute("title", "Погода · Ясно · +21°")
       })
