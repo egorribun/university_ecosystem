@@ -421,9 +421,7 @@ export default function Activity() {
 
       if (a.status === "fulfilled" && a.value?.data) {
         const d = a.value.data
-        const resolvedPeriodKey: PeriodKey = isPeriodKey(d.period_key)
-          ? d.period_key
-          : period
+        const resolvedPeriodKey: PeriodKey = isPeriodKey(d.period_key) ? d.period_key : period
         const periodLabel =
           typeof d.period_label === "string" && d.period_label.trim()
             ? d.period_label

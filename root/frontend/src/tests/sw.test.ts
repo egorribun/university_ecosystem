@@ -90,7 +90,8 @@ const createServiceWorkerScope = () => {
 }
 
 const loadServiceWorker = async () => {
-  const testing = (self as ServiceWorkerGlobalScope & { __SW_TESTING__?: ServiceWorkerTestingApi }).__SW_TESTING__
+  const testing = (self as ServiceWorkerGlobalScope & { __SW_TESTING__?: ServiceWorkerTestingApi })
+    .__SW_TESTING__
   if (!testing) {
     throw new Error("Service worker testing helpers were not registered")
   }
@@ -209,7 +210,9 @@ describe("service worker offline queues", () => {
     expect(navigationsBefore).toHaveLength(1)
     expect(navigationsBefore[0]).toMatchObject({ url: "https://example.com/courses" })
     expect(reportsBefore).toHaveLength(1)
-    expect(reportsBefore[0]).toMatchObject({ reportUrl: "https://example.com/api/notifications/report" })
+    expect(reportsBefore[0]).toMatchObject({
+      reportUrl: "https://example.com/api/notifications/report",
+    })
 
     scope.navigator.onLine = true
     scope.clients.openWindow = vi.fn(async () => undefined)
@@ -220,6 +223,9 @@ describe("service worker offline queues", () => {
     expect(await sw.readPendingNavigations()).toHaveLength(0)
     expect(await sw.readPendingReports()).toHaveLength(0)
     expect(scope.clients.openWindow).toHaveBeenCalledWith("https://example.com/courses")
-    expect(fetchMock).toHaveBeenCalledWith("https://example.com/api/notifications/report", expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/api/notifications/report",
+      expect.any(Object)
+    )
   })
 })
