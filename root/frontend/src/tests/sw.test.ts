@@ -58,10 +58,32 @@ const deleteDatabase = async () => {
   })
 }
 
+type TestServiceWorkerScope = ServiceWorkerGlobalScope &
+  typeof globalThis & {
+    clients: {
+      matchAll: ReturnType<typeof vi.fn>
+      openWindow?: (url: string | URL) => Promise<WindowClient | null>
+    }
+    navigator: Navigator & { setOnline: (value: boolean) => void }
+  }
+
 const createServiceWorkerScope = () => {
   const listeners = new Map<string, ((event: Event) => void)[]>()
 
-  const scope: ServiceWorkerGlobalScope & typeof globalThis = Object.assign(Object.create(null), {
+  let online = true
+  const navigator = Object.assign(Object.create(null), {
+    sendBeacon: undefined,
+    setOnline: (value: boolean) => {
+      online = value
+    },
+  }) as Navigator & { setOnline: (value: boolean) => void }
+
+  Object.defineProperty(navigator, "onLine", {
+    configurable: true,
+    get: () => online,
+  })
+
+  const scope: TestServiceWorkerScope = Object.assign(Object.create(null), {
     __WB_MANIFEST: [],
     addEventListener: vi.fn(<T extends Event>(type: string, listener: (event: T) => void) => {
       const existing = listeners.get(type) ?? []
@@ -77,7 +99,7 @@ const createServiceWorkerScope = () => {
     indexedDB: globalThis.indexedDB,
     IDBKeyRange: globalThis.IDBKeyRange,
     location: new URL("https://example.com/"),
-    navigator: { onLine: true } as Navigator,
+    navigator,
     registration: {
       scope: "https://example.com/",
       showNotification: vi.fn(),
@@ -90,8 +112,9 @@ const createServiceWorkerScope = () => {
 }
 
 const loadServiceWorker = async () => {
-  const testing = (self as ServiceWorkerGlobalScope & { __SW_TESTING__?: ServiceWorkerTestingApi })
-    .__SW_TESTING__
+  const testing = (self as unknown as ServiceWorkerGlobalScope & {
+    __SW_TESTING__?: ServiceWorkerTestingApi
+  }).__SW_TESTING__
   if (!testing) {
     throw new Error("Service worker testing helpers were not registered")
   }
@@ -106,7 +129,9 @@ beforeEach(async () => {
   const created = createServiceWorkerScope()
   listeners = created.listeners
   originalSelf = self
-  Object.assign(globalThis, { self: created.scope })
+  Object.assign(globalThis as typeof globalThis & { self: TestServiceWorkerScope }, {
+    self: created.scope,
+  })
   await import("@/sw")
 })
 
@@ -114,7 +139,7 @@ afterEach(async () => {
   await deleteDatabase()
   vi.restoreAllMocks()
   vi.clearAllMocks()
-  Object.assign(globalThis, { self: originalSelf })
+  Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, { self: originalSelf })
 })
 
 const getListener = (type: string) => {
@@ -153,14 +178,11 @@ describe("service worker offline queues", () => {
       reportUrl: "https://example.com/api/report",
     })
 
-    const scope = self as ServiceWorkerGlobalScope & {
-      clients: { matchAll: ReturnType<typeof vi.fn>; openWindow?: (url: string) => Promise<void> }
-      navigator: Navigator & { sendBeacon?: (url: string, data?: BodyInit) => boolean }
-    }
+    const scope = self as unknown as TestServiceWorkerScope
 
-    scope.navigator.onLine = true
+    scope.navigator.setOnline(true)
     scope.clients.matchAll = vi.fn(async () => [])
-    scope.clients.openWindow = vi.fn(async () => undefined)
+    scope.clients.openWindow = vi.fn(async () => null)
 
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
 
@@ -174,14 +196,11 @@ describe("service worker offline queues", () => {
   })
 
   test("notificationclick queues offline interactions and clears them via processAllQueues", async () => {
-    const scope = self as ServiceWorkerGlobalScope & {
-      clients: { matchAll: ReturnType<typeof vi.fn>; openWindow?: (url: string) => Promise<void> }
-      navigator: Navigator & { sendBeacon?: (url: string, data?: BodyInit) => boolean }
-    }
+    const scope = self as unknown as TestServiceWorkerScope
 
-    scope.navigator.onLine = false
+    scope.navigator.setOnline(false)
     scope.clients.matchAll = vi.fn(async () => [])
-    scope.clients.openWindow = undefined
+    scope.clients.openWindow = vi.fn(async () => null)
 
     const notificationClick = getListener("notificationclick")
     const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
@@ -214,8 +233,8 @@ describe("service worker offline queues", () => {
       reportUrl: "https://example.com/api/notifications/report",
     })
 
-    scope.navigator.onLine = true
-    scope.clients.openWindow = vi.fn(async () => undefined)
+    scope.navigator.setOnline(true)
+    scope.clients.openWindow = vi.fn(async () => null)
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
 
     await sw.processAllQueues()
