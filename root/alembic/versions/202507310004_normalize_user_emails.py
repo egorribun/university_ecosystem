@@ -28,6 +28,11 @@ def _ensure_no_duplicates(bind) -> None:
 def upgrade() -> None:
     bind = op.get_bind()
 
+    inspector = sa.inspect(bind)
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    if "email" not in user_columns:
+        return
+
     op.execute(sa.text("UPDATE users SET email = lower(email)"))
 
     _ensure_no_duplicates(bind)

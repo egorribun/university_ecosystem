@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -125,8 +125,8 @@ class Settings(BaseSettings):
                 ) from None
             raise
 
-    database_url: str = Field(default="sqlite+aiosqlite:///./dev.db")
-    secret_key: str = Field(default="dev-secret-key-change-me")
+    database_url: str
+    secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     frontend_origin: str = "http://localhost:5173"
