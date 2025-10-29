@@ -471,14 +471,20 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
 
 async def _pending_persistent_jobs() -> int:
     async with async_session() as session:
-        result = await session.execute(
-            select(func.count())
-            .select_from(NotificationQueueJob)
-            .where(
-                NotificationQueueJob.claimed_at.is_(None),
-                NotificationQueueJob.dead_lettered.is_(False),
+        try:
+            result = await session.execute(
+                select(func.count())
+                .select_from(NotificationQueueJob)
+                .where(
+                    NotificationQueueJob.claimed_at.is_(None),
+                    NotificationQueueJob.dead_lettered.is_(False),
+                )
             )
-        )
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "no such table" in message:
+                return 0
+            raise
         return int(result.scalar_one())
 
 
@@ -506,6 +512,8 @@ async def _clear_persistent_jobs() -> None:
             except OperationalError as exc:
                 await session.rollback()
                 message = str(exc).lower()
+                if "no such table" in message:
+                    return
                 if "locked" not in message or attempt == max_attempts:
                     raise
                 await asyncio.sleep(delay_seconds * attempt)

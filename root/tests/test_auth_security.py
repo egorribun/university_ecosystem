@@ -1,6 +1,9 @@
+import uuid
+
 import pytest
 from fastapi import status
 from passlib.hash import bcrypt
+from sqlalchemy import select
 
 from app.auth.security import (
     LEGACY_BCRYPT_MAX_BYTES,
@@ -9,6 +12,7 @@ from app.auth.security import (
     verify_and_update_password,
     verify_password,
 )
+from app.models import models
 
 
 def _make_legacy_hash(password: str) -> str:
@@ -212,3 +216,106 @@ async def test_create_user_allows_admin(async_client, user_factory):
     body = response.json()
     assert body["email"] == payload["email"]
     assert body["role"] == "student"
+
+
+@pytest.mark.anyio
+async def test_register_normalizes_email(async_client, db_session):
+    raw_email = f"MixedCase{uuid.uuid4().hex[:6]}@Example.COM"
+    payload = {
+        "email": raw_email,
+        "password": "ValidPass123!",
+        "full_name": "Mixed Case",
+    }
+
+    response = await async_client.post("/auth/register", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "ok"
+
+    user = await db_session.get(models.User, body["id"])
+    assert user is not None
+    assert user.email == raw_email.lower()
+
+
+@pytest.mark.anyio
+async def test_login_accepts_mixed_case_username(async_client, user_factory):
+    password = "ValidLogin123!"
+    user = await user_factory(
+        email="login-case@example.com",
+        hashed_password=get_password_hash(password),
+        is_active=True,
+    )
+
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email.upper(), "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["token_type"] == "bearer"
+    assert body["access_token"]
+
+
+@pytest.mark.anyio
+async def test_forgot_password_accepts_mixed_case_email(
+    async_client, user_factory, db_session
+):
+    user = await user_factory(email=f"forgot-{uuid.uuid4().hex[:6]}@example.com")
+
+    base_query = select(models.PasswordResetToken.id).where(
+        models.PasswordResetToken.user_id == user.id
+    )
+    before = await db_session.execute(base_query)
+    before_count = len(before.scalars().all())
+
+    response = await async_client.post(
+        "/password/forgot",
+        json={"email": user.email.upper()},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"ok": True}
+
+    after = await db_session.execute(base_query)
+    after_count = len(after.scalars().all())
+    assert after_count == before_count + 1
+
+
+@pytest.mark.anyio
+async def test_admin_update_normalizes_email(async_client, user_factory, db_session):
+    admin_password = "AdminMixed123!"
+    admin = await user_factory(
+        role="admin",
+        hashed_password=get_password_hash(admin_password),
+    )
+
+    login_response = await async_client.post(
+        "/auth/login",
+        data={"username": admin.email, "password": admin_password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert login_response.status_code == status.HTTP_200_OK
+    token = login_response.json()["access_token"]
+
+    target_user = await user_factory()
+    mixed_case_email = f"Updated{uuid.uuid4().hex[:6]}@Example.COM"
+
+    response = await async_client.patch(
+        f"/users/{target_user.id}",
+        json={"email": mixed_case_email},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["email"] == mixed_case_email.lower()
+
+    await db_session.refresh(target_user)
+    assert target_user.email == mixed_case_email.lower()

@@ -20,7 +20,7 @@ from fastapi import (
     status,
 )
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -245,8 +245,9 @@ async def forgot_password(
     bg: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
+    normalized_email = payload.email.strip().lower()
     result = await db.execute(
-        select(models.User).where(models.User.email == payload.email)
+        select(models.User).where(func.lower(models.User.email) == normalized_email)
     )
     user = result.scalar_one_or_none()
     if user:
@@ -406,7 +407,7 @@ async def update_me(
 
         existing = await db.execute(
             select(models.User.id).where(
-                models.User.email == validated_email,
+                func.lower(models.User.email) == validated_email,
                 models.User.id != user.id,
             )
         )
@@ -461,7 +462,7 @@ async def change_email(
 
     existing = await db.execute(
         select(models.User.id).where(
-            models.User.email == validated_email,
+            func.lower(models.User.email) == validated_email,
             models.User.id != user.id,
         )
     )
@@ -534,7 +535,7 @@ async def confirm_email_change(
 
     existing = await db.execute(
         select(models.User.id).where(
-            models.User.email == record.new_email,
+            func.lower(models.User.email) == record.new_email,
             models.User.id != user.id,
         )
     )

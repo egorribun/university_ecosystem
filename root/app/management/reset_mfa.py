@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.auth import mfa
 from app.core.database import async_session
@@ -63,8 +63,9 @@ async def _load_user(
         return await session.get(models.User, user_id)
     if email is None:
         return None
+    normalized_email = email.strip().lower()
     result = await session.execute(
-        select(models.User).where(models.User.email == email.strip())
+        select(models.User).where(func.lower(models.User.email) == normalized_email)
     )
     return result.scalar_one_or_none()
 

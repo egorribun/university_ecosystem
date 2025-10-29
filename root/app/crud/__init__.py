@@ -94,6 +94,8 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
     raw_role = getattr(user_in, "role", None)
     requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
 
+    normalized_email = user_in.email.strip().lower()
+
     code = None
     if hasattr(user_in, "invite_code") and requested_role in (
         UserRole.TEACHER,
@@ -110,16 +112,14 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
             raise ValueError(translate("errors.users.invalid_invite"))
 
     exists = await db.execute(
-        select(models.User).where(
-            func.lower(models.User.email) == user_in.email.strip().lower()
-        )
+        select(models.User).where(func.lower(models.User.email) == normalized_email)
     )
     if exists.scalar_one_or_none():
         raise ValueError(translate("errors.users.email_in_use"))
 
     hashed_password = get_password_hash(user_in.password)
     db_user = models.User(
-        email=user_in.email.strip(),
+        email=normalized_email,
         hashed_password=hashed_password,
         full_name=user_in.full_name,
         role=requested_role.value,
@@ -831,6 +831,8 @@ async def admin_update_user(
         raise ValueError(translate("errors.users.not_found"))
     payload = data.model_dump(exclude_unset=True)
     reset_requested = bool(payload.pop("reset_mfa", False))
+    if "email" in payload and payload["email"] is not None:
+        payload["email"] = str(payload["email"]).strip().lower()
     for field, value in payload.items():
         setattr(user, field, value)
     reset_stats: mfa.MfaResetStats | None = None
