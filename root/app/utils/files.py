@@ -11,12 +11,63 @@ from fastapi import HTTPException, UploadFile, status
 from app.core.config import settings
 from app.localization import translate
 from app.services.file_scanner import scan_for_malware
-from app.services.storage import get_storage_backend
+from app.services.storage import StaticFSStorage, StorageBackend, get_storage_backend
 from app.utils.images import optimize_image
 
 logger = logging.getLogger(__name__)
 
 storage_backend = get_storage_backend(settings)
+_default_storage_backend = storage_backend
+
+
+def _storage_backend_signature() -> tuple[object, ...]:
+    """Return a tuple describing settings that affect storage backend selection."""
+
+    return (
+        settings.storage_backend,
+        getattr(settings, "static_dir_path", None),
+        getattr(settings, "storage_static_base_url", None),
+        getattr(settings, "storage_s3_bucket", None),
+        getattr(settings, "storage_s3_region", None),
+        getattr(settings, "storage_s3_access_key_id", None),
+        getattr(settings, "storage_s3_secret_access_key", None),
+        getattr(settings, "storage_s3_endpoint_url", None),
+        getattr(settings, "storage_s3_base_url", None),
+    )
+
+
+_storage_backend_snapshot = _storage_backend_signature()
+
+
+def _get_storage_backend() -> StorageBackend:
+    """Return the configured storage backend, refreshing when settings change."""
+
+    global storage_backend, _default_storage_backend, _storage_backend_snapshot
+
+    if storage_backend is _default_storage_backend:
+        signature = _storage_backend_signature()
+        if signature != _storage_backend_snapshot:
+            storage_backend = get_storage_backend(settings)
+            _default_storage_backend = storage_backend
+            _storage_backend_snapshot = signature
+    return storage_backend
+
+
+def _ensure_dir(path: Path) -> None:
+    """Ensure ``path`` exists on disk."""
+
+    path.mkdir(parents=True, exist_ok=True)
+
+
+async def _prepare_local_storage(backend: StorageBackend, subdir: str) -> None:
+    """Create the subdirectory for static storage if using the filesystem backend."""
+
+    if isinstance(backend, StaticFSStorage):
+        target = backend.base_dir
+        if subdir:
+            target = target / subdir
+        await asyncio.to_thread(_ensure_dir, target)
+
 
 ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
@@ -183,8 +234,10 @@ async def save_image(
     ext = _PREFERRED_EXTENSIONS.get(optimized_type) or _ext_from_mime(optimized_type)
     name = _gen_name(prefix, ext)
     sanitized_subdir = subdir.strip("/ ")
+    backend = _get_storage_backend()
+    await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    return await storage_backend.save_file(
+    return await backend.save_file(
         relative_path, optimized_data, content_type=optimized_type
     )
 
@@ -276,11 +329,14 @@ async def save_attachment(
     name = _gen_name(prefix, ext_for_name)
     await scan_for_malware(data, locale=locale)
     sanitized_subdir = subdir.strip("/ ")
+    backend = _get_storage_backend()
+    await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    return await storage_backend.save_file(
+    return await backend.save_file(
         relative_path, data, content_type=declared_type or detected_type or None
     )
 
 
 async def delete_static_file(file_url: str) -> None:
-    await storage_backend.delete_file(file_url)
+    backend = _get_storage_backend()
+    await backend.delete_file(file_url)

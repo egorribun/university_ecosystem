@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, Literal, Sequence, cast
 from weakref import WeakKeyDictionary
 
+from opentelemetry import trace
+from opentelemetry.trace import Span
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,6 +127,7 @@ async def _worker_loop(state: _LoopState) -> None:
     """Continuously process notification jobs from the queue."""
 
     metrics = _get_metrics()
+    tracer = trace.get_tracer("notification_queue")
     try:
         while True:
             if _use_persistent_backend():
@@ -148,13 +151,26 @@ async def _worker_loop(state: _LoopState) -> None:
             started = time.perf_counter()
             success = False
             error: BaseException | None = None
+            span: Span | None = None
             try:
-                await _process_job(job)
-                success = True
+                with tracer.start_as_current_span(
+                    "notification_queue.process_job"
+                ) as current_span:
+                    span = current_span
+                    span.set_attribute("notification.job.kind", job.kind)
+                    span.set_attribute("notification.job.record_id", job.record_id)
+                    await _process_job(job)
+                    success = True
+                    span.set_attribute("notification.job.result", "success")
             except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
+                if span is not None:
+                    span.set_attribute("notification.job.result", "cancelled")
                 raise
             except Exception as exc:  # pragma: no cover - defensive guard
                 error = exc
+                if span is not None:
+                    span.set_attribute("notification.job.result", "failure")
+                    span.record_exception(exc)
                 logger.exception(
                     "Failed to process notification job", extra={"job": job}
                 )

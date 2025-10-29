@@ -1,5 +1,6 @@
 import asyncio
 import os
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -532,3 +533,98 @@ async def test_persistent_queue_claims_next_job_from_large_backlog() -> None:
 
     finally:
         await notification_queue.reset_testing_state()
+
+
+@pytest.mark.anyio
+async def test_worker_loop_emits_tracing_spans(monkeypatch: pytest.MonkeyPatch):
+    spans: list["FakeSpan"] = []
+
+    class FakeSpan:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.attributes: dict[str, object] = {}
+            self.exceptions: list[BaseException] = []
+
+        def __enter__(self) -> "FakeSpan":
+            spans.append(self)
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object,
+        ) -> bool:
+            return False
+
+        def set_attribute(self, key: str, value: object) -> None:
+            self.attributes[key] = value
+
+        def record_exception(self, exc: BaseException) -> None:
+            self.exceptions.append(exc)
+
+    class FakeTracer:
+        def start_as_current_span(self, name: str) -> FakeSpan:
+            return FakeSpan(name)
+
+    class FakeTrace:
+        def __init__(self) -> None:
+            self.requested: list[str] = []
+
+        def get_tracer(self, name: str) -> FakeTracer:
+            self.requested.append(name)
+            return FakeTracer()
+
+    fake_trace = FakeTrace()
+    monkeypatch.setattr(notification_queue, "trace", fake_trace)
+    monkeypatch.setattr(notification_queue, "_get_metrics", lambda: None)
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "notifications_queue_in_memory_only",
+        True,
+        raising=False,
+    )
+
+    processed: list[int] = []
+
+    async def _fake_process(job: notification_queue.NotificationJob) -> None:
+        processed.append(job.record_id)
+        if job.record_id == 2:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(notification_queue, "_process_job", _fake_process)
+
+    notification_queue._loop_states.clear()
+    state = notification_queue._get_loop_state()
+
+    state.queue.put_nowait(
+        notification_queue.NotificationJob(kind="event", record_id=1, locale=None)
+    )
+    state.queue.put_nowait(
+        notification_queue.NotificationJob(kind="news", record_id=2, locale=None)
+    )
+
+    worker = asyncio.create_task(notification_queue._worker_loop(state))
+    await asyncio.sleep(0)
+    await notification_queue.wait_for_all_jobs(timeout=1.0)
+    worker.cancel()
+    with suppress(asyncio.CancelledError):
+        await worker
+
+    assert fake_trace.requested == ["notification_queue"]
+    assert [span.name for span in spans] == [
+        "notification_queue.process_job",
+        "notification_queue.process_job",
+    ]
+    assert processed == [1, 2]
+
+    assert spans[0].attributes["notification.job.kind"] == "event"
+    assert spans[0].attributes["notification.job.record_id"] == 1
+    assert spans[0].attributes["notification.job.result"] == "success"
+
+    assert spans[1].attributes["notification.job.kind"] == "news"
+    assert spans[1].attributes["notification.job.record_id"] == 2
+    assert spans[1].attributes["notification.job.result"] == "failure"
+    assert spans[1].exceptions and isinstance(spans[1].exceptions[0], RuntimeError)
+
+    notification_queue._loop_states.clear()
