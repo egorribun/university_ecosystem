@@ -107,12 +107,11 @@ class Settings(BaseSettings):
             )
             if missing_required:
                 details = ", ".join(missing_required)
-                note = (
+                raise RuntimeError(
                     "Missing required environment settings: "
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
-                )
-                exc.add_note(note)
+                ) from exc
             raise
 
     database_url: str
