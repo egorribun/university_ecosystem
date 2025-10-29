@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -92,6 +92,29 @@ def _validate_webauthn_origin(value: str) -> str:
 
 
 class Settings(BaseSettings):
+    def __init__(self, **values):
+        try:
+            super().__init__(**values)
+        except ValidationError as exc:
+            missing_required = sorted(
+                {
+                    str(loc[0])
+                    for error in exc.errors(include_url=False)
+                    if error.get("type") == "missing"
+                    for loc in [error.get("loc", ())]
+                    if loc
+                }
+            )
+            if missing_required:
+                details = ", ".join(missing_required)
+                message = (
+                    "Missing required environment settings: "
+                    f"{details}. Provide real secrets via environment variables or an"
+                    " application .env file (not .env.example)."
+                )
+                raise RuntimeError(message) from exc
+            raise
+
     database_url: str
     secret_key: str
     algorithm: str = "HS256"

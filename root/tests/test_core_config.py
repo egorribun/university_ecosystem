@@ -1,5 +1,4 @@
 import pytest
-from pydantic import ValidationError
 
 
 def test_settings_require_real_secret_when_env_missing(monkeypatch):
@@ -11,8 +10,9 @@ def test_settings_require_real_secret_when_env_missing(monkeypatch):
 
     assert config_module._ENV_FILE is None
 
-    with pytest.raises(ValidationError) as exc_info:
+    with pytest.raises(RuntimeError) as exc_info:
         config_module.Settings()
 
     message = str(exc_info.value).lower()
+    assert "missing required environment settings" in message
     assert "secret_key" in message
