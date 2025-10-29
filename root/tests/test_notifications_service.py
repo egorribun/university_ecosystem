@@ -371,6 +371,53 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
 
 
 @pytest.mark.anyio
+async def test_generate_schedule_reminders_skips_inactive_users(
+    db_session, user_factory
+):
+    group = Group(name="G3")
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+
+    active_user = await user_factory(group_id=group.id, is_active=True)
+    inactive_user = await user_factory(group_id=group.id, is_active=False)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    lesson = Schedule(
+        group_id=group.id,
+        subject="History",
+        teacher="Teacher",
+        room="301",
+        weekday="tuesday",
+        start_time=now + dt.timedelta(minutes=10),
+        end_time=now + dt.timedelta(minutes=60),
+    )
+    db_session.add(lesson)
+    await db_session.commit()
+
+    created = await notifications_module.generate_schedule_reminders(
+        db_session, window_minutes=30
+    )
+
+    assert created == 1
+
+    notifications = (
+        (
+            await db_session.execute(
+                select(Notification).where(
+                    Notification.user_id.in_([active_user.id, inactive_user.id])
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert notifications
+    assert {note.user_id for note in notifications} == {active_user.id}
+
+
+@pytest.mark.anyio
 async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, caplog):
     class _DummySession:
         async def __aenter__(self):

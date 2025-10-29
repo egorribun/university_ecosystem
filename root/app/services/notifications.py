@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import and_, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
@@ -474,11 +475,25 @@ async def create_notifications_for_users(
     payload_data: Optional[Mapping[str, Any]] = None,
     user_ids: Sequence[int],
     topic: Optional[str] = None,
+    user_filter: Callable[[Select], Select] | None = None,
 ) -> int:
     now = dt.datetime.now(UTC)
     uids = list({int(uid) for uid in user_ids})
     if not uids:
         return 0
+
+    if user_filter is not None:
+        filtered_stmt = select(User.id).where(User.id.in_(uids))
+        filtered_stmt = user_filter(filtered_stmt)
+        filtered_rows = await db.execute(filtered_stmt)
+        allowed_ids = {
+            int(user_id)
+            for user_id in filtered_rows.scalars().all()
+            if user_id is not None
+        }
+        uids = [uid for uid in uids if uid in allowed_ids]
+        if not uids:
+            return 0
     title_map = _normalize_translation_map(title_translations)
     body_map = _normalize_translation_map(body_translations)
 
@@ -661,6 +676,12 @@ async def create_notifications_for_users(
     return len(notifications)
 
 
+def only_active_users(stmt: Select) -> Select:
+    """Limit a user selection to accounts that are currently active."""
+
+    return stmt.where(User.is_active.is_(True))
+
+
 async def generate_schedule_reminders(
     db: AsyncSession, *, window_minutes: int = 6
 ) -> int:
@@ -703,7 +724,11 @@ async def generate_schedule_reminders(
     if not group_ids:
         return 0
 
-    users_stmt = select(User.id, User.group_id).where(User.group_id.in_(group_ids))
+    users_stmt = (
+        select(User.id, User.group_id)
+        .where(User.group_id.in_(group_ids))
+        .where(User.is_active.is_(True))
+    )
     user_rows = await db.execute(users_stmt)
     group_users: dict[int, set[int]] = defaultdict(set)
     for user_id, group_id in user_rows:
@@ -775,6 +800,7 @@ async def generate_schedule_reminders(
                 payload_data=data_payload,
                 user_ids=to_notify,
                 topic="schedule",
+                user_filter=only_active_users,
             )
             existing_by_dedupe[key_for_dedupe].update(to_notify)
     return total_created
