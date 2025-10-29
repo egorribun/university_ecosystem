@@ -6,19 +6,20 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _resolve_env_file(base_dir: Path) -> Path:
-    candidates = [".env", ".env.local", ".env.example"]
-    for name in candidates:
+def _resolve_env_file(base_dir: Path) -> Path | None:
+    """Locate a concrete environment file if one has been provided."""
+
+    for name in (".env", ".env.local"):
         candidate = base_dir / name
-        if candidate.exists():
+        if candidate.is_file():
             return candidate
-    return base_dir / candidates[0]
+    return None
 
 
 _ENV_FILE = _resolve_env_file(_PROJECT_ROOT)
@@ -91,6 +92,39 @@ def _validate_webauthn_origin(value: str) -> str:
 
 
 class Settings(BaseSettings):
+    def __init__(self, **values):
+        try:
+            super().__init__(**values)
+        except ValidationError as exc:
+
+            def _format_missing(loc: tuple[object, ...]) -> str | None:
+                if not loc:
+                    return None
+                first = loc[0]
+                if isinstance(first, str):
+                    return first.upper()
+                return str(first)
+
+            missing_required = sorted(
+                {
+                    formatted
+                    for error in exc.errors(include_url=False)
+                    if error.get("type") == "missing"
+                    for formatted in [
+                        _format_missing(tuple(error.get("loc", ()) or ()))
+                    ]
+                    if formatted
+                }
+            )
+            if missing_required:
+                details = ", ".join(missing_required)
+                raise RuntimeError(
+                    "Missing required environment variables: "
+                    f"{details}. Provide real secrets via environment variables or an"
+                    " application .env file (not .env.example)."
+                ) from None
+            raise
+
     database_url: str
     secret_key: str
     algorithm: str = "HS256"
@@ -320,7 +354,7 @@ class Settings(BaseSettings):
         return value
 
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE),
+        env_file=str(_ENV_FILE) if _ENV_FILE is not None else None,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
