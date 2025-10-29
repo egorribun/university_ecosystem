@@ -13,9 +13,11 @@ def test_settings_require_real_secret_when_env_missing(monkeypatch):
     with pytest.raises(RuntimeError) as exc_info:
         config_module.Settings()
 
-    combined = str(exc_info.value).lower()
+    message = str(exc_info.value)
+    combined = message.lower()
 
-    assert "missing required environment settings" in combined
-    assert "secret_key" in combined
+    assert "missing required environment variables" in combined
+    assert "secret_key" not in message
+    assert "SECRET_KEY" in message
     assert "provide real secrets" in combined
     assert "validationerror" not in combined

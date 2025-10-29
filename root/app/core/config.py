@@ -96,19 +96,29 @@ class Settings(BaseSettings):
         try:
             super().__init__(**values)
         except ValidationError as exc:
+            def _format_missing(loc: tuple[object, ...]) -> str | None:
+                if not loc:
+                    return None
+                first = loc[0]
+                if isinstance(first, str):
+                    return first.upper()
+                return str(first)
+
             missing_required = sorted(
                 {
-                    str(loc[0])
+                    formatted
                     for error in exc.errors(include_url=False)
                     if error.get("type") == "missing"
-                    for loc in [error.get("loc", ())]
-                    if loc
+                    for formatted in [
+                        _format_missing(tuple(error.get("loc", ()) or ()))
+                    ]
+                    if formatted
                 }
             )
             if missing_required:
                 details = ", ".join(missing_required)
                 raise RuntimeError(
-                    "Missing required environment settings: "
+                    "Missing required environment variables: "
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
                 ) from None
