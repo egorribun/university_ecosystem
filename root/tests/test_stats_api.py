@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.auth.security import get_password_hash
+from app.deps import cache as cache_module
 from app.models import models
 from app.services import attendance_tokens
 
@@ -289,3 +290,89 @@ async def test_participation_stats_summarize_events(
         "Hackathon",
         "Volunteer Day",
     }
+
+
+@pytest.mark.anyio
+async def test_attendance_stats_uses_cache(
+    async_client, fake_cache, user_factory, monkeypatch
+):
+    password = "CachePass123!"
+    hashed = get_password_hash(password)
+    student = await user_factory(hashed_password=hashed, is_active=True)
+
+    headers = await _login(async_client, student.email, password)
+
+    calls = {"get": 0, "set": 0}
+    original_get = cache_module.RedisCache.get
+    original_set = cache_module.RedisCache.set
+
+    async def tracked_get(self, key):  # type: ignore[override]
+        calls["get"] += 1
+        return await original_get(self, key)
+
+    async def tracked_set(self, key, payload, ttl=None):  # type: ignore[override]
+        calls["set"] += 1
+        return await original_set(self, key, payload, ttl=ttl)
+
+    monkeypatch.setattr(cache_module.RedisCache, "get", tracked_get)
+    monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
+
+    first = await async_client.get("/stats/attendance", headers=headers)
+    assert first.status_code == 200
+
+    second = await async_client.get("/stats/attendance", headers=headers)
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+    assert calls["get"] == 2
+    assert calls["set"] == 1
+
+
+@pytest.mark.anyio
+async def test_registering_for_event_invalidates_stats_cache(
+    async_client,
+    fake_cache,
+    user_factory,
+    db_session,
+    monkeypatch,
+):
+    now = datetime.now(timezone.utc)
+    admin = await user_factory(role="admin")
+    password = "CacheInvalidate456!"
+    hashed = get_password_hash(password)
+    student = await user_factory(hashed_password=hashed, is_active=True)
+
+    event = models.Event(
+        title="New Seminar",
+        description="Discussion",
+        location="Hall 1",
+        event_type="seminar",
+        starts_at=now + timedelta(hours=1),
+        ends_at=now + timedelta(hours=3),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(event)
+    await db_session.commit()
+
+    headers = await _login(async_client, student.email, password)
+
+    invalidated: list[tuple[str, ...]] = []
+    original_invalidate = cache_module.RedisCache.invalidate
+
+    async def tracked_invalidate(self, *keys):  # type: ignore[override]
+        invalidated.append(keys)
+        return await original_invalidate(self, *keys)
+
+    monkeypatch.setattr(cache_module.RedisCache, "invalidate", tracked_invalidate)
+
+    response = await async_client.post(
+        "/events/attendance",
+        json={"event_id": event.id},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    flattened = [key for call in invalidated for key in call]
+    assert any(key.startswith("stats:attendance") for key in flattened)
+    assert any(key.startswith("stats:participation") for key in flattened)

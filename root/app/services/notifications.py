@@ -32,6 +32,7 @@ from app.models.models import (
     Schedule,
     User,
 )
+from app.services import stats_cache
 from app.services.notification_templates import render_notification_template
 from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
@@ -508,6 +509,12 @@ async def create_notifications_for_users(
         if notification.id is not None
     }
     await db.commit()
+
+    if notification_ids_by_user and type == "grade":
+        await stats_cache.invalidate_user_stats_cache(
+            user_ids=list(notification_ids_by_user.keys()),
+            kinds=("grades",),
+        )
 
     if not notification_ids_by_user:
         return 0

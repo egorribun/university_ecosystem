@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.deps.cache import BaseCache
 from app.localization import localized_text, normalize_locale, translate
 from app.models import models
 from app.models.enums import UserRole
@@ -18,7 +19,7 @@ from app.models.user_loaders import (
     ensure_mfa_relationships_loaded,
 )
 from app.schemas import schemas
-from app.services import attendance_tokens
+from app.services import attendance_tokens, stats_cache
 
 
 async def get_user_auth(db: AsyncSession, login: str):
@@ -628,6 +629,7 @@ async def update_event(
 async def register_attendance(
     db: AsyncSession, data: schemas.EventAttendanceCreate, user_id: int
 ):
+    cache_kinds = ("attendance", "participation")
     stmt = select(models.EventAttendance).where(
         and_(
             models.EventAttendance.event_id == data.event_id,
@@ -647,6 +649,10 @@ async def register_attendance(
             await db.commit()
             await db.refresh(exist)
         exist.qr_token = attendance_tokens.issue_token(exist)
+        await stats_cache.invalidate_user_stats_cache(
+            user_ids=user_id,
+            kinds=cache_kinds,
+        )
         return exist
 
     secret = attendance_tokens.generate_secret()
@@ -679,9 +685,17 @@ async def register_attendance(
             await db.commit()
             await db.refresh(exist)
         exist.qr_token = attendance_tokens.issue_token(exist)
+        await stats_cache.invalidate_user_stats_cache(
+            user_ids=user_id,
+            kinds=cache_kinds,
+        )
         return exist
     await db.refresh(record)
     record.qr_token = attendance_tokens.issue_token(record)
+    await stats_cache.invalidate_user_stats_cache(
+        user_ids=user_id,
+        kinds=cache_kinds,
+    )
     return record
 
 
@@ -699,6 +713,10 @@ async def unregister_attendance(
         return {"ok": False}
     await db.delete(record)
     await db.commit()
+    await stats_cache.invalidate_user_stats_cache(
+        user_ids=user_id,
+        kinds=("attendance", "participation"),
+    )
     return {"ok": True}
 
 
@@ -846,7 +864,20 @@ async def get_attendance_stats(
     user_id: int,
     period_days: int,
     period_key: str | None = None,
+    cache: BaseCache | None = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
+    cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
+    cached = await stats_cache.get_cached_stats(
+        cache=cache,
+        kind="attendance",
+        user_id=user_id,
+        period_key=cache_period_key,
+        skip_cache=skip_cache,
+    )
+    if cached is not None:
+        return cached
+
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
     previous_start = window_start - timedelta(days=period_days)
@@ -925,14 +956,23 @@ async def get_attendance_stats(
             }
         )
 
-    return {
+    result = {
         "percent": round(percent, 2),
         "present": attended_events,
         "total": total_events,
         "trend": round(percent - previous_percent, 2),
-        "period_key": period_key or f"{period_days}d",
+        "period_key": cache_period_key,
         "recent": recent,
     }
+    await stats_cache.set_cached_stats(
+        cache=cache,
+        kind="attendance",
+        user_id=user_id,
+        period_key=cache_period_key,
+        payload=result,
+        skip_cache=skip_cache,
+    )
+    return result
 
 
 def _parse_grade_payload(
@@ -979,8 +1019,25 @@ def _parse_grade_payload(
 
 
 async def get_grade_stats(
-    db: AsyncSession, *, user_id: int, period_days: int
+    db: AsyncSession,
+    *,
+    user_id: int,
+    period_days: int,
+    period_key: str | None = None,
+    cache: BaseCache | None = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
+    cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
+    cached = await stats_cache.get_cached_stats(
+        cache=cache,
+        kind="grades",
+        user_id=user_id,
+        period_key=cache_period_key,
+        skip_cache=skip_cache,
+    )
+    if cached is not None:
+        return cached
+
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
     previous_start = window_start - timedelta(days=period_days)
@@ -1038,17 +1095,44 @@ async def get_grade_stats(
 
     recent = current_entries[:5]
 
-    return {
+    result = {
         "average": round(average, 2) if current_entries else 0.0,
         "scale": scale,
         "trend": round(average - previous_average, 2),
         "recent": recent,
+        "period_key": cache_period_key,
     }
+    await stats_cache.set_cached_stats(
+        cache=cache,
+        kind="grades",
+        user_id=user_id,
+        period_key=cache_period_key,
+        payload=result,
+        skip_cache=skip_cache,
+    )
+    return result
 
 
 async def get_participation_stats(
-    db: AsyncSession, *, user_id: int, period_days: int
+    db: AsyncSession,
+    *,
+    user_id: int,
+    period_days: int,
+    period_key: str | None = None,
+    cache: BaseCache | None = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
+    cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
+    cached = await stats_cache.get_cached_stats(
+        cache=cache,
+        kind="participation",
+        user_id=user_id,
+        period_key=cache_period_key,
+        skip_cache=skip_cache,
+    )
+    if cached is not None:
+        return cached
+
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
     previous_start = window_start - timedelta(days=period_days)
@@ -1113,10 +1197,20 @@ async def get_participation_stats(
 
     previous_event_ids = {row[0] for row in previous_entries}
 
-    return {
+    result = {
         "events": len(unique_events),
         "hours": round(total_hours, 2) if total_hours else 0.0,
         "groups": len(event_types),
         "trend": len(unique_events) - len(previous_event_ids),
         "recent": recent,
+        "period_key": cache_period_key,
     }
+    await stats_cache.set_cached_stats(
+        cache=cache,
+        kind="participation",
+        user_id=user_id,
+        period_key=cache_period_key,
+        payload=result,
+        skip_cache=skip_cache,
+    )
+    return result

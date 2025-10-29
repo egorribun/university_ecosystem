@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.deps.cache import get_cache
 from app.localization import resolve_locale, translate
 from app.models import models
 
@@ -29,6 +30,12 @@ def _resolve_period(period: str | None) -> tuple[str, int]:
     if days is not None:
         return period_key, days
     return _PERIOD_DEFAULT
+
+
+def _should_skip_cache(requested: bool, user: models.User) -> bool:
+    if not requested:
+        return False
+    return user.role == "admin"
 
 
 def _period_response_payload(
@@ -56,15 +63,19 @@ def _period_response_payload(
 async def attendance_summary(
     request: Request,
     period: str = Query("30d"),
+    skip_cache: bool = Query(False, alias="skip_cache"),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     period_key, days = _resolve_period(period)
+    cache_backend = get_cache()
     stats = await crud.get_attendance_stats(
         db,
         user_id=user.id,
         period_days=days,
         period_key=period_key,
+        cache=cache_backend,
+        skip_cache=_should_skip_cache(skip_cache, user),
     )
     return _period_response_payload(
         stats=stats,
@@ -79,11 +90,20 @@ async def attendance_summary(
 async def grade_summary(
     request: Request,
     period: str = Query("30d"),
+    skip_cache: bool = Query(False, alias="skip_cache"),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     period_key, days = _resolve_period(period)
-    stats = await crud.get_grade_stats(db, user_id=user.id, period_days=days)
+    cache_backend = get_cache()
+    stats = await crud.get_grade_stats(
+        db,
+        user_id=user.id,
+        period_days=days,
+        cache=cache_backend,
+        period_key=period_key,
+        skip_cache=_should_skip_cache(skip_cache, user),
+    )
     return _period_response_payload(
         stats=stats,
         period_key=period_key,
@@ -97,11 +117,20 @@ async def grade_summary(
 async def participation_summary(
     request: Request,
     period: str = Query("30d"),
+    skip_cache: bool = Query(False, alias="skip_cache"),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     period_key, days = _resolve_period(period)
-    stats = await crud.get_participation_stats(db, user_id=user.id, period_days=days)
+    cache_backend = get_cache()
+    stats = await crud.get_participation_stats(
+        db,
+        user_id=user.id,
+        period_days=days,
+        cache=cache_backend,
+        period_key=period_key,
+        skip_cache=_should_skip_cache(skip_cache, user),
+    )
     return _period_response_payload(
         stats=stats,
         period_key=period_key,

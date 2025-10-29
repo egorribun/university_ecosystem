@@ -174,6 +174,13 @@ The frontend caches a lightweight profile snapshot in `localStorage` to speed up
 native `storage` event and a `BroadcastChannel` message so that other open tabs synchronize immediately. Logging out or being
 signed out in one tab clears the cached profile and authentication state everywhere.
 
+## Stats API caching
+
+The `/stats/*` endpoints cache responses per `(user_id, period)` key using Redis for **3 minutes** by default. The cache is
+automatically invalidated when a student registers for or unregisters from an event, and when new grade notifications are issued.
+Administrators can bypass the cache for a single request by appending `?skip_cache=true` to the stats URL; other roles always use
+the cached payload when available.
+
 ## Architecture overview
 
 ```
