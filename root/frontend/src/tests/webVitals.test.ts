@@ -54,9 +54,7 @@ describe("initWebVitals", () => {
   })
 
   it("does not run in development mode", () => {
-    const result = initWebVitals(
-      createEnv({ DEV: true, PROD: false, MODE: "development" })
-    )
+    const result = initWebVitals(createEnv({ DEV: true, PROD: false, MODE: "development" }))
 
     expect(result).toBe(false)
     expect(onCLS).not.toHaveBeenCalled()
