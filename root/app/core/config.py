@@ -111,7 +111,7 @@ class Settings(BaseSettings):
                     "Missing required environment settings: "
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
-                ) from exc
+                ) from None
             raise
 
     database_url: str
