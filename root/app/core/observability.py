@@ -291,6 +291,8 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
 
 
 def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
+    """Configure logging and telemetry for API handlers and background tasks."""
+
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
         app.add_middleware(
