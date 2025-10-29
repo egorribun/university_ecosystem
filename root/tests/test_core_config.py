@@ -18,3 +18,4 @@ def test_settings_require_real_secret_when_env_missing(monkeypatch):
     assert "missing required environment settings" in combined
     assert "secret_key" in combined
     assert "provide real secrets" in combined
+    assert "validationerror" not in combined
