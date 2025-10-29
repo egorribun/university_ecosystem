@@ -96,6 +96,7 @@ class Settings(BaseSettings):
         try:
             super().__init__(**values)
         except ValidationError as exc:
+
             def _format_missing(loc: tuple[object, ...]) -> str | None:
                 if not loc:
                     return None
