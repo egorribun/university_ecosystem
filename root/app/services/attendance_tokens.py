@@ -5,6 +5,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import math
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -121,10 +122,9 @@ def issue_token(
     if ttl <= 0:
         raise AttendanceTokenError("Attendance token TTL must be positive")
     moment = now or _now()
-    current_second = int(moment.timestamp())
-    slot_start = (current_second // ttl) * ttl
-    issued_at = slot_start
-    expires_at = slot_start + ttl
+    moment_ts = moment.timestamp()
+    issued_at = int(moment_ts)
+    expires_at = int(math.ceil(moment_ts + ttl))
     payload = AttendanceTokenPayload(
         purpose=TOKEN_PURPOSE,
         event_id=int(getattr(attendance, "event_id")),
@@ -182,7 +182,7 @@ def verify_token(
     if not hmac.compare_digest(calculated, expected_hmac):
         raise AttendanceTokenInvalid("Token secret is not active")
     moment = now or _now()
-    if payload.expires_at <= int(moment.timestamp()):
+    if moment.timestamp() >= payload.expires_at:
         raise AttendanceTokenExpired("Token has expired")
     return payload
 

@@ -5674,6 +5674,7 @@ export interface operations {
     parameters: {
       query?: {
         period?: string
+        skip_cache?: boolean
       }
       header?: never
       path?: never
@@ -5705,6 +5706,7 @@ export interface operations {
     parameters: {
       query?: {
         period?: string
+        skip_cache?: boolean
       }
       header?: never
       path?: never
@@ -5736,6 +5738,7 @@ export interface operations {
     parameters: {
       query?: {
         period?: string
+        skip_cache?: boolean
       }
       header?: never
       path?: never

@@ -105,6 +105,8 @@ Key settings you may want to adjust for local development:
 | `METRICS_ALLOWLIST` | Comma-separated list of IPs, CIDR blocks, or hostnames allowed to access `/metrics`. | Empty |
 | `VITE_SENTRY_DSN` | Frontend Sentry DSN used to initialize error tracking. | Empty |
 | `VITE_ENVIRONMENT` | Optional environment label propagated to the frontend observability SDK. | Derived from Vite build mode |
+| `VITE_ENABLE_WEB_VITALS` | Enable Web Vitals collection in the frontend (`true`/`1`/`yes`). | `false` |
+| `VITE_WEB_VITALS_ENDPOINT` | Optional endpoint accepting POSTed Web Vitals metrics (JSON). Logs to the console when unset. | Empty |
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. The `.env` file is loaded automatically when you start the backend or worker.
 
