@@ -68,6 +68,7 @@ async def _prepare_local_storage(backend: StorageBackend, subdir: str) -> None:
             target = target / subdir
         await asyncio.to_thread(_ensure_dir, target)
 
+
 ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
 
@@ -236,7 +237,9 @@ async def save_image(
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    return await backend.save_file(relative_path, optimized_data, content_type=optimized_type)
+    return await backend.save_file(
+        relative_path, optimized_data, content_type=optimized_type
+    )
 
 
 async def save_attachment(
