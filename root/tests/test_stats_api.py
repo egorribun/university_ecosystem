@@ -293,7 +293,9 @@ async def test_participation_stats_summarize_events(
 
 
 @pytest.mark.anyio
-async def test_attendance_stats_uses_cache(async_client, fake_cache, user_factory, monkeypatch):
+async def test_attendance_stats_uses_cache(
+    async_client, fake_cache, user_factory, monkeypatch
+):
     password = "CachePass123!"
     hashed = get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)

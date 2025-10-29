@@ -83,10 +83,17 @@ async def invalidate_user_stats_cache(
     unique_users = {int(uid) for uid in user_ids if uid is not None}
     if not unique_users:
         return
-    selected_kinds = tuple({kind.strip().lower() for kind in (kinds or _STATS_KNOWN_KINDS) if kind})
+    selected_kinds = tuple(
+        {kind.strip().lower() for kind in (kinds or _STATS_KNOWN_KINDS) if kind}
+    )
     if not selected_kinds:
         return
-    chosen_periods = tuple({(period or "").strip().lower() or "default" for period in (period_keys or _DEFAULT_PERIOD_KEYS)})
+    chosen_periods = tuple(
+        {
+            (period or "").strip().lower() or "default"
+            for period in (period_keys or _DEFAULT_PERIOD_KEYS)
+        }
+    )
     keys: list[str] = []
     for user_id in unique_users:
         for kind in selected_kinds:
