@@ -1,7 +1,9 @@
 import { initObservability } from "./app/observability"
+import { initWebVitals } from "./app/webVitals"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
 
 initObservability()
+initWebVitals()
 ensureTrustedTypesPolicies()
 
 async function bootstrap() {
