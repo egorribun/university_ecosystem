@@ -17,16 +17,25 @@ function isEnabled(value: string | undefined): boolean {
   return normalized === "true" || normalized === "1" || normalized === "yes"
 }
 
+function hasLabel(metric: Metric): metric is Metric & { label: string } {
+  return typeof (metric as { label?: unknown }).label === "string"
+}
+
 function sendMetric(endpoint: string, metric: WebVitalMetric): void {
-  const payload = JSON.stringify({
+  const payloadObject: Record<string, unknown> = {
     name: metric.name,
     value: metric.value,
     delta: metric.delta,
     id: metric.id,
     rating: metric.rating,
-    label: metric.label,
     navigationType: metric.navigationType,
-  })
+  }
+
+  if (hasLabel(metric)) {
+    payloadObject.label = metric.label
+  }
+
+  const payload = JSON.stringify(payloadObject)
 
   if (
     typeof navigator !== "undefined" &&
