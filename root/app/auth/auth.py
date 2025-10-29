@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_fresh_mfa
@@ -517,7 +517,9 @@ async def _perform_login(
     normalized_email = email.strip().lower()
     base_locale = resolve_locale(request=request)
 
-    res = await db.execute(select(User).where(User.email == normalized_email))
+    res = await db.execute(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
     user = res.scalars().first()
     locale = resolve_locale(request=request, user=user) if user else base_locale
 
@@ -1273,7 +1275,7 @@ async def register(
 ):
     locale = resolve_locale(request=request)
     email = user.email.strip().lower()
-    res = await db.execute(select(User).where(User.email == email))
+    res = await db.execute(select(User).where(func.lower(User.email) == email))
     if res.scalars().first():
         message = translate("errors.users.email_in_use", locale=locale)
         raise HTTPException(
