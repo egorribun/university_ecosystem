@@ -21,7 +21,7 @@ Before running the project locally make sure you have the following tooling avai
 │   ├── frontend/              # Vite + React single-page frontend
 │   ├── tests/                 # Backend tests (pytest)
 │   ├── requirements*.txt      # Python dependencies for backend and workers
-│   ├── .env.example           # Sample configuration for local development
+│   ├── .env.example           # Reference configuration for local development
 │   └── create_invite_code.py  # Helper script for generating invite codes
 └── SECURITY.md                # Security policy (linked below)
 ```
@@ -36,6 +36,9 @@ cp root/.env.example root/.env
 ```
 
 > The most important variables are documented below; see `root/.env.example` for the full list.
+> The example file is provided for reference only—create a real `.env` (or set
+> process environment variables) with unique secrets before starting the
+> backend.
 
 ### 2. Run the full stack with Docker (recommended)
 
@@ -108,7 +111,7 @@ Key settings you may want to adjust for local development:
 | `VITE_ENABLE_WEB_VITALS` | Enable Web Vitals collection in the frontend (`true`/`1`/`yes`). | `false` |
 | `VITE_WEB_VITALS_ENDPOINT` | Optional endpoint accepting POSTed Web Vitals metrics (JSON). Logs to the console when unset. | Empty |
 
-Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. The `.env` file is loaded automatically when you start the backend or worker.
+Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. If you create `root/.env` it will be loaded automatically; otherwise the application relies entirely on process environment variables. The sample `root/.env.example` is not loaded automatically.
 
 Password reset tokens are trimmed during startup and by a periodic background job. The API always keeps the most recent
 `PASSWORD_RESET_MAX_ACTIVE_TOKENS` unused tokens for each user (default: one token) and reuses existing records when that limit is

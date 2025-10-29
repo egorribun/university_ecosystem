@@ -12,13 +12,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _resolve_env_file(base_dir: Path) -> Path:
-    candidates = [".env", ".env.local", ".env.example"]
-    for name in candidates:
+def _resolve_env_file(base_dir: Path) -> Path | None:
+    """Locate a concrete environment file if one has been provided."""
+
+    for name in (".env", ".env.local"):
         candidate = base_dir / name
-        if candidate.exists():
+        if candidate.is_file():
             return candidate
-    return base_dir / candidates[0]
+    return None
 
 
 _ENV_FILE = _resolve_env_file(_PROJECT_ROOT)
@@ -320,7 +321,7 @@ class Settings(BaseSettings):
         return value
 
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE),
+        env_file=str(_ENV_FILE) if _ENV_FILE is not None else None,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
