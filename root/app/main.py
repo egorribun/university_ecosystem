@@ -29,6 +29,11 @@ from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services import notification_queue, webpush
+from app.services.email_change_cleanup import (
+    EmailChangeCleanupConfig,
+    cleanup_stale_email_change_tokens,
+    start_email_change_cleanup_scheduler,
+)
 from app.services.notifications import (
     cleanup_stale_notifications,
     start_notifications_scheduler,
@@ -36,11 +41,6 @@ from app.services.notifications import (
 from app.services.notifications_retention import (
     NotificationsRetentionConfig,
     start_notifications_retention_scheduler,
-)
-from app.services.email_change_cleanup import (
-    EmailChangeCleanupConfig,
-    cleanup_stale_email_change_tokens,
-    start_email_change_cleanup_scheduler,
 )
 from app.services.password_reset_cleanup import (
     PasswordResetCleanupConfig,

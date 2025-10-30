@@ -62,7 +62,9 @@ async def test_cleanup_stale_email_change_tokens_respects_retention(db_session):
     assert cleaned == 3
 
     db_session.expire_all()
-    remaining = await db_session.execute(select(EmailChangeToken).order_by(EmailChangeToken.id))
+    remaining = await db_session.execute(
+        select(EmailChangeToken).order_by(EmailChangeToken.id)
+    )
     tokens = remaining.scalars().all()
     assert {token.token_hash for token in tokens} == {"expired", "recent"}
 
