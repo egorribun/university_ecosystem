@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { useNotifications } from "@/hooks/useNotifications"
 import NotificationsBell from "../NotificationsBell"
 
 const useNotificationsMock = vi.fn()
@@ -31,14 +32,16 @@ vi.mock("react-i18next", () => ({
 }))
 
 describe("NotificationsBell", () => {
-  const baseState = () => ({
+  type NotificationsState = ReturnType<typeof useNotifications>
+
+  const baseState = (): NotificationsState => ({
     data: [],
     unreadCount: 0,
     hasMore: false,
     nextCursor: null,
     isLoading: false,
     isError: false,
-    error: null as unknown,
+    error: null,
     isRefetching: false,
     refetch: vi.fn(),
     markRead: vi.fn(),
@@ -49,6 +52,7 @@ describe("NotificationsBell", () => {
     fetchMore: vi.fn(),
     isFetchingMore: false,
     isFetchMoreError: false,
+    fetchMoreError: null,
   })
 
   beforeEach(() => {
