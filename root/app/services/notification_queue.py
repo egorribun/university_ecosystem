@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Iterable, Literal, Sequence, cast
+from typing import Awaitable, Callable, Iterable, Literal, Sequence, cast
 from weakref import WeakKeyDictionary
 
 from opentelemetry import trace
@@ -21,6 +22,7 @@ from app.core.database import async_session
 from app.core.observability import (
     NotificationQueueMetrics,
     get_notification_queue_metrics,
+    get_periodic_task_metrics,
 )
 from app.models.models import Event, News, Notification, NotificationQueueJob
 from app.services.notifications import notify_about_event, notify_about_news
@@ -60,6 +62,9 @@ _loop_states: "WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
 
 
 _queue_metrics: NotificationQueueMetrics | None = None
+_DEAD_LETTER_CLEANUP_METRICS = get_periodic_task_metrics(
+    "notification_queue_dead_letter_cleanup"
+)
 
 
 def _get_metrics() -> NotificationQueueMetrics | None:
@@ -693,6 +698,107 @@ async def delete_dead_lettered_jobs(job_ids: Sequence[int]) -> int:
     if metrics is not None:
         await _refresh_persistent_queue_size(metrics)
     return deleted
+
+
+@dataclass(slots=True)
+class DeadLetterCleanupConfig:
+    """Configuration for dead-letter retention cleanup."""
+
+    retention_days: int = 30
+    interval_seconds: int = 86_400
+
+    def normalized_retention_days(self) -> int:
+        return max(0, int(self.retention_days))
+
+    def normalized_interval(self) -> int:
+        return max(300, int(self.interval_seconds))
+
+
+async def cleanup_dead_lettered_jobs(*, retention_days: int) -> int:
+    """Delete dead-lettered jobs older than the configured retention window."""
+
+    if not _use_persistent_backend():
+        return 0
+
+    normalized_retention = max(0, int(retention_days))
+    if normalized_retention <= 0:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=normalized_retention)
+    deleted = 0
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                delete(NotificationQueueJob)
+                .where(NotificationQueueJob.dead_lettered.is_(True))
+                .where(NotificationQueueJob.enqueued_at < cutoff)
+            )
+            deleted = int(result.rowcount or 0)
+
+    metrics = _get_metrics()
+    if metrics is not None and deleted > 0:
+        await _refresh_persistent_queue_size(metrics)
+    return deleted
+
+
+async def start_dead_letter_cleanup_scheduler(
+    *, config: DeadLetterCleanupConfig | None = None
+) -> Callable[[], Awaitable[None]]:
+    """Start a periodic cleanup task for dead-lettered notification jobs."""
+
+    cfg = config or DeadLetterCleanupConfig()
+    retention_days = cfg.normalized_retention_days()
+
+    persistent_backend = _use_persistent_backend()
+    if retention_days <= 0 or not persistent_backend:
+        reason = (
+            "retention disabled"
+            if retention_days <= 0
+            else "persistent backend disabled"
+        )
+
+        async def _noop() -> None:
+            return None
+
+        logger.info(
+            "Notification queue dead-letter cleanup disabled (%s)",
+            reason,
+        )
+        return _noop
+
+    interval = cfg.normalized_interval()
+
+    async def _loop() -> None:
+        try:
+            while True:
+                try:
+                    async with _DEAD_LETTER_CLEANUP_METRICS.track_execution() as run:
+                        deleted = await cleanup_dead_lettered_jobs(
+                            retention_days=retention_days
+                        )
+                        run.observe_deleted(deleted)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # pragma: no cover - defensive logging
+                    logger.exception("Failed to cleanup notification dead-letter queue")
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
+            logger.info("Notification queue dead-letter cleanup loop cancelled")
+            raise
+
+    loop = asyncio.get_running_loop()
+    task = loop.create_task(_loop())
+
+    async def _stop() -> None:
+        if task.done():
+            with suppress(Exception):
+                task.result()
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    return _stop
 
 
 def _format_job_error(error: BaseException | None) -> str:
