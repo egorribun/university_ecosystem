@@ -96,21 +96,87 @@
       skeleton-wave 1.6s ease-in-out infinite;
   }
 
+  .page-fade {
+    --page-fade-duration: 560ms;
+    --page-fade-easing: cubic-bezier(0.33, 1, 0.68, 1);
+    --page-fade-scale: 0.985;
+    --page-fade-blur: 16px;
+    --page-fade-translate-y: 18px;
+  }
+
+  @keyframes ue-page-fade-shell {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, var(--page-fade-translate-y), 0) scale(var(--page-fade-scale));
+      filter: blur(var(--page-fade-blur));
+    }
+
+    55% {
+      opacity: 1;
+      filter: blur(calc(var(--page-fade-blur) * 0.35));
+    }
+
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+      filter: blur(0px);
+    }
+  }
+
+  @keyframes ue-page-fade-item {
+    0% {
+      opacity: 0;
+      transform: translate3d(var(--fade-x), var(--fade-y), 0) scale(var(--fade-scale));
+      filter: blur(var(--fade-blur));
+    }
+
+    45% {
+      filter: blur(calc(var(--fade-blur) * 0.4));
+    }
+
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+      filter: blur(0px);
+    }
+  }
+
   [data-page-fade] {
-    --page-fade-delay: var(--page-fade-delay, 80ms);
+    --page-fade-delay: 80ms;
+    --page-fade-duration: 560ms;
+    --page-fade-easing: cubic-bezier(0.33, 1, 0.68, 1);
+    --page-fade-blur: 16px;
+    --page-fade-scale: 0.985;
+    --page-fade-translate-y: 18px;
+    opacity: 0;
+    transform: translate3d(0, var(--page-fade-translate-y), 0) scale(var(--page-fade-scale));
+    filter: blur(var(--page-fade-blur));
+    will-change: opacity, transform, filter;
+    animation: none;
+  }
+
+  [data-page-fade][data-ready="true"] {
+    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing) var(--page-fade-delay) both;
   }
 
   [data-page-fade] [data-fade] {
-    --fade-x: var(--fade-x, 0);
-    --fade-y: var(--fade-y, 22px);
-    --fade-scale: var(--fade-scale, 0.98);
+    --fade-x: 0px;
+    --fade-y: 22px;
+    --fade-scale: 0.98;
+    --fade-blur: calc(var(--page-fade-blur) * 0.9);
     opacity: 0;
     transform: translate3d(var(--fade-x), var(--fade-y), 0) scale(var(--fade-scale));
-    transition-property: opacity, transform;
-    transition-duration: 560ms;
-    transition-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
-    transition-delay: calc(var(--fade-delay, 120ms) + var(--page-fade-delay));
-    will-change: opacity, transform;
+    filter: blur(var(--fade-blur));
+    will-change: opacity, transform, filter;
+    animation: none;
+  }
+
+  [data-page-fade][data-ready="true"] [data-fade] {
+    animation: ue-page-fade-item
+      var(--page-fade-duration)
+      var(--page-fade-easing)
+      calc(var(--fade-delay, 120ms) + var(--page-fade-delay))
+      both;
   }
 
   [data-page-fade] [data-fade][data-direction="left"] {
@@ -135,22 +201,19 @@
     --fade-scale: 0.92;
   }
 
-  [data-page-fade][data-ready="true"] [data-fade] {
-    opacity: 1;
-    transform: none;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     [data-page-fade] {
       opacity: 1 !important;
       transform: none !important;
-      transition: none !important;
+      filter: none !important;
+      animation: none !important;
     }
 
     [data-page-fade] [data-fade] {
       opacity: 1 !important;
       transform: none !important;
-      transition: none !important;
+      filter: none !important;
+      animation: none !important;
     }
   }
 }
