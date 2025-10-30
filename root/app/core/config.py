@@ -767,7 +767,9 @@ def _load_settings() -> Settings:
             exc_info=False,
         )
         fallback = Settings(_allow_missing=True)
-        missing = ", ".join(name.upper() for name in fallback.development_fallback_fields)
+        missing = ", ".join(
+            name.upper() for name in fallback.development_fallback_fields
+        )
         if not missing:
             missing = "DATABASE_URL, SECRET_KEY"
         _logger.warning(
