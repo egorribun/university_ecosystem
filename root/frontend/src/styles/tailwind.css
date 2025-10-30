@@ -160,6 +160,19 @@
       var(--page-fade-delay) both;
   }
 
+  [data-page-fade][data-variant="subtle"] {
+    --page-fade-duration: 360ms;
+    --page-fade-blur: 0px;
+    --page-fade-scale: 0.995;
+    --page-fade-translate-y: 10px;
+    filter: none;
+    will-change: opacity, transform;
+  }
+
+  [data-page-fade][data-variant="subtle"][data-ready="true"] {
+    filter: none;
+  }
+
   [data-page-fade] [data-fade] {
     --fade-x: 0px;
     --fade-y: 22px;
@@ -175,6 +188,17 @@
   [data-page-fade][data-ready="true"] [data-fade] {
     animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing)
       calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
+  }
+
+  [data-page-fade][data-variant="subtle"] [data-fade] {
+    --fade-y: 18px;
+    --fade-blur: 0px;
+    filter: none;
+    will-change: opacity, transform;
+  }
+
+  [data-page-fade][data-variant="subtle"][data-ready="true"] [data-fade] {
+    filter: none;
   }
 
   [data-page-fade] [data-fade][data-direction="left"] {

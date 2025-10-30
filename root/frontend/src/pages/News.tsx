@@ -170,7 +170,7 @@ const News = () => {
 
   return (
     <Layout>
-      <PageFadeIn>
+      <PageFadeIn variant="subtle">
         <Box
           sx={{
             width: "100vw",

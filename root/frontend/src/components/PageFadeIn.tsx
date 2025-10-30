@@ -3,9 +3,10 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from "react"
 type PageFadeInProps = {
   children: ReactNode
   delay?: number
+  variant?: "default" | "subtle"
 }
 
-export default function PageFadeIn({ children, delay = 80 }: PageFadeInProps) {
+export default function PageFadeIn({ children, delay = 80, variant = "default" }: PageFadeInProps) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -17,6 +18,7 @@ export default function PageFadeIn({ children, delay = 80 }: PageFadeInProps) {
     <div
       data-page-fade
       data-ready={ready ? "true" : "false"}
+      data-variant={variant}
       style={
         {
           "--page-fade-delay": `${delay}ms`,
