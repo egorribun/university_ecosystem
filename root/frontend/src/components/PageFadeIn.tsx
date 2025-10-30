@@ -6,11 +6,7 @@ type PageFadeInProps = {
   variant?: "default" | "subtle"
 }
 
-export default function PageFadeIn({
-  children,
-  delay = 80,
-  variant = "default",
-}: PageFadeInProps) {
+export default function PageFadeIn({ children, delay = 80, variant = "default" }: PageFadeInProps) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
