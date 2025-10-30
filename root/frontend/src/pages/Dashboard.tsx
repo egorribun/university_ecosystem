@@ -89,13 +89,14 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
       <span
         aria-label={t("ariaDatePublished", { date: full })}
         className={cn(
-          "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-[var(--glass-border)] text-page-foreground backdrop-blur-md",
-          "bg-[conic-gradient(at_50%_50%,var(--dash-conic-stop-1),var(--dash-conic-stop-2),var(--dash-conic-stop-3),var(--dash-conic-stop-4))]",
+          "chip-time flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full text-[color:var(--dash-chip-time-text)]",
           "shadow-[var(--dash-date-shadow)]"
         )}
       >
         <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>
-        <span className="text-[0.65rem] font-semibold leading-tight text-secondary">{mm}</span>
+        <span className="text-[0.65rem] font-semibold leading-tight text-[color:color-mix(in_srgb,var(--dash-chip-time-text)_70%,white_30%)]">
+          {mm}
+        </span>
       </span>
     </Tooltip>
   )
