@@ -41,7 +41,9 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         captured["session_kwargs"] = kwargs
         return "session"
 
-    monkeypatch.setattr(database_module, "create_async_engine", fake_create_async_engine)
+    monkeypatch.setattr(
+        database_module, "create_async_engine", fake_create_async_engine
+    )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
 
     stub_settings = SimpleNamespace(
@@ -87,7 +89,9 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         captured["session_kwargs"] = kwargs
         return "session"
 
-    monkeypatch.setattr(database_module, "create_async_engine", fake_create_async_engine)
+    monkeypatch.setattr(
+        database_module, "create_async_engine", fake_create_async_engine
+    )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
 
     stub_settings = SimpleNamespace(

@@ -19,6 +19,7 @@ from app.core.config import Settings, settings
 
 logger = logging.getLogger(__name__)
 
+
 def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
     kwargs: dict[str, object] = {
         "pool_pre_ping": True,
