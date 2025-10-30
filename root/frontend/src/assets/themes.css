@@ -204,12 +204,12 @@ body.dark {
   --dash-icon-halo-text: color-mix(in srgb, var(--page-text) 82%, var(--nav-bg) 18%);
   --dash-icon-halo-border-active: color-mix(in srgb, var(--nav-bg) 55%, var(--nav-text) 45%);
   --dash-icon-halo-text-active: color-mix(in srgb, var(--page-text) 96%, var(--nav-bg) 4%);
-  --dash-chip-time-bg: color-mix(in srgb, var(--nav-bg) 48%, var(--nav-text) 52%);
-  --dash-chip-time-border: color-mix(in srgb, var(--nav-bg) 60%, var(--nav-text) 40%);
-  --dash-chip-time-text: color-mix(in srgb, var(--page-text) 88%, var(--nav-bg) 12%);
-  --dash-chip-type-bg: color-mix(in srgb, var(--nav-bg) 46%, var(--nav-text) 54%);
-  --dash-chip-type-border: color-mix(in srgb, var(--nav-bg) 58%, var(--nav-text) 42%);
-  --dash-chip-type-text: color-mix(in srgb, var(--page-text) 90%, var(--nav-bg) 10%);
+  --dash-chip-time-bg: color-mix(in srgb, var(--fed-blue-70v) 68%, var(--fed-blue-80v) 32%);
+  --dash-chip-time-border: color-mix(in srgb, var(--fed-blue-90v) 55%, var(--fed-blue-70v) 45%);
+  --dash-chip-time-text: color-mix(in srgb, white 92%, var(--fed-blue-60v) 8%);
+  --dash-chip-type-bg: color-mix(in srgb, var(--fed-blue-70v) 68%, var(--fed-blue-80v) 32%);
+  --dash-chip-type-border: color-mix(in srgb, var(--fed-blue-90v) 55%, var(--fed-blue-70v) 45%);
+  --dash-chip-type-text: color-mix(in srgb, white 94%, var(--fed-blue-60v) 6%);
   --progress-track: #142033;
   --progress-bar: #7fb6e6;
   --glass-bg: rgba(9, 17, 29, 0.76);
