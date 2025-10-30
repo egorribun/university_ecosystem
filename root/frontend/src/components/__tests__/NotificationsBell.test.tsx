@@ -178,8 +178,6 @@ describe("NotificationsBell", () => {
     const openButton = await screen.findByRole("button", { name: "Open notifications" })
     await user.click(openButton)
 
-    expect(
-      await screen.findByText("Couldn't load more notifications")
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load more notifications")).toBeInTheDocument()
   })
 })
