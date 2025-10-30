@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 from email.utils import parseaddr
 from functools import cached_property
 from pathlib import Path
@@ -91,8 +93,18 @@ def _validate_webauthn_origin(value: str) -> str:
     return normalized
 
 
+_logger = logging.getLogger(__name__)
+
+
+_DEVELOPMENT_FALLBACKS: dict[str, str] = {
+    "database_url": "sqlite+aiosqlite:///./dev.db",
+    "secret_key": "development-secret-key",  # pragma: allowlist secret
+}
+
+
 class Settings(BaseSettings):
     def __init__(self, **values):
+        allow_missing = values.pop("_allow_missing", False)
         try:
             super().__init__(**values)
         except ValidationError as exc:
@@ -116,6 +128,25 @@ class Settings(BaseSettings):
                     if formatted
                 }
             )
+            if allow_missing and missing_required:
+                fallback_values: dict[str, str] = {}
+                unresolved: list[str] = []
+                for missing in missing_required:
+                    field_name = missing.lower()
+                    fallback = _DEVELOPMENT_FALLBACKS.get(field_name)
+                    if fallback is None:
+                        unresolved.append(missing)
+                    else:
+                        fallback_values[field_name] = fallback
+                if not unresolved:
+                    combined_values = {**values, **fallback_values}
+                    super().__init__(**combined_values)
+                    object.__setattr__(
+                        self,
+                        "_development_fallback_fields",
+                        tuple(sorted(fallback_values.keys())),
+                    )
+                    return
             if missing_required:
                 details = ", ".join(missing_required)
                 raise RuntimeError(
@@ -124,6 +155,17 @@ class Settings(BaseSettings):
                     " application .env file (not .env.example)."
                 ) from None
             raise
+
+    @property
+    def development_fallback_fields(self) -> tuple[str, ...]:
+        stored = getattr(self, "_development_fallback_fields", ())
+        if isinstance(stored, tuple):
+            return stored
+        return tuple(stored)
+
+    @property
+    def has_development_fallbacks(self) -> bool:
+        return bool(self.development_fallback_fields)
 
     database_url: str
     secret_key: str
@@ -707,4 +749,33 @@ class Settings(BaseSettings):
         return policy
 
 
-settings = Settings()
+def _should_allow_development_defaults() -> bool:
+    if _ENV_FILE is not None:
+        return False
+    return not any(os.environ.get(name) for name in ("DATABASE_URL", "SECRET_KEY"))
+
+
+def _load_settings() -> Settings:
+    try:
+        return Settings()
+    except RuntimeError as exc:
+        if not _should_allow_development_defaults():
+            raise
+        _logger.debug(
+            "Falling back to development defaults because settings initialization failed: %s",
+            exc,
+            exc_info=False,
+        )
+        fallback = Settings(_allow_missing=True)
+        missing = ", ".join(name.upper() for name in fallback.development_fallback_fields)
+        if not missing:
+            missing = "DATABASE_URL, SECRET_KEY"
+        _logger.warning(
+            "Using development defaults for %s because DATABASE_URL and SECRET_KEY are not configured. "
+            "Provide real secrets via environment variables or a .env file before deploying.",
+            missing,
+        )
+        return fallback
+
+
+settings = _load_settings()
