@@ -16,7 +16,6 @@ import { Link, useNavigate } from "react-router-dom"
 import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
 import { cn } from "@/utils/cn"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
@@ -166,7 +165,6 @@ function setCache<T>(key: string, data: T) {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const isNarrow = useMediaQuery("(max-width:1100px)")
   const navigate = useNavigate()
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
@@ -401,9 +399,7 @@ export default function Dashboard() {
 
   const headerGradientClass = cn(
     "transition-[background] duration-700",
-    isNarrow
-      ? "bg-[linear-gradient(135deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
-      : "bg-[linear-gradient(125deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
+    "!bg-[color:var(--dash-panel-bg)]"
   )
 
   const heroSectionClass = cn(
@@ -488,16 +484,16 @@ export default function Dashboard() {
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] opacity-70 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-95"
               />
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
+                className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-60 mix-blend-soft-light"
               >
                 <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
               </span>
-              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] opacity-70 blur-3xl" />
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
+              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] opacity-60 blur-3xl mix-blend-soft-light" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-50 blur-[120px] mix-blend-soft-light" />
               <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
                 <div className="space-y-3 text-nav-text lg:col-span-8">
                   <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
@@ -667,11 +663,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] opacity-0 transition-opacity duration-500 mix-blend-soft-light group-hover:opacity-85"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] opacity-35 blur-3xl transition duration-700 mix-blend-soft-light group-hover:opacity-65"
                 />
               </Card>
 
@@ -769,11 +765,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] opacity-0 transition-opacity duration-500 mix-blend-soft-light group-hover:opacity-85"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] opacity-40 blur-3xl transition duration-700 mix-blend-soft-light group-hover:opacity-70"
                 />
               </Card>
 
@@ -901,11 +897,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] opacity-0 transition-opacity duration-500 mix-blend-soft-light group-hover:opacity-85"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-85"
+                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] opacity-40 blur-3xl transition duration-700 mix-blend-soft-light group-hover:opacity-70"
                 />
               </Card>
             </section>
