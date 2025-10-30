@@ -22,6 +22,8 @@ export default function NotificationsBell() {
   const {
     data,
     unreadCount,
+    hasMore,
+    nextCursor,
     isLoading,
     markRead,
     markAll,
@@ -31,6 +33,9 @@ export default function NotificationsBell() {
     isError,
     isRefetching,
     refetch,
+    fetchMore,
+    isFetchingMore,
+    isFetchMoreError,
   } = useNotifications()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const open = Boolean(anchor)
@@ -113,39 +118,68 @@ export default function NotificationsBell() {
                 <Typography variant="body2">{t("system:notificationsBell.empty")}</Typography>
               </Box>
             ) : (
-              data.map((n) => (
-                <ListItem key={n.id} disablePadding>
-                  <ListItemButton
-                    component={n.link ? "a" : "div"}
-                    href={n.link || undefined}
-                    target={n.link ? "_blank" : undefined}
-                    rel={n.link ? "noopener noreferrer" : undefined}
+              <>
+                {data.map((n) => (
+                  <ListItem key={n.id} disablePadding>
+                    <ListItemButton
+                      component={n.link ? "a" : "div"}
+                      href={n.link || undefined}
+                      target={n.link ? "_blank" : undefined}
+                      rel={n.link ? "noopener noreferrer" : undefined}
+                      sx={{
+                        opacity: n.read ? 0.6 : 1,
+                        alignItems: "flex-start",
+                        gap: 1,
+                      }}
+                      onClick={() => {
+                        if (!n.read) markRead(n.id)
+                      }}
+                    >
+                      <ListItemText primary={n.title} secondary={n.body} />
+                      {!n.read ? (
+                        <Button
+                          size="small"
+                          sx={{ flexShrink: 0 }}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            markRead(n.id)
+                          }}
+                        >
+                          {t("system:notificationsBell.markRead")}
+                        </Button>
+                      ) : null}
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+                {hasMore ? (
+                  <Box
                     sx={{
-                      opacity: n.read ? 0.6 : 1,
-                      alignItems: "flex-start",
+                      p: 1.5,
+                      display: "flex",
+                      flexDirection: "column",
                       gap: 1,
-                    }}
-                    onClick={() => {
-                      if (!n.read) markRead(n.id)
+                      borderTop: (theme) => `1px solid ${theme.palette.divider}`,
                     }}
                   >
-                    <ListItemText primary={n.title} secondary={n.body} />
-                    {!n.read ? (
-                      <Button
-                        size="small"
-                        sx={{ flexShrink: 0 }}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          markRead(n.id)
-                        }}
-                      >
-                        {t("system:notificationsBell.markRead")}
-                      </Button>
+                    {isFetchMoreError ? (
+                      <Typography variant="body2" color="error">
+                        {t("system:notificationsBell.loadMoreError")}
+                      </Typography>
                     ) : null}
-                  </ListItemButton>
-                </ListItem>
-              ))
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => fetchMore(nextCursor)}
+                      disabled={!nextCursor || isFetchingMore}
+                    >
+                      {isFetchingMore
+                        ? t("system:notificationsBell.loadingMore")
+                        : t("system:notificationsBell.loadMore")}
+                    </Button>
+                  </Box>
+                ) : null}
+              </>
             )}
           </List>
         </Box>
