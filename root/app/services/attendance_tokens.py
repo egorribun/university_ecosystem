@@ -5,7 +5,6 @@ import binascii
 import hashlib
 import hmac
 import json
-import math
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -122,9 +121,9 @@ def issue_token(
     if ttl <= 0:
         raise AttendanceTokenError("Attendance token TTL must be positive")
     moment = now or _now()
-    moment_ts = moment.timestamp()
-    issued_at = int(moment_ts)
-    expires_at = int(math.ceil(moment_ts + ttl))
+    moment_seconds = int(moment.timestamp())
+    issued_at = moment_seconds - (moment_seconds % ttl)
+    expires_at = issued_at + ttl
     payload = AttendanceTokenPayload(
         purpose=TOKEN_PURPOSE,
         event_id=int(getattr(attendance, "event_id")),
