@@ -5,14 +5,20 @@ import { ThemeProvider, createTheme } from "@mui/material/styles"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("../../components/NewsCard", () => ({
-  __esModule: true,
-  default: ({ id }: { id: number }) => (
+vi.mock("../../components/NewsCard", () => {
+  const MockNewsCard = ({ id }: { id: number }) => (
     <div data-testid="news-card" data-news-id={id}>
       News {id}
     </div>
-  ),
-}))
+  )
+
+  MockNewsCard.displayName = "MockNewsCard"
+
+  return {
+    __esModule: true,
+    default: MockNewsCard,
+  }
+})
 
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -46,13 +52,17 @@ const buildWrapper = (mode: "light" | "dark") => {
 
   const theme = createTheme({ palette: { mode } })
 
-  return ({ children }: { children: ReactNode }) => (
+  const NewsTestWrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
       <LanguageProvider>
         <ThemeProvider theme={theme}>{children}</ThemeProvider>
       </LanguageProvider>
     </QueryClientProvider>
   )
+
+  NewsTestWrapper.displayName = `NewsTestWrapper(${mode})`
+
+  return NewsTestWrapper
 }
 
 let matchMediaMock: ReturnType<typeof vi.fn>
