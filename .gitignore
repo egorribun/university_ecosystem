@@ -31,6 +31,7 @@ web_modules/
 .env.*
 !root/frontend/.env.production
 !.env.example
+!root/.env.example
 .cache
 .parcel-cache
 .next
