@@ -29,6 +29,11 @@ from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
 from app.services import notification_queue, webpush
+from app.services.email_change_cleanup import (
+    EmailChangeCleanupConfig,
+    cleanup_stale_email_change_tokens,
+    start_email_change_cleanup_scheduler,
+)
 from app.services.notifications import (
     cleanup_stale_notifications,
     start_notifications_scheduler,
@@ -72,6 +77,7 @@ async def lifespan(app: FastAPI):
     stop_session_cleanup = None
     stop_story_cleanup = None
     stop_password_reset_cleanup = None
+    stop_email_change_cleanup = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
             poll_seconds=settings.notifications_scheduler_poll_seconds,
@@ -88,6 +94,9 @@ async def lifespan(app: FastAPI):
     await cleanup_expired_stories()
     await cleanup_stale_password_reset_tokens(
         retention_minutes=settings.password_reset_cleanup_retention_minutes
+    )
+    await cleanup_stale_email_change_tokens(
+        retention_minutes=settings.email_change_cleanup_retention_minutes
     )
     if (
         settings.notifications_retention_days > 0
@@ -124,6 +133,13 @@ async def lifespan(app: FastAPI):
                 retention_minutes=settings.password_reset_cleanup_retention_minutes,
             )
         )
+    if settings.email_change_cleanup_interval_seconds > 0:
+        stop_email_change_cleanup = await start_email_change_cleanup_scheduler(
+            config=EmailChangeCleanupConfig(
+                interval_seconds=settings.email_change_cleanup_interval_seconds,
+                retention_minutes=settings.email_change_cleanup_retention_minutes,
+            )
+        )
     if (
         settings.stories_cleanup_enabled
         and settings.stories_retention_cleanup_interval_seconds > 0
@@ -148,6 +164,8 @@ async def lifespan(app: FastAPI):
             await stop_story_cleanup()
         if stop_password_reset_cleanup is not None:
             await stop_password_reset_cleanup()
+        if stop_email_change_cleanup is not None:
+            await stop_email_change_cleanup()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()

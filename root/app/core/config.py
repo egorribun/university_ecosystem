@@ -330,6 +330,8 @@ class Settings(BaseSettings):
     session_cleanup_interval_seconds: int = 900
     password_reset_cleanup_interval_seconds: int = 3_600
     password_reset_cleanup_retention_minutes: int = 45
+    email_change_cleanup_interval_seconds: int = 3_600
+    email_change_cleanup_retention_minutes: int = 45
     password_reset_max_active_tokens: int = 1
     stories_cleanup_enabled: bool = True
     stories_retention_cleanup_interval_seconds: int = 86_400
