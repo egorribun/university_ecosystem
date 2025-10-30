@@ -13,7 +13,10 @@
     "loading": "Loading…",
     "empty": "Nothing yet",
     "error": "We couldn't load notifications. Try again in a moment.",
-    "markRead": "Mark as read"
+    "markRead": "Mark as read",
+    "loadMore": "Load more",
+    "loadingMore": "Loading more…",
+    "loadMoreError": "We couldn't load additional notifications. Try again."
   },
   "map": {
     "title": "Campus map",
