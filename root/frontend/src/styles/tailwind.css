@@ -156,7 +156,8 @@
   }
 
   [data-page-fade][data-ready="true"] {
-    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing) var(--page-fade-delay) both;
+    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing)
+      var(--page-fade-delay) both;
   }
 
   [data-page-fade] [data-fade] {
@@ -172,11 +173,8 @@
   }
 
   [data-page-fade][data-ready="true"] [data-fade] {
-    animation: ue-page-fade-item
-      var(--page-fade-duration)
-      var(--page-fade-easing)
-      calc(var(--fade-delay, 120ms) + var(--page-fade-delay))
-      both;
+    animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing)
+      calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
   }
 
   [data-page-fade] [data-fade][data-direction="left"] {
