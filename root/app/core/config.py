@@ -17,10 +17,25 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def _resolve_env_file(base_dir: Path) -> Path | None:
     """Locate a concrete environment file if one has been provided."""
 
+    example_path = base_dir / ".env.example"
+    try:
+        example_bytes = example_path.read_bytes()
+    except OSError:
+        example_bytes = None
+
     for name in (".env", ".env.local"):
         candidate = base_dir / name
-        if candidate.is_file():
-            return candidate
+        if not candidate.is_file():
+            continue
+        if name == ".env" and example_bytes is not None:
+            try:
+                candidate_bytes = candidate.read_bytes()
+            except OSError:
+                candidate_bytes = None
+            else:
+                if candidate_bytes == example_bytes:
+                    continue
+        return candidate
     return None
 
 
