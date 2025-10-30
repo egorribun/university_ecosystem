@@ -7,7 +7,8 @@ from collections.abc import Collection, Iterable, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings, settings as app_settings
+from app.core.config import Settings
+from app.core.config import settings as app_settings
 from app.models.models import PushSubscription, UserPushTopic
 
 
@@ -179,9 +180,7 @@ async def upsert_user_topics(
         settings_obj=settings_obj,
     )
     existing = (
-        await db.execute(
-            select(UserPushTopic).where(UserPushTopic.user_id == user_id)
-        )
+        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user_id))
     ).scalar_one_or_none()
     if existing is None:
         db.add(UserPushTopic(user_id=user_id, topics=list(normalized)))
@@ -208,10 +207,14 @@ async def synchronize_user_topics(
         settings_obj=settings_obj,
     )
     subscriptions = (
-        await db.execute(
-            select(PushSubscription).where(PushSubscription.user_id == user_id)
+        (
+            await db.execute(
+                select(PushSubscription).where(PushSubscription.user_id == user_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     normalized_copy = list(normalized)
     for subscription in subscriptions:
         subscription.topics = list(normalized_copy)

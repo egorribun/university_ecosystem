@@ -271,10 +271,14 @@ async def test_admin_update_user_topics_updates_preferences(
     assert set(record.topics) == {"events", "news"}
 
     updated_subs = (
-        await db_session.execute(
-            select(PushSubscription).where(PushSubscription.user_id == target.id)
+        (
+            await db_session.execute(
+                select(PushSubscription).where(PushSubscription.user_id == target.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert all(set(sub.topics) == {"events", "news"} for sub in updated_subs)
 
     fetched = await admin_get_user_topics(

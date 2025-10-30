@@ -564,9 +564,7 @@ async def get_push_topics(
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushTopicsResponse:
     record = (
-        await db.execute(
-            select(UserPushTopic).where(UserPushTopic.user_id == user.id)
-        )
+        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user.id))
     ).scalar_one_or_none()
     allowed = get_allowed_topics(settings)
     topics = sort_topics(
@@ -891,11 +889,11 @@ async def broadcast(
     subscriptions = (
         (
             await db.execute(
-            select(PushSubscription).options(
-                selectinload(PushSubscription.user).selectinload(
-                    User.push_topic_preferences
+                select(PushSubscription).options(
+                    selectinload(PushSubscription.user).selectinload(
+                        User.push_topic_preferences
+                    )
                 )
-            )
             )
         )
         .scalars()
