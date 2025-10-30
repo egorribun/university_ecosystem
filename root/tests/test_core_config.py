@@ -99,3 +99,29 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog):
         == "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
     )
     assert any("identical to" in record.getMessage() for record in caplog.records)
+
+
+def test_notifications_allowed_push_topics_parsed(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setenv(
+        "NOTIFICATIONS_ALLOWED_PUSH_TOPICS",
+        "alerts, Schedule,alerts , System ",
+    )
+
+    with _temporary_env_file(None):
+        from app.core import config as config_module
+
+        config_module = importlib.reload(config_module)
+        settings = config_module.Settings(_allow_missing=True)
+
+    assert settings.notifications_allowed_push_topics == [
+        "alerts",
+        "schedule",
+        "system",
+    ]
+    assert settings.notifications_allowed_push_topics_set == {
+        "alerts",
+        "schedule",
+        "system",
+    }

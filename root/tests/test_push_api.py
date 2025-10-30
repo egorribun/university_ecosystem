@@ -3,22 +3,27 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 from starlette.requests import Request
 
+from app.core.config import settings
 from app.localization import translate
-from app.models.models import PushSubscription
+from app.models.models import PushSubscription, UserPushTopic
 from app.routers.notifications import (
+    AdminUserTopicsUpdate,
     DisableUserPushRequest,
     NotifyBody,
+    admin_get_user_topics,
+    admin_update_user_topics,
     broadcast,
     disable_user_push,
+    get_push_topics,
     send_test,
 )
 from app.services.webpush import WebPushResult
 
 
-def _make_request(path: str) -> Request:
+def _make_request(path: str, method: str = "POST") -> Request:
     scope = {
         "type": "http",
-        "method": "POST",
+        "method": method,
         "path": path,
         "headers": [],
         "query_string": b"",
@@ -202,6 +207,83 @@ async def test_admin_disable_user_push_removes_subscriptions(
         .all()
     )
     assert len(others) == 1
+
+
+@pytest.mark.anyio
+async def test_get_push_topics_includes_preferences(db_session, user_factory) -> None:
+    user = await user_factory()
+    record = UserPushTopic(user_id=user.id, topics=["schedule", "news"])
+    db_session.add(record)
+    await db_session.commit()
+
+    response = await get_push_topics(db=db_session, user=user)
+    assert response.allowed == settings.notifications_allowed_push_topics_list
+    assert response.has_preferences is True
+    assert response.topics == [
+        topic
+        for topic in settings.notifications_allowed_push_topics_list
+        if topic in {"schedule", "news"}
+    ]
+    assert response.updated_at is not None
+
+
+@pytest.mark.anyio
+async def test_admin_update_user_topics_updates_preferences(
+    db_session, user_factory
+) -> None:
+    admin = await user_factory(role="admin")
+    target = await user_factory()
+    subscriptions = [
+        PushSubscription(
+            endpoint=f"https://example.com/{idx}",
+            p256dh=f"key-{idx}",
+            auth=f"auth-{idx}",
+            user_id=target.id,
+            topics=["system"],
+        )
+        for idx in range(2)
+    ]
+    db_session.add_all(subscriptions)
+    await db_session.commit()
+
+    payload = AdminUserTopicsUpdate(topics=["events", "news"])
+    response = await admin_update_user_topics(
+        user_id=target.id,
+        payload=payload,
+        request=_make_request(f"/push/admin/topics/{target.id}", method="PUT"),
+        db=db_session,
+        user=admin,
+    )
+
+    assert response.allowed_topics == settings.notifications_allowed_push_topics_list
+    assert response.topics == [
+        topic
+        for topic in settings.notifications_allowed_push_topics_list
+        if topic in {"events", "news"}
+    ]
+    assert response.updated_at is not None
+
+    record = (
+        await db_session.execute(
+            select(UserPushTopic).where(UserPushTopic.user_id == target.id)
+        )
+    ).scalar_one()
+    assert set(record.topics) == {"events", "news"}
+
+    updated_subs = (
+        await db_session.execute(
+            select(PushSubscription).where(PushSubscription.user_id == target.id)
+        )
+    ).scalars().all()
+    assert all(set(sub.topics) == {"events", "news"} for sub in updated_subs)
+
+    fetched = await admin_get_user_topics(
+        user_id=target.id,
+        request=_make_request(f"/push/admin/topics/{target.id}", method="GET"),
+        db=db_session,
+        user=admin,
+    )
+    assert fetched.topics == response.topics
 
 
 @pytest.mark.anyio

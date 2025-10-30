@@ -31,6 +31,20 @@
       "fetch": "Failed to load the dead-letter queue.",
       "action": "Unable to update the queue."
     },
+    "topics": {
+      "title": "User topics",
+      "description": "Load a user and adjust their push notification topics.",
+      "userIdLabel": "User ID",
+      "load": "Load topics",
+      "save": "Save topics",
+      "invalidId": "Please enter a valid user ID.",
+      "loadError": "Failed to load topics for this user.",
+      "saveError": "Failed to save topics.",
+      "loaded": "Topics loaded for {{email}} (ID {{id}}).",
+      "saved": "Topics updated successfully.",
+      "userSummary": "Managing topics for {{email}} (ID {{id}})",
+      "empty": "No topics are currently available."
+    },
     "actions": {
       "retrySelected": "Retry selected",
       "purgeSelected": "Delete selected",

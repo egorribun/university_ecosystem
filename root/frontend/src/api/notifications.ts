@@ -2,7 +2,12 @@ import { z } from "zod"
 
 import api from "@/api/client"
 import type { components, paths } from "@/api/generated/schema"
-import type { PushSubscriptionResponse, SendTestNotificationResponse } from "@/types/notifications"
+import type {
+  AdminUserTopicsResponse,
+  PushSubscriptionResponse,
+  PushTopicsResponse,
+  SendTestNotificationResponse,
+} from "@/types/notifications"
 import { ensureValidResponse } from "./validation"
 
 export async function saveSubscription(
@@ -49,4 +54,57 @@ export async function getVapidPublicKey(): Promise<string | null> {
   const parsed = ensureValidResponse(schema, data, "GET /push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
   return normalized && normalized.length > 0 ? normalized : null
+}
+
+const pushTopicsSchema = z.object({
+  allowed: z.array(z.string().trim().min(1)),
+  topics: z.array(z.string().trim()).default([]),
+  has_preferences: z.boolean().optional(),
+  updated_at: z.string().datetime().nullable().optional(),
+})
+
+export async function fetchPushTopics(): Promise<PushTopicsResponse> {
+  const { data } = await api.get<PushTopicsResponse>("/push/topics")
+  const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /push/topics")
+  return {
+    allowed: parsed.allowed,
+    topics: parsed.topics,
+    has_preferences: parsed.has_preferences ?? false,
+    updated_at: parsed.updated_at ?? null,
+  }
+}
+
+const adminTopicsSchema = z.object({
+  user_id: z.number().int().positive(),
+  email: z.string().trim().min(1),
+  topics: z.array(z.string().trim()),
+  allowed_topics: z.array(z.string().trim().min(1)),
+  updated_at: z.string().datetime().nullable().optional(),
+})
+
+export async function fetchAdminUserTopics(
+  userId: number
+): Promise<AdminUserTopicsResponse> {
+  const { data } = await api.get<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`)
+  return ensureValidResponse(
+    adminTopicsSchema,
+    data,
+    `GET /push/admin/topics/${userId}`
+  )
+}
+
+export async function updateAdminUserTopics(
+  userId: number,
+  topics: string[]
+): Promise<AdminUserTopicsResponse> {
+  const payload = { topics }
+  const { data } = await api.put<AdminUserTopicsResponse>(
+    `/push/admin/topics/${userId}`,
+    payload
+  )
+  return ensureValidResponse(
+    adminTopicsSchema,
+    data,
+    `PUT /push/admin/topics/${userId}`
+  )
 }

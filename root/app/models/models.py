@@ -99,6 +99,13 @@ class User(Base):
         back_populates="user",
         passive_deletes=True,
     )
+    push_topic_preferences = relationship(
+        "UserPushTopic",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
     sessions = relationship(
         "ActiveSession",
         back_populates="user",
@@ -654,3 +661,23 @@ class PushSubscription(Base):
     topics = Column(JSON, nullable=False, default=list)
 
     user = relationship("User", back_populates="push_subscriptions")
+
+
+class UserPushTopic(Base):
+    __tablename__ = "user_push_topics"
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    topics = Column(JSON, nullable=False, default=list)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user = relationship("User", back_populates="push_topic_preferences")

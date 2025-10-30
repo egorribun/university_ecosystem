@@ -19,14 +19,17 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.localization import resolve_locale, translate
-from app.models.models import PushSubscription, User
+from app.models.models import PushSubscription, User, UserPushTopic
 from app.services.notifications import prepare_push_payload_for_user
 from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import (
+    get_allowed_topics,
     normalize_topic,
     normalize_topics,
     resolve_topics,
+    sort_topics,
     subscription_supports_topic,
+    synchronize_user_topics,
 )
 from app.services.webpush import WebPushResult, send_web_push
 
@@ -184,6 +187,32 @@ class DisableUserPushRequest(BaseModel):
         ge=1,
         description=translate("notifications.push.disable_user.description"),
     )
+
+
+class PushTopicsResponse(BaseModel):
+    allowed: list[str]
+    topics: list[str]
+    has_preferences: bool = False
+    updated_at: datetime | None = None
+
+
+class AdminUserTopicsUpdate(BaseModel):
+    topics: list[str] = Field(default_factory=list)
+
+    @field_validator("topics", mode="before")
+    @classmethod
+    def _normalize_topics(cls, value):
+        if value is None:
+            return []
+        return normalize_topics(value, strict=True)
+
+
+class AdminUserTopicsResponse(BaseModel):
+    user_id: int
+    email: str
+    topics: list[str]
+    allowed_topics: list[str]
+    updated_at: datetime | None = None
 
 
 class SendTestResponse(BaseModel):
@@ -346,10 +375,6 @@ async def subscribe(
         )
     ).scalar_one_or_none()
 
-    def _resolve_topics() -> list[str]:
-        existing_topics = existing.topics if existing else None
-        return resolve_topics(payload.topics, existing_topics)
-
     now = datetime.now(UTC)
     try:
         if existing:
@@ -363,6 +388,12 @@ async def subscribe(
                         ),
                     },
                 )
+            resolved_topics = resolve_topics(payload.topics, existing.topics)
+            normalized_topics = await synchronize_user_topics(
+                db,
+                user_id=user.id,
+                topics=resolved_topics,
+            )
             existing.p256dh = p256dh
             existing.auth = auth
             existing.user_id = user.id
@@ -370,11 +401,17 @@ async def subscribe(
             existing.last_seen_at = now
             if existing.created_at is None:
                 existing.created_at = now
-            existing.topics = _resolve_topics()
+            existing.topics = list(normalized_topics)
             await db.commit()
             await db.refresh(existing)
             subscription = existing
         else:
+            resolved_topics = resolve_topics(payload.topics, None)
+            normalized_topics = await synchronize_user_topics(
+                db,
+                user_id=user.id,
+                topics=resolved_topics,
+            )
             subscription = PushSubscription(
                 endpoint=endpoint,
                 p256dh=p256dh,
@@ -382,7 +419,7 @@ async def subscribe(
                 user_id=user.id,
                 user_agent=user_agent or None,
                 last_seen_at=now,
-                topics=_resolve_topics(),
+                topics=list(normalized_topics),
             )
             if subscription.created_at is None:
                 subscription.created_at = now
@@ -442,7 +479,12 @@ async def update_subscription_topics(
             },
         )
 
-    subscription.topics = normalize_topics(payload.topics)
+    normalized_topics = await synchronize_user_topics(
+        db,
+        user_id=user.id,
+        topics=payload.topics,
+    )
+    subscription.topics = list(normalized_topics)
     subscription.last_seen_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(subscription)
@@ -514,6 +556,29 @@ async def unsubscribe(
     await db.delete(existing)
     await db.commit()
     return {"ok": True, "removed": True}
+
+
+@router.get("/topics", response_model=PushTopicsResponse)
+async def get_push_topics(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> PushTopicsResponse:
+    record = (
+        await db.execute(
+            select(UserPushTopic).where(UserPushTopic.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    allowed = get_allowed_topics(settings)
+    topics = sort_topics(
+        record.topics if record else [],
+        allowed_topics=allowed,
+    )
+    return PushTopicsResponse(
+        allowed=allowed,
+        topics=topics,
+        has_preferences=record is not None,
+        updated_at=getattr(record, "updated_at", None),
+    )
 
 
 @router.post("/test", response_model=SendTestResponse)
@@ -588,7 +653,11 @@ async def send_test(
         (
             await db.execute(
                 select(PushSubscription)
-                .options(selectinload(PushSubscription.user))
+                .options(
+                    selectinload(PushSubscription.user).selectinload(
+                        User.push_topic_preferences
+                    )
+                )
                 .where(PushSubscription.user_id == target.id)
             )
         )
@@ -650,6 +719,100 @@ async def send_test(
         },
     )
     return summary
+
+
+@router.get("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
+async def admin_get_user_topics(
+    user_id: int,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> AdminUserTopicsResponse:
+    locale = resolve_locale(request=request, user=user)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
+        )
+    target = (
+        await db.execute(
+            select(User)
+            .options(selectinload(User.push_topic_preferences))
+            .where(User.id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "user_not_found",
+                "message": translate("errors.users.not_found", locale=locale),
+            },
+        )
+    record = target.push_topic_preferences
+    allowed = get_allowed_topics(settings)
+    topics = sort_topics(record.topics if record else [], allowed_topics=allowed)
+    return AdminUserTopicsResponse(
+        user_id=target.id,
+        email=target.email,
+        topics=topics,
+        allowed_topics=allowed,
+        updated_at=getattr(record, "updated_at", None),
+    )
+
+
+@router.put("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
+async def admin_update_user_topics(
+    user_id: int,
+    payload: AdminUserTopicsUpdate,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> AdminUserTopicsResponse:
+    locale = resolve_locale(request=request, user=user)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
+        )
+    target = (
+        await db.execute(
+            select(User)
+            .options(selectinload(User.push_topic_preferences))
+            .where(User.id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "user_not_found",
+                "message": translate("errors.users.not_found", locale=locale),
+            },
+        )
+    allowed = get_allowed_topics(settings)
+    normalized_topics = await synchronize_user_topics(
+        db,
+        user_id=target.id,
+        topics=payload.topics,
+    )
+    await db.commit()
+    await db.refresh(target, attribute_names=["push_topic_preferences"])
+    record = target.push_topic_preferences
+    topics = sort_topics(normalized_topics, allowed_topics=allowed)
+    return AdminUserTopicsResponse(
+        user_id=target.id,
+        email=target.email,
+        topics=topics,
+        allowed_topics=allowed,
+        updated_at=getattr(record, "updated_at", None),
+    )
 
 
 @router.post("/admin/disable-user")
@@ -728,7 +891,11 @@ async def broadcast(
     subscriptions = (
         (
             await db.execute(
-                select(PushSubscription).options(selectinload(PushSubscription.user))
+            select(PushSubscription).options(
+                selectinload(PushSubscription.user).selectinload(
+                    User.push_topic_preferences
+                )
+            )
             )
         )
         .scalars()
