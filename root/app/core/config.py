@@ -95,6 +95,18 @@ def _validate_positive_int(value: int, *, label: str) -> int:
     return value
 
 
+def _validate_non_negative_int(value: int, *, label: str) -> int:
+    if value < 0:
+        raise ValueError(f"{label} must be zero or positive")
+    return value
+
+
+def _validate_positive_float(value: float, *, label: str) -> float:
+    if value <= 0:
+        raise ValueError(f"{label} must be greater than zero")
+    return value
+
+
 def _validate_webauthn_origin(value: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -188,6 +200,10 @@ class Settings(BaseSettings):
         return bool(self.development_fallback_fields)
 
     database_url: str
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_pool_timeout: float = 30.0
+    database_pool_recycle: int = 1_800
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
@@ -333,6 +349,26 @@ class Settings(BaseSettings):
     event_file_scanner_port: int = 3310
     event_file_scanner_socket: str = ""
     event_file_scanner_timeout: float = 30.0
+
+    @field_validator("database_pool_size")
+    @classmethod
+    def _validate_database_pool_size(cls, value: int) -> int:
+        return _validate_positive_int(value, label="DATABASE_POOL_SIZE")
+
+    @field_validator("database_max_overflow")
+    @classmethod
+    def _validate_database_max_overflow(cls, value: int) -> int:
+        return _validate_non_negative_int(value, label="DATABASE_MAX_OVERFLOW")
+
+    @field_validator("database_pool_timeout")
+    @classmethod
+    def _validate_database_pool_timeout(cls, value: float) -> float:
+        return _validate_positive_float(value, label="DATABASE_POOL_TIMEOUT")
+
+    @field_validator("database_pool_recycle")
+    @classmethod
+    def _validate_database_pool_recycle(cls, value: int) -> int:
+        return _validate_non_negative_int(value, label="DATABASE_POOL_RECYCLE")
 
     @field_validator("coep_value")
     @classmethod
