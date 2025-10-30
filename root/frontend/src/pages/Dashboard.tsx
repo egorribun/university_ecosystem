@@ -16,7 +16,6 @@ import { Link, useNavigate } from "react-router-dom"
 import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
 import { cn } from "@/utils/cn"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import type { PaginatedResponse } from "@/types/Pagination"
@@ -166,7 +165,6 @@ function setCache<T>(key: string, data: T) {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const isNarrow = useMediaQuery("(max-width:1100px)")
   const navigate = useNavigate()
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
@@ -399,13 +397,6 @@ export default function Dashboard() {
     fetchSchedule()
   }, [fetchSchedule])
 
-  const headerGradientClass = cn(
-    "transition-[background] duration-700",
-    isNarrow
-      ? "bg-[linear-gradient(135deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
-      : "bg-[linear-gradient(125deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
-  )
-
   const heroSectionClass = cn(
     "relative flex min-h-screen w-full flex-col overflow-hidden",
     "px-4 pb-16 pt-10 text-page-foreground sm:px-8 md:px-12 lg:px-16",
@@ -482,20 +473,13 @@ export default function Dashboard() {
               className={cn(
                 panelBase,
                 panelHover,
-                "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
-                headerGradientClass
+                "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus transition-colors duration-700"
               )}
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--nav-bg)_78%,transparent),transparent_65%)] opacity-40 mix-blend-multiply transition-opacity duration-700 group-hover:opacity-60"
               />
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
-              >
-                <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
-              </span>
               <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] opacity-70 blur-3xl" />
               <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
               <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
