@@ -94,5 +94,8 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog):
             settings = config_module.Settings()
 
     assert settings.database_url.startswith("postgresql+asyncpg://")
-    assert settings.secret_key == "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
+    assert (
+        settings.secret_key
+        == "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
+    )
     assert any("identical to" in record.getMessage() for record in caplog.records)
