@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
+import type { ChangeEvent } from "react"
 import {
   Alert,
   Box,
@@ -7,6 +8,7 @@ import {
   CardContent,
   Checkbox,
   CircularProgress,
+  FormControlLabel,
   IconButton,
   Stack,
   Table,
@@ -16,6 +18,7 @@ import {
   TableHead,
   TableRow,
   Tooltip,
+  TextField,
   Typography,
 } from "@mui/material"
 import ReplayIcon from "@mui/icons-material/Replay"
@@ -25,6 +28,7 @@ import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 
 import apiClient from "@/api/client"
+import { fetchAdminUserTopics, updateAdminUserTopics } from "@/api/notifications"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/PageFadeIn"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -71,12 +75,44 @@ const formatJobKind = (kind: string, t: ReturnType<typeof useTranslation>["t"]) 
   }
 }
 
+const normalizeTopicKey = (value: unknown): string => {
+  if (typeof value !== "string") return ""
+  return value.trim().toLowerCase()
+}
+
 export default function AdminNotifications() {
   const { language } = useLanguage()
   const { t } = useTranslation(["admin", "common"])
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
+  const [topicsUserIdInput, setTopicsUserIdInput] = useState("")
+  const [topicsData, setTopicsData] = useState<Awaited<
+    ReturnType<typeof fetchAdminUserTopics>
+  > | null>(null)
+  const [topicsState, setTopicsState] = useState<Record<string, boolean>>({})
+  const [topicsMessage, setTopicsMessage] = useState<string | null>(null)
+  const [topicsError, setTopicsError] = useState<string | null>(null)
+  const [topicsBusy, setTopicsBusy] = useState(false)
+
+  const buildTopicState = useCallback(
+    (allowed: readonly string[], selectedTopics?: readonly string[] | null) => {
+      const normalizedAllowed = Array.from(
+        new Set(allowed.map((topic) => normalizeTopicKey(topic)).filter(Boolean))
+      )
+      const selectedSet = new Set(
+        (selectedTopics ?? [])
+          .map((topic) => normalizeTopicKey(topic))
+          .filter(Boolean)
+      )
+      const record: Record<string, boolean> = {}
+      for (const topic of normalizedAllowed) {
+        record[topic] = selectedSet.has(topic)
+      }
+      return record
+    },
+    []
+  )
 
   const dateFormatter = useMemo(
     () =>
@@ -152,6 +188,79 @@ export default function AdminNotifications() {
       return new Set(items.map((item) => item.id))
     })
   }
+
+  const resetTopicFeedback = () => {
+    setTopicsError(null)
+    setTopicsMessage(null)
+  }
+
+  const handleLoadTopics = useCallback(async () => {
+    const trimmed = topicsUserIdInput.trim()
+    if (!trimmed) {
+      setTopicsError(t("admin:notifications.topics.invalidId"))
+      setTopicsData(null)
+      setTopicsState({})
+      return
+    }
+    const parsed = Number.parseInt(trimmed, 10)
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      setTopicsError(t("admin:notifications.topics.invalidId"))
+      setTopicsData(null)
+      setTopicsState({})
+      return
+    }
+    resetTopicFeedback()
+    setTopicsBusy(true)
+    try {
+      const data = await fetchAdminUserTopics(parsed)
+      setTopicsData(data)
+      setTopicsState(buildTopicState(data.allowed_topics, data.topics))
+      setTopicsMessage(
+        t("admin:notifications.topics.loaded", {
+          email: data.email,
+          id: data.user_id,
+        })
+      )
+    } catch (error) {
+      setTopicsData(null)
+      setTopicsState({})
+      setTopicsError(
+        getErrorMessage(error, t("admin:notifications.topics.loadError"))
+      )
+    } finally {
+      setTopicsBusy(false)
+    }
+  }, [buildTopicState, t, topicsUserIdInput])
+
+  const handleTopicToggle = useCallback(
+    (topic: string) =>
+      (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+        const normalized = normalizeTopicKey(topic)
+        setTopicsState((prev) => ({ ...prev, [normalized]: checked }))
+      },
+    []
+  )
+
+  const handleSaveTopics = useCallback(async () => {
+    if (!topicsData) return
+    resetTopicFeedback()
+    setTopicsBusy(true)
+    try {
+      const selectedTopics = topicsData.allowed_topics.filter(
+        (topic) => topicsState[normalizeTopicKey(topic)]
+      )
+      const updated = await updateAdminUserTopics(topicsData.user_id, selectedTopics)
+      setTopicsData(updated)
+      setTopicsState(buildTopicState(updated.allowed_topics, updated.topics))
+      setTopicsMessage(t("admin:notifications.topics.saved"))
+    } catch (error) {
+      setTopicsError(
+        getErrorMessage(error, t("admin:notifications.topics.saveError"))
+      )
+    } finally {
+      setTopicsBusy(false)
+    }
+  }, [buildTopicState, t, topicsData, topicsState])
 
   const handleRetrySelected = () => {
     const ids = Array.from(selected)
@@ -335,6 +444,108 @@ export default function AdminNotifications() {
             <Typography variant="body1" color="text.secondary">
               {t("admin:notifications.subtitle")}
             </Typography>
+            <Card sx={{ mt: 3 }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight={600} gutterBottom>
+                  {t("admin:notifications.topics.title")}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {t("admin:notifications.topics.description")}
+                </Typography>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={2}
+                  alignItems={{ xs: "stretch", sm: "flex-end" }}
+                  mt={2}
+                >
+                  <TextField
+                    label={t("admin:notifications.topics.userIdLabel")}
+                    value={topicsUserIdInput}
+                    onChange={(event) => {
+                      setTopicsUserIdInput(event.target.value)
+                      resetTopicFeedback()
+                    }}
+                    type="number"
+                    inputProps={{ min: 1 }}
+                    sx={{ minWidth: { xs: "100%", sm: 200 } }}
+                    disabled={topicsBusy}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleLoadTopics}
+                    disabled={topicsBusy}
+                  >
+                    {topicsBusy
+                      ? t("common:loading") ?? "Loading"
+                      : t("admin:notifications.topics.load")}
+                  </Button>
+                </Stack>
+                {topicsError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {topicsError}
+                  </Alert>
+                )}
+                {topicsMessage && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    {topicsMessage}
+                  </Alert>
+                )}
+                {topicsData && (
+                  <Box mt={topicsError || topicsMessage ? 2 : 3}>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                      {t("admin:notifications.topics.userSummary", {
+                        email: topicsData.email,
+                        id: topicsData.user_id,
+                      })}
+                    </Typography>
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1}
+                      flexWrap="wrap"
+                    >
+                      {topicsData.allowed_topics.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t("admin:notifications.topics.empty")}
+                        </Typography>
+                      ) : (
+                        topicsData.allowed_topics.map((topic) => {
+                          const normalized = normalizeTopicKey(topic)
+                          const translationKey = `notifications:topics.${normalized}`
+                          const label = t(translationKey)
+                          const resolvedLabel =
+                            label === translationKey ? topic : (label as string)
+                          return (
+                            <FormControlLabel
+                              key={topic}
+                              control={
+                                <Checkbox
+                                  checked={Boolean(topicsState[normalized])}
+                                  onChange={handleTopicToggle(topic)}
+                                  disabled={topicsBusy}
+                                />
+                              }
+                              label={resolvedLabel}
+                            />
+                          )
+                        })
+                      )}
+                    </Stack>
+                    <Box mt={2}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleSaveTopics}
+                        disabled={topicsBusy || !topicsData.allowed_topics.length}
+                      >
+                        {topicsBusy
+                          ? t("common:loading") ?? "Loading"
+                          : t("admin:notifications.topics.save")}
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
             <Card sx={{ mt: 3 }}>
               <CardContent>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-start">

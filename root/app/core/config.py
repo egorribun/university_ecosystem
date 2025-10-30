@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
-from pydantic import ValidationError, field_validator
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -324,6 +324,9 @@ class Settings(BaseSettings):
     notifications_queue_enqueue_timeout_seconds: float = 0.5
     notifications_queue_in_memory_only: bool = False
     notifications_queue_retry_base_seconds: float = 1.0
+    notifications_allowed_push_topics: list[str] | str = Field(
+        default_factory=lambda: ["news", "schedule", "events", "system"]
+    )
     attendance_token_secret: str = ""
     attendance_token_ttl_seconds: int = 300
     notifications_queue_max_attempts: int = 5
@@ -397,6 +400,25 @@ class Settings(BaseSettings):
         if normalized not in {"static", "filesystem", "local", "s3", "minio"}:
             raise ValueError(
                 "STORAGE_BACKEND must be one of static, filesystem, local, s3, or minio"
+            )
+        return normalized
+
+    @field_validator("notifications_allowed_push_topics", mode="before")
+    @classmethod
+    def _validate_notifications_allowed_push_topics(
+        cls, value: Iterable[str] | str | None
+    ) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in _coerce_str_list(value):
+            candidate = item.strip().lower()
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+        if not normalized:
+            raise ValueError(
+                "NOTIFICATIONS_ALLOWED_PUSH_TOPICS must include at least one topic"
             )
         return normalized
 
@@ -512,6 +534,14 @@ class Settings(BaseSettings):
             return "mailto:no-reply@example.com"
         subject = _validate_webpush_subject(raw_subject)
         return subject
+
+    @cached_property
+    def notifications_allowed_push_topics_set(self) -> frozenset[str]:
+        return frozenset(self.notifications_allowed_push_topics)
+
+    @cached_property
+    def notifications_allowed_push_topics_list(self) -> list[str]:
+        return list(self.notifications_allowed_push_topics)
 
     @cached_property
     def cors_allow_origins_list(self) -> list[str]:

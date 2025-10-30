@@ -19,6 +19,7 @@ import fakeredis.aioredis
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
@@ -155,8 +156,8 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
     async with engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        for table in reversed(Base.metadata.sorted_tables):
-            await conn.execute(table.delete())
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
         await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 

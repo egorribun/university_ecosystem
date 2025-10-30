@@ -2,19 +2,66 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
+from collections.abc import Collection, Iterable, Sequence
 
-if TYPE_CHECKING:  # pragma: no cover - for type checking only
-    from app.models.models import PushSubscription
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-ALLOWED_PUSH_TOPICS: set[str] = {"news", "schedule", "events", "system"}
+from app.core.config import Settings
+from app.core.config import settings as app_settings
+from app.models.models import PushSubscription, UserPushTopic
 
 
-def normalize_topic(value: str | None) -> str | None:
+def get_allowed_topics(settings_obj: Settings | None = None) -> list[str]:
+    """Return allowed push topics using the provided settings."""
+
+    current_settings = settings_obj or app_settings
+    return list(current_settings.notifications_allowed_push_topics_list)
+
+
+def sort_topics(
+    topics: Iterable[str] | None,
+    *,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
+) -> list[str]:
+    """Normalize topics and return them ordered according to the allowed list."""
+
+    normalized = normalize_topics(
+        topics,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
+    allowed_list = (
+        list(allowed_topics)
+        if allowed_topics is not None
+        else get_allowed_topics(settings_obj)
+    )
+    order = {topic: index for index, topic in enumerate(allowed_list)}
+    return sorted(normalized, key=lambda topic: order.get(topic, len(order)))
+
+
+def _resolve_allowed_topics(
+    allowed_topics: Collection[str] | None,
+    settings_obj: Settings | None,
+) -> frozenset[str]:
+    if allowed_topics is not None:
+        return frozenset(topic.strip().lower() for topic in allowed_topics if topic)
+    current_settings = settings_obj or app_settings
+    return current_settings.notifications_allowed_push_topics_set
+
+
+def normalize_topic(
+    value: str | None,
+    *,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
+    strict: bool = False,
+) -> str | None:
     """Normalize a single topic value.
 
-    Returns the normalized topic (lowercase) if it is allowed, otherwise ``None``.
+    Returns the normalized topic (lowercase) if it is allowed. Unknown topics
+    are ignored unless ``strict`` is ``True``.
     """
 
     if value is None:
@@ -22,12 +69,21 @@ def normalize_topic(value: str | None) -> str | None:
     normalized = str(value).strip().lower()
     if not normalized:
         return None
-    if normalized not in ALLOWED_PUSH_TOPICS:
+    allowed = _resolve_allowed_topics(allowed_topics, settings_obj)
+    if normalized not in allowed:
+        if strict:
+            raise ValueError(f"Unknown notification topic: {value!r}")
         return None
     return normalized
 
 
-def normalize_topics(raw_topics: Iterable[str] | None) -> list[str]:
+def normalize_topics(
+    raw_topics: Iterable[str] | None,
+    *,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
+    strict: bool = False,
+) -> list[str]:
     """Normalize and deduplicate an iterable of topics."""
 
     result: list[str] = []
@@ -35,8 +91,13 @@ def normalize_topics(raw_topics: Iterable[str] | None) -> list[str]:
     if raw_topics is None:
         return result
     for raw in raw_topics:
-        normalized = normalize_topic(raw)
-        if not normalized or normalized in seen:
+        normalized = normalize_topic(
+            raw,
+            allowed_topics=allowed_topics,
+            settings_obj=settings_obj,
+            strict=strict,
+        )
+        if normalized is None or normalized in seen:
             continue
         seen.add(normalized)
         result.append(normalized)
@@ -46,24 +107,115 @@ def normalize_topics(raw_topics: Iterable[str] | None) -> list[str]:
 def resolve_topics(
     raw_topics: Iterable[str] | None,
     existing: Sequence[str] | None = None,
+    *,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
 ) -> list[str]:
     """Resolve topics from a raw payload, falling back to existing values."""
 
     if raw_topics is None:
-        return normalize_topics(existing or [])
-    return normalize_topics(raw_topics)
+        return normalize_topics(
+            existing or [],
+            allowed_topics=allowed_topics,
+            settings_obj=settings_obj,
+        )
+    return normalize_topics(
+        raw_topics,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
 
 
 def subscription_supports_topic(
-    subscription: PushSubscription | None, topic: str | None
+    subscription: PushSubscription | None,
+    topic: str | None,
+    *,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
 ) -> bool:
     """Check whether a subscription is interested in the provided topic."""
 
-    normalized_topic = normalize_topic(topic)
+    normalized_topic = normalize_topic(
+        topic,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
     if normalized_topic is None:
         return True
     if subscription is None:
         return False
+
+    user = getattr(subscription, "user", None)
+    preferences = getattr(user, "push_topic_preferences", None)
+    if preferences is not None:
+        user_topics = normalize_topics(
+            getattr(preferences, "topics", None),
+            allowed_topics=allowed_topics,
+            settings_obj=settings_obj,
+        )
+        return normalized_topic in user_topics
+
     stored = getattr(subscription, "topics", None)
-    normalized_existing = normalize_topics(stored)
+    normalized_existing = normalize_topics(
+        stored,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
     return normalized_topic in normalized_existing
+
+
+async def upsert_user_topics(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    topics: Iterable[str] | None,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
+) -> list[str]:
+    """Persist normalized user topic preferences without committing."""
+
+    normalized = normalize_topics(
+        topics,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
+    existing = (
+        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user_id))
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(UserPushTopic(user_id=user_id, topics=list(normalized)))
+    else:
+        existing.topics = list(normalized)
+    return list(normalized)
+
+
+async def synchronize_user_topics(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    topics: Iterable[str] | None,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
+) -> list[str]:
+    """Update user preferences and mirror them to all subscriptions."""
+
+    normalized = await upsert_user_topics(
+        db,
+        user_id=user_id,
+        topics=topics,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
+    subscriptions = (
+        (
+            await db.execute(
+                select(PushSubscription).where(PushSubscription.user_id == user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    normalized_copy = list(normalized)
+    for subscription in subscriptions:
+        subscription.topics = list(normalized_copy)
+    return normalized_copy
