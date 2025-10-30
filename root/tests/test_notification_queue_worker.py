@@ -536,6 +536,94 @@ async def test_persistent_queue_claims_next_job_from_large_backlog() -> None:
 
 
 @pytest.mark.anyio
+async def test_cleanup_dead_lettered_jobs_respects_retention_window() -> None:
+    await notification_queue.reset_testing_state()
+
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        session.add_all(
+            [
+                NotificationQueueJob(
+                    kind="event",
+                    record_id=101,
+                    locale="en",
+                    enqueued_at=now - timedelta(days=45),
+                    dead_lettered=True,
+                ),
+                NotificationQueueJob(
+                    kind="news",
+                    record_id=202,
+                    locale="ru",
+                    enqueued_at=now - timedelta(days=5),
+                    dead_lettered=True,
+                ),
+                NotificationQueueJob(
+                    kind="event",
+                    record_id=303,
+                    locale=None,
+                    enqueued_at=now - timedelta(days=60),
+                    dead_lettered=False,
+                ),
+            ]
+        )
+        await session.commit()
+
+    deleted = await notification_queue.cleanup_dead_lettered_jobs(
+        retention_days=30
+    )
+    assert deleted == 1
+
+    async with async_session() as session:
+        remaining = (
+            await session.execute(
+                select(NotificationQueueJob).order_by(NotificationQueueJob.record_id)
+            )
+        ).scalars().all()
+
+    assert [job.record_id for job in remaining] == [202, 303]
+    fresh_dead_letter = next(job for job in remaining if job.record_id == 202)
+    assert fresh_dead_letter.dead_lettered is True
+    enqueued_at = fresh_dead_letter.enqueued_at
+    assert enqueued_at is not None
+    if enqueued_at.tzinfo is None:
+        enqueued_at = enqueued_at.replace(tzinfo=timezone.utc)
+    assert enqueued_at > now - timedelta(days=30)
+
+
+@pytest.mark.anyio
+async def test_cleanup_dead_lettered_jobs_disabled_with_zero_retention() -> None:
+    await notification_queue.reset_testing_state()
+
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        session.add(
+            NotificationQueueJob(
+                kind="event",
+                record_id=404,
+                locale=None,
+                enqueued_at=now - timedelta(days=120),
+                dead_lettered=True,
+            )
+        )
+        await session.commit()
+
+    deleted = await notification_queue.cleanup_dead_lettered_jobs(retention_days=0)
+    assert deleted == 0
+
+    async with async_session() as session:
+        remaining = (
+            await session.execute(
+                select(NotificationQueueJob).where(
+                    NotificationQueueJob.record_id == 404
+                )
+            )
+        ).scalar_one_or_none()
+
+    assert remaining is not None
+    assert remaining.dead_lettered is True
+
+
+@pytest.mark.anyio
 async def test_worker_loop_emits_tracing_spans(monkeypatch: pytest.MonkeyPatch):
     spans: list["FakeSpan"] = []
 

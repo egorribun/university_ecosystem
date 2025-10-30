@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI):
         await ensure_webauthn_attestation_columns(engine)
     stop_scheduler = None
     stop_notifications_retention = None
+    stop_dead_letter_cleanup = None
     stop_session_cleanup = None
     stop_story_cleanup = None
     stop_password_reset_cleanup = None
@@ -79,6 +80,9 @@ async def lifespan(app: FastAPI):
         )
     await cleanup_stale_notifications(
         retention_days=settings.notifications_retention_days
+    )
+    await notification_queue.cleanup_dead_lettered_jobs(
+        retention_days=settings.notification_queue_dead_letter_retention_days
     )
     await cleanup_expired_sessions()
     await cleanup_expired_stories()
@@ -93,6 +97,20 @@ async def lifespan(app: FastAPI):
             config=NotificationsRetentionConfig(
                 retention_days=settings.notifications_retention_days,
                 interval_seconds=settings.notifications_retention_cleanup_interval_seconds,
+            )
+        )
+    if (
+        settings.notification_queue_dead_letter_retention_days > 0
+        and settings.notification_queue_dead_letter_cleanup_interval_seconds > 0
+    ):
+        stop_dead_letter_cleanup = (
+            await notification_queue.start_dead_letter_cleanup_scheduler(
+                config=notification_queue.DeadLetterCleanupConfig(
+                    retention_days=settings.notification_queue_dead_letter_retention_days,
+                    interval_seconds=(
+                        settings.notification_queue_dead_letter_cleanup_interval_seconds
+                    ),
+                )
             )
         )
     if settings.session_cleanup_interval_seconds > 0:
@@ -124,6 +142,8 @@ async def lifespan(app: FastAPI):
             await stop_scheduler()
         if stop_notifications_retention is not None:
             await stop_notifications_retention()
+        if stop_dead_letter_cleanup is not None:
+            await stop_dead_letter_cleanup()
         if stop_session_cleanup is not None:
             await stop_session_cleanup()
         if stop_story_cleanup is not None:

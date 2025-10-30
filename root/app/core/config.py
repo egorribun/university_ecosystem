@@ -274,6 +274,8 @@ class Settings(BaseSettings):
     notifications_webpush_concurrency_limit: int = 10
     notifications_retention_days: int = 90
     notifications_retention_cleanup_interval_seconds: int = 86_400
+    notification_queue_dead_letter_retention_days: int = 30
+    notification_queue_dead_letter_cleanup_interval_seconds: int = 86_400
     storage_backend: str = "static"
     storage_static_base_url: str = "/static"
     storage_s3_bucket: str = ""
