@@ -6,11 +6,7 @@ type PageFadeInProps = {
   effect?: "default" | "soft-blur"
 }
 
-export default function PageFadeIn({
-  children,
-  delay = 80,
-  effect = "default",
-}: PageFadeInProps) {
+export default function PageFadeIn({ children, delay = 80, effect = "default" }: PageFadeInProps) {
   const [ready, setReady] = useState(false)
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
 
@@ -42,7 +38,11 @@ export default function PageFadeIn({
     return
   }, [])
 
-  const resolvedEffect = prefersReducedMotion ? undefined : effect === "soft-blur" ? "soft-blur" : undefined
+  const resolvedEffect = prefersReducedMotion
+    ? undefined
+    : effect === "soft-blur"
+      ? "soft-blur"
+      : undefined
 
   return (
     <div

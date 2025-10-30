@@ -130,7 +130,8 @@ describe("News page feed rendering", () => {
         value: originalRequestIdleCallback,
       })
     } else {
-      delete (window as { requestIdleCallback?: typeof window.requestIdleCallback }).requestIdleCallback
+      delete (window as { requestIdleCallback?: typeof window.requestIdleCallback })
+        .requestIdleCallback
     }
 
     if (originalCancelIdleCallback) {
@@ -140,7 +141,8 @@ describe("News page feed rendering", () => {
         value: originalCancelIdleCallback,
       })
     } else {
-      delete (window as { cancelIdleCallback?: typeof window.cancelIdleCallback }).cancelIdleCallback
+      delete (window as { cancelIdleCallback?: typeof window.cancelIdleCallback })
+        .cancelIdleCallback
     }
   })
 
@@ -160,21 +162,21 @@ describe("News page feed rendering", () => {
     useNewsFeedMock.mockClear()
   })
 
-  it.each([
-    ["light"],
-    ["dark"],
-  ] as const)("renders a large news feed without blur in %s mode", async (mode) => {
-    currentMode = mode
-    const wrapper = buildWrapper(mode)
+  it.each([["light"], ["dark"]] as const)(
+    "renders a large news feed without blur in %s mode",
+    async (mode) => {
+      currentMode = mode
+      const wrapper = buildWrapper(mode)
 
-    const { container } = render(<News />, { wrapper })
+      const { container } = render(<News />, { wrapper })
 
-    const cards = await screen.findAllByTestId("news-card")
-    expect(cards.length).toBeGreaterThan(0)
+      const cards = await screen.findAllByTestId("news-card")
+      expect(cards.length).toBeGreaterThan(0)
 
-    const fadeContainer = container.querySelector<HTMLElement>("[data-page-fade]")
-    expect(fadeContainer).not.toBeNull()
-    expect(fadeContainer?.dataset.effect).toBeUndefined()
-    expect(useNewsFeedMock).toHaveBeenCalled()
-  })
+      const fadeContainer = container.querySelector<HTMLElement>("[data-page-fade]")
+      expect(fadeContainer).not.toBeNull()
+      expect(fadeContainer?.dataset.effect).toBeUndefined()
+      expect(useNewsFeedMock).toHaveBeenCalled()
+    }
+  )
 })
