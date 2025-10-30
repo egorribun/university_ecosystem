@@ -774,10 +774,18 @@ def _load_settings() -> Settings:
         )
         if not missing:
             missing = "DATABASE_URL, SECRET_KEY"
-        _logger.warning(
-            "Using development defaults for %s because DATABASE_URL and SECRET_KEY are not configured. "
+        hint_parts = [
             "Provide real secrets via environment variables or a .env file before deploying.",
+        ]
+        if not (_PROJECT_ROOT / ".env").exists():
+            hint_parts.append(
+                "For local development, copy root/.env.example to root/.env and replace the placeholder"
+                " values before starting the application.",
+            )
+        _logger.warning(
+            "Using development defaults for %s because DATABASE_URL and SECRET_KEY are not configured. %s",
             missing,
+            " ".join(hint_parts),
         )
         return fallback
 
