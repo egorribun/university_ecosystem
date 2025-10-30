@@ -100,26 +100,19 @@
     --page-fade-duration: 560ms;
     --page-fade-easing: cubic-bezier(0.33, 1, 0.68, 1);
     --page-fade-scale: 0.985;
-    --page-fade-blur: 16px;
     --page-fade-translate-y: 18px;
+    --page-fade-blur: 8px;
   }
 
   @keyframes ue-page-fade-shell {
     0% {
       opacity: 0;
       transform: translate3d(0, var(--page-fade-translate-y), 0) scale(var(--page-fade-scale));
-      filter: blur(var(--page-fade-blur));
-    }
-
-    55% {
-      opacity: 1;
-      filter: blur(calc(var(--page-fade-blur) * 0.35));
     }
 
     100% {
       opacity: 1;
       transform: translate3d(0, 0, 0) scale(1);
-      filter: blur(0px);
     }
   }
 
@@ -127,17 +120,11 @@
     0% {
       opacity: 0;
       transform: translate3d(var(--fade-x), var(--fade-y), 0) scale(var(--fade-scale));
-      filter: blur(var(--fade-blur));
-    }
-
-    45% {
-      filter: blur(calc(var(--fade-blur) * 0.4));
     }
 
     100% {
       opacity: 1;
       transform: translate3d(0, 0, 0) scale(1);
-      filter: blur(0px);
     }
   }
 
@@ -145,13 +132,12 @@
     --page-fade-delay: 80ms;
     --page-fade-duration: 560ms;
     --page-fade-easing: cubic-bezier(0.33, 1, 0.68, 1);
-    --page-fade-blur: 16px;
     --page-fade-scale: 0.985;
     --page-fade-translate-y: 18px;
     opacity: 0;
     transform: translate3d(0, var(--page-fade-translate-y), 0) scale(var(--page-fade-scale));
-    filter: blur(var(--page-fade-blur));
-    will-change: opacity, transform, filter;
+    filter: none;
+    will-change: opacity, transform;
     animation: none;
   }
 
@@ -164,17 +150,37 @@
     --fade-x: 0px;
     --fade-y: 22px;
     --fade-scale: 0.98;
-    --fade-blur: calc(var(--page-fade-blur) * 0.9);
     opacity: 0;
     transform: translate3d(var(--fade-x), var(--fade-y), 0) scale(var(--fade-scale));
-    filter: blur(var(--fade-blur));
-    will-change: opacity, transform, filter;
+    filter: none;
+    will-change: opacity, transform;
     animation: none;
   }
 
   [data-page-fade][data-ready="true"] [data-fade] {
     animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing)
       calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
+  }
+
+  [data-page-fade][data-effect="soft-blur"] {
+    filter: blur(var(--page-fade-blur));
+    will-change: opacity, transform, filter;
+    transition: filter calc(var(--page-fade-duration) * 0.85) var(--page-fade-easing);
+  }
+
+  [data-page-fade][data-effect="soft-blur"][data-ready="true"] {
+    filter: none;
+  }
+
+  [data-page-fade][data-effect="soft-blur"] [data-fade] {
+    --fade-blur: calc(var(--page-fade-blur) * 0.7);
+    filter: blur(var(--fade-blur));
+    will-change: opacity, transform, filter;
+    transition: filter calc(var(--page-fade-duration) * 0.85) var(--page-fade-easing);
+  }
+
+  [data-page-fade][data-effect="soft-blur"][data-ready="true"] [data-fade] {
+    filter: none;
   }
 
   [data-page-fade] [data-fade][data-direction="left"] {
