@@ -568,17 +568,21 @@ async def test_cleanup_dead_lettered_jobs_respects_retention_window() -> None:
         )
         await session.commit()
 
-    deleted = await notification_queue.cleanup_dead_lettered_jobs(
-        retention_days=30
-    )
+    deleted = await notification_queue.cleanup_dead_lettered_jobs(retention_days=30)
     assert deleted == 1
 
     async with async_session() as session:
         remaining = (
-            await session.execute(
-                select(NotificationQueueJob).order_by(NotificationQueueJob.record_id)
+            (
+                await session.execute(
+                    select(NotificationQueueJob).order_by(
+                        NotificationQueueJob.record_id
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert [job.record_id for job in remaining] == [202, 303]
     fresh_dead_letter = next(job for job in remaining if job.record_id == 202)

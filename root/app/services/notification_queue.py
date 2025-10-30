@@ -751,7 +751,6 @@ async def start_dead_letter_cleanup_scheduler(
 
     persistent_backend = _use_persistent_backend()
     if retention_days <= 0 or not persistent_backend:
-
         reason = (
             "retention disabled"
             if retention_days <= 0
@@ -781,9 +780,7 @@ async def start_dead_letter_cleanup_scheduler(
                 except asyncio.CancelledError:
                     raise
                 except Exception:  # pragma: no cover - defensive logging
-                    logger.exception(
-                        "Failed to cleanup notification dead-letter queue"
-                    )
+                    logger.exception("Failed to cleanup notification dead-letter queue")
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
             logger.info("Notification queue dead-letter cleanup loop cancelled")
