@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.localization import resolve_locale, translate
-from app.models.models import PushSubscription
+from app.models.models import PushSubscription, User
 from app.services import push_schema
 from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
@@ -705,7 +705,11 @@ async def send_to_user(
     async with async_session() as session:
         result = await session.execute(
             select(PushSubscription)
-            .options(selectinload(PushSubscription.user))
+            .options(
+                selectinload(PushSubscription.user).selectinload(
+                    User.push_topic_preferences
+                )
+            )
             .where(PushSubscription.user_id == user_id)
         )
         subscriptions = result.scalars().all()

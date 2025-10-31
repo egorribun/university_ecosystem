@@ -6,6 +6,7 @@ from collections.abc import Collection, Iterable, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes as orm_attributes
 
 from app.core.config import Settings
 from app.core.config import settings as app_settings
@@ -146,14 +147,22 @@ def subscription_supports_topic(
         return False
 
     user = getattr(subscription, "user", None)
-    preferences = getattr(user, "push_topic_preferences", None)
+    preferences = None
+    if user is not None:
+        try:
+            state = orm_attributes.instance_state(user)
+            if "push_topic_preferences" not in state.unloaded:
+                preferences = getattr(user, "push_topic_preferences", None)
+        except Exception:  # pragma: no cover - defensive guard
+            preferences = getattr(user, "push_topic_preferences", None)
+    allowed_by_user = True
     if preferences is not None:
         user_topics = normalize_topics(
             getattr(preferences, "topics", None),
             allowed_topics=allowed_topics,
             settings_obj=settings_obj,
         )
-        return normalized_topic in user_topics
+        allowed_by_user = normalized_topic in user_topics
 
     stored = getattr(subscription, "topics", None)
     normalized_existing = normalize_topics(
@@ -161,7 +170,9 @@ def subscription_supports_topic(
         allowed_topics=allowed_topics,
         settings_obj=settings_obj,
     )
-    return normalized_topic in normalized_existing
+    if normalized_existing:
+        return allowed_by_user and (normalized_topic in normalized_existing)
+    return allowed_by_user
 
 
 async def upsert_user_topics(
