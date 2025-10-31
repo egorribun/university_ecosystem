@@ -64,12 +64,17 @@
   --dash-conic-stop-3: color-mix(in srgb, white 68%, var(--nav-link-hover) 32%);
   --dash-conic-stop-4: color-mix(in srgb, white 92%, var(--nav-link) 8%);
   --dash-date-shadow: 0 18px 40px -22px color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-hover-lift: 4px;
+  --dash-hover-scale: 1.02;
+  --dash-hover-duration: 420ms;
+  --dash-hover-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dash-panel-bg: color-mix(in srgb, white 94%, var(--nav-link) 6%);
   --dash-panel-bg-muted: color-mix(in srgb, white 97%, var(--nav-link) 3%);
   --dash-panel-border: color-mix(in srgb, white 62%, var(--nav-link) 38%);
   --dash-panel-shadow: 0 34px 110px -70px color-mix(in srgb, var(--nav-link-hover) 45%, transparent);
   --dash-panel-shadow-soft: 0 28px 96px -68px color-mix(in srgb, var(--nav-link-hover) 32%, transparent);
   --dash-panel-item-hover: color-mix(in srgb, white 88%, var(--nav-link) 12%);
+  --dash-panel-item-ring: color-mix(in srgb, white 68%, var(--nav-link) 32%);
   --dash-panel-hover-shadow: 0 70px 160px -90px
     color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
   --dash-highlight-opacity: 0.58;
@@ -182,12 +187,17 @@ body.dark {
   --dash-conic-stop-3: color-mix(in srgb, var(--fed-blue-80v) 55%, transparent);
   --dash-conic-stop-4: color-mix(in srgb, var(--nav-link) 45%, transparent);
   --dash-date-shadow: 0 18px 44px -20px color-mix(in srgb, var(--nav-bg) 70%, transparent);
+  --dash-hover-lift: 4px;
+  --dash-hover-scale: 1.02;
+  --dash-hover-duration: 420ms;
+  --dash-hover-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dash-panel-bg: #101d34;
   --dash-panel-bg-muted: color-mix(in srgb, #101d34 78%, #090f1c 22%);
   --dash-panel-border: color-mix(in srgb, #101d34 68%, #2a3d5e 32%);
   --dash-panel-shadow: 0 42px 140px -90px rgba(6, 12, 24, 0.8);
   --dash-panel-shadow-soft: 0 34px 120px -88px rgba(6, 14, 28, 0.68);
   --dash-panel-item-hover: color-mix(in srgb, #101d34 85%, #1b2b46 15%);
+  --dash-panel-item-ring: color-mix(in srgb, #0d1a2e 48%, #2f4b73 52%);
   --dash-panel-hover-shadow: 0 70px 170px -90px rgba(8, 18, 38, 0.88);
   --dash-highlight-opacity: 0.5;
   --dash-glass-sheen-start: color-mix(in srgb, white 35%, transparent);

@@ -422,9 +422,11 @@ export default function Dashboard() {
   ]
 
   const panelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-all duration-500"
+    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]"
   const panelHover =
-    "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
+    "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
+  const listActionBase =
+    "group relative isolate w-full overflow-hidden rounded-ue-lg text-left transition-[background-color,transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] hover:bg-[color:var(--dash-panel-item-hover)] hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:transform-none motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-[color:var(--dash-panel-item-ring)] before:opacity-0 before:scale-[0.96] before:transition-[transform,opacity,border-color] before:duration-[var(--dash-hover-duration)] before:ease-[var(--dash-hover-ease)] before:content-[''] hover:before:opacity-100 hover:before:scale-100"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -740,11 +742,11 @@ export default function Dashboard() {
                           <li key={n.id} className="dash-list-item">
                             <button
                               type="button"
-                              className="group flex w-full items-center gap-3 rounded-ue-lg text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
+                              className={cn(listActionBase, "flex items-center gap-3")}
                               onClick={() => navigate(`/news/${n.id}`)}
-                            title={n.title}
-                            aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-                          >
+                              title={n.title}
+                              aria-label={t("dashboard:aria.newsItem", { title: n.title })}
+                            >
                             <DateBullet date={n.created_at} locale={locale} />
                             <div className="flex flex-col gap-1">
                               <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-page-foreground">
@@ -757,7 +759,7 @@ export default function Dashboard() {
                             </div>
                             <span
                               aria-hidden="true"
-                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-all duration-300 group-hover:-translate-y-[1px] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
+                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-[transform,opacity,background-color,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:-translate-y-[calc(var(--dash-hover-lift)/2)] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
                             >
                               →
                             </span>
@@ -857,7 +859,7 @@ export default function Dashboard() {
                           <li key={e.id} className="dash-list-item">
                             <button
                               type="button"
-                              className="group flex w-full flex-col gap-2 rounded-ue-lg text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
+                              className={cn(listActionBase, "flex flex-col gap-2")}
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >
@@ -865,7 +867,7 @@ export default function Dashboard() {
                                 <span className="text-base font-semibold text-page-foreground">
                                   {e.title}
                                 </span>
-                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[color:var(--dash-icon-halo-border)] bg-[color:var(--dash-icon-halo-bg)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--dash-icon-halo-text)] transition-colors duration-300 group-hover:border-[color:var(--dash-icon-halo-border-active)] group-hover:text-[color:var(--dash-icon-halo-text-active)]">
+                                <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[color:var(--dash-icon-halo-border)] bg-[color:var(--dash-icon-halo-bg)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--dash-icon-halo-text)] transition-colors duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:border-[color:var(--dash-icon-halo-border-active)] group-hover:text-[color:var(--dash-icon-halo-text-active)]">
                                   <AutoAwesomeRoundedIcon
                                     aria-hidden="true"
                                     fontSize="inherit"
