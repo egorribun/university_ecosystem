@@ -406,7 +406,12 @@ api.interceptors.response.use(
 
     const config = err?.config as ApiRequestConfig | undefined
     const etagKey = config?.etagCacheKey
-    if (etagKey && err?.response?.status && err.response.status >= 400 && err.response.status !== 304) {
+    if (
+      etagKey &&
+      err?.response?.status &&
+      err.response.status >= 400 &&
+      err.response.status !== 304
+    ) {
       etagCache.delete(etagKey)
     }
 
@@ -417,7 +422,11 @@ api.interceptors.response.use(
         scheduleRateLimitWindow(delay)
 
         const retryCount = retryConfig.__rateLimitRetryCount ?? 0
-        if (retryCount < RATE_LIMIT_MAX_RETRY && !retryConfig.signal?.aborted && !isAbortError(err)) {
+        if (
+          retryCount < RATE_LIMIT_MAX_RETRY &&
+          !retryConfig.signal?.aborted &&
+          !isAbortError(err)
+        ) {
           retryConfig.__rateLimitRetryCount = retryCount + 1
           await waitForRateLimitWindow()
           return api.request(retryConfig)

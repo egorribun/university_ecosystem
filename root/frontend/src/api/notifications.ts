@@ -82,15 +82,9 @@ const adminTopicsSchema = z.object({
   updated_at: z.string().datetime().nullable().optional(),
 })
 
-export async function fetchAdminUserTopics(
-  userId: number
-): Promise<AdminUserTopicsResponse> {
+export async function fetchAdminUserTopics(userId: number): Promise<AdminUserTopicsResponse> {
   const { data } = await api.get<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`)
-  return ensureValidResponse(
-    adminTopicsSchema,
-    data,
-    `GET /push/admin/topics/${userId}`
-  )
+  return ensureValidResponse(adminTopicsSchema, data, `GET /push/admin/topics/${userId}`)
 }
 
 export async function updateAdminUserTopics(
@@ -98,13 +92,6 @@ export async function updateAdminUserTopics(
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
-  const { data } = await api.put<AdminUserTopicsResponse>(
-    `/push/admin/topics/${userId}`,
-    payload
-  )
-  return ensureValidResponse(
-    adminTopicsSchema,
-    data,
-    `PUT /push/admin/topics/${userId}`
-  )
+  const { data } = await api.put<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`, payload)
+  return ensureValidResponse(adminTopicsSchema, data, `PUT /push/admin/topics/${userId}`)
 }

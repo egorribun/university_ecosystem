@@ -60,8 +60,7 @@ type EventsListQueryKeyTuple = readonly ["events", "list", NormalizedEventsListF
 export type EventsListQueryKey = EventsListQueryKeyTuple
 
 const createEventsListEtagKey = (filters: NormalizedEventsListFilters) => {
-  const activity =
-    filters.is_active === null ? "all" : filters.is_active ? "active" : "archive"
+  const activity = filters.is_active === null ? "all" : filters.is_active ? "active" : "archive"
   return [
     "events",
     "list",
@@ -142,10 +141,7 @@ type UseEventsListQueryOptions = Omit<
   "queryKey" | "queryFn" | "initialPageParam" | "getNextPageParam"
 >
 
-export type UseEventsListQueryResult = UseInfiniteQueryResult<
-  PaginatedResponse<Event>,
-  Error
-> & {
+export type UseEventsListQueryResult = UseInfiniteQueryResult<PaginatedResponse<Event>, Error> & {
   events: Event[]
   pagination: PaginatedResponse<Event> | null
   queryKey: EventsListQueryKey
@@ -197,9 +193,7 @@ export const useEventsListQuery = (
       const response = await api.get<PaginatedResponse<Event>>("/events", requestConfig)
 
       if (response.status === 304) {
-        const cached = queryClient.getQueryData<
-          InfiniteData<PaginatedResponse<Event>>
-        >(queryKey)
+        const cached = queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>>>(queryKey)
         return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
       }
 

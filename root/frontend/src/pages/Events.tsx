@@ -38,11 +38,7 @@ import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import {
-  EVENTS_PAGE_SIZE,
-  useEventsListQuery,
-  useMyEventsQuery,
-} from "@/api/hooks/events"
+import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -182,7 +178,7 @@ const Events = () => {
   } = myEventsQuery
 
   const normalizedEvents = useMemo(() => {
-    return tab === "my" ? myEventsData ?? [] : listEvents
+    return tab === "my" ? (myEventsData ?? []) : listEvents
   }, [tab, listEvents, myEventsData])
 
   const loading = useMemo(() => {
@@ -190,7 +186,14 @@ const Events = () => {
       return myEventsLoading || (myEventsFetching && !myEventsLoading)
     }
     return listIsLoading || (listIsFetching && !listIsFetchingNextPage)
-  }, [tab, myEventsLoading, myEventsFetching, listIsLoading, listIsFetching, listIsFetchingNextPage])
+  }, [
+    tab,
+    myEventsLoading,
+    myEventsFetching,
+    listIsLoading,
+    listIsFetching,
+    listIsFetchingNextPage,
+  ])
 
   const loadingMore = tab !== "my" && Boolean(listIsFetchingNextPage)
   const hasMore = tab !== "my" && Boolean(listHasNextPage)
