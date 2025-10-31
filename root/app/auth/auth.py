@@ -1040,6 +1040,7 @@ async def verify_mfa_challenge(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    locale = resolve_locale(request=request)
     challenge_types = {
         mfa.MFA_METHOD_TOTP: mfa.CHALLENGE_TYPE_TOTP_VERIFY,
         mfa.MFA_METHOD_WEBAUTHN: mfa.CHALLENGE_TYPE_WEBAUTHN_ASSERT,
@@ -1070,6 +1071,7 @@ async def verify_mfa_challenge(
             reason="user_unavailable",
         )
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Challenge user unavailable")
+    locale = resolve_locale(request=request, user=user)
     session: ActiveSession | None = None
     now = datetime.now(UTC)
     if challenge.session_id is not None:
@@ -1360,7 +1362,7 @@ def _audit_log(
                 continue
             if isinstance(value, datetime):
                 payload[key] = value.isoformat()
-            elif isinstance(value, str | int | float | bool):
+            elif isinstance(value, (str, int, float, bool)):
                 payload[key] = value
             else:
                 payload[key] = str(value)

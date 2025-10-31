@@ -112,13 +112,12 @@ async def lifespan(app: FastAPI):
         settings.notification_queue_dead_letter_retention_days > 0
         and settings.notification_queue_dead_letter_cleanup_interval_seconds > 0
     ):
-        dead_letter_config = notification_queue.DeadLetterCleanupConfig(
-            retention_days=settings.notification_queue_dead_letter_retention_days,
-            interval_seconds=settings.notification_queue_dead_letter_cleanup_interval_seconds,
-        )
-        stop_dead_letter_cleanup = (
-            await notification_queue.start_dead_letter_cleanup_scheduler(
-                config=dead_letter_config,
+        stop_dead_letter_cleanup = await notification_queue.start_dead_letter_cleanup_scheduler(
+            config=notification_queue.DeadLetterCleanupConfig(
+                retention_days=settings.notification_queue_dead_letter_retention_days,
+                interval_seconds=(
+                    settings.notification_queue_dead_letter_cleanup_interval_seconds
+                ),
             )
         )
     if settings.session_cleanup_interval_seconds > 0:

@@ -78,7 +78,7 @@ def _parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         try:
             return datetime.fromtimestamp(value, UTC)
         except (OverflowError, OSError, ValueError):
@@ -122,7 +122,7 @@ def _coerce_bool(value: Any) -> bool:
 
     if isinstance(value, bool):
         return value
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         return value != 0
     if isinstance(value, str):
         normalized = value.strip().lower()

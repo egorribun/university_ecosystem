@@ -43,7 +43,7 @@ else:  # pragma: no cover - executed during import
         ):
             secret, ident = _orig(cls, secret, ident, new=new)
             if (
-                isinstance(secret, bytes | bytearray)
+                isinstance(secret, (bytes, bytearray))
                 and len(secret) > LEGACY_BCRYPT_MAX_BYTES
             ):
                 secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
