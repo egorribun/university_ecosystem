@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 import { apiClient } from "@/api/client"
-import type { components, paths } from "@/api/generated/schema"
+import type { components } from "@/api/generated/schema"
 import type {
   AdminUserTopicsResponse,
   PushSubscriptionResponse,
@@ -108,8 +108,7 @@ export async function saveSubscription(
     user_agent: userAgent,
     ...(Array.isArray(topics) ? { topics } : {}),
   }
-
-  const { data } = await apiClient.post<PushSubscriptionResponse>("/push/subscribe", payload)
+  const { data } = await apiClient.post("/push/subscribe", payload)
   return data
 }
 
@@ -119,15 +118,14 @@ export async function deleteSubscription(endpoint: string): Promise<void> {
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {
-  const { data } = await apiClient.post<SendTestNotificationResponse>("/push/test")
+  const { data } = await apiClient.post("/push/test")
   return data
 }
 
 export async function getVapidPublicKey(): Promise<string | null> {
-  const { data } =
-    await apiClient.get<
-      paths["/push/vapid-public-key"]["get"]["responses"]["200"]["content"]["application/json"]
-    >("/push/vapid-public-key")
+  const { data } = await apiClient.get(
+    "/push/vapid-public-key"
+  )
   const schema = z.object({ publicKey: z.string().trim().min(1).optional() })
   const parsed = ensureValidResponse(schema, data, "GET /push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
@@ -142,7 +140,7 @@ const pushTopicsSchema = z.object({
 })
 
 export async function fetchPushTopics(): Promise<PushTopicsResponse> {
-  const { data } = await apiClient.get<PushTopicsResponse>("/push/topics")
+  const { data } = await apiClient.get("/push/topics")
   const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /push/topics")
   return {
     allowed: parsed.allowed,
@@ -161,7 +159,7 @@ const adminTopicsSchema = z.object({
 })
 
 export async function fetchAdminUserTopics(userId: number): Promise<AdminUserTopicsResponse> {
-  const { data } = await apiClient.get<AdminUserTopicsResponse>("/push/admin/topics/{user_id}", {
+  const { data } = await apiClient.get("/push/admin/topics/{user_id}", {
     pathParams: { user_id: userId },
   })
   return ensureValidResponse(adminTopicsSchema, data, `GET /push/admin/topics/${userId}`)
@@ -172,7 +170,7 @@ export async function updateAdminUserTopics(
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
-  const { data } = await apiClient.put<AdminUserTopicsResponse>(
+  const { data } = await apiClient.put(
     "/push/admin/topics/{user_id}",
     payload,
     {

@@ -457,31 +457,41 @@ type ApiPath = keyof paths
 
 type OperationFor<P extends ApiPath, M extends ApiMethod> = paths[P][M]
 
-type PathParamsOf<P extends ApiPath> = paths[P] extends {
-  parameters: { path: infer Params }
-}
-  ? Params extends Record<string, unknown>
-    ? Params
-    : Record<string, never>
-  : Record<string, never>
+type EmptyObject = Record<never, never>
+
+type ExtractPathParams<Op> = Op extends unknown
+  ? Op extends { parameters?: { path: infer Params } }
+    ? Params extends Record<string, unknown>
+      ? Params
+      : never
+    : never
+  : never
+
+type MethodsForPath<P extends ApiPath> = {
+  [M in ApiMethod]: paths[P][M]
+}[ApiMethod]
+
+type PathParamsOf<P extends ApiPath> = [ExtractPathParams<MethodsForPath<P>>] extends [never]
+  ? EmptyObject
+  : ExtractPathParams<MethodsForPath<P>>
 
 type QueryParamsOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
-    ? Record<string, never>
-    : OperationFor<P, M> extends { parameters: { query: infer Query } }
+    ? EmptyObject
+    : OperationFor<P, M> extends { parameters?: { query?: infer Query } }
       ? Query extends Record<string, unknown>
         ? Query
-        : Record<string, never>
-      : Record<string, never>
+        : EmptyObject
+      : EmptyObject
 
 type HeaderParamsOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
-    ? Record<string, never>
-    : OperationFor<P, M> extends { parameters: { header: infer Header } }
+    ? EmptyObject
+    : OperationFor<P, M> extends { parameters?: { header?: infer Header } }
       ? Header extends Record<string, unknown>
         ? Header
-        : Record<string, never>
-      : Record<string, never>
+        : EmptyObject
+      : EmptyObject
 
 type NormalizeContent<Content> =
   Content extends Record<string, unknown>
@@ -499,9 +509,11 @@ type NormalizeContent<Content> =
 type RequestBodyOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
     ? undefined
-    : OperationFor<P, M> extends { requestBody: { content: infer Content } }
+    : OperationFor<P, M> extends { requestBody?: { content: infer Content } }
       ? NormalizeContent<Content>
-      : undefined
+      : OperationFor<P, M> extends { requestBody: { content: infer Content } }
+        ? NormalizeContent<Content>
+        : undefined
 
 type SuccessStatus = 200 | 201 | 202 | 203 | 204 | 205 | 206
 
@@ -560,18 +572,20 @@ const buildPathWithParams = <P extends ApiPath>(path: P, params: PathParamsOf<P>
 
 const normalizeHeaders = <P extends ApiPath, M extends ApiMethod>(
   headers: ApiRequestHeaders<P, M> | undefined
-) => {
+): ApiRequestHeaders<P, M> | undefined => {
   if (!headers) {
     return headers
   }
 
-  const normalized: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(headers)) {
-    if (value !== undefined && value !== null) {
-      normalized[key] = value
-    }
+  const normalizedEntries = Object.entries(headers).filter(([, value]) =>
+    value !== undefined && value !== null
+  )
+
+  if (normalizedEntries.length === 0) {
+    return undefined
   }
-  return normalized
+
+  return Object.fromEntries(normalizedEntries) as ApiRequestHeaders<P, M>
 }
 
 const createTypedClient = (instance: ApiInstance) => {
