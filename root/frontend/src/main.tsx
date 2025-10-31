@@ -1,8 +1,11 @@
 import { initObservability } from "./app/observability"
+import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
+import { logError } from "./app/logger"
 import { initWebVitals } from "./app/webVitals"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
 
 initObservability()
+initGlobalErrorHandlers()
 initWebVitals()
 ensureTrustedTypesPolicies()
 
@@ -42,10 +45,10 @@ async function bootstrap() {
       try {
         await ensurePushSubscription({ registration, requestPermission: false })
       } catch (error) {
-        console.error("Failed to ensure push subscription", error)
+        logError("Failed to ensure push subscription", error)
       }
     } catch (error) {
-      console.error("Service worker registration failed", error)
+      logError("Service worker registration failed", error)
     }
   }
 

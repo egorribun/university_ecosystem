@@ -1,5 +1,6 @@
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
 import { createTrustedScriptURL } from "../utils/trustedTypes"
+import { logError } from "@/app/logger"
 
 const SKIP_WAITING_MESSAGE = { type: "SKIP_WAITING" } as const
 const PROCESS_QUEUE_MESSAGE = { type: "PROCESS_NOTIFICATION_CLICK_QUEUE" } as const
@@ -76,7 +77,7 @@ export async function registerServiceWorker(path = "/sw.js") {
 
     return registration
   } catch (error) {
-    console.error("Service worker registration failed", error)
+    logError("Service worker registration failed", error)
     return null
   }
 }

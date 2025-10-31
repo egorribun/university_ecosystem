@@ -1,4 +1,5 @@
 import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
+import { logError, logWarning } from "@/app/logger"
 
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 5
@@ -356,7 +357,7 @@ async function persistSubscriptionWithBackoff(
     } catch (error) {
       attempt += 1
       if (attempt >= PERSIST_MAX_ATTEMPTS) {
-        console.error("Failed to persist push subscription", error)
+        logError("Failed to persist push subscription", error)
         throw error
       }
       const delay = Math.min(30000, 2 ** (attempt - 1) * PERSIST_BASE_DELAY_MS) + jitter()
@@ -397,14 +398,14 @@ export async function resolveServiceWorkerRegistration(
     const existing = await navigator.serviceWorker.getRegistration()
     if (existing) return existing
   } catch (error) {
-    console.warn("Failed to get existing service worker registration", error)
+    logWarning("Failed to get existing service worker registration", error)
   }
 
   try {
     const readyPromise = navigator.serviceWorker.ready
       .then((reg) => reg)
       .catch((error) => {
-        console.warn("Service worker ready promise rejected", error)
+        logWarning("Service worker ready promise rejected", error)
         return null
       })
 
@@ -415,7 +416,7 @@ export async function resolveServiceWorkerRegistration(
     const resolved = await Promise.race([readyPromise, timeout])
     if (resolved) return resolved
   } catch (error) {
-    console.warn("Failed to await service worker readiness", error)
+    logWarning("Failed to await service worker readiness", error)
   }
 
   try {
@@ -423,13 +424,13 @@ export async function resolveServiceWorkerRegistration(
     const registered = await registerServiceWorker()
     if (registered) return registered
   } catch (error) {
-    console.warn("Failed to auto-register service worker", error)
+    logWarning("Failed to auto-register service worker", error)
   }
 
   try {
     return (await navigator.serviceWorker.getRegistration()) ?? null
   } catch (error) {
-    console.warn("Failed to get service worker registration after timeout", error)
+    logWarning("Failed to get service worker registration after timeout", error)
     return null
   }
 }
@@ -452,11 +453,11 @@ export async function resolveVapidPublicKey(): Promise<string | null> {
     const serverKey = await getVapidPublicKey()
     cachedVapidPublicKey = serverKey ?? null
     if (!cachedVapidPublicKey && import.meta.env.DEV) {
-      console.warn("VAPID public key is not configured on the server")
+      logWarning("VAPID public key is not configured on the server")
     }
     return cachedVapidPublicKey
   } catch (error) {
-    console.warn("Failed to fetch VAPID public key", error)
+    logWarning("Failed to fetch VAPID public key", error)
     cachedVapidPublicKey = null
     return null
   }
@@ -505,7 +506,7 @@ export async function ensurePushSubscription(
     const reg = await resolveServiceWorkerRegistration(options?.registration)
 
     if (!reg) {
-      console.warn("Cannot ensure push subscription without service worker registration")
+      logWarning("Cannot ensure push subscription without service worker registration")
       return null
     }
 
@@ -550,7 +551,7 @@ export async function ensurePushSubscription(
           await sub.unsubscribe()
         } catch (error) {
           if (import.meta.env.DEV) {
-            console.warn("Failed to unsubscribe push subscription", error)
+            logWarning("Failed to unsubscribe push subscription", error)
           }
         }
         sub = null
@@ -576,7 +577,7 @@ export async function ensurePushSubscription(
       try {
         await persistSubscriptionWithBackoff(payload, topics)
       } catch (error) {
-        console.error("Failed to persist push subscription", error)
+        logError("Failed to persist push subscription", error)
       }
     } else {
       setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
@@ -641,7 +642,7 @@ export async function unsubscribePush(options?: UnsubscribePushOptions) {
       await deleteSubscription(endpoint)
       deleted = true
     } catch (error) {
-      console.warn("Failed to delete push subscription on server", error)
+      logWarning("Failed to delete push subscription on server", error)
     }
   }
 
@@ -698,7 +699,7 @@ export async function softSyncPushSubscription(
     })
     return subscription
   } catch (error) {
-    console.error("Failed to soft sync push subscription", error)
+    logError("Failed to soft sync push subscription", error)
     return null
   }
 }
