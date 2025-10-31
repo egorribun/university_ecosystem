@@ -627,7 +627,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
-                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
                   {loadingSched && (
                     <div className="space-y-3" role="presentation">
                       <Skeleton height={22} />
@@ -641,7 +640,7 @@ export default function Dashboard() {
                   {!loadingSched && todayLessons.length > 0 && (
                     <ul className="space-y-3">
                       {todayLessons.map((l) => (
-                        <li key={l.id} className="flex flex-col gap-1">
+                        <li key={l.id} className="dash-list-item flex flex-col gap-1">
                           <div className="flex flex-wrap items-center gap-2 text-sm">
                             <Badge
                               size="sm"
@@ -710,7 +709,7 @@ export default function Dashboard() {
                       {t("dashboard:viewAll")}
                     </Button>
                   </div>
-                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
+                  
                   {loadingNews && (
                     <div className="space-y-4" role="presentation">
                       <div className="flex items-center gap-3">
@@ -734,15 +733,15 @@ export default function Dashboard() {
                   )}
                   {!loadingNews && news.length > 0 && (
                     <ul
-                      className="divide-y divide-[color:var(--slate-10)]"
+                      className="space-y-3"
                       aria-label={t("dashboard:aria.newsList")}
                     >
                       {news.map((n) => (
-                        <li key={n.id} className="py-3 first:pt-0 last:pb-0">
-                          <button
-                            type="button"
-                            className="group flex w-full items-center gap-3 rounded-ue-lg px-2 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
-                            onClick={() => navigate(`/news/${n.id}`)}
+                          <li key={n.id} className="dash-list-item">
+                            <button
+                              type="button"
+                              className="group flex w-full items-center gap-3 rounded-ue-lg text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
+                              onClick={() => navigate(`/news/${n.id}`)}
                             title={n.title}
                             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
                           >
@@ -832,7 +831,7 @@ export default function Dashboard() {
                       {t("dashboard:scope.week")}
                     </Button>
                   </div>
-                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
+                  
                   {loadingEvents && (
                     <div className="space-y-3" role="presentation">
                       <Skeleton height={24} />
@@ -845,7 +844,7 @@ export default function Dashboard() {
                   )}
                   {!loadingEvents && scopedEvents.length > 0 && (
                     <ul
-                      className="divide-y divide-[color:var(--slate-10)]"
+                      className="space-y-3"
                       aria-label={
                         eventsScope === "today"
                           ? t("dashboard:aria.eventsToday")
@@ -855,10 +854,10 @@ export default function Dashboard() {
                       {scopedEvents.map((e) => {
                         const d = parseLocalDate(String(e.starts_at))
                         return (
-                          <li key={e.id} className="py-3 first:pt-0 last:pb-0">
+                          <li key={e.id} className="dash-list-item">
                             <button
                               type="button"
-                              className="group flex w-full flex-col gap-2 rounded-ue-lg px-3 py-3 text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
+                              className="group flex w-full flex-col gap-2 rounded-ue-lg text-left transition-all duration-300 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--dash-panel-item-hover)] focus-visible:outline-none focus-visible:shadow-focus"
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >
