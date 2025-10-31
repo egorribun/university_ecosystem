@@ -5,9 +5,13 @@ from pathlib import Path
 import pytest
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = PROJECT_ROOT / "root"
+
+
 @contextmanager
 def _temporary_env_file(content: bytes | None):
-    env_path = Path("root/.env")
+    env_path = BACKEND_ROOT / ".env"
     try:
         original = env_path.read_bytes()
     except FileNotFoundError:
@@ -80,7 +84,7 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
-    example_bytes = Path("root/.env.example").read_bytes()
+    example_bytes = (BACKEND_ROOT / ".env.example").read_bytes()
 
     with _temporary_env_file(example_bytes) as env_path:
         from app.core import config as config_module
