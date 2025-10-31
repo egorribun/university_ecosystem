@@ -463,6 +463,8 @@ export default function Dashboard() {
     }
   }
 
+  const scheduleDividerOffset = currentLesson ? "7.25rem" : nextLesson ? "5.5rem" : "4.25rem"
+
   return (
     <Layout>
       <a href="#main" className="skip-link">
@@ -566,7 +568,15 @@ export default function Dashboard() {
                 padding="lg"
                 aria-busy={loadingSched}
               >
-                <div className="relative z-[1] space-y-5">
+                <div
+                  className="relative z-[1] space-y-5 dash-panel-divider"
+                  style={
+                    {
+                      "--dash-card-divider": "var(--dash-card-schedule-divider)",
+                      "--dash-panel-divider-offset": scheduleDividerOffset,
+                    } as CSSProperties
+                  }
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
                       {t("dashboard:todaySchedule")}
@@ -627,7 +637,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
-                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
                   {loadingSched && (
                     <div className="space-y-3" role="presentation">
                       <Skeleton height={22} />
@@ -684,7 +693,15 @@ export default function Dashboard() {
                 padding="lg"
                 aria-busy={loadingNews}
               >
-                <div className="relative z-[1] space-y-5">
+                <div
+                  className="relative z-[1] space-y-5 dash-panel-divider"
+                  style={
+                    {
+                      "--dash-card-divider": "var(--dash-card-news-divider)",
+                      "--dash-panel-divider-offset": "4.1rem",
+                    } as CSSProperties
+                  }
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
                       {t("dashboard:news.heading")}
@@ -710,7 +727,6 @@ export default function Dashboard() {
                       {t("dashboard:viewAll")}
                     </Button>
                   </div>
-                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
                   {loadingNews && (
                     <div className="space-y-4" role="presentation">
                       <div className="flex items-center gap-3">
@@ -786,7 +802,15 @@ export default function Dashboard() {
                 padding="lg"
                 aria-busy={loadingEvents}
               >
-                <div className="relative z-[1] space-y-5">
+                <div
+                  className="relative z-[1] space-y-5 dash-panel-divider"
+                  style={
+                    {
+                      "--dash-card-divider": "var(--dash-card-events-divider)",
+                      "--dash-panel-divider-offset": "4.1rem",
+                    } as CSSProperties
+                  }
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
                       {t("dashboard:events.heading")}
@@ -832,7 +856,6 @@ export default function Dashboard() {
                       {t("dashboard:scope.week")}
                     </Button>
                   </div>
-                  <div className="my-4 h-px w-full bg-[color:var(--slate-10)]" aria-hidden="true" />
                   {loadingEvents && (
                     <div className="space-y-3" role="presentation">
                       <Skeleton height={24} />

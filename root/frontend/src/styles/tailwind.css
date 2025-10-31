@@ -36,6 +36,36 @@
      .chip         → Compact pill badge for schedules/filters.
      .skeleton     → Neutral loading shimmer wrapper.
   */
+  .dash-panel-divider {
+    position: relative;
+    --dash-panel-divider-offset: 4.5rem;
+  }
+
+  .dash-panel-divider > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dash-panel-divider::after {
+    content: "";
+    position: absolute;
+    left: min(1.5rem, 6vw);
+    right: min(1.5rem, 6vw);
+    top: var(--dash-panel-divider-offset);
+    height: 2.75rem;
+    pointer-events: none;
+    background: radial-gradient(
+      120% 120% at 50% 50%,
+      color-mix(in srgb, var(--dash-card-divider, transparent) 70%, transparent) 0%,
+      color-mix(in srgb, var(--dash-card-divider, transparent) 55%, transparent) 48%,
+      transparent 75%
+    );
+    opacity: 0.85;
+    filter: blur(18px);
+    transform: translateY(-50%);
+    z-index: 0;
+  }
+
   .card-glass {
     @apply relative overflow-hidden rounded-ue-xl border border-glass-border bg-glass text-page-foreground shadow-glass backdrop-blur-md;
   }
