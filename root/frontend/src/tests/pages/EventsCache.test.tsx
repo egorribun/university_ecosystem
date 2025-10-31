@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
 import type { ContextType } from "react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
@@ -96,6 +97,14 @@ describe("Events caching", () => {
     const archiveEvents = [buildEvent(2, "Archived event 1", false)]
     let activeRequestCount = 0
 
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
     server.use(
       http.get("*/events", ({ request }) => {
         const url = new URL(request.url)
@@ -148,9 +157,11 @@ describe("Events caching", () => {
 
     render(
       <AuthContext.Provider value={authValue}>
-        <MemoryRouter>
-          <Events />
-        </MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <Events />
+          </MemoryRouter>
+        </QueryClientProvider>
       </AuthContext.Provider>
     )
 
@@ -169,5 +180,7 @@ describe("Events caching", () => {
     await waitFor(() => expect(activeRequestCount).toBe(2))
     expect(await screen.findByText("Active event 1")).toBeInTheDocument()
     expect(screen.queryByText("Archived event 1")).not.toBeInTheDocument()
+
+    queryClient.clear()
   })
 })

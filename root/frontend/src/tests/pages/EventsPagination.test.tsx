@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, beforeEach, vi } from "vitest"
 import type { ContextType } from "react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
@@ -104,12 +105,21 @@ describe("Events pagination UI", () => {
 
   it("loads additional pages when clicking load more", async () => {
     const user = userEvent.setup()
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
 
     render(
       <AuthContext.Provider value={authValue}>
-        <MemoryRouter>
-          <Events />
-        </MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <Events />
+          </MemoryRouter>
+        </QueryClientProvider>
       </AuthContext.Provider>
     )
 
@@ -121,5 +131,7 @@ describe("Events pagination UI", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("event-card")).toHaveLength(15))
     expect(await screen.findByText("Paginated event 13")).toBeInTheDocument()
+
+    queryClient.clear()
   })
 })

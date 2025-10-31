@@ -12,6 +12,7 @@ import {
   resetTestSessions,
 } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
+import { resetEtagCache } from "./api/client"
 
 expect.extend(toHaveNoViolations)
 
@@ -26,6 +27,7 @@ afterEach(() => {
   resetTestEvents()
   resetTestMfa()
   resetAdminDeadLetterJobs()
+  resetEtagCache()
 })
 afterAll(() => server.close())
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder

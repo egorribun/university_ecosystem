@@ -28,6 +28,12 @@ export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
    * slot and should release it once finished.
    */
   __clientRateLimitAcquired?: boolean
+  /**
+   * Unique cache key used by the Axios ETag interceptor to persist the last
+   * received tag and automatically revalidate subsequent requests with
+   * `If-None-Match`.
+   */
+  etagCacheKey?: string
 }
 
 type ApiInstance = Omit<AxiosInstance, "get" | "delete" | "post" | "patch" | "put"> & {
@@ -103,6 +109,10 @@ const clientQueueWaiters: Array<() => void> = []
 const clientQueueTimestamps: number[] = []
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 let clientQueueResetAt = 0
+
+const etagCache = new Map<string, string>()
+
+export const resetEtagCache = () => etagCache.clear()
 
 const pruneClientQueueTimestamps = () => {
   const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
@@ -362,6 +372,14 @@ api.interceptors.request.use(async (config) => {
     headers.set(acceptLanguageHeader, headerValue)
   }
 
+  const etagKey = candidate.etagCacheKey
+  if (etagKey && !headers.has("if-none-match")) {
+    const cachedTag = etagCache.get(etagKey)
+    if (cachedTag) {
+      headers.set("If-None-Match", cachedTag)
+    }
+  }
+
   config.headers = headers
 
   return config
@@ -369,23 +387,40 @@ api.interceptors.request.use(async (config) => {
 
 api.interceptors.response.use(
   (r) => {
+    const config = r.config as ApiRequestConfig | undefined
+    const etagKey = config?.etagCacheKey
+    if (etagKey) {
+      const responseHeaders = AxiosHeaders.from(r.headers ?? {})
+      const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
+      if (typeof tag === "string" && tag.trim()) {
+        etagCache.set(etagKey, tag)
+      } else {
+        etagCache.delete(etagKey)
+      }
+    }
     releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
     return r
   },
   async (err) => {
     releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
 
+    const config = err?.config as ApiRequestConfig | undefined
+    const etagKey = config?.etagCacheKey
+    if (etagKey && err?.response?.status && err.response.status >= 400 && err.response.status !== 304) {
+      etagCache.delete(etagKey)
+    }
+
     if (err?.response?.status === 429 && err.config) {
-      const config = err.config as ApiRequestConfig
-      if (!config.skipRateLimitQueue) {
+      const retryConfig = err.config as ApiRequestConfig
+      if (!retryConfig.skipRateLimitQueue) {
         const delay = getRetryDelay(err.response?.headers)
         scheduleRateLimitWindow(delay)
 
-        const retryCount = config.__rateLimitRetryCount ?? 0
-        if (retryCount < RATE_LIMIT_MAX_RETRY && !config.signal?.aborted && !isAbortError(err)) {
-          config.__rateLimitRetryCount = retryCount + 1
+        const retryCount = retryConfig.__rateLimitRetryCount ?? 0
+        if (retryCount < RATE_LIMIT_MAX_RETRY && !retryConfig.signal?.aborted && !isAbortError(err)) {
+          retryConfig.__rateLimitRetryCount = retryCount + 1
           await waitForRateLimitWindow()
-          return api.request(config)
+          return api.request(retryConfig)
         }
       }
     }
