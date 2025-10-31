@@ -1,4 +1,4 @@
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 
@@ -12,9 +12,9 @@ INDEX_DEFINITIONS = {
 }
 
 revision: str = "202507010001"
-down_revision: Union[str, None] = "202506200001"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "202506200001"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

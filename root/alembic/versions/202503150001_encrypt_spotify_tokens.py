@@ -1,6 +1,6 @@
 """Encrypt Spotify tokens using Fernet."""
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -10,9 +10,9 @@ from app.utils.encryption import decrypt_string, encrypt_string
 
 # revision identifiers, used by Alembic.
 revision: str = "202503150001"
-down_revision: Union[str, None] = "202503010001"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "202503010001"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _column_exists(bind, table_name: str, column_name: str) -> bool:

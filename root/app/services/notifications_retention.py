@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from app.core.observability import get_periodic_task_metrics
 from app.services.notifications import cleanup_stale_notifications

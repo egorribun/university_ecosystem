@@ -3,6 +3,9 @@ repos:
     rev: v0.7.3
     hooks:
       - id: ruff
+        name: ruff check
+        args: ["--fix"]
+      - id: ruff
         name: ruff fix imports
         args: ["--select", "I", "--fix"]
       - id: ruff

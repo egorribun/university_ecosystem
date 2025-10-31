@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -41,7 +41,7 @@ def test_user_profile_update_validates_timezone():
 
 
 def test_event_create_requires_end_after_start():
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     with pytest.raises(ValidationError):
         schemas.EventCreate(
             title="Test",
@@ -51,19 +51,19 @@ def test_event_create_requires_end_after_start():
 
 
 def test_event_update_requires_both_timestamps():
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     with pytest.raises(ValidationError):
         schemas.EventUpdate(starts_at=starts)
 
 
 def test_event_update_requires_order():
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     with pytest.raises(ValidationError):
         schemas.EventUpdate(starts_at=starts, ends_at=starts)
 
 
 def test_event_update_accepts_valid_interval():
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     payload = schemas.EventUpdate(
         starts_at=starts,
         ends_at=starts + timedelta(hours=1),

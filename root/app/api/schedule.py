@@ -1,5 +1,6 @@
+from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
-from typing import Any, Callable, List, Mapping, Sequence
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -68,7 +69,7 @@ async def add_schedule(
     return result
 
 
-@router.get("/{group_id}", response_model=List[schemas.ScheduleOut])
+@router.get("/{group_id}", response_model=list[schemas.ScheduleOut])
 async def get_schedule(
     group_id: int,
     request: Request,

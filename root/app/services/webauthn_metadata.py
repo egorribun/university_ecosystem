@@ -4,8 +4,9 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 import httpx
 

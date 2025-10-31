@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from datetime import UTC, date, datetime, time, timedelta
 
 from app.localization import (
     resolve_weekday_index,
@@ -38,10 +38,10 @@ def _escape(value: str | None) -> str:
 
 
 def _format_dt(dt: datetime) -> str:
-    if dt.tzinfo is timezone.utc:
+    if dt.tzinfo is UTC:
         return dt.strftime("%Y%m%dT%H%M%SZ")
     if dt.tzinfo:
-        aware = dt.astimezone(timezone.utc)
+        aware = dt.astimezone(UTC)
         return aware.strftime("%Y%m%dT%H%M%SZ")
     return dt.strftime("%Y%m%dT%H%M%S")
 
@@ -74,7 +74,7 @@ def generate_schedule_ics(
 ) -> str:
     """Generate an iCalendar representation for the provided schedule."""
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.date()
     start_monday = today - timedelta(days=today.weekday())
     current_week_number = today.isocalendar()[1]

@@ -11,7 +11,7 @@ from app.services.notifications import cleanup_stale_notifications
 async def test_cleanup_stale_notifications_respects_read_state(
     db_session, user_factory
 ):
-    now = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
     user = await user_factory()
 
     old_read = Notification(
@@ -105,7 +105,7 @@ async def test_cleanup_stale_notifications_respects_read_state(
 
 @pytest.mark.anyio
 async def test_cleanup_stale_notifications_disabled(db_session, user_factory):
-    now = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
     user = await user_factory()
 
     old_read = Notification(

@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable, Iterable, Literal, Sequence, cast
+from datetime import UTC, datetime, timedelta
+from typing import Literal, cast
 from weakref import WeakKeyDictionary
 
 from opentelemetry import trace
@@ -56,7 +57,7 @@ class _LoopState:
     active_jobs: int = 0
 
 
-_loop_states: "WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
+_loop_states: WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState] = (
     WeakKeyDictionary()
 )
 
@@ -143,12 +144,12 @@ async def _worker_loop(state: _LoopState) -> None:
                 if metrics is not None:
                     _update_in_memory_metrics(metrics, state.queue)
             if metrics is not None and job.enqueued_at is not None:
-                claimed_at = job.claimed_at or datetime.now(timezone.utc)
+                claimed_at = job.claimed_at or datetime.now(UTC)
                 enqueued_at = job.enqueued_at
                 if enqueued_at.tzinfo is None:
-                    enqueued_at = enqueued_at.replace(tzinfo=timezone.utc)
+                    enqueued_at = enqueued_at.replace(tzinfo=UTC)
                 if claimed_at.tzinfo is None:
-                    claimed_at = claimed_at.replace(tzinfo=timezone.utc)
+                    claimed_at = claimed_at.replace(tzinfo=UTC)
                 wait_seconds = max((claimed_at - enqueued_at).total_seconds(), 0.0)
                 metrics.queue_wait_time_seconds.labels(kind=job.kind).observe(
                     wait_seconds
@@ -212,7 +213,7 @@ def _evict_oldest(queue: asyncio.Queue[NotificationJob]) -> NotificationJob | No
 
 async def _enqueue_job(job: NotificationJob) -> None:
     if job.enqueued_at is None:
-        job = replace(job, enqueued_at=datetime.now(timezone.utc))
+        job = replace(job, enqueued_at=datetime.now(UTC))
     if _use_persistent_backend():
         await _enqueue_persistent_job(job)
     else:
@@ -241,7 +242,7 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
             try:
                 await asyncio.wait_for(queue.put(job), timeout=timeout)
                 enqueued = True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if metrics is not None:
                     metrics.dropped_jobs_total.inc()
                     _update_in_memory_metrics(metrics, queue)
@@ -466,8 +467,8 @@ async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> N
             if histogram is not None and oldest_enqueued is not None:
                 oldest = oldest_enqueued
                 if oldest.tzinfo is None:
-                    oldest = oldest.replace(tzinfo=timezone.utc)
-                now = datetime.now(timezone.utc)
+                    oldest = oldest.replace(tzinfo=UTC)
+                now = datetime.now(UTC)
                 age_seconds = max((now - oldest).total_seconds(), 0.0)
                 histogram.observe(age_seconds)
     except Exception:  # pragma: no cover - defensive guard
@@ -537,7 +538,7 @@ async def _dequeue_persistent_job(state: _LoopState) -> NotificationJob:
 async def _claim_next_persistent_job() -> NotificationJob | None:
     async with async_session() as session:
         async with session.begin():
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             result = await session.execute(
                 select(NotificationQueueJob)
                 .where(
@@ -724,7 +725,7 @@ async def cleanup_dead_lettered_jobs(*, retention_days: int) -> int:
     if normalized_retention <= 0:
         return 0
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=normalized_retention)
+    cutoff = datetime.now(UTC) - timedelta(days=normalized_retention)
     deleted = 0
     async with async_session() as session:
         async with session.begin():
@@ -864,9 +865,7 @@ async def _acknowledge_persistent_job(
                     else:
                         delay_seconds = base_delay * (2 ** max(attempts - 1, 0))
                         wake_delay = max(delay_seconds, 0.0)
-                        next_retry = datetime.now(timezone.utc) + timedelta(
-                            seconds=wake_delay
-                        )
+                        next_retry = datetime.now(UTC) + timedelta(seconds=wake_delay)
                         record.dead_lettered = False
                         record.next_retry_at = next_retry
                         if metrics is not None and wake_delay > 0:

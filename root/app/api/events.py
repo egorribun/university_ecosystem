@@ -1,9 +1,9 @@
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Any, List, Tuple
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -185,7 +185,7 @@ def _set_language_headers(response: Response, locale: str) -> None:
     _get_vary_helper()(response, "Accept-Language")
 
 
-def _encode_payload_with_etag(payload: Any) -> Tuple[Any, str, str]:
+def _encode_payload_with_etag(payload: Any) -> tuple[Any, str, str]:
     encoded = jsonable_encoder(payload)
     serialized = json.dumps(
         encoded,
@@ -313,11 +313,7 @@ async def all_events(
 # comparison with ``datetime.now(timezone.utc)`` working we need to normalize
 # database values back to UTC-aware timestamps before comparing them.
 def _to_utc(dt: datetime) -> datetime:
-    return (
-        dt.replace(tzinfo=timezone.utc)
-        if dt.tzinfo is None
-        else dt.astimezone(timezone.utc)
-    )
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
 @router.post("/attendance", response_model=schemas.EventAttendanceOut)
@@ -340,7 +336,7 @@ async def attend(
             detail=translate("errors.events.not_found", locale=locale),
         )
     event_ends_at = _to_utc(event.ends_at)
-    if not event.is_active or event_ends_at <= datetime.now(timezone.utc):
+    if not event.is_active or event_ends_at <= datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=translate("errors.events.registration_closed", locale=locale),
@@ -368,7 +364,7 @@ async def unregister_event(
     return await crud.unregister_attendance(db, data, user_id=user.id)
 
 
-@router.get("/my", response_model=List[schemas.EventOut])
+@router.get("/my", response_model=list[schemas.EventOut])
 async def my_events(
     request: Request,
     response: Response,
@@ -427,7 +423,7 @@ async def upload_event_file(
     return ef
 
 
-@router.get("/{id}/files", response_model=List[schemas.EventFileOut])
+@router.get("/{id}/files", response_model=list[schemas.EventFileOut])
 async def get_event_files(id: int, db: AsyncSession = Depends(get_db)):
     files = (
         (

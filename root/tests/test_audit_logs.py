@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -117,7 +117,7 @@ async def test_password_reset_completed_audit(
 
     token = "reset-token-value"
     token_hash = _hash_token(token)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+    expires = datetime.now(UTC) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
     db_session.add(
         models.PasswordResetToken(
             user_id=user.id,

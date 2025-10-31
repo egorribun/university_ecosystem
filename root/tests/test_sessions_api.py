@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from typing import Dict
 
 import pytest
 from fastapi import status
@@ -16,7 +15,7 @@ async def _login(
     password: str,
     user_agent: str = "pytest-agent/1.0",
     forwarded_for: str | None = "203.0.113.42",
-) -> Dict[str, str]:
+) -> dict[str, str]:
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": user_agent,

@@ -99,7 +99,7 @@ def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPat
         timezone="America/New_York",
     )
 
-    base = dt.datetime(2024, 1, 1, 2, 30, tzinfo=dt.timezone.utc)
+    base = dt.datetime(2024, 1, 1, 2, 30, tzinfo=dt.UTC)
 
     class _FixedDatetime(dt.datetime):
         @classmethod
@@ -118,7 +118,7 @@ def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPat
 def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch):
     user = User(dnd_enabled=True, dnd_start=dt.time(1, 0), dnd_end=dt.time(5, 0))
 
-    base = dt.datetime(2024, 6, 1, 3, 0, tzinfo=dt.timezone.utc)
+    base = dt.datetime(2024, 6, 1, 3, 0, tzinfo=dt.UTC)
 
     class _UtcDatetime(dt.datetime):
         @classmethod
@@ -286,7 +286,7 @@ async def test_generate_schedule_reminders_query_count_constant(
     async def _prepare_lessons(count: int) -> None:
         await db_session.execute(delete(Schedule))
         await db_session.commit()
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
         lessons = [
             Schedule(
                 group_id=group.id,
@@ -327,7 +327,7 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
 
     user = await user_factory(group_id=group.id)
 
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     lessons = [
         Schedule(
             group_id=group.id,
@@ -382,7 +382,7 @@ async def test_generate_schedule_reminders_skips_inactive_users(
     active_user = await user_factory(group_id=group.id, is_active=True)
     inactive_user = await user_factory(group_id=group.id, is_active=False)
 
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     lesson = Schedule(
         group_id=group.id,
         subject="History",
@@ -479,7 +479,7 @@ async def test_event_creation_enqueues_notifications(
         _fake_create,
     )
 
-    starts_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    starts_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
     ends_at = starts_at + dt.timedelta(hours=2)
 
     payload = {

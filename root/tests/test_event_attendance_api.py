@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
@@ -30,7 +30,7 @@ async def test_attend_registers_event(async_client, db_session, user_factory):
     )
     admin = await user_factory(role="admin")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="Register me",
         starts_at=now + timedelta(hours=1),
@@ -92,7 +92,7 @@ async def test_attend_registration_closed_returns_conflict(
     )
     admin = await user_factory(role="admin")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="Too late",
         starts_at=now - timedelta(hours=2),
@@ -129,7 +129,7 @@ async def test_attend_restores_missing_registration_timestamp(
     )
     admin = await user_factory(role="admin")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="Restore timestamp",
         starts_at=now + timedelta(hours=1),
@@ -188,7 +188,7 @@ async def _register_for_event(
     )
     admin = await user_factory(role="admin")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="Token event",
         starts_at=now + timedelta(hours=1),
@@ -241,7 +241,7 @@ async def test_attendance_token_reuse_rejected_after_expiry(
         async_client, db_session, user_factory
     )
     payload = attendance_tokens.verify_token(token, attendance)
-    expired_at = datetime.fromtimestamp(payload.expires_at + 1, tz=timezone.utc)
+    expired_at = datetime.fromtimestamp(payload.expires_at + 1, tz=UTC)
     with pytest.raises(attendance_tokens.AttendanceTokenExpired):
         attendance_tokens.verify_token(token, attendance, now=expired_at)
 

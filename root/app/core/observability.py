@@ -7,11 +7,11 @@ import re
 import socket
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI
@@ -80,8 +80,8 @@ _otel_configured = False
 _sqlalchemy_instrumented = False
 _otel_logger_provider: LoggerProvider | None = None
 _otel_logging_handler: LoggingHandler | None = None
-_notification_queue_metrics: "NotificationQueueMetrics | None" = None
-_periodic_task_metrics: dict[str, "PeriodicTaskMetrics"] = {}
+_notification_queue_metrics: NotificationQueueMetrics | None = None
+_periodic_task_metrics: dict[str, PeriodicTaskMetrics] = {}
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
@@ -458,7 +458,7 @@ def create_worker_metrics(name: str) -> WorkerMetrics:
 
 @dataclass(slots=True)
 class PeriodicTaskRun:
-    metrics: "PeriodicTaskMetrics"
+    metrics: PeriodicTaskMetrics
     _deleted_total: int = 0
 
     def observe_deleted(self, value: int | Iterable[int | None] | None) -> None:

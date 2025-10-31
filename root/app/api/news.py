@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -150,7 +150,7 @@ async def create_news(
     return schemas.NewsOut.model_validate(serialized)
 
 
-@router.get("", response_model=List[schemas.NewsOut])
+@router.get("", response_model=list[schemas.NewsOut])
 async def news_list(
     request: Request,
     response: Response,

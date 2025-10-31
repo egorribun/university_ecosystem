@@ -1,7 +1,8 @@
 import json
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -244,7 +245,7 @@ async def list_active_stories(
     db: AsyncSession,
     *,
     reference_time: datetime | None = None,
-) -> List[models.Story]:
+) -> list[models.Story]:
     now = reference_time or datetime.now(UTC)
     now_utc = _ensure_utc(now)
     stmt = (
@@ -289,7 +290,7 @@ def serialize_story(
     return schemas.StoryOut.model_validate(data)
 
 
-async def _attendance_counts(db: AsyncSession, event_ids: List[int]) -> Dict[int, int]:
+async def _attendance_counts(db: AsyncSession, event_ids: list[int]) -> dict[int, int]:
     if not event_ids:
         return {}
     rows = await db.execute(
@@ -301,15 +302,15 @@ async def _attendance_counts(db: AsyncSession, event_ids: List[int]) -> Dict[int
 
 
 async def _files_by_event(
-    db: AsyncSession, event_ids: List[int]
-) -> Dict[int, List[models.EventFile]]:
+    db: AsyncSession, event_ids: list[int]
+) -> dict[int, list[models.EventFile]]:
     if not event_ids:
         return {}
     rows = await db.execute(
         select(models.EventFile).where(models.EventFile.event_id.in_(event_ids))
     )
     files = rows.scalars().all()
-    out: Dict[int, List[models.EventFile]] = {}
+    out: dict[int, list[models.EventFile]] = {}
     for f in files:
         out.setdefault(f.event_id, []).append(f)
     return out
@@ -487,7 +488,7 @@ async def get_all_events(
     total = (await db.execute(total_stmt)).scalar_one()
 
     registered_ids: set[int] = set()
-    qr_map: Dict[int, Optional[str]] = {}
+    qr_map: dict[int, str | None] = {}
     if user_id and ids:
         attendance_rows = (
             (
@@ -518,7 +519,7 @@ async def get_all_events(
         }
 
     normalized_locale = normalize_locale(locale)
-    result: List[schemas.EventOut] = []
+    result: list[schemas.EventOut] = []
     for event in events:
         files = files_map.get(event.id, [])
         result.append(
@@ -533,7 +534,7 @@ async def get_all_events(
         )
 
     has_more = len(fetched_events) > len(events)
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
     if has_more and events:
         last_event = events[-1]
         next_cursor = _encode_event_cursor(last_event.starts_at, last_event.id)
@@ -753,7 +754,7 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
     files_map = await _files_by_event(db, ids)
 
     normalized_locale = normalize_locale(locale)
-    result: List[schemas.EventOut] = []
+    result: list[schemas.EventOut] = []
     for event in events:
         files = files_map.get(event.id, [])
         result.append(
@@ -808,10 +809,10 @@ async def create_group(db: AsyncSession, data: schemas.GroupCreate):
 
 async def get_users(
     db: AsyncSession,
-    group_id: Optional[int] = None,
-    full_name: Optional[str] = None,
-    role: Optional[str] = None,
-) -> List[models.User]:
+    group_id: int | None = None,
+    full_name: str | None = None,
+    role: str | None = None,
+) -> list[models.User]:
     stmt = select(models.User).options(*USER_MFA_LOAD_OPTIONS)
     if group_id:
         stmt = stmt.where(models.User.group_id == group_id)
@@ -868,7 +869,7 @@ async def get_attendance_stats(
     period_key: str | None = None,
     cache: BaseCache | None = None,
     skip_cache: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
     cached = await stats_cache.get_cached_stats(
         cache=cache,
@@ -979,7 +980,7 @@ async def get_attendance_stats(
 
 def _parse_grade_payload(
     body: str | None, *, fallback_title: str, fallback_date: datetime | None
-) -> Dict[str, Any] | None:
+) -> dict[str, Any] | None:
     if not body:
         return None
     try:
@@ -1028,7 +1029,7 @@ async def get_grade_stats(
     period_key: str | None = None,
     cache: BaseCache | None = None,
     skip_cache: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
     cached = await stats_cache.get_cached_stats(
         cache=cache,
@@ -1082,7 +1083,7 @@ async def get_grade_stats(
         if entry:
             previous_entries.append(entry)
 
-    def _average(items: List[Dict[str, Any]]) -> float:
+    def _average(items: list[dict[str, Any]]) -> float:
         if not items:
             return 0.0
         return sum(item["score"] for item in items) / len(items)
@@ -1123,7 +1124,7 @@ async def get_participation_stats(
     period_key: str | None = None,
     cache: BaseCache | None = None,
     skip_cache: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
     cached = await stats_cache.get_cached_stats(
         cache=cache,

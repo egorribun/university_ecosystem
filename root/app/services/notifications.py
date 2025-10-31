@@ -3,10 +3,11 @@ import datetime as dt
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
 from html import unescape
 from textwrap import shorten
-from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import and_, delete, func, insert, or_, select
@@ -463,18 +464,18 @@ async def create_notifications_for_users(
     db: AsyncSession,
     *,
     title: str,
-    body: Optional[str] = None,
+    body: str | None = None,
     title_translations: Mapping[str, Any] | None = None,
     body_translations: Mapping[str, Any] | None = None,
-    type: Optional[str] = None,
-    url: Optional[str] = None,
-    badge: Optional[str] = None,
-    tag: Optional[str] = None,
-    dedupe_key: Optional[str] = None,
-    actions: Optional[Sequence[Mapping[str, Any]]] = None,
-    payload_data: Optional[Mapping[str, Any]] = None,
+    type: str | None = None,
+    url: str | None = None,
+    badge: str | None = None,
+    tag: str | None = None,
+    dedupe_key: str | None = None,
+    actions: Sequence[Mapping[str, Any]] | None = None,
+    payload_data: Mapping[str, Any] | None = None,
     user_ids: Sequence[int],
-    topic: Optional[str] = None,
+    topic: str | None = None,
     user_filter: Callable[[Select], Select] | None = None,
 ) -> int:
     now = dt.datetime.now(UTC)

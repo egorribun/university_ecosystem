@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Awaitable, Callable
 
 from sqlalchemy import and_, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession

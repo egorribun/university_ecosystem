@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import Awaitable, Callable
 
 from app.core.config import settings
 from app.core.database import async_session, wait_db

@@ -7,7 +7,7 @@ import hmac
 import json
 import secrets
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
@@ -99,7 +99,7 @@ class AttendanceTokenPayload:
         )
 
     @classmethod
-    def decode(cls, data: bytes) -> "AttendanceTokenPayload":
+    def decode(cls, data: bytes) -> AttendanceTokenPayload:
         payload = json.loads(data.decode("utf-8"))
         return cls(
             purpose=payload["sub"],

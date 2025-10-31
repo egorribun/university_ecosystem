@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import lru_cache
-from typing import Any, Mapping
+from typing import Any
 
 SUPPORTED_LOCALES: set[str] = {"en", "ru"}
 DEFAULT_LOCALE = "en"

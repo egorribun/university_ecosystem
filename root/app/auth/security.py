@@ -1,11 +1,10 @@
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Any, Union
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from passlib.hash import bcrypt as passlib_bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -101,14 +100,14 @@ def get_password_hash(password: str, *, locale: str | None = None) -> str:
 
 
 async def create_access_token(
-    sub: Union[str, Any],
+    sub: str | Any,
     expires_delta: int | None = None,
     extra: dict | None = None,
     db: AsyncSession | None = None,
     session_metadata: dict | None = None,
 ) -> str:
     minutes = expires_delta or settings.access_token_expire_minutes
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=minutes)
     jti = str(uuid4())
     payload = {

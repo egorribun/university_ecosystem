@@ -1,6 +1,6 @@
 """init schema"""
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -8,9 +8,9 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "933372f5da9a"
-down_revision: Union[str, None] = "bd67902ca2cd"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "bd67902ca2cd"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _insp() -> sa.Inspector:

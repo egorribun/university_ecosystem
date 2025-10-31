@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from email.utils import parseaddr
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import urlparse
 
 from pydantic import Field, ValidationError, field_validator
