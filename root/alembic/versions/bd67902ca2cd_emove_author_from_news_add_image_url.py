@@ -1,15 +1,15 @@
 """remove author from news, add image_url"""
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
 
 revision: str = "bd67902ca2cd"
-down_revision: Union[str, None] = "b0ad41552220"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "b0ad41552220"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _insp() -> sa.Inspector:

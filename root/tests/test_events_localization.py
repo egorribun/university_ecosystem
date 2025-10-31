@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
@@ -28,7 +28,7 @@ async def test_events_localization(async_client, db_session, user_factory):
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     primary = models.Event(
         title="Русское событие",
         description="Описание по-русски",
@@ -136,7 +136,7 @@ async def test_events_etag_and_not_modified(
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="Test event",
         description="Primary description",
@@ -225,7 +225,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    base_start = datetime.now(timezone.utc) + timedelta(days=1)
+    base_start = datetime.now(UTC) + timedelta(days=1)
     events = []
     for i in range(7):
         record = models.Event(
@@ -310,7 +310,7 @@ async def test_events_cache_invalidation_on_mutations(
         hashed_password=get_password_hash(student_password), is_active=True
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     initial_event = models.Event(
         title="Initial event",
         description="Initial description",
@@ -429,7 +429,7 @@ async def test_events_cache_uses_version_from_redis(
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="Original title",
         description="Original description",

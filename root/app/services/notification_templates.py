@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from html import unescape
 from textwrap import shorten
-from typing import Any, Mapping
+from typing import Any
 
 from app.localization import SUPPORTED_LOCALES, translate
 
@@ -67,7 +68,7 @@ def _parse_datetime_like(value: Any) -> datetime | None:
         return value
     if isinstance(value, (int, float)):
         try:
-            return datetime.fromtimestamp(float(value), timezone.utc)
+            return datetime.fromtimestamp(float(value), UTC)
         except (OSError, OverflowError, ValueError):
             return None
     if isinstance(value, str):
@@ -86,7 +87,7 @@ def _datetime_details(value: Any) -> tuple[str | None, str | None, str | None]:
     parsed = _parse_datetime_like(value)
     if not parsed:
         return None, None, None
-    aware = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    aware = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
     local = aware.astimezone()
     return local.strftime("%d.%m"), local.strftime("%H:%M"), aware.isoformat()
 

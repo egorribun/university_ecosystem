@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -53,9 +53,7 @@ def test_fallback_now_playing_returns_last_track_details():
     assert out.track_url == "https://open.spotify.com/track/track-123"
     assert isinstance(out.fetched_at, datetime)
     assert out.fetched_at.tzinfo is not None
-    assert out.fetched_at.tzinfo.utcoffset(out.fetched_at) == timezone.utc.utcoffset(
-        None
-    )
+    assert out.fetched_at.tzinfo.utcoffset(out.fetched_at) == UTC.utcoffset(None)
 
 
 def test_fallback_now_playing_handles_missing_data():
@@ -154,7 +152,7 @@ async def test_now_playing_returns_401_when_refresh_fails(
 
     user.spotify_access_token = "expired"
     user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+    user.spotify_token_expires_at = datetime.now(UTC) - timedelta(seconds=5)
     user.spotify_is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
@@ -197,7 +195,7 @@ async def test_now_playing_refreshes_when_access_token_missing(
 
     user.spotify_access_token = None
     user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    user.spotify_token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     user.spotify_is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
@@ -258,7 +256,7 @@ async def test_now_playing_retries_after_unauthorized_response(
 
     user.spotify_access_token = "valid"
     user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    user.spotify_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
     user.spotify_is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
@@ -337,7 +335,7 @@ async def test_now_playing_disconnects_on_unauthorized_response(
 
     user.spotify_access_token = "valid"
     user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    user.spotify_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
     user.spotify_is_connected = True
     await db_session.commit()
     await db_session.refresh(user)

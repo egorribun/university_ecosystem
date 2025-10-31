@@ -19,7 +19,6 @@ import fakeredis.aioredis
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:

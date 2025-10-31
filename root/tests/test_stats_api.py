@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -34,7 +34,7 @@ async def test_stats_requires_auth(async_client, path):
 async def test_attendance_stats_returns_expected_payload(
     async_client, db_session, user_factory
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "StatsPass123!"
     hashed = get_password_hash(password)
@@ -157,7 +157,7 @@ async def test_attendance_stats_period_label_localized(async_client, user_factor
 
 @pytest.mark.anyio
 async def test_grade_stats_parse_notifications(async_client, db_session, user_factory):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     password = "GradesPass456!"
     hashed = get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
@@ -217,7 +217,7 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
 async def test_participation_stats_summarize_events(
     async_client, db_session, user_factory
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "Participate789!"
     hashed = get_password_hash(password)
@@ -336,7 +336,7 @@ async def test_registering_for_event_invalidates_stats_cache(
     db_session,
     monkeypatch,
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "CacheInvalidate456!"
     hashed = get_password_hash(password)

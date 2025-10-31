@@ -1,7 +1,7 @@
 import asyncio
 import os
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -358,10 +358,10 @@ async def test_persistent_queue_applies_exponential_backoff(
         )
         record = result.scalar_one()
         assert record.next_retry_at is not None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         next_retry = record.next_retry_at
         if next_retry.tzinfo is None:
-            next_retry = next_retry.replace(tzinfo=timezone.utc)
+            next_retry = next_retry.replace(tzinfo=UTC)
         assert next_retry > now
         assert record.last_error == "boom"
         assert not record.dead_lettered
@@ -484,7 +484,7 @@ async def test_persistent_queue_claims_next_job_from_large_backlog() -> None:
     metrics = observability.get_notification_queue_metrics()
     metrics.reset()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with async_session() as session:
         bulk_jobs = [
@@ -539,7 +539,7 @@ async def test_persistent_queue_claims_next_job_from_large_backlog() -> None:
 async def test_cleanup_dead_lettered_jobs_respects_retention_window() -> None:
     await notification_queue.reset_testing_state()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with async_session() as session:
         session.add_all(
             [
@@ -590,7 +590,7 @@ async def test_cleanup_dead_lettered_jobs_respects_retention_window() -> None:
     enqueued_at = fresh_dead_letter.enqueued_at
     assert enqueued_at is not None
     if enqueued_at.tzinfo is None:
-        enqueued_at = enqueued_at.replace(tzinfo=timezone.utc)
+        enqueued_at = enqueued_at.replace(tzinfo=UTC)
     assert enqueued_at > now - timedelta(days=30)
 
 
@@ -598,7 +598,7 @@ async def test_cleanup_dead_lettered_jobs_respects_retention_window() -> None:
 async def test_cleanup_dead_lettered_jobs_disabled_with_zero_retention() -> None:
     await notification_queue.reset_testing_state()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with async_session() as session:
         session.add(
             NotificationQueueJob(
@@ -629,7 +629,7 @@ async def test_cleanup_dead_lettered_jobs_disabled_with_zero_retention() -> None
 
 @pytest.mark.anyio
 async def test_worker_loop_emits_tracing_spans(monkeypatch: pytest.MonkeyPatch):
-    spans: list["FakeSpan"] = []
+    spans: list[FakeSpan] = []
 
     class FakeSpan:
         def __init__(self, name: str) -> None:

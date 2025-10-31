@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException, Request, status
 

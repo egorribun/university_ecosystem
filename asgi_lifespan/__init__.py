@@ -7,7 +7,8 @@ how to drive FastAPI/Starlette lifespan hooks.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 
 class LifespanManager:

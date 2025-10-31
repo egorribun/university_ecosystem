@@ -1,6 +1,5 @@
 import base64
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -23,7 +22,7 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+def _ensure_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
@@ -33,7 +32,7 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
 
 
-def _coerce_expires(value: Optional[int | str]) -> int:
+def _coerce_expires(value: int | str | None) -> int:
     try:
         seconds = int(value) if value is not None else 3600
     except (TypeError, ValueError):
@@ -97,8 +96,8 @@ async def _save_tokens(
     db: AsyncSession,
     user: User,
     access: str,
-    refresh: Optional[str],
-    scope: Optional[str],
+    refresh: str | None,
+    scope: str | None,
     expires_in: int | str | None,
 ):
     user.spotify_access_token = access or None
@@ -115,7 +114,7 @@ async def _save_tokens(
 
 async def _ensure_access_token(
     db: AsyncSession, user: User, *, locale: str | None = None
-) -> Optional[str]:
+) -> str | None:
     """Return a usable Spotify access token, refreshing it when possible.
 
     Previously we returned ``None`` when ``spotify_access_token`` was empty,

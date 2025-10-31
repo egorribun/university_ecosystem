@@ -2,8 +2,9 @@ import json
 import logging
 import math
 import secrets
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -790,7 +791,7 @@ async def confirm_totp_enrollment(
         updated = await mfa.complete_totp_enrollment(
             db, enrollment=enrollment, code=payload.code
         )
-    except HTTPException as exc:
+    except HTTPException:
         _audit_log(
             "auth.mfa.totp.enroll_failure",
             request,

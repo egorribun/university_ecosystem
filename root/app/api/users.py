@@ -4,8 +4,8 @@ import hmac
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import anyio
 from fastapi import (
@@ -151,7 +151,7 @@ async def _prepare_password_reset_token(
         target.token_hash = token_hash
         target.expires_at = expires_at
         target.used = False
-        target.created_at = datetime.now(timezone.utc)
+        target.created_at = datetime.now(UTC)
         return
 
     record = models.PasswordResetToken(
@@ -166,7 +166,7 @@ async def _prepare_password_reset_token(
 async def _get_active_email_change_request(
     db: AsyncSession, user_id: int
 ) -> models.EmailChangeToken | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await db.execute(
         select(models.EmailChangeToken)
         .where(
@@ -194,7 +194,7 @@ async def _create_email_change_request(
 ) -> tuple[models.EmailChangeToken, str]:
     token = secrets.token_urlsafe(32)
     token_hash = _hash_token(token)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+    expires = datetime.now(UTC) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
 
     await db.execute(
         update(models.EmailChangeToken)
@@ -253,9 +253,7 @@ async def forgot_password(
     if user:
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
-        expires = datetime.now(timezone.utc) + timedelta(
-            minutes=RESET_TOKEN_EXPIRY_MINUTES
-        )
+        expires = datetime.now(UTC) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
         await _prepare_password_reset_token(
             db,
             user,
@@ -307,7 +305,7 @@ async def reset_password(
         )
     )
     rec = result.scalar_one_or_none()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if not rec:
         _audit_log(
             "password.reset.failed",
@@ -321,7 +319,7 @@ async def reset_password(
         )
     expires_at = rec.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at < now:
         _audit_log(
             "password.reset.failed",
@@ -510,7 +508,7 @@ async def confirm_email_change(
 ):
     locale = resolve_locale(request=request, user=user)
     token_hash = _hash_token(payload.token)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     result = await db.execute(
         select(models.EmailChangeToken).where(
@@ -526,7 +524,7 @@ async def confirm_email_change(
 
     expires_at = record.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at <= now:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -620,7 +618,7 @@ async def change_password(
         request.state, "active_session", None
     )
     current_session_id = active_session.id if active_session else None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stmt = (
         update(models.ActiveSession)
         .where(models.ActiveSession.user_id == user.id)
@@ -740,13 +738,13 @@ async def create_user(
     return user
 
 
-@users_router.get("", response_model=List[schemas.UserOut])
+@users_router.get("", response_model=list[schemas.UserOut])
 async def get_users(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    full_name: Optional[str] = Query(None),
-    group_id: Optional[int] = Query(None),
-    role: Optional[str] = Query(None),
+    full_name: str | None = Query(None),
+    group_id: int | None = Query(None),
+    role: str | None = Query(None),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -915,7 +913,7 @@ async def create_group(
     return await crud.create_group(db, data)
 
 
-@groups_router.get("", response_model=List[schemas.GroupOut])
+@groups_router.get("", response_model=list[schemas.GroupOut])
 async def get_groups(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Group))
     return result.scalars().all()

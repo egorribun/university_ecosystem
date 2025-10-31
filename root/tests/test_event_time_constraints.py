@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -25,7 +25,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
 
 async def test_create_event_guard(db_session, user_factory):
     user = await user_factory()
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     payload = schemas.EventCreate.model_construct(
         title="Invalid",
         description=None,
@@ -46,7 +46,7 @@ async def test_create_event_guard(db_session, user_factory):
 
 async def test_update_event_guard(db_session, user_factory):
     user = await user_factory()
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     ends = starts + timedelta(hours=1)
     valid = schemas.EventCreate(
         title="Valid",
@@ -68,7 +68,7 @@ async def test_update_event_guard(db_session, user_factory):
 
 async def test_event_model_check_constraint(db_session, user_factory):
     user = await user_factory()
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     event = models.Event(
         title="Broken",
         starts_at=starts,
@@ -84,7 +84,7 @@ async def test_event_model_check_constraint(db_session, user_factory):
 async def test_get_all_events_respects_locale(db_session, user_factory):
     admin = await user_factory(role="admin")
     student = await user_factory()
-    starts = datetime.now(timezone.utc)
+    starts = datetime.now(UTC)
     event = models.Event(
         title="Русское название",
         title_en="English title",
@@ -126,7 +126,7 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
 ):
     admin = await user_factory(role="admin")
     student = await user_factory()
-    base = datetime.now(timezone.utc) + timedelta(days=1)
+    base = datetime.now(UTC) + timedelta(days=1)
 
     def _build_event(delta: timedelta, title: str) -> models.Event:
         return models.Event(
@@ -197,7 +197,7 @@ async def test_event_detail_returns_qr_code_after_registration(
     )
     admin = await user_factory(role="admin")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = models.Event(
         title="QR enabled",
         starts_at=now + timedelta(hours=1),

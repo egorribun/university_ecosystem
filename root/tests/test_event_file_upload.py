@@ -1,6 +1,6 @@
 import asyncio
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -21,8 +21,8 @@ async def _create_event(db_session, user: models.User) -> models.Event:
         description="desc",
         location="",
         event_type="workshop",
-        starts_at=datetime.now(timezone.utc),
-        ends_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        starts_at=datetime.now(UTC),
+        ends_at=datetime.now(UTC) + timedelta(hours=1),
         created_by=user.id,
     )
     db_session.add(event)

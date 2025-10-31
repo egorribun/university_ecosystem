@@ -4,8 +4,8 @@ import base64
 import hmac
 import logging
 import time
+from collections.abc import Iterable
 from ipaddress import ip_address, ip_network
-from typing import Iterable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response

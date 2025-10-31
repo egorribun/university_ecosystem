@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List
+from typing import Any
 
 
 @dataclass
@@ -27,9 +28,9 @@ class FakeRedis:
     ) -> None:
         self.encoding = encoding
         self.decode_responses = decode_responses
-        self._strings: Dict[str, str] = {}
-        self._sorted_sets: Dict[str, List[_SortedSetEntry]] = {}
-        self._expiry: Dict[str, float] = {}
+        self._strings: dict[str, str] = {}
+        self._sorted_sets: dict[str, list[_SortedSetEntry]] = {}
+        self._expiry: dict[str, float] = {}
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
@@ -105,18 +106,18 @@ class FakeRedis:
 
     # ------------------------------------------------------------------
     # Sorted set helpers used by the rate-limit implementation
-    def _get_sorted_set(self, key: str) -> List[_SortedSetEntry]:
+    def _get_sorted_set(self, key: str) -> list[_SortedSetEntry]:
         zset = self._sorted_sets.get(key)
         if zset is None:
             zset = []
             self._sorted_sets[key] = zset
         return zset
 
-    def _sorted_members(self, key: str) -> List[_SortedSetEntry]:
+    def _sorted_members(self, key: str) -> list[_SortedSetEntry]:
         self._purge_if_expired(key)
         return list(self._sorted_sets.get(key, []))
 
-    async def zadd(self, key: str, *, mapping: Dict[str, float]) -> None:
+    async def zadd(self, key: str, *, mapping: dict[str, float]) -> None:
         async with self._lock:
             self._purge_if_expired(key)
             zset = {entry.member: entry for entry in self._get_sorted_set(key)}
@@ -133,7 +134,7 @@ class FakeRedis:
         stop: int,
         *,
         withscores: bool = False,
-    ) -> List[Any]:
+    ) -> list[Any]:
         async with self._lock:
             members = self._sorted_members(key)
             length = len(members)
@@ -220,6 +221,6 @@ class FakeRedis:
         encoding: str = "utf-8",
         decode_responses: bool = False,
         health_check_interval: int | None = None,
-    ) -> "FakeRedis":
+    ) -> FakeRedis:
         _ = (url, health_check_interval)
         return cls(encoding=encoding, decode_responses=decode_responses)

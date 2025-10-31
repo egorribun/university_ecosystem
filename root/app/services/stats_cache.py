@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from app.deps.cache import BaseCache, get_cache
 

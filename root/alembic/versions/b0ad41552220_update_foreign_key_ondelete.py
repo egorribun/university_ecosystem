@@ -1,15 +1,15 @@
 """update foreign key ondelete"""
 
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
 
 revision: str = "b0ad41552220"
-down_revision: Union[str, None] = "7ea701e08870"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "7ea701e08870"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _insp() -> sa.Inspector:
@@ -49,7 +49,7 @@ def _create_fk(
     referred_columns: list[str],
     *,
     name: str,
-    ondelete: Optional[str],
+    ondelete: str | None,
 ) -> None:
     if not (_table_exists(table) and _table_exists(referred_table)):
         return

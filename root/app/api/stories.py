@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -72,7 +72,7 @@ def _serialize_story(
     return story.model_dump()
 
 
-@router.get("", response_model=List[schemas.StoryOut])
+@router.get("", response_model=list[schemas.StoryOut])
 async def list_stories(
     request: Request,
     response: Response,

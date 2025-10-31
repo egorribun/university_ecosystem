@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError

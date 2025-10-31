@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 from functools import lru_cache
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy.types import Text, TypeDecorator
@@ -72,7 +71,7 @@ def reset_cached_cipher() -> None:
     _build_cipher.cache_clear()
 
 
-def encrypt_string(value: Optional[str | bytes]) -> Optional[str]:
+def encrypt_string(value: str | bytes | None) -> str | None:
     """Encrypt a value using the configured Fernet key.
 
     Empty strings are normalised to ``None`` to avoid storing meaningless blobs.
@@ -92,7 +91,7 @@ def encrypt_string(value: Optional[str | bytes]) -> Optional[str]:
     return token.decode("utf-8")
 
 
-def decrypt_string(value: Optional[str | bytes]) -> Optional[str]:
+def decrypt_string(value: str | bytes | None) -> str | None:
     """Decrypt a value previously produced by :func:`encrypt_string`."""
 
     if value is None:
@@ -112,7 +111,7 @@ def decrypt_string(value: Optional[str | bytes]) -> Optional[str]:
     return data.decode("utf-8")
 
 
-def rotate_encrypted_string(value: Optional[str | bytes]) -> Optional[str]:
+def rotate_encrypted_string(value: str | bytes | None) -> str | None:
     """Re-encrypt a token with the primary key when multiple keys are provided."""
 
     if value is None:
@@ -133,8 +132,8 @@ class EncryptedString(TypeDecorator[str]):
     impl = Text
     cache_ok = True
 
-    def process_bind_param(self, value: Optional[str], dialect):  # type: ignore[override]
+    def process_bind_param(self, value: str | None, dialect):  # type: ignore[override]
         return encrypt_string(value)
 
-    def process_result_value(self, value: Optional[str], dialect):  # type: ignore[override]
+    def process_result_value(self, value: str | None, dialect):  # type: ignore[override]
         return decrypt_string(value)

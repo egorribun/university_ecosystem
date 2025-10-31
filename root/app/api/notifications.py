@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import ValidationError
@@ -164,7 +164,7 @@ def _encode_cursor(dt: datetime, nid: int) -> str:
     return f"{int(aware.timestamp() * 1000)}:{nid}"
 
 
-def _decode_cursor(value: Optional[str]) -> Optional[Tuple[datetime, int]]:
+def _decode_cursor(value: str | None) -> tuple[datetime, int] | None:
     if not value:
         return None
     try:
@@ -214,8 +214,8 @@ async def _fetch_notification_rows(
     db: AsyncSession,
     user_id: int,
     limit: int,
-    cursor_info: Optional[Tuple[datetime, int]],
-) -> tuple[list[Mapping[str, Any]], Optional[set[str]]]:
+    cursor_info: tuple[datetime, int] | None,
+) -> tuple[list[Mapping[str, Any]], set[str] | None]:
     table = Notification.__table__
     cols = table.c
     where = [cols.user_id == user_id]
@@ -259,7 +259,7 @@ async def _fetch_notification_rows_fallback(
     db: AsyncSession,
     user_id: int,
     limit: int,
-    cursor_info: Optional[Tuple[datetime, int]],
+    cursor_info: tuple[datetime, int] | None,
 ) -> tuple[list[Mapping[str, Any]], set[str]]:
     available = await _existing_notification_columns(db)
     if not available or "id" not in available or "user_id" not in available:
@@ -369,7 +369,7 @@ def _serialize_notification(
 async def list_notifications(
     request: Request,
     response: Response,
-    cursor: Optional[str] = Query(None),
+    cursor: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -379,7 +379,7 @@ async def list_notifications(
     _ensure_vary_header(response, "Accept-Language")
     response.headers["Cache-Control"] = "no-store, max-age=0"
     response.headers["Pragma"] = "no-cache"
-    cursor_info: Optional[Tuple[datetime, int]] = None
+    cursor_info: tuple[datetime, int] | None = None
     if cursor:
         parsed = _decode_cursor(cursor)
         if not parsed:

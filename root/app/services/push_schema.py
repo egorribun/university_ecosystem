@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from threading import Lock
-from typing import Optional
 
-from sqlalchemy import JSON, Column, DateTime, String, inspect
+from sqlalchemy import Column, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,7 +97,7 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
             _sync_ready = True
 
 
-def ensure_push_subscription_schema_sync(engine: Optional[Engine]) -> None:
+def ensure_push_subscription_schema_sync(engine: Engine | None) -> None:
     global _sync_ready, _async_ready
     if engine is None or _sync_ready:
         return
