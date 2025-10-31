@@ -13,7 +13,5 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
     """Consolidate the divergent migration branches."""
 
 
-
 def downgrade() -> None:  # noqa: D401 - Alembic migration hook.
     """No downgrade steps for merge migration."""
-

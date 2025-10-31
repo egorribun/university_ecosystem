@@ -264,9 +264,7 @@ def _aggregate_results(
     )
 
 
-async def _refresh_user_topic_preferences(
-    db: AsyncSession, *, user_id: int
-) -> None:
+async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> None:
     """Synchronize stored user topic preferences with subscription data."""
 
     topics_rows = (
@@ -284,9 +282,7 @@ async def _refresh_user_topic_preferences(
             aggregated.append(str(row))
     normalized = sort_topics(aggregated, settings_obj=settings)
     record = (
-        await db.execute(
-            select(UserPushTopic).where(UserPushTopic.user_id == user_id)
-        )
+        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user_id))
     ).scalar_one_or_none()
     if normalized:
         topics_copy = list(normalized)
