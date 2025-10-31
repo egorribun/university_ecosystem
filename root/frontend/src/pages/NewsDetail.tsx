@@ -28,13 +28,7 @@ import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import {
-  deleteNews,
-  fetchNewsItem,
-  updateNews,
-  uploadNewsImage,
-  type NewsItem,
-} from "@/api/news"
+import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"

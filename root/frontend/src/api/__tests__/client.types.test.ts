@@ -3,16 +3,8 @@ import { describe, it, expectTypeOf } from "vitest"
 
 import type { paths } from "@/api/generated/schema"
 import { createEvent, uploadEventImage, type CreateEventPayload } from "@/api/events"
-import {
-  createNews,
-  fetchNews,
-  uploadNewsImage,
-  type CreateNewsPayload,
-} from "@/api/news"
-import {
-  fetchNotificationsList,
-  type NotificationsListResult,
-} from "@/api/notifications"
+import { createNews, fetchNews, uploadNewsImage, type CreateNewsPayload } from "@/api/news"
+import { fetchNotificationsList, type NotificationsListResult } from "@/api/notifications"
 
 describe("typed api client", () => {
   it("fetchNews matches schema", () => {

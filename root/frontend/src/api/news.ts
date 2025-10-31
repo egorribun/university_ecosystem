@@ -23,11 +23,7 @@ export type UpdateNewsPayload = components["schemas"]["NewsUpdate"] | null
 
 const newsUploadResponseSchema = z.object({ url: z.string().trim().min(1) })
 
-const applyParsedData = <T>(
-  response: { data: unknown },
-  schema: z.ZodType<T>,
-  context: string
-) => {
+const applyParsedData = <T>(response: { data: unknown }, schema: z.ZodType<T>, context: string) => {
   const parsed = ensureValidResponse(schema, response.data, context)
   ;(response as { data: T }).data = parsed
 }
@@ -95,6 +91,10 @@ export const uploadNewsImage = async (file: File) => {
   const response = await apiClient.post("/news/upload_image", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
-  const parsed = ensureValidResponse(newsUploadResponseSchema, response.data, "POST /news/upload_image")
+  const parsed = ensureValidResponse(
+    newsUploadResponseSchema,
+    response.data,
+    "POST /news/upload_image"
+  )
   return parsed.url
 }

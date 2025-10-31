@@ -75,7 +75,11 @@ export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: n
   const response = await apiClient.get("/notifications/admin/dead-letter", {
     params,
   })
-  return ensureValidResponse(deadLetterListSchema, response.data, "GET /notifications/admin/dead-letter")
+  return ensureValidResponse(
+    deadLetterListSchema,
+    response.data,
+    "GET /notifications/admin/dead-letter"
+  )
 }
 
 export const retryDeadLetterJobs = (jobIds: number[]) =>
@@ -168,8 +172,12 @@ export async function updateAdminUserTopics(
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
-  const { data } = await apiClient.put<AdminUserTopicsResponse>("/push/admin/topics/{user_id}", payload, {
-    pathParams: { user_id: userId },
-  })
+  const { data } = await apiClient.put<AdminUserTopicsResponse>(
+    "/push/admin/topics/{user_id}",
+    payload,
+    {
+      pathParams: { user_id: userId },
+    }
+  )
   return ensureValidResponse(adminTopicsSchema, data, `PUT /push/admin/topics/${userId}`)
 }

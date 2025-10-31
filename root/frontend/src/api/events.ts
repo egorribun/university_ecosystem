@@ -16,6 +16,10 @@ export const uploadEventImage = async (file: File) => {
   const response = await apiClient.post("/events/upload_image", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
-  const parsed = ensureValidResponse(uploadResponseSchema, response.data, "POST /events/upload_image")
+  const parsed = ensureValidResponse(
+    uploadResponseSchema,
+    response.data,
+    "POST /events/upload_image"
+  )
   return parsed.url
 }

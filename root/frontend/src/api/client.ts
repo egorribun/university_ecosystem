@@ -465,39 +465,43 @@ type PathParamsOf<P extends ApiPath> = paths[P] extends {
     : Record<string, never>
   : Record<string, never>
 
-type QueryParamsOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
-  ? Record<string, never>
-  : OperationFor<P, M> extends { parameters: { query: infer Query } }
-    ? Query extends Record<string, unknown>
-      ? Query
+type QueryParamsOf<P extends ApiPath, M extends ApiMethod> =
+  OperationFor<P, M> extends never
+    ? Record<string, never>
+    : OperationFor<P, M> extends { parameters: { query: infer Query } }
+      ? Query extends Record<string, unknown>
+        ? Query
+        : Record<string, never>
       : Record<string, never>
-    : Record<string, never>
 
-type HeaderParamsOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
-  ? Record<string, never>
-  : OperationFor<P, M> extends { parameters: { header: infer Header } }
-    ? Header extends Record<string, unknown>
-      ? Header
+type HeaderParamsOf<P extends ApiPath, M extends ApiMethod> =
+  OperationFor<P, M> extends never
+    ? Record<string, never>
+    : OperationFor<P, M> extends { parameters: { header: infer Header } }
+      ? Header extends Record<string, unknown>
+        ? Header
+        : Record<string, never>
       : Record<string, never>
-    : Record<string, never>
 
-type NormalizeContent<Content> = Content extends Record<string, unknown>
-  ? {
-      [K in keyof Content]: K extends "application/json"
-        ? Content[K]
-        : K extends "multipart/form-data"
-          ? Content[K] | FormData
-          : K extends "application/x-www-form-urlencoded"
-            ? Content[K] | URLSearchParams
-            : Content[K]
-    }[keyof Content]
-  : never
+type NormalizeContent<Content> =
+  Content extends Record<string, unknown>
+    ? {
+        [K in keyof Content]: K extends "application/json"
+          ? Content[K]
+          : K extends "multipart/form-data"
+            ? Content[K] | FormData
+            : K extends "application/x-www-form-urlencoded"
+              ? Content[K] | URLSearchParams
+              : Content[K]
+      }[keyof Content]
+    : never
 
-type RequestBodyOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
-  ? undefined
-  : OperationFor<P, M> extends { requestBody: { content: infer Content } }
-    ? NormalizeContent<Content>
-    : undefined
+type RequestBodyOf<P extends ApiPath, M extends ApiMethod> =
+  OperationFor<P, M> extends never
+    ? undefined
+    : OperationFor<P, M> extends { requestBody: { content: infer Content } }
+      ? NormalizeContent<Content>
+      : undefined
 
 type SuccessStatus = 200 | 201 | 202 | 203 | 204 | 205 | 206
 
@@ -509,21 +513,21 @@ type ResponseContent<Response> = Response extends { content: infer Content }
     : unknown
   : unknown
 
-type ResponseDataOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
-  ? unknown
-  : OperationFor<P, M> extends { responses: infer Responses }
-    ? {
-        [S in keyof Responses & (SuccessStatus | "default")]: ResponseContent<Responses[S]>
-      }[keyof Responses & (SuccessStatus | "default")] extends infer Result
-      ? Result extends never
-        ? unknown
-        : Result
+type ResponseDataOf<P extends ApiPath, M extends ApiMethod> =
+  OperationFor<P, M> extends never
+    ? unknown
+    : OperationFor<P, M> extends { responses: infer Responses }
+      ? {
+          [S in keyof Responses & (SuccessStatus | "default")]: ResponseContent<Responses[S]>
+        }[keyof Responses & (SuccessStatus | "default")] extends infer Result
+        ? Result extends never
+          ? unknown
+          : Result
+        : unknown
       : unknown
-    : unknown
 
-type ApiRequestHeaders<P extends ApiPath, M extends ApiMethod> =
-  HeaderParamsOf<P, M> &
-    Partial<Record<string, string | number | boolean | null | undefined>>
+type ApiRequestHeaders<P extends ApiPath, M extends ApiMethod> = HeaderParamsOf<P, M> &
+  Partial<Record<string, string | number | boolean | null | undefined>>
 
 type PathParamsOption<P extends ApiPath> = keyof PathParamsOf<P> extends never
   ? { pathParams?: undefined }
@@ -538,9 +542,7 @@ type ApiRequestOptions<P extends ApiPath, M extends ApiMethod> = Omit<
     headers?: ApiRequestHeaders<P, M>
   }
 
-type ApiResponseFor<P extends ApiPath, M extends ApiMethod> = AxiosResponse<
-  ResponseDataOf<P, M>
->
+type ApiResponseFor<P extends ApiPath, M extends ApiMethod> = AxiosResponse<ResponseDataOf<P, M>>
 
 const buildPathWithParams = <P extends ApiPath>(path: P, params: PathParamsOf<P> | undefined) => {
   if (!params || Object.keys(params).length === 0) {
