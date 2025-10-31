@@ -77,7 +77,7 @@
   }
 
   .dash-list-item {
-    @apply relative block overflow-hidden rounded-ue-lg px-3 py-3 group;
+    @apply relative block overflow-hidden rounded-ue-lg px-3 py-3;
     list-style: none;
     background: transparent;
   }
