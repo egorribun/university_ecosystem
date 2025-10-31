@@ -6,13 +6,12 @@ import {
   useState,
   useCallback,
   useMemo,
-  useRef,
   type SyntheticEvent,
   type CSSProperties,
 } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import axios from "../api/client"
 import type { Event } from "@/types/Event"
-import type { PaginatedResponse } from "@/types/Pagination"
 import {
   Box,
   Tabs,
@@ -39,6 +38,7 @@ import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -48,8 +48,6 @@ const tabs = [
   { key: "archive", is_active: false },
   { key: "my" },
 ] as const satisfies readonly EventTab[]
-
-const PAGE_SIZE = 12
 
 type EventDraft = {
   title: string
@@ -100,7 +98,7 @@ const Events = () => {
   const { t, i18n } = useTranslation(["events", "common"])
   const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
-  const [events, setEvents] = useState<Event[]>([])
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<EventTabKey>("active")
   const [search, setSearch] = useState("")
   const [type, setType] = useState("")
@@ -109,10 +107,6 @@ const Events = () => {
   const [createOpen, setCreateOpen] = useState(false)
   const [eventData, setEventData] = useState<EventDraft>(initialEvent)
   const [imageUploading, setImageUploading] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [pagination, setPagination] = useState<PaginatedResponse<Event> | null>(null)
-
   const [createPreview, setCreatePreview] = useState<string | null>(null)
 
   const isMobile = useMediaQuery("(max-width:900px)")
@@ -120,10 +114,6 @@ const Events = () => {
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null)
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
-  const etagCacheRef = useRef<Record<string, string>>({})
-  const eventsCacheRef = useRef<
-    Record<string, { events: Event[]; pagination: PaginatedResponse<Event> | null }>
-  >({})
 
   useEffect(() => {
     const t = (searchParams.get("tab") as typeof tab) || "active"
@@ -149,174 +139,70 @@ const Events = () => {
   const dType = useDebounced(type, 350)
   const dLocation = useDebounced(location, 350)
 
-  const cacheKey = useMemo(() => {
-    if (tab === "my") {
-      return `my:${language}`
+  const eventsListFilters = useMemo(() => {
+    const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : null
+    return {
+      language,
+      is_active: isActiveFilter,
+      search: dSearch,
+      type: dType,
+      location: dLocation,
+      limit: EVENTS_PAGE_SIZE,
     }
-    const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
-    return `${tab}:${language}:${String(isActiveFilter)}:${dSearch}:${dType}:${dLocation}:limit:${PAGE_SIZE}`
   }, [tab, language, dSearch, dType, dLocation])
 
-  const fetchEvents = useCallback(
-    async (signal?: AbortSignal) => {
-      setLoading(true)
-      if (tab !== "my") {
-        setPagination(null)
-      }
-      try {
-        const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
-        const params =
-          tab === "my"
-            ? undefined
-            : {
-                is_active: isActiveFilter,
-                search: dSearch,
-                type: dType,
-                location: dLocation,
-                limit: PAGE_SIZE,
-              }
+  const eventsListQuery = useEventsListQuery(eventsListFilters, {
+    enabled: tab !== "my",
+  })
 
-        const keyBase = cacheKey
-        const headers = etagCacheRef.current[keyBase]
-          ? { "If-None-Match": etagCacheRef.current[keyBase] }
-          : undefined
-        const requestConfig = {
-          signal,
-          params,
-          headers,
-          validateStatus: (status: number) => status >= 200 && status < 400,
-        } as const
-
-        if (tab === "my") {
-          const res = await axios.get<Event[]>("/events/my", requestConfig)
-          const receivedEtag = res.headers?.etag
-          if (receivedEtag) {
-            etagCacheRef.current[keyBase] = receivedEtag
-          } else {
-            delete etagCacheRef.current[keyBase]
-          }
-          if (res.status === 304) {
-            const cached = eventsCacheRef.current[keyBase]
-            if (cached) {
-              setEvents(cached.events)
-            }
-            setPagination(null)
-            return
-          }
-          const nextEvents = Array.isArray(res.data) ? res.data : []
-          eventsCacheRef.current[keyBase] = { events: nextEvents, pagination: null }
-          setEvents(nextEvents)
-          setPagination(null)
-          return
-        }
-
-        const res = await axios.get<PaginatedResponse<Event>>("/events", requestConfig)
-        const receivedEtag = res.headers?.etag
-        if (receivedEtag) {
-          etagCacheRef.current[keyBase] = receivedEtag
-        } else {
-          delete etagCacheRef.current[keyBase]
-        }
-        if (res.status === 304) {
-          const cached = eventsCacheRef.current[keyBase]
-          if (cached) {
-            setEvents(cached.events)
-            setPagination(cached.pagination)
-          }
-          return
-        }
-
-        const data = res.data
-        const nextEvents = Array.isArray(data?.items) ? data.items : []
-        const nextPagination = data ?? null
-        eventsCacheRef.current[keyBase] = { events: nextEvents, pagination: nextPagination }
-        setEvents(nextEvents)
-        setPagination(nextPagination)
-      } catch (err: any) {
-        if (err?.name !== "CanceledError" && err?.code !== "ERR_CANCELED") {
-          setEvents([])
-          setPagination(null)
-        }
-      } finally {
-        setLoading(false)
-      }
-    },
-    [tab, dSearch, dType, dLocation, language, cacheKey]
+  const myEventsQuery = useMyEventsQuery(
+    { language, userId: user?.id ?? null },
+    { enabled: tab === "my" }
   )
 
-  useEffect(() => {
-    const ctrl = new AbortController()
-    fetchEvents(ctrl.signal)
-    return () => ctrl.abort()
-  }, [fetchEvents])
+  const {
+    events: listEvents,
+    isLoading: listIsLoading,
+    isFetching: listIsFetching,
+    isFetchingNextPage: listIsFetchingNextPage,
+    hasNextPage: listHasNextPage,
+    fetchNextPage: fetchNextEventsPage,
+    refetch: refetchEventsList,
+  } = eventsListQuery
+
+  const {
+    data: myEventsData,
+    isLoading: myEventsLoading,
+    isFetching: myEventsFetching,
+    refetch: refetchMyEvents,
+  } = myEventsQuery
+
+  const normalizedEvents = useMemo(() => {
+    return tab === "my" ? (myEventsData ?? []) : listEvents
+  }, [tab, listEvents, myEventsData])
+
+  const loading = useMemo(() => {
+    if (tab === "my") {
+      return myEventsLoading || (myEventsFetching && !myEventsLoading)
+    }
+    return listIsLoading || (listIsFetching && !listIsFetchingNextPage)
+  }, [
+    tab,
+    myEventsLoading,
+    myEventsFetching,
+    listIsLoading,
+    listIsFetching,
+    listIsFetchingNextPage,
+  ])
+
+  const loadingMore = tab !== "my" && Boolean(listIsFetchingNextPage)
+  const hasMore = tab !== "my" && Boolean(listHasNextPage)
 
   const loadMore = useCallback(async () => {
-    if (tab === "my" || loadingMore) return
-    const nextCursor = pagination?.next_cursor
-    if (nextCursor == null) return
-    setLoadingMore(true)
-    try {
-      const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : undefined
-      const res = await axios.get<PaginatedResponse<Event>>("/events", {
-        params: {
-          is_active: isActiveFilter,
-          search: dSearch,
-          type: dType,
-          location: dLocation,
-          limit: PAGE_SIZE,
-          cursor: nextCursor,
-        },
-        validateStatus: (status: number) => status >= 200 && status < 300,
-      })
-      const data = res.data
-      const newItems = Array.isArray(data?.items) ? data.items : []
-      let mergedEvents: Event[] = []
-      setEvents((prev) => {
-        const existing = Array.isArray(prev) ? [...prev] : []
-        const seen = new Set(existing.map((item) => item.id))
-        newItems.forEach((item) => {
-          if (seen.has(item.id)) {
-            const index = existing.findIndex((evt) => evt.id === item.id)
-            if (index >= 0) existing[index] = item
-          } else {
-            existing.push(item)
-            seen.add(item.id)
-          }
-        })
-        mergedEvents = existing
-        return existing
-      })
-      setPagination((prev) => {
-        if (!data) {
-          const cached = eventsCacheRef.current[cacheKey]
-          eventsCacheRef.current[cacheKey] = {
-            events: mergedEvents,
-            pagination: prev ?? null,
-          }
-          return prev
-        }
-        if (!prev) {
-          eventsCacheRef.current[cacheKey] = { events: mergedEvents, pagination: data }
-          return data
-        }
-        const nextPagination = {
-          ...prev,
-          ...data,
-        }
-        eventsCacheRef.current[cacheKey] = {
-          events: mergedEvents,
-          pagination: nextPagination,
-        }
-        return nextPagination
-      })
-    } catch (err: any) {
-      if (err?.name !== "CanceledError" && err?.code !== "ERR_CANCELED") {
-        setPagination((prev) => (prev ? { ...prev, has_more: false, next_cursor: null } : prev))
-      }
-    } finally {
-      setLoadingMore(false)
+    if (tab !== "my" && listHasNextPage) {
+      await fetchNextEventsPage()
     }
-  }, [tab, loadingMore, pagination?.next_cursor, dSearch, dType, dLocation, cacheKey])
+  }, [fetchNextEventsPage, listHasNextPage, tab])
 
   const handleTabChange = (_event: SyntheticEvent, newValue: EventTabKey) => setTab(newValue)
 
@@ -365,18 +251,21 @@ const Events = () => {
         starts_at: eventData.starts_at,
         ends_at: eventData.ends_at,
       }
-      const res = await axios.post<Event>("/events", payload)
+      await axios.post<Event>("/events", payload)
       closeCreate()
       setTab("active")
-      setEvents((prev) => [res.data, ...prev])
-      setPagination((prev) => (prev ? { ...prev, total: prev.total + 1 } : prev))
+      void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch {}
   }
 
   const handleRefresh = useCallback(() => {
-    if (!loading) fetchEvents()
-  }, [fetchEvents, loading])
+    if (tab === "my") {
+      void refetchMyEvents()
+    } else {
+      void refetchEventsList()
+    }
+  }, [refetchEventsList, refetchMyEvents, tab])
 
   const starts = new Date(eventData.starts_at).getTime()
   const ends = new Date(eventData.ends_at).getTime()
@@ -396,8 +285,6 @@ const Events = () => {
       if (createPreview) URL.revokeObjectURL(createPreview)
     }
   }, [createPreview])
-
-  const normalizedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events])
 
   const layoutConfig = useMemo(() => {
     if (isMobile) {
@@ -784,7 +671,7 @@ const Events = () => {
 
           {eventsContent}
 
-          {tab !== "my" && pagination?.has_more ? (
+          {hasMore ? (
             <Box display="flex" justifyContent="center" mt={4} mb={6}>
               <Button
                 variant="outlined"

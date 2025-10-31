@@ -27,8 +27,8 @@ export async function saveSubscription(
   const payload: components["schemas"]["PushSubscriptionIn"] = {
     endpoint,
     keys: { p256dh, auth },
-    topics,
     user_agent: userAgent,
+    ...(Array.isArray(topics) ? { topics } : {}),
   }
 
   const { data } = await api.post<PushSubscriptionResponse>("/push/subscribe", payload)
@@ -68,7 +68,7 @@ export async function fetchPushTopics(): Promise<PushTopicsResponse> {
   const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /push/topics")
   return {
     allowed: parsed.allowed,
-    topics: parsed.topics,
+    topics: parsed.topics ?? [],
     has_preferences: parsed.has_preferences ?? false,
     updated_at: parsed.updated_at ?? null,
   }
@@ -82,15 +82,9 @@ const adminTopicsSchema = z.object({
   updated_at: z.string().datetime().nullable().optional(),
 })
 
-export async function fetchAdminUserTopics(
-  userId: number
-): Promise<AdminUserTopicsResponse> {
+export async function fetchAdminUserTopics(userId: number): Promise<AdminUserTopicsResponse> {
   const { data } = await api.get<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`)
-  return ensureValidResponse(
-    adminTopicsSchema,
-    data,
-    `GET /push/admin/topics/${userId}`
-  )
+  return ensureValidResponse(adminTopicsSchema, data, `GET /push/admin/topics/${userId}`)
 }
 
 export async function updateAdminUserTopics(
@@ -98,13 +92,6 @@ export async function updateAdminUserTopics(
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
-  const { data } = await api.put<AdminUserTopicsResponse>(
-    `/push/admin/topics/${userId}`,
-    payload
-  )
-  return ensureValidResponse(
-    adminTopicsSchema,
-    data,
-    `PUT /push/admin/topics/${userId}`
-  )
+  const { data } = await api.put<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`, payload)
+  return ensureValidResponse(adminTopicsSchema, data, `PUT /push/admin/topics/${userId}`)
 }

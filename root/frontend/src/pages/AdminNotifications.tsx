@@ -101,9 +101,7 @@ export default function AdminNotifications() {
         new Set(allowed.map((topic) => normalizeTopicKey(topic)).filter(Boolean))
       )
       const selectedSet = new Set(
-        (selectedTopics ?? [])
-          .map((topic) => normalizeTopicKey(topic))
-          .filter(Boolean)
+        (selectedTopics ?? []).map((topic) => normalizeTopicKey(topic)).filter(Boolean)
       )
       const record: Record<string, boolean> = {}
       for (const topic of normalizedAllowed) {
@@ -224,20 +222,17 @@ export default function AdminNotifications() {
     } catch (error) {
       setTopicsData(null)
       setTopicsState({})
-      setTopicsError(
-        getErrorMessage(error, t("admin:notifications.topics.loadError"))
-      )
+      setTopicsError(getErrorMessage(error, t("admin:notifications.topics.loadError")))
     } finally {
       setTopicsBusy(false)
     }
   }, [buildTopicState, t, topicsUserIdInput])
 
   const handleTopicToggle = useCallback(
-    (topic: string) =>
-      (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-        const normalized = normalizeTopicKey(topic)
-        setTopicsState((prev) => ({ ...prev, [normalized]: checked }))
-      },
+    (topic: string) => (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      const normalized = normalizeTopicKey(topic)
+      setTopicsState((prev) => ({ ...prev, [normalized]: checked }))
+    },
     []
   )
 
@@ -254,9 +249,7 @@ export default function AdminNotifications() {
       setTopicsState(buildTopicState(updated.allowed_topics, updated.topics))
       setTopicsMessage(t("admin:notifications.topics.saved"))
     } catch (error) {
-      setTopicsError(
-        getErrorMessage(error, t("admin:notifications.topics.saveError"))
-      )
+      setTopicsError(getErrorMessage(error, t("admin:notifications.topics.saveError")))
     } finally {
       setTopicsBusy(false)
     }
@@ -470,13 +463,9 @@ export default function AdminNotifications() {
                     sx={{ minWidth: { xs: "100%", sm: 200 } }}
                     disabled={topicsBusy}
                   />
-                  <Button
-                    variant="contained"
-                    onClick={handleLoadTopics}
-                    disabled={topicsBusy}
-                  >
+                  <Button variant="contained" onClick={handleLoadTopics} disabled={topicsBusy}>
                     {topicsBusy
-                      ? t("common:loading") ?? "Loading"
+                      ? (t("common:loading") ?? "Loading")
                       : t("admin:notifications.topics.load")}
                   </Button>
                 </Stack>
@@ -498,11 +487,7 @@ export default function AdminNotifications() {
                         id: topicsData.user_id,
                       })}
                     </Typography>
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={1}
-                      flexWrap="wrap"
-                    >
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
                       {topicsData.allowed_topics.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">
                           {t("admin:notifications.topics.empty")}
@@ -512,8 +497,7 @@ export default function AdminNotifications() {
                           const normalized = normalizeTopicKey(topic)
                           const translationKey = `notifications:topics.${normalized}`
                           const label = t(translationKey)
-                          const resolvedLabel =
-                            label === translationKey ? topic : (label as string)
+                          const resolvedLabel = label === translationKey ? topic : (label as string)
                           return (
                             <FormControlLabel
                               key={topic}
@@ -538,7 +522,7 @@ export default function AdminNotifications() {
                         disabled={topicsBusy || !topicsData.allowed_topics.length}
                       >
                         {topicsBusy
-                          ? t("common:loading") ?? "Loading"
+                          ? (t("common:loading") ?? "Loading")
                           : t("admin:notifications.topics.save")}
                       </Button>
                     </Box>

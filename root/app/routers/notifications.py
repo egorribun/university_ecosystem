@@ -264,6 +264,36 @@ def _aggregate_results(
     )
 
 
+async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> None:
+    """Synchronize stored user topic preferences with subscription data."""
+
+    topics_rows = (
+        await db.execute(
+            select(PushSubscription.topics).where(PushSubscription.user_id == user_id)
+        )
+    ).scalars()
+    aggregated: list[str] = []
+    for row in topics_rows:
+        if not row:
+            continue
+        if isinstance(row, (list, tuple, set)):
+            aggregated.extend(str(item) for item in row if item)
+        else:
+            aggregated.append(str(row))
+    normalized = sort_topics(aggregated, settings_obj=settings)
+    record = (
+        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user_id))
+    ).scalar_one_or_none()
+    if normalized:
+        topics_copy = list(normalized)
+        if record is None:
+            db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
+        else:
+            record.topics = topics_copy
+    elif record is not None:
+        await db.delete(record)
+
+
 async def _validate_subscription_payload(
     data: PushSubscriptionIn,
     *,
@@ -377,6 +407,10 @@ async def subscribe(
 
     now = datetime.now(UTC)
     try:
+        normalized_topics = resolve_topics(
+            payload.topics, existing.topics if existing else None
+        )
+        topics_copy = list(normalized_topics)
         if existing:
             if existing.user_id != user.id:
                 raise HTTPException(
@@ -388,12 +422,6 @@ async def subscribe(
                         ),
                     },
                 )
-            resolved_topics = resolve_topics(payload.topics, existing.topics)
-            normalized_topics = await synchronize_user_topics(
-                db,
-                user_id=user.id,
-                topics=resolved_topics,
-            )
             existing.p256dh = p256dh
             existing.auth = auth
             existing.user_id = user.id
@@ -401,17 +429,9 @@ async def subscribe(
             existing.last_seen_at = now
             if existing.created_at is None:
                 existing.created_at = now
-            existing.topics = list(normalized_topics)
-            await db.commit()
-            await db.refresh(existing)
+            existing.topics = topics_copy
             subscription = existing
         else:
-            resolved_topics = resolve_topics(payload.topics, None)
-            normalized_topics = await synchronize_user_topics(
-                db,
-                user_id=user.id,
-                topics=resolved_topics,
-            )
             subscription = PushSubscription(
                 endpoint=endpoint,
                 p256dh=p256dh,
@@ -419,13 +439,14 @@ async def subscribe(
                 user_id=user.id,
                 user_agent=user_agent or None,
                 last_seen_at=now,
-                topics=list(normalized_topics),
+                created_at=now,
+                topics=topics_copy,
             )
-            if subscription.created_at is None:
-                subscription.created_at = now
             db.add(subscription)
-            await db.commit()
-            await db.refresh(subscription)
+        await db.flush()
+        await _refresh_user_topic_preferences(db, user_id=user.id)
+        await db.commit()
+        await db.refresh(subscription)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -554,6 +575,8 @@ async def unsubscribe(
         return {"ok": True, "removed": False}
 
     await db.delete(existing)
+    await db.flush()
+    await _refresh_user_topic_preferences(db, user_id=user.id)
     await db.commit()
     return {"ok": True, "removed": True}
 

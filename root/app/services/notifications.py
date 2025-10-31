@@ -553,7 +553,11 @@ async def create_notifications_for_users(
             (
                 await db.execute(
                     select(PushSubscription)
-                    .options(selectinload(PushSubscription.user))
+                    .options(
+                        selectinload(PushSubscription.user).selectinload(
+                            User.push_topic_preferences
+                        )
+                    )
                     .where(PushSubscription.user_id.in_(uids))
                 )
             )

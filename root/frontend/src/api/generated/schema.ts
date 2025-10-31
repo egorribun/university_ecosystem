@@ -675,6 +675,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/push/topics": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Push Topics */
+    get: operations["get_push_topics_push_topics_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/push/test": {
     parameters: {
       query?: never
@@ -686,6 +703,24 @@ export interface paths {
     put?: never
     /** Send Test */
     post: operations["send_test_push_test_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/push/admin/topics/{user_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Admin Get User Topics */
+    get: operations["admin_get_user_topics_push_admin_topics__user_id__get"]
+    /** Admin Update User Topics */
+    put: operations["admin_update_user_topics_push_admin_topics__user_id__put"]
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1487,6 +1522,24 @@ export interface components {
        */
       is_current: boolean
     }
+    /** AdminUserTopicsResponse */
+    AdminUserTopicsResponse: {
+      /** User Id */
+      user_id: number
+      /** Email */
+      email: string
+      /** Topics */
+      topics: string[]
+      /** Allowed Topics */
+      allowed_topics: string[]
+      /** Updated At */
+      updated_at?: string | null
+    }
+    /** AdminUserTopicsUpdate */
+    AdminUserTopicsUpdate: {
+      /** Topics */
+      topics?: string[]
+    }
     /** Body_login_auth_login_post */
     Body_login_auth_login_post: {
       /** Grant Type */
@@ -2233,6 +2286,20 @@ export interface components {
        * @description Target user id for testing
        */
       user_id?: number | null
+    }
+    /** PushTopicsResponse */
+    PushTopicsResponse: {
+      /** Allowed */
+      allowed: string[]
+      /** Topics */
+      topics: string[]
+      /**
+       * Has Preferences
+       * @default false
+       */
+      has_preferences: boolean
+      /** Updated At */
+      updated_at?: string | null
     }
     /** ResetPasswordIn */
     ResetPasswordIn: {
@@ -3897,6 +3964,26 @@ export interface operations {
       }
     }
   }
+  get_push_topics_push_topics_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PushTopicsResponse"]
+        }
+      }
+    }
+  }
   send_test_push_test_post: {
     parameters: {
       query?: never
@@ -3917,6 +4004,72 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["SendTestResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  admin_get_user_topics_push_admin_topics__user_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        user_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["AdminUserTopicsResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  admin_update_user_topics_push_admin_topics__user_id__put: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        user_id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminUserTopicsUpdate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["AdminUserTopicsResponse"]
         }
       }
       /** @description Validation Error */
