@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-query"
 import { useMemo } from "react"
 
-import api, { type ApiRequestConfig } from "../client"
+import { apiClient, type TypedRequestOptions } from "../client"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
 
@@ -185,16 +185,14 @@ export const useEventsListQuery = (
         params.cursor = pageParam
       }
 
-      const requestConfig: ApiRequestConfig = {
+      const requestConfig: TypedRequestOptions<"/events", "get"> = {
         params,
         signal,
         validateStatus: (status) => status >= 200 && status < 400,
-      }
-      if (etagKey) {
-        requestConfig.etagCacheKey = etagKey
+        ...(etagKey ? { etagCacheKey: etagKey } : {}),
       }
 
-      const response = await api.get<PaginatedResponse<Event>>("/events", requestConfig)
+      const response = await apiClient.get("/events", requestConfig)
 
       if (response.status === 304) {
         const cached =
@@ -269,13 +267,13 @@ export const useMyEventsQuery = (
     enabled: effectiveEnabled,
     queryFn: async ({ signal }) => {
       const etagKey = createMyEventsEtagKey(normalized)
-      const config: ApiRequestConfig = {
+      const config: TypedRequestOptions<"/events/my", "get"> = {
         signal,
         validateStatus: (status) => status >= 200 && status < 400,
         etagCacheKey: etagKey,
       }
 
-      const response = await api.get<Event[]>("/events/my", config)
+      const response = await apiClient.get("/events/my", config)
 
       if (response.status === 304) {
         return queryClient.getQueryData<Event[]>(queryKey) ?? []

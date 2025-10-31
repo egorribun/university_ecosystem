@@ -27,28 +27,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 
-import apiClient from "@/api/client"
-import { fetchAdminUserTopics, updateAdminUserTopics } from "@/api/notifications"
+import {
+  fetchAdminUserTopics,
+  fetchDeadLetterQueue,
+  purgeDeadLetterJobs,
+  retryDeadLetterJobs,
+  updateAdminUserTopics,
+} from "@/api/notifications"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/PageFadeIn"
 import { useLanguage } from "@/contexts/LanguageContext"
-
-type DeadLetterJob = {
-  id: number
-  kind: string
-  record_id: number
-  locale: string | null
-  enqueued_at: string
-  claimed_at: string | null
-  attempts: number
-  last_error: string | null
-  next_retry_at: string | null
-}
-
-type DeadLetterResponse = {
-  items: DeadLetterJob[]
-  total: number
-}
 
 const queryKey = ["admin", "notifications", "dead-letter"] as const
 
@@ -123,10 +111,7 @@ export default function AdminNotifications() {
 
   const listQuery = useQuery({
     queryKey,
-    queryFn: async () => {
-      const { data } = await apiClient.get<DeadLetterResponse>("/notifications/admin/dead-letter")
-      return data
-    },
+    queryFn: () => fetchDeadLetterQueue(),
   })
 
   const resetSelection = () => setSelected(new Set())
@@ -137,7 +122,7 @@ export default function AdminNotifications() {
 
   const retryMutation = useMutation({
     mutationFn: async (jobIds: number[]) => {
-      await apiClient.post("/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+      await retryDeadLetterJobs(jobIds)
     },
     onMutate: () => {
       setActionError(null)
@@ -151,7 +136,7 @@ export default function AdminNotifications() {
 
   const purgeMutation = useMutation({
     mutationFn: async (jobIds: number[]) => {
-      await apiClient.post("/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+      await purgeDeadLetterJobs(jobIds)
     },
     onMutate: () => {
       setActionError(null)

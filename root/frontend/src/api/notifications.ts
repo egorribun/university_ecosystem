@@ -1,7 +1,7 @@
 import { z } from "zod"
 
-import api from "@/api/client"
-import type { components, paths } from "@/api/generated/schema"
+import { apiClient } from "@/api/client"
+import type { components } from "@/api/generated/schema"
 import type {
   AdminUserTopicsResponse,
   PushSubscriptionResponse,
@@ -9,6 +9,84 @@ import type {
   SendTestNotificationResponse,
 } from "@/types/notifications"
 import { ensureValidResponse } from "./validation"
+
+const notificationSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  body: z.string().nullable().optional(),
+  title_en: z.string().nullable().optional(),
+  body_en: z.string().nullable().optional(),
+  type: z.string().nullable().optional(),
+  url: z.string().nullable().optional(),
+  created_at: z.string(),
+  read: z.boolean(),
+  read_at: z.string().nullable().optional(),
+})
+
+const notificationsListSchema = z.object({
+  items: z.array(notificationSchema),
+  unread_count: z.number(),
+  has_more: z.boolean(),
+  next_cursor: z.string().nullable().optional(),
+})
+
+const deadLetterJobSchema = z.object({
+  id: z.number().int(),
+  kind: z.string(),
+  record_id: z.number().int(),
+  locale: z.string().nullable().optional(),
+  enqueued_at: z.string(),
+  claimed_at: z.string().nullable().optional(),
+  attempts: z.number().int(),
+  last_error: z.string().nullable().optional(),
+  next_retry_at: z.string().nullable().optional(),
+})
+
+const deadLetterListSchema = z.object({
+  items: z.array(deadLetterJobSchema),
+  total: z.number().int(),
+})
+
+export type NotificationEntry = z.infer<typeof notificationSchema>
+export type NotificationsListResult = z.infer<typeof notificationsListSchema>
+export type DeadLetterJob = z.infer<typeof deadLetterJobSchema>
+export type DeadLetterListResult = z.infer<typeof deadLetterListSchema>
+
+export const fetchNotificationsList = async (params?: {
+  cursor?: string | null
+  limit?: number
+}) => {
+  const response = await apiClient.get("/notifications", {
+    params,
+  })
+  return ensureValidResponse(notificationsListSchema, response.data, "GET /notifications")
+}
+
+export const markNotificationRead = (notificationId: number) =>
+  apiClient.patch("/notifications/{notif_id}/read", undefined, {
+    pathParams: { notif_id: notificationId },
+  })
+
+export const markAllNotificationsRead = () => apiClient.post("/notifications/read-all")
+
+export const clearNotifications = () => apiClient.delete("/notifications")
+
+export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: number }) => {
+  const response = await apiClient.get("/notifications/admin/dead-letter", {
+    params,
+  })
+  return ensureValidResponse(
+    deadLetterListSchema,
+    response.data,
+    "GET /notifications/admin/dead-letter"
+  )
+}
+
+export const retryDeadLetterJobs = (jobIds: number[]) =>
+  apiClient.post("/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+
+export const purgeDeadLetterJobs = (jobIds: number[]) =>
+  apiClient.post("/notifications/admin/dead-letter/purge", { job_ids: jobIds })
 
 export async function saveSubscription(
   sub: PushSubscriptionJSON,
@@ -30,26 +108,22 @@ export async function saveSubscription(
     user_agent: userAgent,
     ...(Array.isArray(topics) ? { topics } : {}),
   }
-
-  const { data } = await api.post<PushSubscriptionResponse>("/push/subscribe", payload)
+  const { data } = await apiClient.post("/push/subscribe", payload)
   return data
 }
 
 export async function deleteSubscription(endpoint: string): Promise<void> {
   const payload: components["schemas"]["PushSubscriptionDelete"] = { endpoint }
-  await api.post("/push/unsubscribe", payload)
+  await apiClient.post("/push/unsubscribe", payload)
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {
-  const { data } = await api.post<SendTestNotificationResponse>("/push/test")
+  const { data } = await apiClient.post("/push/test")
   return data
 }
 
 export async function getVapidPublicKey(): Promise<string | null> {
-  const { data } =
-    await api.get<
-      paths["/push/vapid-public-key"]["get"]["responses"]["200"]["content"]["application/json"]
-    >("/push/vapid-public-key")
+  const { data } = await apiClient.get("/push/vapid-public-key")
   const schema = z.object({ publicKey: z.string().trim().min(1).optional() })
   const parsed = ensureValidResponse(schema, data, "GET /push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
@@ -64,7 +138,7 @@ const pushTopicsSchema = z.object({
 })
 
 export async function fetchPushTopics(): Promise<PushTopicsResponse> {
-  const { data } = await api.get<PushTopicsResponse>("/push/topics")
+  const { data } = await apiClient.get("/push/topics")
   const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /push/topics")
   return {
     allowed: parsed.allowed,
@@ -83,7 +157,9 @@ const adminTopicsSchema = z.object({
 })
 
 export async function fetchAdminUserTopics(userId: number): Promise<AdminUserTopicsResponse> {
-  const { data } = await api.get<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`)
+  const { data } = await apiClient.get("/push/admin/topics/{user_id}", {
+    pathParams: { user_id: userId },
+  })
   return ensureValidResponse(adminTopicsSchema, data, `GET /push/admin/topics/${userId}`)
 }
 
@@ -92,6 +168,8 @@ export async function updateAdminUserTopics(
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
-  const { data } = await api.put<AdminUserTopicsResponse>(`/push/admin/topics/${userId}`, payload)
+  const { data } = await apiClient.put("/push/admin/topics/{user_id}", payload, {
+    pathParams: { user_id: userId },
+  })
   return ensureValidResponse(adminTopicsSchema, data, `PUT /push/admin/topics/${userId}`)
 }

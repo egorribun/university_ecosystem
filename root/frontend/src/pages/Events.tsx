@@ -10,7 +10,7 @@ import {
   type CSSProperties,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import axios from "../api/client"
+import { createEvent, uploadEventImage } from "@/api/events"
 import type { Event } from "@/types/Event"
 import {
   Box,
@@ -214,12 +214,8 @@ const Events = () => {
       return localUrl
     })
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await axios.post<{ url: string }>("/events/upload_image", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      setEventData((prev) => ({ ...prev, image_url: res.data.url }))
+      const imageUrl = await uploadEventImage(file)
+      setEventData((prev) => ({ ...prev, image_url: imageUrl }))
     } finally {
       setImageUploading(false)
     }
@@ -250,8 +246,8 @@ const Events = () => {
         location: locationValue,
         starts_at: eventData.starts_at,
         ends_at: eventData.ends_at,
-      }
-      await axios.post<Event>("/events", payload)
+      } satisfies Parameters<typeof createEvent>[0]
+      await createEvent(payload)
       closeCreate()
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })

@@ -11,7 +11,7 @@ import {
   useMemo,
   type CSSProperties,
 } from "react"
-import axios from "../api/client"
+import { createNews, uploadNewsImage } from "@/api/news"
 import {
   Box,
   Typography,
@@ -121,12 +121,8 @@ const News = () => {
     try {
       let image_url = ""
       if (imageFile) {
-        const data = new FormData()
-        data.append("file", imageFile)
-        const res = await axios.post<{ url: string }>("/news/upload_image", data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
-        image_url = res.data?.url || ""
+        const uploadedUrl = await uploadNewsImage(imageFile)
+        image_url = uploadedUrl || ""
       }
 
       const payload = {
@@ -135,9 +131,9 @@ const News = () => {
         image_url,
         ...(newsData.title_en.trim() ? { title_en: newsData.title_en } : {}),
         ...(newsData.content_en.trim() ? { content_en: newsData.content_en } : {}),
-      }
+      } satisfies Parameters<typeof createNews>[0]
 
-      await axios.post("/news", payload)
+      await createNews(payload)
       setAddOpen(false)
       setNewsData(initialNews)
       setImageFile(null)
