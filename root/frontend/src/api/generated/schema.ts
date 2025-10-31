@@ -713,9 +713,7 @@ export interface paths {
     parameters: {
       query?: never
       header?: never
-      path?: {
-        user_id: number
-      }
+      path?: never
       cookie?: never
     }
     /** Admin Get User Topics */
