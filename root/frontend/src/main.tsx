@@ -17,10 +17,7 @@ declare global {
 
 async function bootstrap() {
   try {
-    if (
-      typeof window !== "undefined" &&
-      window.__APP_BOOTSTRAP_FORCE_ERROR__
-    ) {
+    if (typeof window !== "undefined" && window.__APP_BOOTSTRAP_FORCE_ERROR__) {
       throw new Error("Forced bootstrap failure")
     }
 
@@ -49,54 +46,54 @@ async function bootstrap() {
     const PushMod = await import("./push/subscribe")
     const { ensurePushSubscription, hasPushConsent } = PushMod
 
-  async function setupServiceWorker() {
-    if (!import.meta.env.PROD) return
-    if (!("serviceWorker" in navigator)) return
-    try {
-      const registration = await registerServiceWorker("/sw.js")
-      if (!registration) return
-      if (!hasPushConsent()) return
+    async function setupServiceWorker() {
+      if (!import.meta.env.PROD) return
+      if (!("serviceWorker" in navigator)) return
       try {
-        await ensurePushSubscription({ registration, requestPermission: false })
+        const registration = await registerServiceWorker("/sw.js")
+        if (!registration) return
+        if (!hasPushConsent()) return
+        try {
+          await ensurePushSubscription({ registration, requestPermission: false })
+        } catch (error) {
+          logError("Failed to ensure push subscription", error)
+        }
       } catch (error) {
-        logError("Failed to ensure push subscription", error)
+        logError("Service worker registration failed", error)
       }
-    } catch (error) {
-      logError("Service worker registration failed", error)
     }
-  }
 
-  if (typeof window !== "undefined") {
-    if (document.readyState === "complete") {
-      void setupServiceWorker()
-    } else {
-      window.addEventListener(
-        "load",
-        () => {
-          void setupServiceWorker()
-        },
-        { once: true }
-      )
-    }
-  }
-
-  function BodyColorSchemeSync() {
-    const { mode, systemMode } = useColorScheme()
-    useEffect(() => {
-      const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
-      document.body.dataset.colorScheme = resolved
-      document.body.classList.toggle("dark", resolved === "dark")
-      return () => {
-        document.body.classList.remove("dark")
-        document.body.removeAttribute("data-color-scheme")
+    if (typeof window !== "undefined") {
+      if (document.readyState === "complete") {
+        void setupServiceWorker()
+      } else {
+        window.addEventListener(
+          "load",
+          () => {
+            void setupServiceWorker()
+          },
+          { once: true }
+        )
       }
-    }, [mode, systemMode])
-    return null
-  }
+    }
 
-  const ReactQueryDevtools = import.meta.env.DEV
-    ? (await import("@tanstack/react-query-devtools")).ReactQueryDevtools
-    : null
+    function BodyColorSchemeSync() {
+      const { mode, systemMode } = useColorScheme()
+      useEffect(() => {
+        const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
+        document.body.dataset.colorScheme = resolved
+        document.body.classList.toggle("dark", resolved === "dark")
+        return () => {
+          document.body.classList.remove("dark")
+          document.body.removeAttribute("data-color-scheme")
+        }
+      }, [mode, systemMode])
+      return null
+    }
+
+    const ReactQueryDevtools = import.meta.env.DEV
+      ? (await import("@tanstack/react-query-devtools")).ReactQueryDevtools
+      : null
 
     ReactDOMMod.default.createRoot(document.getElementById("root")!).render(
       <StrictMode>
