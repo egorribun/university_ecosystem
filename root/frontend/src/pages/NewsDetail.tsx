@@ -28,7 +28,13 @@ import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import api from "@/api/client"
+import {
+  deleteNews,
+  fetchNewsItem,
+  updateNews,
+  uploadNewsImage,
+  type NewsItem,
+} from "@/api/news"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
@@ -38,19 +44,16 @@ import { useTranslation } from "react-i18next"
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-type NewsItem = {
-  id: number
-  title: string
-  content: string
-  title_en?: string | null
-  content_en?: string | null
-  image_url?: string | null
-  created_at?: string
-}
-
 async function fetchNews(id: string) {
-  const { data } = await api.get<NewsItem>(`/news/${id}`)
-  return data
+  const numericId = Number(id)
+  if (!Number.isFinite(numericId)) {
+    throw new Error("Invalid news id")
+  }
+  const response = await fetchNewsItem(numericId)
+  if (response.status === 304) {
+    throw new Error("Not modified")
+  }
+  return response.data
 }
 
 const getMoscowDate = (dateStr: string) => {
@@ -151,12 +154,8 @@ export default function NewsDetail() {
     try {
       let imageUrl = editData.image_url
       if (newImage) {
-        const data = new FormData()
-        data.append("file", newImage)
-        const res = await api.post<{ url: string }>("/news/upload_image", data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
-        imageUrl = res.data.url
+        const uploaded = await uploadNewsImage(newImage)
+        imageUrl = uploaded
       }
       const payload = {
         title: editData.title,
@@ -165,7 +164,7 @@ export default function NewsDetail() {
         content_en: editData.content_en,
         image_url: imageUrl,
       }
-      const { data } = await api.patch<NewsItem>(`/news/${query.data.id}`, payload)
+      const { data } = await updateNews(query.data.id, payload)
       queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news"] })
       setSnack(t("news:notifications.updated"))
@@ -182,7 +181,7 @@ export default function NewsDetail() {
     if (!query.data) return
     setDeleting(true)
     try {
-      await api.delete(`/news/${query.data.id}`)
+      await deleteNews(query.data.id)
       setSnack(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news"] })

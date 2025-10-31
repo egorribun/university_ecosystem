@@ -4,6 +4,7 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
 } from "axios"
+import type { paths } from "@/api/generated/schema"
 import i18n, { fallbackLng, supportedLngs } from "@/i18n/config"
 
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
@@ -449,5 +450,180 @@ api.interceptors.response.use(
     return Promise.reject(err)
   }
 )
+
+type ApiMethod = "get" | "post" | "put" | "patch" | "delete"
+
+type ApiPath = keyof paths
+
+type OperationFor<P extends ApiPath, M extends ApiMethod> = paths[P][M]
+
+type PathParamsOf<P extends ApiPath> = paths[P] extends {
+  parameters: { path: infer Params }
+}
+  ? Params extends Record<string, unknown>
+    ? Params
+    : Record<string, never>
+  : Record<string, never>
+
+type QueryParamsOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
+  ? Record<string, never>
+  : OperationFor<P, M> extends { parameters: { query: infer Query } }
+    ? Query extends Record<string, unknown>
+      ? Query
+      : Record<string, never>
+    : Record<string, never>
+
+type HeaderParamsOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
+  ? Record<string, never>
+  : OperationFor<P, M> extends { parameters: { header: infer Header } }
+    ? Header extends Record<string, unknown>
+      ? Header
+      : Record<string, never>
+    : Record<string, never>
+
+type NormalizeContent<Content> = Content extends Record<string, unknown>
+  ? {
+      [K in keyof Content]: K extends "application/json"
+        ? Content[K]
+        : K extends "multipart/form-data"
+          ? Content[K] | FormData
+          : K extends "application/x-www-form-urlencoded"
+            ? Content[K] | URLSearchParams
+            : Content[K]
+    }[keyof Content]
+  : never
+
+type RequestBodyOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
+  ? undefined
+  : OperationFor<P, M> extends { requestBody: { content: infer Content } }
+    ? NormalizeContent<Content>
+    : undefined
+
+type SuccessStatus = 200 | 201 | 202 | 203 | 204 | 205 | 206
+
+type ResponseContent<Response> = Response extends { content: infer Content }
+  ? Content extends Record<string, unknown>
+    ? "application/json" extends keyof Content
+      ? Content["application/json"]
+      : Content[keyof Content]
+    : unknown
+  : unknown
+
+type ResponseDataOf<P extends ApiPath, M extends ApiMethod> = OperationFor<P, M> extends never
+  ? unknown
+  : OperationFor<P, M> extends { responses: infer Responses }
+    ? {
+        [S in keyof Responses & (SuccessStatus | "default")]: ResponseContent<Responses[S]>
+      }[keyof Responses & (SuccessStatus | "default")] extends infer Result
+      ? Result extends never
+        ? unknown
+        : Result
+      : unknown
+    : unknown
+
+type ApiRequestHeaders<P extends ApiPath, M extends ApiMethod> =
+  HeaderParamsOf<P, M> &
+    Partial<Record<string, string | number | boolean | null | undefined>>
+
+type PathParamsOption<P extends ApiPath> = keyof PathParamsOf<P> extends never
+  ? { pathParams?: undefined }
+  : { pathParams: PathParamsOf<P> }
+
+type ApiRequestOptions<P extends ApiPath, M extends ApiMethod> = Omit<
+  ApiRequestConfig<RequestBodyOf<P, M>>,
+  "url" | "method" | "data" | "params" | "headers"
+> &
+  PathParamsOption<P> & {
+    params?: QueryParamsOf<P, M>
+    headers?: ApiRequestHeaders<P, M>
+  }
+
+type ApiResponseFor<P extends ApiPath, M extends ApiMethod> = AxiosResponse<
+  ResponseDataOf<P, M>
+>
+
+const buildPathWithParams = <P extends ApiPath>(path: P, params: PathParamsOf<P> | undefined) => {
+  if (!params || Object.keys(params).length === 0) {
+    return path
+  }
+
+  return (path as string).replace(/\{([^{}]+)\}/g, (segment, key: string) => {
+    const value = params[key as keyof typeof params]
+    if (value == null) {
+      throw new Error(`Missing value for path parameter "${key}"`)
+    }
+    return encodeURIComponent(String(value))
+  }) as P
+}
+
+const normalizeHeaders = <P extends ApiPath, M extends ApiMethod>(
+  headers: ApiRequestHeaders<P, M> | undefined
+) => {
+  if (!headers) {
+    return headers
+  }
+
+  const normalized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    if (value !== undefined && value !== null) {
+      normalized[key] = value
+    }
+  }
+  return normalized
+}
+
+const createTypedClient = (instance: ApiInstance) => {
+  const request = async <P extends ApiPath, M extends ApiMethod>(
+    method: M,
+    path: P,
+    options?: ApiRequestOptions<P, M>,
+    body?: RequestBodyOf<P, M>
+  ): Promise<ApiResponseFor<P, M>> => {
+    const { pathParams, headers, params, ...rest } = options ?? {}
+    const url = buildPathWithParams(path, pathParams)
+    const config = rest as ApiRequestConfig<RequestBodyOf<P, M>>
+    const finalHeaders = normalizeHeaders(headers)
+    const requestConfig: ApiRequestConfig<RequestBodyOf<P, M>> = {
+      ...config,
+      method,
+      url,
+      params,
+      headers: finalHeaders,
+    }
+    if (body !== undefined) {
+      requestConfig.data = body
+    }
+    return instance.request<ResponseDataOf<P, M>>(requestConfig)
+  }
+
+  return {
+    request,
+    get: <P extends ApiPath>(path: P, options?: ApiRequestOptions<P, "get">) =>
+      request("get", path, options),
+    delete: <P extends ApiPath>(path: P, options?: ApiRequestOptions<P, "delete">) =>
+      request("delete", path, options),
+    post: <P extends ApiPath>(
+      path: P,
+      data?: RequestBodyOf<P, "post">,
+      options?: ApiRequestOptions<P, "post">
+    ) => request("post", path, options, data),
+    put: <P extends ApiPath>(
+      path: P,
+      data?: RequestBodyOf<P, "put">,
+      options?: ApiRequestOptions<P, "put">
+    ) => request("put", path, options, data),
+    patch: <P extends ApiPath>(
+      path: P,
+      data?: RequestBodyOf<P, "patch">,
+      options?: ApiRequestOptions<P, "patch">
+    ) => request("patch", path, options, data),
+  }
+}
+
+export type TypedApiClient = ReturnType<typeof createTypedClient>
+
+export type TypedRequestOptions<P extends ApiPath, M extends ApiMethod> = ApiRequestOptions<P, M>
+
+export const apiClient = createTypedClient(api)
 
 export default api

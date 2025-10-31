@@ -1,22 +1,18 @@
 import { useCallback } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import api from "@/api/client"
 
-export type NotificationItem = {
-  id: number
-  title: string
-  body?: string
-  created_at: string
-  read: boolean
-  link?: string
-}
+import {
+  clearNotifications as clearNotificationsRequest,
+  fetchNotificationsList,
+  markAllNotificationsRead as markAllNotificationsReadRequest,
+  markNotificationRead as markNotificationReadRequest,
+  type NotificationEntry,
+  type NotificationsListResult,
+} from "@/api/notifications"
 
-type NotificationsResponse = {
-  items?: NotificationItem[]
-  unread_count?: number
-  has_more?: boolean
-  next_cursor?: string | null
-}
+export type NotificationItem = NotificationEntry & { link?: string }
+
+type NotificationsResponse = NotificationsListResult
 
 type NormalizedNotificationsResponse = {
   items: NotificationItem[]
@@ -29,18 +25,18 @@ export function useNotifications() {
   const qc = useQueryClient()
   const queryKey = ["notifications", "list"] as const
   const normalize = (data: NotificationsResponse): NormalizedNotificationsResponse => ({
-    items: Array.isArray(data.items) ? data.items : [],
-    unread:
-      typeof data.unread_count === "number" && Number.isFinite(data.unread_count)
-        ? data.unread_count
-        : null,
-    hasMore: Boolean(data.has_more),
+    items: data.items.map((item) => ({
+      ...item,
+      link: item.url ?? undefined,
+    })),
+    unread: data.unread_count,
+    hasMore: data.has_more,
     nextCursor: data.next_cursor ?? null,
   })
   const list = useQuery<NormalizedNotificationsResponse>({
     queryKey,
     queryFn: async () => {
-      const { data } = await api.get<NotificationsResponse>("notifications")
+      const data = await fetchNotificationsList()
       return normalize(data)
     },
     refetchInterval: 60000,
@@ -48,19 +44,19 @@ export function useNotifications() {
   })
   const markRead = useMutation({
     mutationFn: async (id: number) => {
-      await api.patch(`notifications/${id}/read`)
+      await markNotificationReadRequest(id)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
   const markAll = useMutation({
     mutationFn: async () => {
-      await api.post("notifications/read-all")
+      await markAllNotificationsReadRequest()
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
   const clearAll = useMutation({
     mutationFn: async () => {
-      await api.delete("notifications")
+      await clearNotificationsRequest()
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
@@ -71,9 +67,7 @@ export function useNotifications() {
     error: fetchMoreError,
   } = useMutation<NormalizedNotificationsResponse, unknown, string>({
     mutationFn: async (cursor: string) => {
-      const { data } = await api.get<NotificationsResponse>("notifications", {
-        params: { cursor },
-      })
+      const data = await fetchNotificationsList({ cursor })
       return normalize(data)
     },
     onSuccess: (nextPage) => {
