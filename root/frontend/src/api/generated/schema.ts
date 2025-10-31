@@ -709,23 +709,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/push/admin/disable-user": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Disable User Push */
-    post: operations["disable_user_push_push_admin_disable_user_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/push/admin/topics/{user_id}": {
     parameters: {
       query?: never
@@ -740,6 +723,23 @@ export interface paths {
     /** Admin Update User Topics */
     put: operations["admin_update_user_topics_push_admin_topics__user_id__put"]
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/push/admin/disable-user": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Disable User Push */
+    post: operations["disable_user_push_push_admin_disable_user_post"]
     delete?: never
     options?: never
     head?: never
@@ -2289,13 +2289,6 @@ export interface components {
        */
       user_id?: number | null
     }
-    /** ResetPasswordIn */
-    ResetPasswordIn: {
-      /** Token */
-      token: string
-      /** Password */
-      password: string
-    }
     /** PushTopicsResponse */
     PushTopicsResponse: {
       /** Allowed */
@@ -2309,6 +2302,13 @@ export interface components {
       has_preferences: boolean
       /** Updated At */
       updated_at?: string | null
+    }
+    /** ResetPasswordIn */
+    ResetPasswordIn: {
+      /** Token */
+      token: string
+      /** Password */
+      password: string
     }
     /** ScheduleCreate */
     ScheduleCreate: {
