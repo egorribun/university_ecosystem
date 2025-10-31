@@ -215,12 +215,12 @@ body.dark {
   --dash-card-news-orb: color-mix(in srgb, var(--nav-bg) 60%, var(--nav-text) 40%);
   --dash-card-events-radial: color-mix(in srgb, var(--nav-bg) 78%, var(--secondary-text) 22%);
   --dash-card-events-orb: color-mix(in srgb, var(--nav-bg) 56%, var(--secondary-text) 44%);
-  --dash-arrow-pill-bg: color-mix(in srgb, var(--nav-bg) 78%, var(--nav-text) 22%);
-  --dash-arrow-pill-border: color-mix(in srgb, var(--nav-bg) 60%, var(--nav-text) 40%);
-  --dash-arrow-pill-text: color-mix(in srgb, var(--page-text) 85%, var(--nav-bg) 15%);
-  --dash-arrow-pill-bg-active: color-mix(in srgb, var(--nav-bg) 68%, var(--nav-text) 32%);
-  --dash-arrow-pill-border-active: color-mix(in srgb, var(--nav-bg) 55%, var(--nav-text) 45%);
-  --dash-arrow-pill-text-active: color-mix(in srgb, var(--page-text) 94%, var(--nav-bg) 6%);
+  --dash-arrow-pill-bg: color-mix(in srgb, var(--nav-bg) 70%, var(--nav-link) 30%);
+  --dash-arrow-pill-border: color-mix(in srgb, var(--nav-bg) 45%, var(--nav-link) 55%);
+  --dash-arrow-pill-text: color-mix(in srgb, var(--page-text) 88%, var(--nav-link) 12%);
+  --dash-arrow-pill-bg-active: color-mix(in srgb, var(--nav-bg) 52%, var(--nav-link-hover) 48%);
+  --dash-arrow-pill-border-active: color-mix(in srgb, var(--nav-bg) 35%, var(--nav-link-hover) 65%);
+  --dash-arrow-pill-text-active: color-mix(in srgb, var(--page-text) 96%, var(--nav-link-hover) 4%);
   --dash-icon-halo-bg: color-mix(in srgb, var(--nav-bg) 52%, var(--nav-text) 48%);
   --dash-icon-halo-border: color-mix(in srgb, var(--nav-bg) 60%, var(--nav-text) 40%);
   --dash-icon-halo-text: color-mix(in srgb, var(--page-text) 82%, var(--nav-bg) 18%);
