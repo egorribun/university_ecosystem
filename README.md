@@ -149,7 +149,7 @@ stores them as optimized WebP files (PNG when transparency is required).
   cd root
   pytest
   ```
-- Static analysis and formatting checks:
+- Static analysis and formatting checks (the pre-commit hook runs `ruff check --fix` with the default rule set so commits match CI expectations):
   ```bash
   cd root
   ruff check app tests
