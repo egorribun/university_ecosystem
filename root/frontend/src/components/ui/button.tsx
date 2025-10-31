@@ -81,6 +81,7 @@ const ButtonBase = <T extends ElementType = "button">(
       ref={ref}
       className={cn(
         "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-ue-lg font-semibold tracking-wide text-[0.95rem] transition-[transform,box-shadow,background-color,border-color,color] duration-200 ease-out focus-visible:outline-none focus-visible:shadow-focus",
+        "no-underline hover:no-underline focus-visible:no-underline",
         "motion-reduce:transition-[box-shadow] motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
         sizeStyles[size],
         variantStyles[variant],

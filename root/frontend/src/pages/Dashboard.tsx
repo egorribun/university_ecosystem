@@ -15,6 +15,7 @@ import axios from "../api/client"
 import { Link, useNavigate } from "react-router-dom"
 import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -453,7 +454,7 @@ export default function Dashboard() {
   const panelHover =
     "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] text-left transition-[background-color,transform,box-shadow,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-even/list:bg-[color:var(--dash-panel-item-bg-alt)] hover:border-[color:var(--dash-panel-item-ring)] hover:bg-[color:var(--dash-panel-item-hover)] hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] focus-visible:border-[color:var(--dash-panel-item-ring)] focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:transform-none motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-[color:var(--dash-panel-item-ring)] before:opacity-0 before:scale-[0.96] before:transition-[transform,opacity,border-color] before:duration-[var(--dash-hover-duration)] before:ease-[var(--dash-hover-ease)] before:content-[''] hover:before:opacity-100 hover:before:scale-100"
+    "group relative isolate w-full overflow-hidden rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 text-left transition-[background-color,transform,box-shadow,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] sm:px-5 sm:py-4 group-even/list:bg-[color:var(--dash-panel-item-bg-alt)] hover:border-[color:var(--dash-panel-item-ring)] hover:bg-[color:var(--dash-panel-item-hover)] hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] focus-visible:border-[color:var(--dash-panel-item-ring)] focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:transform-none motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-[color:var(--dash-panel-item-ring)] before:opacity-0 before:scale-[0.96] before:transition-[transform,opacity,border-color] before:duration-[var(--dash-hover-duration)] before:ease-[var(--dash-hover-ease)] before:content-[''] hover:before:opacity-100 hover:before:scale-100"
 
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
@@ -680,26 +681,34 @@ export default function Dashboard() {
                   {!loadingSched && todayLessons.length > 0 && (
                     <ul className="space-y-3">
                       {todayLessons.map((l) => (
-                        <li key={l.id} className="dash-list-item flex flex-col gap-1">
-                          <div className="flex flex-wrap items-center gap-2 text-sm">
-                            <Badge
-                              size="sm"
-                              className="chip-time"
-                              label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                            />
-                            <span className="text-base font-semibold text-page-foreground">
-                              {l.subject}
-                            </span>
-                            <Badge
-                              size="sm"
-                              className="chip-type"
-                              variant="outline"
-                              label={l.lesson_type}
-                            />
+                        <li key={l.id} className="dash-list-item">
+                          <div
+                            className={cn(
+                              listActionBase,
+                              "flex flex-col gap-2 text-left sm:gap-2.5",
+                              "cursor-default"
+                            )}
+                          >
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                              <Badge
+                                size="sm"
+                                className="chip-time"
+                                label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
+                              />
+                              <span className="text-base font-semibold text-page-foreground">
+                                {l.subject}
+                              </span>
+                              <Badge
+                                size="sm"
+                                className="chip-type"
+                                variant="outline"
+                                label={l.lesson_type}
+                              />
+                            </div>
+                            <p className="text-sm leading-relaxed text-secondary">
+                              {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                            </p>
                           </div>
-                          <p className="text-sm text-secondary">
-                            {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
-                          </p>
                         </li>
                       ))}
                     </ul>
@@ -777,14 +786,14 @@ export default function Dashboard() {
                       aria-label={t("dashboard:aria.newsList")}
                     >
                       {news.map((n) => (
-                          <li key={n.id} className="dash-list-item">
-                            <button
-                              type="button"
-                              className={cn(listActionBase, "flex items-center gap-3")}
-                              onClick={() => navigate(`/news/${n.id}`)}
-                              title={n.title}
-                              aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-                            >
+                        <li key={n.id} className="dash-list-item">
+                          <button
+                            type="button"
+                            className={cn(listActionBase, "flex items-start gap-4 text-left sm:gap-5")}
+                            onClick={() => navigate(`/news/${n.id}`)}
+                            title={n.title}
+                            aria-label={t("dashboard:aria.newsItem", { title: n.title })}
+                          >
                             <DateBullet date={n.created_at} locale={locale} />
                             <div className="flex flex-col gap-1">
                               <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-page-foreground">
@@ -797,9 +806,9 @@ export default function Dashboard() {
                             </div>
                             <span
                               aria-hidden="true"
-                              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-[transform,opacity,background-color,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:-translate-y-[calc(var(--dash-hover-lift)/2)] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
+                              className="ml-auto inline-flex h-9 w-9 flex-none items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-base text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-[transform,opacity,background-color,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:-translate-y-[calc(var(--dash-hover-lift)/2)] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
                             >
-                              →
+                              <ArrowForwardRoundedIcon aria-hidden="true" fontSize="inherit" className="h-4 w-4" />
                             </span>
                           </button>
                         </li>
@@ -897,7 +906,7 @@ export default function Dashboard() {
                           <li key={e.id} className="dash-list-item">
                             <button
                               type="button"
-                              className={cn(listActionBase, "flex flex-col gap-2")}
+                              className={cn(listActionBase, "flex flex-col items-start gap-3 text-left sm:gap-3")}
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >
