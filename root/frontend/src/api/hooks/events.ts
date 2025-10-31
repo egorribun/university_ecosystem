@@ -134,14 +134,17 @@ type UseEventsListQueryOptions = Omit<
   UseInfiniteQueryOptions<
     PaginatedResponse<Event>,
     Error,
-    PaginatedResponse<Event>,
-    PaginatedResponse<Event>,
-    EventsListQueryKey
+    InfiniteData<PaginatedResponse<Event>, string | null>,
+    EventsListQueryKey,
+    string | null
   >,
   "queryKey" | "queryFn" | "initialPageParam" | "getNextPageParam"
 >
 
-export type UseEventsListQueryResult = UseInfiniteQueryResult<PaginatedResponse<Event>, Error> & {
+export type UseEventsListQueryResult = UseInfiniteQueryResult<
+  InfiniteData<PaginatedResponse<Event>, string | null>,
+  Error
+> & {
   events: Event[]
   pagination: PaginatedResponse<Event> | null
   queryKey: EventsListQueryKey
@@ -159,8 +162,9 @@ export const useEventsListQuery = (
   const query = useInfiniteQuery<
     PaginatedResponse<Event>,
     Error,
-    PaginatedResponse<Event>,
-    EventsListQueryKey
+    InfiniteData<PaginatedResponse<Event>, string | null>,
+    EventsListQueryKey,
+    string | null
   >({
     queryKey,
     enabled,
@@ -193,7 +197,9 @@ export const useEventsListQuery = (
       const response = await api.get<PaginatedResponse<Event>>("/events", requestConfig)
 
       if (response.status === 304) {
-        const cached = queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>>>(queryKey)
+        const cached = queryClient.getQueryData<
+          InfiniteData<PaginatedResponse<Event>, string | null>
+        >(queryKey)
         return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
       }
 

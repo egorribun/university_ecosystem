@@ -27,8 +27,8 @@ export async function saveSubscription(
   const payload: components["schemas"]["PushSubscriptionIn"] = {
     endpoint,
     keys: { p256dh, auth },
-    topics,
     user_agent: userAgent,
+    ...(Array.isArray(topics) ? { topics } : {}),
   }
 
   const { data } = await api.post<PushSubscriptionResponse>("/push/subscribe", payload)
@@ -68,7 +68,7 @@ export async function fetchPushTopics(): Promise<PushTopicsResponse> {
   const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /push/topics")
   return {
     allowed: parsed.allowed,
-    topics: parsed.topics,
+    topics: parsed.topics ?? [],
     has_preferences: parsed.has_preferences ?? false,
     updated_at: parsed.updated_at ?? null,
   }

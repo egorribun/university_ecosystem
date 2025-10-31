@@ -390,7 +390,9 @@ api.interceptors.response.use(
     const config = r.config as ApiRequestConfig | undefined
     const etagKey = config?.etagCacheKey
     if (etagKey) {
-      const responseHeaders = AxiosHeaders.from(r.headers ?? {})
+      const responseHeaders = AxiosHeaders.from(
+        (r.headers ?? undefined) as AxiosHeaders | string | undefined
+      )
       const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
       if (typeof tag === "string" && tag.trim()) {
         etagCache.set(etagKey, tag)
