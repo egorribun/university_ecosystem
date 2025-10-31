@@ -192,6 +192,7 @@ dist-ssr/
 *.pfx
 *.sqlite
 *.sqlite3
+root/dev.db
 root/app/static/uploads/**
 !root/app/static/uploads/.gitkeep
 root/frontend/public/maskable-icon-192.png
