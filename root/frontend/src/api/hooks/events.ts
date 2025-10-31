@@ -197,9 +197,8 @@ export const useEventsListQuery = (
       const response = await api.get<PaginatedResponse<Event>>("/events", requestConfig)
 
       if (response.status === 304) {
-        const cached = queryClient.getQueryData<
-          InfiniteData<PaginatedResponse<Event>, string | null>
-        >(queryKey)
+        const cached =
+          queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>, string | null>>(queryKey)
         return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
       }
 
