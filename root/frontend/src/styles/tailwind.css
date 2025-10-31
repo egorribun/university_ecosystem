@@ -76,6 +76,29 @@
     @apply bg-surface-accent font-bold;
   }
 
+  .dash-list-item {
+    @apply relative block overflow-hidden rounded-ue-lg px-3 py-3;
+    list-style: none;
+    background: var(--dash-panel-item-bg);
+  }
+
+  .dash-list-item::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 10px;
+    width: 4px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dash-chip-time-text) 65%, transparent 35%) 0%,
+      color-mix(in srgb, var(--dash-chip-time-text) 35%, transparent 65%) 100%
+    );
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
   .skeleton {
     @apply relative overflow-hidden rounded-ue-md bg-skeleton text-transparent;
     animation: fade-in var(--anim-med, 0.3s ease) both;
