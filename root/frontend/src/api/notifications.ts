@@ -123,9 +123,7 @@ export async function sendTest(): Promise<SendTestNotificationResponse> {
 }
 
 export async function getVapidPublicKey(): Promise<string | null> {
-  const { data } = await apiClient.get(
-    "/push/vapid-public-key"
-  )
+  const { data } = await apiClient.get("/push/vapid-public-key")
   const schema = z.object({ publicKey: z.string().trim().min(1).optional() })
   const parsed = ensureValidResponse(schema, data, "GET /push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
@@ -170,12 +168,8 @@ export async function updateAdminUserTopics(
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
-  const { data } = await apiClient.put(
-    "/push/admin/topics/{user_id}",
-    payload,
-    {
-      pathParams: { user_id: userId },
-    }
-  )
+  const { data } = await apiClient.put("/push/admin/topics/{user_id}", payload, {
+    pathParams: { user_id: userId },
+  })
   return ensureValidResponse(adminTopicsSchema, data, `PUT /push/admin/topics/${userId}`)
 }

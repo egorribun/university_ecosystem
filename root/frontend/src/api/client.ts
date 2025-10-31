@@ -577,8 +577,8 @@ const normalizeHeaders = <P extends ApiPath, M extends ApiMethod>(
     return headers
   }
 
-  const normalizedEntries = Object.entries(headers).filter(([, value]) =>
-    value !== undefined && value !== null
+  const normalizedEntries = Object.entries(headers).filter(
+    ([, value]) => value !== undefined && value !== null
   )
 
   if (normalizedEntries.length === 0) {
