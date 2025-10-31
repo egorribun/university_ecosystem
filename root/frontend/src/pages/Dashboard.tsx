@@ -564,7 +564,7 @@ export default function Dashboard() {
                 data-fade="left"
                 data-pop="true"
                 style={fadeDelayStyle("140ms")}
-                className={cn(panelBase, panelHover, "lg:col-span-4")}
+                className={cn(panelBase, panelHover, "dash-panel-schedule", "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingSched}
               >
@@ -681,7 +681,7 @@ export default function Dashboard() {
                 data-fade="up"
                 data-pop="true"
                 style={fadeDelayStyle("200ms")}
-                className={cn(panelBase, panelHover, "lg:col-span-4")}
+                className={cn(panelBase, panelHover, "dash-panel-news", "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingNews}
               >
@@ -783,7 +783,7 @@ export default function Dashboard() {
                 data-fade="right"
                 data-pop="true"
                 style={fadeDelayStyle("260ms")}
-                className={cn(panelBase, panelHover, "lg:col-span-4")}
+                className={cn(panelBase, panelHover, "dash-panel-events", "lg:col-span-4")}
                 padding="lg"
                 aria-busy={loadingEvents}
               >
