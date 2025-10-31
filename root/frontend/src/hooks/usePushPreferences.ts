@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ChangeEvent } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { deleteSubscription } from "@/api/notifications"
+import { logError, logWarning } from "@/app/logger"
 import {
   ensurePushSubscription,
   getExistingPushSubscription,
@@ -209,7 +210,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       invalidatePushQueries()
       notify({ text: t("notifications:messages.enabled"), sev: "success" })
     } catch (error) {
-      console.error("Failed to enable notifications", error)
+      logError("Failed to enable notifications", error)
       notify({ text: t("notifications:messages.enableFailed"), sev: "error" })
     } finally {
       setPushBusy(false)
@@ -243,13 +244,13 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       try {
         unsubscribed = await sub.unsubscribe()
       } catch (error) {
-        console.error("Failed to unsubscribe push", error)
+        logError("Failed to unsubscribe push", error)
       }
       if (endpoint) {
         try {
           await deleteSubscription(endpoint)
         } catch (error) {
-          console.warn("Failed to delete push subscription on server", error)
+          logWarning("Failed to delete push subscription on server", error)
         }
       }
       setPushSubscription(null)
@@ -261,7 +262,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       }
       invalidatePushQueries()
     } catch (error) {
-      console.error("Failed to disable notifications", error)
+      logError("Failed to disable notifications", error)
       notify({ text: t("notifications:messages.disableFailed"), sev: "error" })
     } finally {
       setPushBusy(false)
@@ -320,7 +321,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           })
         }
       } catch (error) {
-        console.error("Failed to update topics", error)
+        logError("Failed to update topics", error)
         setTopicState(previousState)
         notify({ text: t("notifications:messages.updateFailed"), sev: "error" })
       } finally {
@@ -441,7 +442,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         }
       } catch (error) {
         if (active) {
-          console.warn(t("notifications:messages.detectFailed"), error)
+          logWarning(t("notifications:messages.detectFailed"), error)
         }
       } finally {
         if (active) setPushInitializing(false)

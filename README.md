@@ -213,6 +213,7 @@ the cached payload when available.
 - The frontend communicates with the backend via REST APIs, proxied through the Vite dev server in development.
 - Scheduled notifications are stored in PostgreSQL; the inline scheduler (optional) or the dedicated worker consumes them.
 - Observability integrations (OpenTelemetry, Sentry) are opt-in and controlled through environment variables.
+- Client-side logging is centralized via `src/app/logger.ts`: call `logError`/`logWarning` instead of `console.*` to forward issues to Sentry with console fallbacks. Unhandled promise and Axios errors are captured globally by `initGlobalErrorHandlers()` during app bootstrap.
 
 ## Additional documentation
 - [Deployment guide](docs/DEPLOY.md) — infrastructure and CI/CD recommendations.

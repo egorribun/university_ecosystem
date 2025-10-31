@@ -14,6 +14,7 @@ import {
   buildNotificationDetails,
   parsePushEventData,
 } from "@/push/notification-helpers"
+import { logError, logWarning } from "@/app/logger"
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis
 
@@ -91,7 +92,7 @@ function attachTransactionFinalizers(db: IDBDatabase, tx: IDBTransaction) {
     try {
       db.close()
     } catch (error) {
-      console.error("SW: failed to close IndexedDB connection", error)
+      logError("SW: failed to close IndexedDB connection", error)
     }
   }
   tx.addEventListener("complete", close)
@@ -197,7 +198,7 @@ async function storePendingNavigation(record: PendingNavigation): Promise<void> 
   try {
     await addRecord(NAVIGATION_STORE, record)
   } catch (error) {
-    console.error("SW: failed to queue navigation", error)
+    logError("SW: failed to queue navigation", error)
   }
 }
 
@@ -205,7 +206,7 @@ async function storePendingReport(record: PendingReport): Promise<void> {
   try {
     await addRecord(REPORT_STORE, record)
   } catch (error) {
-    console.error("SW: failed to queue click report", error)
+    logError("SW: failed to queue click report", error)
   }
 }
 
@@ -213,7 +214,7 @@ async function readPendingNavigations(): Promise<PendingNavigation[]> {
   try {
     return await getAllRecords<PendingNavigation>(NAVIGATION_STORE)
   } catch (error) {
-    console.error("SW: failed to read queued navigations", error)
+    logError("SW: failed to read queued navigations", error)
     return []
   }
 }
@@ -222,7 +223,7 @@ async function readPendingReports(): Promise<PendingReport[]> {
   try {
     return await getAllRecords<PendingReport>(REPORT_STORE)
   } catch (error) {
-    console.error("SW: failed to read queued click reports", error)
+    logError("SW: failed to read queued click reports", error)
     return []
   }
 }
@@ -231,7 +232,7 @@ async function removePendingNavigation(id: number): Promise<void> {
   try {
     await deleteRecord(NAVIGATION_STORE, id)
   } catch (error) {
-    console.error("SW: failed to remove queued navigation", error)
+    logError("SW: failed to remove queued navigation", error)
   }
 }
 
@@ -239,7 +240,7 @@ async function removePendingReport(id: number): Promise<void> {
   try {
     await deleteRecord(REPORT_STORE, id)
   } catch (error) {
-    console.error("SW: failed to remove queued click report", error)
+    logError("SW: failed to remove queued click report", error)
   }
 }
 
@@ -265,7 +266,7 @@ async function scheduleSync(tag: string): Promise<boolean> {
     await syncManager.register(tag)
     return true
   } catch (error) {
-    console.warn(`SW: failed to register sync task "${tag}"`, error)
+    logWarning(`SW: failed to register sync task "${tag}"`, error)
     return false
   }
 }
@@ -302,7 +303,7 @@ async function focusOrOpenClient(targetUrl: string): Promise<boolean> {
       return true
     }
   } catch (error) {
-    console.error("SW: failed to open client for notification click", error)
+    logError("SW: failed to open client for notification click", error)
   }
 
   return false
@@ -330,7 +331,7 @@ async function sendClickReport(record: PendingReport): Promise<boolean> {
         return true
       }
     } catch (error) {
-      console.warn("SW: sendBeacon failed for click report", error)
+      logWarning("SW: sendBeacon failed for click report", error)
     }
   }
 
@@ -347,7 +348,7 @@ async function sendClickReport(record: PendingReport): Promise<boolean> {
 
     return response.ok
   } catch (error) {
-    console.warn("SW: click report request failed", error)
+    logWarning("SW: click report request failed", error)
     return false
   }
 }
@@ -582,7 +583,7 @@ self.addEventListener("notificationclick", (event) => {
         try {
           reportUrl = new URL(rawReportUrl, self.registration.scope).href
         } catch (error) {
-          console.warn("SW: failed to resolve report URL", error)
+          logWarning("SW: failed to resolve report URL", error)
           reportUrl = rawReportUrl
         }
       }
