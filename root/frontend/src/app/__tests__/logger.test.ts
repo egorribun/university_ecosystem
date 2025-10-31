@@ -13,8 +13,8 @@ const originalConsoleWarn = console.warn
 
 beforeEach(async () => {
   const sentry = await import("@sentry/react")
-  captureException = sentry.captureException as unknown as vi.Mock
-  captureMessage = sentry.captureMessage as unknown as vi.Mock
+  captureException = sentry.captureException as unknown as Mock
+  captureMessage = sentry.captureMessage as unknown as Mock
   captureException.mockClear()
   captureMessage.mockClear()
   console.error = vi.fn()
