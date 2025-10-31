@@ -422,7 +422,7 @@ export default function Dashboard() {
   ]
 
   const panelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg)] text-page-foreground !shadow-[var(--dash-panel-shadow)] transition-all duration-500"
+    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-all duration-500"
   const panelHover =
     "hover:-translate-y-[6px] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
 
@@ -489,7 +489,7 @@ export default function Dashboard() {
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] opacity-80 mix-blend-soft-light transition-opacity duration-700 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-0 dash-highlight-veil bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] transition-opacity duration-700"
               />
               <span
                 aria-hidden="true"
@@ -497,7 +497,7 @@ export default function Dashboard() {
               >
                 <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
               </span>
-              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] opacity-70 blur-3xl" />
+              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] dash-highlight-veil blur-3xl" />
               <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
               <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
                 <div className="space-y-3 text-nav-text lg:col-span-8">
@@ -667,11 +667,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] opacity-0 mix-blend-soft-light transition-opacity duration-500 group-hover:opacity-80"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] opacity-40 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] opacity-30 blur-3xl mix-blend-soft-light transition duration-700 group-hover:opacity-70"
                 />
               </Card>
 
@@ -769,11 +769,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] opacity-0 mix-blend-soft-light transition-opacity duration-500 group-hover:opacity-80"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-80"
+                  className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] opacity-30 blur-3xl mix-blend-soft-light transition duration-700 group-hover:opacity-70"
                 />
               </Card>
 
@@ -901,11 +901,11 @@ export default function Dashboard() {
                 </div>
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] opacity-0 mix-blend-soft-light transition-opacity duration-500 group-hover:opacity-80"
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] opacity-45 blur-3xl transition duration-700 group-hover:opacity-85"
+                  className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] opacity-30 blur-3xl mix-blend-soft-light transition duration-700 group-hover:opacity-65"
                 />
               </Card>
             </section>

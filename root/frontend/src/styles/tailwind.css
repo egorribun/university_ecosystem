@@ -99,6 +99,12 @@
     pointer-events: none;
   }
 
+  .dash-highlight-veil {
+    opacity: var(--dash-highlight-opacity, 0.6);
+    mix-blend-mode: soft-light;
+    transition: opacity 0.6s ease, filter 0.6s ease;
+  }
+
   .skeleton {
     @apply relative overflow-hidden rounded-ue-md bg-skeleton text-transparent;
     animation: fade-in var(--anim-med, 0.3s ease) both;
