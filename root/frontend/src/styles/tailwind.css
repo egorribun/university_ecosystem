@@ -54,13 +54,12 @@
     top: var(--dash-panel-divider-offset);
     height: 2.75rem;
     pointer-events: none;
-    background:
-      radial-gradient(
-        120% 120% at 50% 50%,
-        color-mix(in srgb, var(--dash-card-divider, transparent) 70%, transparent) 0%,
-        color-mix(in srgb, var(--dash-card-divider, transparent) 55%, transparent) 48%,
-        transparent 75%
-      );
+    background: radial-gradient(
+      120% 120% at 50% 50%,
+      color-mix(in srgb, var(--dash-card-divider, transparent) 70%, transparent) 0%,
+      color-mix(in srgb, var(--dash-card-divider, transparent) 55%, transparent) 48%,
+      transparent 75%
+    );
     opacity: 0.85;
     filter: blur(18px);
     transform: translateY(-50%);

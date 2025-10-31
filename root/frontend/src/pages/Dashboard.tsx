@@ -463,11 +463,7 @@ export default function Dashboard() {
     }
   }
 
-  const scheduleDividerOffset = currentLesson
-    ? "7.25rem"
-    : nextLesson
-    ? "5.5rem"
-    : "4.25rem"
+  const scheduleDividerOffset = currentLesson ? "7.25rem" : nextLesson ? "5.5rem" : "4.25rem"
 
   return (
     <Layout>

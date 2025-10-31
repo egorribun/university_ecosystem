@@ -192,13 +192,21 @@ body.dark {
   --dash-stories-radial: color-mix(in srgb, var(--nav-bg) 58%, var(--nav-text) 42%);
   --dash-card-schedule-radial: color-mix(in srgb, var(--nav-bg) 72%, var(--secondary-text) 28%);
   --dash-card-schedule-orb: color-mix(in srgb, var(--nav-bg) 58%, var(--nav-text) 42%);
-  --dash-card-schedule-divider: color-mix(in srgb, var(--dash-card-schedule-orb) 55%, var(--nav-text) 45%);
+  --dash-card-schedule-divider: color-mix(
+    in srgb,
+    var(--dash-card-schedule-orb) 55%,
+    var(--nav-text) 45%
+  );
   --dash-card-news-radial: color-mix(in srgb, var(--nav-bg) 68%, var(--nav-text) 32%);
   --dash-card-news-orb: color-mix(in srgb, var(--nav-bg) 52%, var(--nav-text) 48%);
   --dash-card-news-divider: color-mix(in srgb, var(--dash-card-news-orb) 52%, var(--nav-text) 48%);
   --dash-card-events-radial: color-mix(in srgb, var(--nav-bg) 70%, var(--secondary-text) 30%);
   --dash-card-events-orb: color-mix(in srgb, var(--nav-bg) 50%, var(--secondary-text) 50%);
-  --dash-card-events-divider: color-mix(in srgb, var(--dash-card-events-orb) 58%, var(--nav-text) 42%);
+  --dash-card-events-divider: color-mix(
+    in srgb,
+    var(--dash-card-events-orb) 58%,
+    var(--nav-text) 42%
+  );
   --dash-arrow-pill-bg: color-mix(in srgb, var(--nav-bg) 78%, var(--nav-text) 22%);
   --dash-arrow-pill-border: color-mix(in srgb, var(--nav-bg) 60%, var(--nav-text) 40%);
   --dash-arrow-pill-text: color-mix(in srgb, var(--page-text) 85%, var(--nav-bg) 15%);
