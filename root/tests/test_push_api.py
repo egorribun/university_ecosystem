@@ -1,6 +1,7 @@
 import pytest
 from fastapi import HTTPException, Request
 from sqlalchemy import select
+from starlette.requests import Request
 
 from app.core.config import settings
 from app.localization import translate

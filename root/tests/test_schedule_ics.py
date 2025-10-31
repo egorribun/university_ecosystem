@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 
@@ -16,8 +16,8 @@ def test_generate_schedule_ics_includes_lessons() -> None:
         teacher="Проф. Смирнов",
         room="А-101",
         weekday="Понедельник",
-        start_time=datetime(2024, 1, 1, 9, 0, tzinfo=UTC),
-        end_time=datetime(2024, 1, 1, 10, 30, tzinfo=UTC),
+        start_time=datetime(2024, 1, 1, 9, 0),
+        end_time=datetime(2024, 1, 1, 10, 30),
         parity="both",
         lesson_type="lecture",
     )
@@ -55,8 +55,8 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
         teacher="Проф. Смирнов",
         room="А-101",
         weekday="Понедельник",
-        start_time=datetime(2024, 1, 1, 9, 0, tzinfo=UTC),
-        end_time=datetime(2024, 1, 1, 10, 30, tzinfo=UTC),
+        start_time=datetime(2024, 1, 1, 9, 0),
+        end_time=datetime(2024, 1, 1, 10, 30),
         parity="both",
         lesson_type="practice",
     )
@@ -100,8 +100,8 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
         teacher="Dr. Smith",
         room="B-202",
         weekday="Tuesday",
-        start_time=datetime(2024, 1, 2, 11, 0, tzinfo=UTC),
-        end_time=datetime(2024, 1, 2, 12, 30, tzinfo=UTC),
+        start_time=datetime(2024, 1, 2, 11, 0),
+        end_time=datetime(2024, 1, 2, 12, 30),
         parity="both",
         lesson_type="ПЗ",
     )
@@ -134,8 +134,8 @@ async def test_schedule_endpoint_localizes_lesson_type(
         teacher="Dr. Brown",
         room="Room 101",
         weekday="monday",
-        start_time=datetime(2024, 3, 4, 9, 0, tzinfo=UTC),
-        end_time=datetime(2024, 3, 4, 10, 30, tzinfo=UTC),
+        start_time=datetime(2024, 3, 4, 9, 0),
+        end_time=datetime(2024, 3, 4, 10, 30),
         parity="both",
         lesson_type="lecture",
     )
@@ -174,8 +174,8 @@ async def test_schedule_endpoint_preserves_existing_vary_values(
         teacher="Dr. Stone",
         room="Planetarium",
         weekday="tuesday",
-        start_time=datetime(2024, 4, 2, 14, 0, tzinfo=UTC),
-        end_time=datetime(2024, 4, 2, 15, 30, tzinfo=UTC),
+        start_time=datetime(2024, 4, 2, 14, 0),
+        end_time=datetime(2024, 4, 2, 15, 30),
         parity="both",
         lesson_type="seminar",
     )

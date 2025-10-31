@@ -585,7 +585,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def trusted_hosts_list(self) -> list[str]:
-        if isinstance(self.trusted_hosts, list | tuple | set):
+        if isinstance(self.trusted_hosts, (list, tuple, set)):
             items = [str(v).strip() for v in self.trusted_hosts]
         else:
             items = [p.strip() for p in str(self.trusted_hosts).split(",")]
@@ -799,10 +799,7 @@ class Settings(BaseSettings):
             if self.strict_security_headers_enabled and not report_only:
                 directives = [
                     "default-src 'self'",
-                    (
-                        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' "
-                        "'report-sample'"
-                    ),
+                    "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'",
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob:",
                     f"connect-src {connect_value}",
@@ -815,10 +812,7 @@ class Settings(BaseSettings):
             else:
                 directives = [
                     "default-src 'self' http://localhost:5173",
-                    (
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-                        "http://localhost:5173 'report-sample'"
-                    ),
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'",
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob:",
                     f"connect-src {connect_value}",
@@ -858,10 +852,7 @@ def _load_settings() -> Settings:
         if not _should_allow_development_defaults():
             raise
         _logger.debug(
-            (
-                "Falling back to development defaults because settings "
-                "initialization failed: %s"
-            ),
+            "Falling back to development defaults because settings initialization failed: %s",
             exc,
             exc_info=False,
         )
@@ -872,24 +863,15 @@ def _load_settings() -> Settings:
         if not missing:
             missing = "DATABASE_URL, SECRET_KEY"
         hint_parts = [
-            (
-                "Provide real secrets via environment variables or a .env file "
-                "before deploying."
-            ),
+            "Provide real secrets via environment variables or a .env file before deploying.",
         ]
         if not (_PROJECT_ROOT / ".env").exists():
             hint_parts.append(
-                (
-                    "For local development, copy root/.env.example to root/.env "
-                    "and replace the placeholder values before starting the "
-                    "application."
-                ),
+                "For local development, copy root/.env.example to root/.env and replace the placeholder"
+                " values before starting the application.",
             )
         _logger.warning(
-            (
-                "Using development defaults for %s because DATABASE_URL and "
-                "SECRET_KEY are not configured. %s"
-            ),
+            "Using development defaults for %s because DATABASE_URL and SECRET_KEY are not configured. %s",
             missing,
             " ".join(hint_parts),
         )

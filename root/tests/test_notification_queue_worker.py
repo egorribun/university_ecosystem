@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import os
 from contextlib import suppress
@@ -639,7 +637,7 @@ async def test_worker_loop_emits_tracing_spans(monkeypatch: pytest.MonkeyPatch):
             self.attributes: dict[str, object] = {}
             self.exceptions: list[BaseException] = []
 
-        def __enter__(self) -> FakeSpan:
+        def __enter__(self) -> "FakeSpan":
             spans.append(self)
             return self
 
