@@ -160,7 +160,7 @@ def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
 
 
 def _json_default(value: Any) -> Any:
-    if isinstance(value, datetime | date | time):
+    if isinstance(value, (datetime, date, time)):
         return value.isoformat()
     return str(value)
 

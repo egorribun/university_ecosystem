@@ -465,7 +465,7 @@ class PeriodicTaskRun:
         total = 0
         if value is None:
             total = 0
-        elif isinstance(value, Iterable) and not isinstance(value, str | bytes):
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
             for item in value:
                 total += _coerce_deleted_value(item)
         else:

@@ -138,7 +138,7 @@ async def test_cleanup_expired_stories_handles_naive_now(db_session, story_facto
         expires_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=30),
     )
 
-    removed = await cleanup_expired_stories(db=db_session, now=dt.datetime.now(dt.UTC))
+    removed = await cleanup_expired_stories(db=db_session, now=dt.datetime.now())
     assert removed >= 1
     async with async_session() as verify_session:
         assert await verify_session.get(models.Story, past_story.id) is None
