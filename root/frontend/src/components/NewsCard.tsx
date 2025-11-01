@@ -1,19 +1,4 @@
-import { FC, memo, useState, useEffect, useRef, useCallback, useMemo } from "react"
-import {
-  Box,
-  Typography,
-  IconButton,
-  Menu,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Stack,
-  Button,
-  useMediaQuery,
-} from "@mui/material"
+import { FC, memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
 import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -29,9 +14,24 @@ import SmartImage from "@/components/SmartImage"
 import { cn } from "@/utils/cn"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { useTranslation } from "react-i18next"
+import { Button } from "@/components/ui"
+import Dialog from "@/components/Dialog"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
+
+const inputClass =
+  "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
+const textareaClass = `${inputClass} min-h-[128px] resize-y leading-relaxed`
+
+const iconButtonClass =
+  "inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/80 text-[color:var(--nav-link)] shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+
+const menuPanelClass =
+  "absolute right-0 top-12 z-20 min-w-[180px] overflow-hidden rounded-ue-md border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/98 shadow-surface-strong backdrop-blur-xl"
+
+const menuItemClass =
+  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-[color:var(--page-text)] transition hover:bg-[color:var(--glass-bg)]/80 focus-visible:outline-none focus-visible:bg-[color:var(--glass-bg)]"
 
 type NewsCardProps = {
   id: number
@@ -42,6 +42,28 @@ type NewsCardProps = {
   created_at: string
   image_url?: string
   onChange?: () => void
+}
+
+type FieldProps = {
+  label: string
+  htmlFor: string
+  children: ReactNode
+  required?: boolean
+}
+
+function Field({ label, htmlFor, children, required = false }: FieldProps) {
+  return (
+    <div className="space-y-2">
+      <label
+        htmlFor={htmlFor}
+        className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
+      >
+        {label}
+        {required ? <span className="ml-1 text-[#f87171]">*</span> : null}
+      </label>
+      {children}
+    </div>
+  )
 }
 
 const getMoscowDate = (dateStr: string) => {
@@ -67,9 +89,13 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
 
-  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const firstMenuItemRef = useRef<HTMLButtonElement | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const editTitleRef = useRef<HTMLInputElement | null>(null)
 
   const [editData, setEditData] = useState({
     title,
@@ -86,8 +112,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [cardImageReady, setCardImageReady] = useState(!image_url)
 
-  const isMobile = useMediaQuery("(max-width:600px)")
   const menuId = `news-card-menu-${id}`
+  const menuButtonId = `${menuId}-button`
 
   const localizedTitle = useMemo(() => {
     const english = title_en ?? ""
@@ -115,7 +141,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
-  // preview URL lifecycle
   useEffect(() => {
     if (!newImage) {
       setPreviewUrl(null)
@@ -132,6 +157,34 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [previewUrl])
 
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (menuRef.current?.contains(target) || menuButtonRef.current?.contains(target)) return
+      setMenuOpen(false)
+    }
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false)
+        menuButtonRef.current?.focus()
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick)
+    document.addEventListener("keydown", handleKey)
+    if (firstMenuItemRef.current) firstMenuItemRef.current.focus()
+
+    return () => {
+      document.removeEventListener("mousedown", handleClick)
+      document.removeEventListener("keydown", handleKey)
+    }
+  }, [menuOpen])
+
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+
   const openEditDialog = useCallback(() => {
     setEditData({
       title,
@@ -147,7 +200,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       setPreviewUrl(null)
     }
     if (imageInputRef.current) imageInputRef.current.value = ""
-  }, [title, content, title_en, content_en, image_url, previewUrl])
+    closeMenu()
+  }, [title, content, title_en, content_en, image_url, previewUrl, closeMenu])
 
   const closeEditDialog = useCallback(() => {
     setEditOpen(false)
@@ -178,7 +232,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         try {
           const data = new FormData()
           data.append("file", newImage)
-          // единый эндпоинт загрузки
           const res = await api.post<{ url: string }>(`/news/upload_image`, data, {
             headers: { "Content-Type": "multipart/form-data" },
           })
@@ -218,368 +271,282 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [id, onChange])
 
-  const handleCardClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (editOpen) {
-        e.stopPropagation()
-        e.preventDefault()
-        return
-      }
-      const el = e.target as HTMLElement
-      if (
-        el.closest("button") ||
-        el.closest("input") ||
-        el.closest(".MuiInputBase-root") ||
-        el.closest('[role="menu"]')
-      )
-        return
-      navigate(`/news/${id}`)
-    },
-    [editOpen, id, navigate]
-  )
+  const handleCardClick = useCallback(() => {
+    if (editOpen) return
+    navigate(`/news/${id}`)
+  }, [editOpen, id, navigate])
 
-  const hoveringDisabled = editOpen || Boolean(menuAnchor)
-  const interactiveSx = useMemo(() => {
-    if (hoveringDisabled) {
-      return {}
-    }
-    return {
-      "&:hover": {
-        transform: "translateY(-2px) scale(1.02)",
-        boxShadow: "var(--shadow-2)",
-      },
-      "&:active": {
-        transform: "scale(0.997)",
-      },
-    }
-  }, [hoveringDisabled])
+  const hoveringDisabled = editOpen || menuOpen
 
   return (
-    <Box
-      className={cn("news-card")}
-      sx={{
-        width: "100%",
-        maxWidth: 700,
-        borderRadius: { xs: "1.1rem", sm: "1.2rem" },
-        background: "var(--card-bg)",
-        color: "var(--page-text)",
-        position: "relative",
-        cursor: hoveringDisabled ? "default" : "pointer",
-        boxShadow: 5,
-        p: 0,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 340,
-        "&:focus-visible": {
-          outline: "2px solid var(--nav-link)",
-          outlineOffset: "2px",
-        },
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
-        ...interactiveSx,
-      }}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (editOpen) return
-        if (e.currentTarget !== e.target) return
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          navigate(`/news/${id}`)
-        }
-      }}
-      onClick={handleCardClick}
+    <article
+      className={cn(
+        "group relative flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
+        hoveringDisabled
+          ? "cursor-default"
+          : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
+      )}
     >
       {user?.role === "admin" && (
-        <>
-          <IconButton
-            aria-label={t("news:aria.cardActions")}
-            aria-controls={menuAnchor ? menuId : undefined}
+        <div className="absolute right-3 top-3 z-10">
+          <button
+            ref={menuButtonRef}
+            type="button"
+            id={menuButtonId}
+            aria-label={t("news:aria.cardActions") ?? ""}
+            aria-controls={menuOpen ? menuId : undefined}
             aria-haspopup="true"
-            aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-            sx={{
-              position: "absolute",
-              top: 10,
-              right: 10,
-              zIndex: 2,
-              bgcolor: "rgba(255,255,255,0.82)",
-              "&:hover": { bgcolor: "#fff" },
+            aria-expanded={menuOpen ? "true" : undefined}
+            className={iconButtonClass}
+            onClick={(event) => {
+              event.stopPropagation()
+              setMenuOpen((open) => !open)
             }}
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuAnchor(e.currentTarget)
-            }}
-            size="small"
             disabled={loading}
+            data-news-card-menu-button
           >
-            <MoreVertIcon />
-          </IconButton>
-          <Menu
-            id={menuId}
-            anchorEl={menuAnchor}
-            open={Boolean(menuAnchor)}
-            onClose={(e) => {
-              if (e) (e as any).stopPropagation?.()
-              setMenuAnchor(null)
-            }}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-            MenuListProps={{ "aria-labelledby": menuId }}
-          >
-            <MenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                openEditDialog()
-                setMenuAnchor(null)
-              }}
+            <MoreVertIcon fontSize="small" />
+          </button>
+          {menuOpen ? (
+            <div
+              ref={menuRef}
+              id={menuId}
+              role="menu"
+              aria-labelledby={menuButtonId}
+              data-news-card-menu
+              className={menuPanelClass}
             >
-              <EditIcon fontSize="small" sx={{ mr: 1 }} />
-              {t("common:buttons.edit")}
-            </MenuItem>
-            <MenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                setConfirmDeleteOpen(true)
-                setMenuAnchor(null)
-              }}
-            >
-              <DeleteIcon fontSize="small" sx={{ mr: 1 }} color="error" />
-              <span style={{ color: "#d32f2f" }}>{t("common:buttons.delete")}</span>
-            </MenuItem>
-          </Menu>
-        </>
+              <button
+                ref={firstMenuItemRef}
+                type="button"
+                className={menuItemClass}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  openEditDialog()
+                }}
+              >
+                <EditIcon fontSize="small" className="text-[color:var(--nav-link)]" />
+                {t("common:buttons.edit")}
+              </button>
+              <button
+                type="button"
+                className={cn(menuItemClass, "text-[#e11d48]")}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setConfirmDeleteOpen(true)
+                  closeMenu()
+                }}
+              >
+                <DeleteIcon fontSize="small" className="text-[#e11d48]" />
+                {t("common:buttons.delete")}
+              </button>
+            </div>
+          ) : null}
+        </div>
       )}
 
-      <Box
-        sx={{
-          width: "100%",
-          height: { xs: 160, sm: 180, md: 220, lg: 240 },
-          borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
-          borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
-          borderBottom: "1px solid #eee",
-          background: "linear-gradient(135deg, rgba(13,71,161,0.18), rgba(63,81,181,0.08))",
-          position: "relative",
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "stretch",
-          "& img": {
-            display: "block",
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(120deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
-            opacity: cardImageReady ? 0 : 1,
-            transition: "opacity 260ms ease",
-            pointerEvents: "none",
-          },
-        }}
+      <button
+        type="button"
+        onClick={handleCardClick}
+        disabled={hoveringDisabled}
+        className="flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
       >
-        <SmartImage
-          srcRaw={cardImageUrl}
-          alt={
-            localizedTitle
-              ? t("news:alt.hero", { title: localizedTitle })
-              : t("news:alt.heroFallback")
-          }
-          sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "block",
-            objectFit: "cover",
-            objectPosition: "center",
-          }}
-          onLoad={handleCardImageReady}
-          onError={handleCardImageReady}
-        />
-      </Box>
+        <div className="relative w-full border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
+          <div
+            className={cn(
+              "absolute inset-0 animate-pulse bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
+              cardImageReady ? "opacity-0" : "opacity-100"
+            )}
+            aria-hidden
+          />
+          <SmartImage
+            srcRaw={cardImageUrl}
+            alt={
+              localizedTitle
+                ? t("news:alt.hero", { title: localizedTitle })
+                : t("news:alt.heroFallback")
+            }
+            sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+            className="relative h-[180px] w-full object-cover sm:h-[220px]"
+            onLoad={handleCardImageReady}
+            onError={handleCardImageReady}
+          />
+        </div>
 
-      <Box
-        sx={{
-          p: { xs: 2, sm: 3 },
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <Typography
-          fontWeight={700}
-          variant="h6"
-          mb={1}
-          sx={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            fontSize: "clamp(1.07rem, 3vw, 1.18rem)",
-          }}
-        >
-          {localizedTitle}
-        </Typography>
+        <div className="flex flex-1 flex-col gap-3 px-4 py-5 sm:px-5 sm:py-6">
+          <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold">
+            {localizedTitle}
+          </h3>
 
-        <Typography
-          mb={2}
-          variant="body2"
-          color="text.secondary"
-          sx={{
-            minHeight: { xs: 44, sm: 64 },
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            fontSize: "clamp(0.99rem, 2vw, 1.06rem)",
-          }}
-        >
-          {sanitizedPreview}
-        </Typography>
+          <p
+            className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)]"
+            style={{
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            {sanitizedPreview}
+          </p>
 
-        <Box flex={1} />
+          <div className="mt-auto pt-2 text-sm text-[color:var(--secondary-text)]">
+            {createdAtIso && <time dateTime={createdAtIso}>{createdAtLabel}</time>}
+          </div>
+        </div>
+      </button>
 
-        <Typography color="var(--secondary-text)" fontSize={14} sx={{ mt: "auto" }}>
-          {createdAtIso && <time dateTime={createdAtIso}>{createdAtLabel}</time>}
-        </Typography>
-      </Box>
-
-      {/* Edit dialog */}
       <Dialog
         open={editOpen}
         onClose={closeEditDialog}
-        fullScreen={isMobile}
-        PaperProps={{
-          sx: {
-            borderRadius: { xs: 0, sm: 3 },
-            width: { xs: "100vw", sm: 420 },
-            maxWidth: { xs: "100vw", sm: 450 },
-          },
-        }}
+        title={t("news:dialogs.edit.title")}
+        size="md"
+        fullScreenOnMobile
+        closeLabel={t("common:buttons.close")}
+        bodyClassName="space-y-4"
+        footerClassName="flex-col-reverse gap-3 sm:flex-row"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={closeEditDialog}
+              disabled={loading || imageLoading}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                void handleEdit()
+              }}
+              disabled={loading || imageLoading}
+              loading={loading}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.save")}
+            </Button>
+          </>
+        }
+        initialFocus={() => editTitleRef.current ?? undefined}
       >
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.2rem" }}>
-          {t("news:dialogs.edit.title")}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
-            <TextField
-              label={t("news:form.title")}
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleEdit()
+          }}
+        >
+          <Field label={t("news:form.title") ?? ""} htmlFor={`news-edit-title-${id}`} required>
+            <input
+              id={`news-edit-title-${id}`}
+              ref={editTitleRef}
+              type="text"
               value={editData.title}
               onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
+              className={inputClass}
             />
-            <TextField
-              label={t("news:form.text")}
+          </Field>
+
+          <Field label={t("news:form.text") ?? ""} htmlFor={`news-edit-content-${id}`} required>
+            <textarea
+              id={`news-edit-content-${id}`}
               value={editData.content}
               onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-              multiline
+              className={textareaClass}
               rows={4}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
             />
-            <TextField
-              label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+          </Field>
+
+          <Field
+            label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
+            htmlFor={`news-edit-title-en-${id}`}
+          >
+            <input
+              id={`news-edit-title-en-${id}`}
+              type="text"
               value={editData.title_en}
               onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
+              className={inputClass}
             />
-            <TextField
-              label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+          </Field>
+
+          <Field
+            label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+            htmlFor={`news-edit-content-en-${id}`}
+          >
+            <textarea
+              id={`news-edit-content-en-${id}`}
               value={editData.content_en}
               onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-              multiline
+              className={textareaClass}
               rows={4}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
             />
-            <Box>
-              <Button
-                component="label"
-                variant="contained"
-                disabled={imageLoading}
-                startIcon={<PhotoCamera />}
-                sx={{
-                  minWidth: 120,
-                  fontWeight: 600,
-                  fontSize: "1rem",
-                  borderRadius: 2,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  ref={imageInputRef}
-                  onChange={handleImageChange}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </Button>
-              {editImageUrl && (
-                <Box mt={1}>
-                  <SmartImage
-                    srcRaw={editImageUrl}
-                    alt={t("news:alt.preview")}
-                    style={{
-                      width: 140,
-                      maxHeight: 90,
-                      objectFit: "cover",
-                      borderRadius: 8,
-                      border: "1px solid #eee",
-                      display: "block",
-                    }}
-                  />
-                </Box>
-              )}
-            </Box>
+          </Field>
 
-            <Stack direction="row" gap={2} mt={2}>
-              <Button
-                variant="contained"
-                onClick={handleEdit}
-                disabled={loading || imageLoading}
-                sx={{ fontWeight: 700, borderRadius: 2.2, px: 3, fontSize: "1.02rem" }}
-              >
-                {t("common:buttons.save")}
-              </Button>
-              <Button
-                variant="outlined"
-                color="secondary"
-                onClick={closeEditDialog}
-                sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
-              >
-                {t("common:buttons.cancel")}
-              </Button>
-            </Stack>
-          </Stack>
-        </DialogContent>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              as="label"
+              variant="outline"
+              size="sm"
+              leadingIcon={<PhotoCamera className="text-[1.15rem]" />}
+              className="w-full sm:w-auto"
+              disabled={imageLoading}
+            >
+              {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                ref={imageInputRef}
+                onChange={handleImageChange}
+              />
+            </Button>
+
+            {editImageUrl ? (
+              <SmartImage
+                srcRaw={editImageUrl}
+                alt={t("news:alt.preview")}
+                className="h-20 w-full max-w-[180px] rounded-ue-md border border-white/10 object-cover shadow-surface"
+              />
+            ) : null}
+          </div>
+        </form>
       </Dialog>
 
-      {/* Delete confirm */}
-      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
-        <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
-        <DialogContent>
-          <Typography>{t("news:dialogs.delete.description")}</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => setConfirmDeleteOpen(false)}
-            disabled={loading}
-          >
-            {t("common:buttons.cancel")}
-          </Button>
-          <Button variant="contained" color="error" onClick={handleDelete} disabled={loading}>
-            <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
-          </Button>
-        </DialogActions>
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        title={t("news:dialogs.delete.title")}
+        bodyClassName="space-y-4"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={loading}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                void handleDelete()
+              }}
+              disabled={loading}
+              loading={loading}
+              className="w-full bg-[linear-gradient(98deg,#dc2626,#b91c1c)] text-white hover:bg-[linear-gradient(98deg,#b91c1c,#991b1b)] sm:w-auto"
+            >
+              <DeleteIcon fontSize="small" className="mr-1" />
+              {t("common:buttons.delete")}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[0.98rem] text-[color:var(--secondary-text)]">
+          {t("news:dialogs.delete.description")}
+        </p>
       </Dialog>
-    </Box>
+    </article>
   )
 }
 
