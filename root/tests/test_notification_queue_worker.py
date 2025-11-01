@@ -629,8 +629,6 @@ async def test_cleanup_dead_lettered_jobs_disabled_with_zero_retention() -> None
 
 @pytest.mark.anyio
 async def test_worker_loop_emits_tracing_spans(monkeypatch: pytest.MonkeyPatch):
-    spans: list[FakeSpan] = []
-
     class FakeSpan:
         def __init__(self, name: str) -> None:
             self.name = name
@@ -654,6 +652,8 @@ async def test_worker_loop_emits_tracing_spans(monkeypatch: pytest.MonkeyPatch):
 
         def record_exception(self, exc: BaseException) -> None:
             self.exceptions.append(exc)
+
+    spans: list[FakeSpan] = []
 
     class FakeTracer:
         def start_as_current_span(self, name: str) -> FakeSpan:

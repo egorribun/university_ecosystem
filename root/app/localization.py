@@ -58,8 +58,14 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "en": "Hello{name}!",
     },
     "email.reset.instructions": {
-        "ru": "Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует {minutes} минут.",
-        "en": "You requested a password reset in the GUU Ecosystem. The link is valid for {minutes} minutes.",
+        "ru": (
+            "Вы запросили сброс пароля в Экосистеме ГУУ. "
+            "Ссылка действует {minutes} минут."
+        ),
+        "en": (
+            "You requested a password reset in the GUU Ecosystem. "
+            "The link is valid for {minutes} minutes."
+        ),
     },
     "email.reset.button": {
         "ru": "Сбросить пароль",
@@ -142,8 +148,14 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "en": "Multi-factor authentication was reset",
     },
     "notifications.mfa.reset.body": {
-        "ru": "Администратор отключил ваши MFA-методы. Настройте защиту повторно при следующем входе.",
-        "en": "An administrator removed your MFA methods. Please set them up again on your next sign-in.",
+        "ru": (
+            "Администратор отключил ваши MFA-методы. "
+            "Настройте защиту повторно при следующем входе."
+        ),
+        "en": (
+            "An administrator removed your MFA methods. Please set them up again "
+            "on your next sign-in."
+        ),
     },
     "notifications.actions.open_schedule": {
         "ru": "Открыть расписание",
