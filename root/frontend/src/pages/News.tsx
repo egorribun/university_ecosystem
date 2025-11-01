@@ -1,6 +1,7 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
+import NewsCardSkeleton from "../components/NewsCardSkeleton"
 import {
   useEffect,
   useState,
@@ -81,6 +82,7 @@ const News = () => {
 
   const isInitialLoading = isPending && newsList.length === 0
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
+  const skeletonCount = Math.max(visibleCount || 0, 6)
 
   useEffect(() => {
     return () => {
@@ -221,22 +223,44 @@ const News = () => {
             style={{ "--fade-delay": "200ms" } as CSSProperties}
             className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 sm:gap-6"
           >
-            {Array.isArray(visibleList) &&
-              visibleList.map((news) => (
-                <div key={news.id} className="flex h-full w-full">
-                  <NewsCard
-                    {...news}
-                    image_url={news.image_url ?? undefined}
-                    onChange={() => {
-                      void refetchNews()
-                    }}
-                  />
-                </div>
-              ))}
+            {isInitialLoading
+              ? Array.from({ length: skeletonCount }).map((_, index) => (
+                  <div key={`news-skeleton-${index}`} className="flex h-full w-full">
+                    <NewsCardSkeleton />
+                  </div>
+                ))
+              : Array.isArray(visibleList) &&
+                visibleList.map((news) => (
+                  <div key={news.id} className="flex h-full w-full">
+                    <NewsCard
+                      {...news}
+                      image_url={news.image_url ?? undefined}
+                      onChange={() => {
+                        void refetchNews()
+                      }}
+                    />
+                  </div>
+                ))}
 
-            {Array.isArray(newsList) && showEmptyState && (
-              <div className="col-span-full mt-16 flex flex-col items-center text-center text-[color:var(--secondary-text)]">
-                <p className="text-lg font-semibold sm:text-xl">{t("news:states.empty")}</p>
+            {showEmptyState && (
+              <div className="col-span-full mt-16 flex justify-center">
+                <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
+                    <ArticleIcon className="text-[2.2rem]" />
+                  </span>
+                  <p className="text-lg font-semibold text-[color:var(--page-text)] sm:text-xl">
+                    {t("news:states.empty")}
+                  </p>
+                  {user?.role === "admin" && (
+                    <Button
+                      size="lg"
+                      onClick={() => setAddOpen(true)}
+                      className="px-6"
+                    >
+                      {t("news:actions.add")}
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>
