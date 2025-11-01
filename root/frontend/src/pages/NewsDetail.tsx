@@ -1,22 +1,39 @@
-import { useEffect, useMemo, useRef, useState, useId } from "react"
+import type React from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  Box,
+  Typography,
+  CircularProgress,
+  Paper,
+  Stack,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Divider,
+  Snackbar,
+  useMediaQuery,
+} from "@mui/material"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
+import SaveIcon from "@mui/icons-material/Save"
+import CloseIcon from "@mui/icons-material/Close"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage } from "@/api/news"
+import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
-import useMediaQuery from "@/hooks/useMediaQuery"
-import { Button, Card, Modal, ModalBody, ModalFooter, ModalHeader, modalFieldStyles } from "@/components/ui"
-import { cn } from "@/utils/cn"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -46,7 +63,7 @@ export default function NewsDetail() {
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
-  const isMobile = useMediaQuery("(max-width: 640px)")
+  const isMobile = useMediaQuery("(max-width:600px)")
 
   const [editOpen, setEditOpen] = useState(false)
   const [editData, setEditData] = useState({
@@ -64,14 +81,6 @@ export default function NewsDetail() {
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
-
-  const editDialogTitleId = useId()
-  const deleteDialogTitleId = useId()
-  const editTitleId = useId()
-  const editContentId = useId()
-  const editTitleEnId = useId()
-  const editContentEnId = useId()
-  const editFileInputId = useId()
 
   const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
     const img = e.currentTarget
@@ -97,12 +106,6 @@ export default function NewsDetail() {
       if (previewUrl) URL.revokeObjectURL(previewUrl)
     }
   }, [previewUrl])
-
-  useEffect(() => {
-    if (!snack) return
-    const timer = window.setTimeout(() => setSnack(""), 2600)
-    return () => window.clearTimeout(timer)
-  }, [snack])
 
   const resetPreview = () => {
     if (previewUrl) {
@@ -194,7 +197,7 @@ export default function NewsDetail() {
 
   const rawImageUrl = useMemo(
     () => (editOpen ? editData.image_url : query.data?.image_url) || "",
-    [editData.image_url, editOpen, query.data?.image_url],
+    [editData.image_url, editOpen, query.data?.image_url]
   )
 
   const imageUrl = useMemo(() => {
@@ -226,272 +229,258 @@ export default function NewsDetail() {
   if (query.isLoading)
     return (
       <Layout>
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <span className="h-12 w-12 animate-spin rounded-full border-4 border-[color:rgba(148,163,184,0.35)] border-t-[color:var(--nav-link)]" />
-        </div>
+        <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}>
+          <CircularProgress />
+        </Box>
       </Layout>
     )
 
   if (query.isError || !query.data)
     return (
       <Layout>
-        <div className="px-4 py-10">
-          <p className="text-lg font-semibold text-red-500">{t("news:states.loadError")}</p>
-        </div>
+        <Box sx={{ p: 2 }}>
+          <Typography color="error">{t("news:states.loadError")}</Typography>
+        </Box>
       </Layout>
     )
 
   return (
     <Layout>
-      <section className="relative isolate w-full bg-page">
-        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(108%_95%_at_50%_0%,rgba(59,130,246,0.12),transparent_70%)]" aria-hidden />
-        <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-8 sm:px-6 lg:px-10">
-          <div className="mb-6 flex justify-start">
-            <Button
-              variant="outline"
-              size="md"
-              className="w-full sm:w-auto"
-              onClick={handleBack}
-              leadingIcon={<ArrowBackIcon fontSize="small" />}
-            >
-              {t("common:buttons.back")}
-            </Button>
-          </div>
-
-          <Card
-            as="article"
-            padding="none"
-            className="overflow-hidden rounded-[2rem] border border-slate-200/60 bg-[var(--card-bg,#fff)] shadow-surface"
-          >
-            <div
-              className="relative w-full border-b border-slate-200/60 bg-slate-100/60"
-              style={{ aspectRatio: "16 / 9" }}
-            >
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={
-                  displayTitle
-                    ? t("news:alt.hero", { title: displayTitle })
-                    : t("news:alt.heroFallback")
-                }
-                onLoad={handleHeroLoad}
-                className="h-full w-full object-cover"
-                style={{ objectFit: "cover", objectPosition: heroPos }}
-              />
-            </div>
-
-            <div className="space-y-8 px-6 py-8 sm:px-10 sm:py-10">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-3 text-page-foreground">
-                  <h1 className="text-3xl font-bold leading-tight sm:text-[clamp(2.25rem,3.4vw,2.9rem)]">
-                    {displayTitle}
-                  </h1>
-                  {createdAt && (
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-secondary">
-                      {t("news:meta.published")} {" "}
-                      <time dateTime={createdAtIso}>{createdAtLabel}</time>
-                    </div>
-                  )}
-                </div>
-
-                {user?.role === "admin" && (
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-11 w-11 min-h-0 rounded-full border border-slate-200/60 bg-[var(--card-bg,#fff)]/95 p-0 text-nav-link shadow-surface",
-                        saving || deleting ? "pointer-events-none opacity-50" : "",
-                      )}
-                      onClick={openEdit}
-                      aria-label={t("news:aria.editNews") ?? undefined}
-                      disabled={saving || deleting}
-                    >
-                      <EditIcon fontSize="small" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-11 w-11 min-h-0 rounded-full border border-red-200 bg-red-50/90 p-0 text-red-500 shadow-surface",
-                        deleting || saving ? "pointer-events-none opacity-50" : "hover:bg-red-100",
-                      )}
-                      onClick={() => setConfirmDeleteOpen(true)}
-                      aria-label={t("news:aria.deleteNews") ?? undefined}
-                      disabled={deleting || saving}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <div className="whitespace-pre-line text-base leading-relaxed text-page-foreground/90">
-                {content}
-              </div>
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      <Modal
-        open={editOpen}
-        onClose={closeEdit}
-        labelledBy={editDialogTitleId}
-        fullScreenOnMobile={isMobile}
-        size="sm"
-        panelClassName={cn(isMobile ? "rounded-none" : "sm:rounded-ue-2xl")}
+      <Paper
+        elevation={0}
+        sx={{
+          width: "100vw",
+          minHeight: "calc(100vh - 56px)",
+          bgcolor: "background.paper",
+          borderRadius: 0,
+          boxShadow: "none",
+          display: "flex",
+          flexDirection: "column",
+          pl: { xs: 2, sm: 4, md: 5, lg: 8 },
+          pr: { xs: 4, sm: 6, md: 7, lg: 10 },
+          py: { xs: 2, sm: 2, md: 2, lg: 2 },
+          boxSizing: "border-box",
+        }}
       >
-        <ModalHeader titleId={editDialogTitleId}>{t("news:dialogs.edit.title")}</ModalHeader>
-        <form
-          className="flex h-full flex-col"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleSave()
+        <Button
+          onClick={handleBack}
+          startIcon={<ArrowBackIcon />}
+          sx={{
+            mb: 3,
+            alignSelf: "flex-start",
+            fontWeight: 700,
+            borderRadius: 2.5,
+            background: "linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)",
+            color: "#fff",
+            fontSize: "clamp(0.98rem, 2.1vw, 1.17rem)",
+            letterSpacing: "0.02em",
+            px: { xs: 1.6, sm: 2.3, md: 2.9, lg: 3.5 },
+            py: { xs: 0.9, sm: 1.12, md: 1.2, lg: 1.28 },
+            width: { xs: "100%", sm: "auto" },
+            minWidth: { xs: 0, sm: 0 },
+            boxShadow: "0 2px 18px #1976d238, 0 1.5px 8px #0001",
+            transition: "transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s",
+            "&:hover": {
+              background: "linear-gradient(100deg, #1976d2 20%, #449aff 100%)",
+              color: "#eaf6ff",
+              transform: "scale(1.06)",
+              boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002",
+            },
+            "&:active": { transform: "scale(0.98)" },
           }}
         >
-          <ModalBody>
-            <div className="flex flex-col gap-4">
-              <label htmlFor={editTitleId} className={modalFieldStyles.label}>
-                {t("news:form.title")}
-                <input
-                  id={editTitleId}
-                  type="text"
-                  value={editData.title}
-                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                  className={modalFieldStyles.input}
-                  disabled={saving}
-                  required
-                />
-              </label>
-              <label htmlFor={editContentId} className={modalFieldStyles.label}>
-                {t("news:form.text")}
-                <textarea
-                  id={editContentId}
-                  value={editData.content}
-                  onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-                  className={modalFieldStyles.textarea}
-                  disabled={saving}
-                  required
-                />
-              </label>
-              <label htmlFor={editTitleEnId} className={modalFieldStyles.label}>
-                {t("news:form.title_en", { defaultValue: "Title (English)" })}
-                <input
-                  id={editTitleEnId}
-                  type="text"
-                  value={editData.title_en}
-                  onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-                  className={modalFieldStyles.input}
-                  disabled={saving}
-                />
-              </label>
-              <label htmlFor={editContentEnId} className={modalFieldStyles.label}>
-                {t("news:form.content_en", { defaultValue: "News text (English)" })}
-                <textarea
-                  id={editContentEnId}
-                  value={editData.content_en}
-                  onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-                  className={modalFieldStyles.textarea}
-                  disabled={saving}
-                />
-              </label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          {t("common:buttons.back")}
+        </Button>
+
+        <Stack spacing={2} width="100%" alignSelf="flex-start">
+          <Box display="flex" alignItems="center" flexWrap="wrap">
+            <Typography
+              variant="h3"
+              fontWeight={900}
+              sx={{ mr: 2, fontSize: "clamp(1.28rem,4vw,2.1rem)" }}
+            >
+              {displayTitle}
+            </Typography>
+
+            {user?.role === "admin" && (
+              <>
+                <IconButton
+                  color="primary"
+                  onClick={openEdit}
+                  sx={{ mr: 1 }}
+                  aria-label={t("news:aria.editNews")}
+                  disabled={saving || deleting}
+                >
+                  <EditIcon />
+                </IconButton>
+                <IconButton
+                  color="error"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  aria-label={t("news:aria.deleteNews")}
+                  disabled={deleting || saving}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </>
+            )}
+          </Box>
+
+          {createdAt && (
+            <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
+              {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
+            </Typography>
+          )}
+
+          <Box
+            sx={{
+              width: "100%",
+              maxWidth: { xs: "100%", md: 800, lg: 1000 },
+              aspectRatio: { xs: "16 / 9", md: "21 / 9" },
+              position: "relative",
+              borderRadius: 4,
+              border: "1px solid #eee",
+              overflow: "hidden",
+              bgcolor: "rgba(0,0,0,0.04)",
+            }}
+          >
+            <SmartImage
+              srcRaw={imageUrl}
+              alt={
+                displayTitle
+                  ? t("news:alt.hero", { title: displayTitle })
+                  : t("news:alt.heroFallback")
+              }
+              onLoad={handleHeroLoad}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                display: "block",
+                objectFit: "cover",
+                objectPosition: heroPos,
+              }}
+            />
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography
+            variant="body1"
+            fontSize="clamp(1.07rem,2.3vw,1.24rem)"
+            sx={{ whiteSpace: "pre-line" }}
+          >
+            {content}
+          </Typography>
+        </Stack>
+
+        <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
+          <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} mt={1}>
+              <TextField
+                label={t("news:form.title")}
+                value={editData.title}
+                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                fullWidth
+                disabled={saving}
+              />
+              <TextField
+                label={t("news:form.text")}
+                value={editData.content}
+                onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+                multiline
+                rows={4}
+                fullWidth
+                disabled={saving}
+              />
+              <TextField
+                label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+                value={editData.title_en}
+                onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+                fullWidth
+                disabled={saving}
+              />
+              <TextField
+                label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+                value={editData.content_en}
+                onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+                multiline
+                rows={4}
+                fullWidth
+                disabled={saving}
+              />
+              <Box display="flex" gap={2} alignItems="center" mt={1}>
                 <Button
-                  as="label"
-                  variant="outline"
-                  size="md"
-                  className="cursor-pointer"
-                  leadingIcon={<PhotoCamera fontSize="small" />}
+                  component="label"
+                  variant="outlined"
+                  startIcon={<PhotoCamera />}
+                  sx={{ minWidth: 140 }}
                   disabled={saving}
                 >
                   {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
                   <input
-                    id={editFileInputId}
-                    ref={imageInputRef}
                     type="file"
                     accept="image/*"
                     hidden
+                    ref={imageInputRef}
                     onChange={handleImageChange}
-                    disabled={saving}
                   />
                 </Button>
+
                 {imageUrl && (
-                  <SmartImage
-                    srcRaw={imageUrl}
-                    alt={t("news:alt.preview")}
-                    className="h-[90px] w-[148px] rounded-ue-lg border border-slate-200/60 shadow-surface"
-                    style={{ objectFit: "cover" }}
-                  />
+                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
+                    <SmartImage
+                      srcRaw={imageUrl}
+                      alt={t("news:alt.preview")}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  </Box>
                 )}
-              </div>
-            </div>
-          </ModalBody>
-          <ModalFooter>
+              </Box>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="contained" onClick={handleSave} disabled={saving}>
+              <SaveIcon sx={{ mr: 1 }} /> {t("common:buttons.save")}
+            </Button>
+            <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
+              <CloseIcon sx={{ mr: 1 }} /> {t("common:buttons.cancel")}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          fullScreen={isMobile}
+        >
+          <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
+          <DialogContent>
+            <Typography>{t("news:dialogs.delete.description")}</Typography>
+          </DialogContent>
+          <DialogActions>
             <Button
-              type="button"
-              variant="outline"
-              onClick={closeEdit}
-              disabled={saving}
+              variant="outlined"
+              color="secondary"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleting}
             >
               {t("common:buttons.cancel")}
             </Button>
-            <Button type="submit" loading={saving}>
-              {t("common:buttons.save")}
+            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
+              <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
             </Button>
-          </ModalFooter>
-        </form>
-      </Modal>
+          </DialogActions>
+        </Dialog>
 
-      <Modal
-        open={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
-        labelledBy={deleteDialogTitleId}
-        size="sm"
-      >
-        <ModalHeader titleId={deleteDialogTitleId}>{t("news:dialogs.delete.title")}</ModalHeader>
-        <ModalBody>
-          <p className="text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_90%,white_10%)]">
-            {t("news:dialogs.delete.description")}
-          </p>
-        </ModalBody>
-        <ModalFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setConfirmDeleteOpen(false)}
-            disabled={deleting}
-          >
-            {t("common:buttons.cancel")}
-          </Button>
-          <Button
-            type="button"
-            variant="solid"
-            className="!bg-red-500 hover:!bg-red-600 focus-visible:!shadow-[0_0_0_3px_rgba(239,68,68,0.35)]"
-            onClick={() => {
-              void handleDelete()
-            }}
-            loading={deleting}
-            leadingIcon={<DeleteIcon fontSize="small" />}
-          >
-            {t("common:buttons.delete")}
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {snack && (
-        <div className="pointer-events-none fixed bottom-8 left-1/2 z-[var(--ue-z-index-toast,2147483600)] w-[min(92vw,420px)] -translate-x-1/2">
-          <div
-            className="pointer-events-auto rounded-ue-xl border border-slate-200/60 bg-[var(--card-bg,#fff)] px-5 py-4 text-center text-sm font-semibold text-page-foreground shadow-surface"
-            role="status"
-            aria-live="polite"
-          >
-            <span>{snack}</span>
-          </div>
-        </div>
-      )}
+        <Snackbar
+          open={!!snack}
+          autoHideDuration={2400}
+          onClose={() => setSnack("")}
+          message={snack}
+        />
+      </Paper>
     </Layout>
   )
 }
