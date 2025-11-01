@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react"
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import useFocusTrap, { type UseFocusTrapOptions } from "@/hooks/useFocusTrap"
 import { cn } from "@/utils/cn"
@@ -173,7 +166,9 @@ export function Dialog({
         </div>
         <div className={cn("mt-5 space-y-5", bodyClassName)}>{children}</div>
         {footer ? (
-          <div className={cn("mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end", footerClassName)}>
+          <div
+            className={cn("mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end", footerClassName)}
+          >
             {footer}
           </div>
         ) : null}
