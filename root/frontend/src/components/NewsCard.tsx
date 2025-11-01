@@ -1,19 +1,13 @@
-import { FC, memo, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
-  Box,
-  Typography,
-  IconButton,
-  Menu,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Stack,
-  Button,
-  useMediaQuery,
-} from "@mui/material"
+  FC,
+  memo,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  useId,
+} from "react"
 import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -29,6 +23,8 @@ import SmartImage from "@/components/SmartImage"
 import { cn } from "@/utils/cn"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { Button, Card, Modal, ModalBody, ModalFooter, ModalHeader, modalFieldStyles } from "@/components/ui"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -67,7 +63,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
 
-  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
@@ -86,8 +82,17 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [cardImageReady, setCardImageReady] = useState(!image_url)
 
-  const isMobile = useMediaQuery("(max-width:600px)")
-  const menuId = `news-card-menu-${id}`
+  const isMobile = useMediaQuery("(max-width: 640px)")
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const editDialogTitleId = useId()
+  const deleteDialogTitleId = useId()
+  const editTitleId = useId()
+  const editContentId = useId()
+  const editTitleEnId = useId()
+  const editContentEnId = useId()
+  const editFileInputId = useId()
 
   const localizedTitle = useMemo(() => {
     const english = title_en ?? ""
@@ -104,7 +109,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const sanitizedPreview = useMemo(() => sanitizeNewsText(localizedContent), [localizedContent])
   const createdAtIso = useMemo(
     () => (created_at ? dayjs(created_at).toISOString() : ""),
-    [created_at]
+    [created_at],
   )
   const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
   const cardImageUrl = useMemo(() => image_url || "", [image_url])
@@ -115,7 +120,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
-  // preview URL lifecycle
   useEffect(() => {
     if (!newImage) {
       setPreviewUrl(null)
@@ -132,6 +136,31 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [previewUrl])
 
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClick = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null
+      if (menuButtonRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setMenuOpen(false)
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false)
+      }
+    }
+    window.addEventListener("mousedown", handleClick)
+    window.addEventListener("touchstart", handleClick)
+    window.addEventListener("keydown", handleKey)
+    return () => {
+      window.removeEventListener("mousedown", handleClick)
+      window.removeEventListener("touchstart", handleClick)
+      window.removeEventListener("keydown", handleKey)
+    }
+  }, [menuOpen])
+
   const openEditDialog = useCallback(() => {
     setEditData({
       title,
@@ -141,6 +170,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       image_url: image_url || "",
     })
     setEditOpen(true)
+    setMenuOpen(false)
     setNewImage(null)
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl)
@@ -161,7 +191,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const editImageUrl = useMemo(
     () => previewUrl || editData.image_url || "",
-    [editData.image_url, previewUrl]
+    [editData.image_url, previewUrl],
   )
 
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,7 +208,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         try {
           const data = new FormData()
           data.append("file", newImage)
-          // единый эндпоинт загрузки
           const res = await api.post<{ url: string }>(`/news/upload_image`, data, {
             headers: { "Content-Type": "multipart/form-data" },
           })
@@ -226,60 +255,27 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         return
       }
       const el = e.target as HTMLElement
-      if (
-        el.closest("button") ||
-        el.closest("input") ||
-        el.closest(".MuiInputBase-root") ||
-        el.closest('[role="menu"]')
-      )
-        return
+      if (el.closest("button") || el.closest("input") || el.closest("[role='menu']")) return
       navigate(`/news/${id}`)
     },
-    [editOpen, id, navigate]
+    [editOpen, id, navigate],
   )
 
-  const hoveringDisabled = editOpen || Boolean(menuAnchor)
-  const interactiveSx = useMemo(() => {
-    if (hoveringDisabled) {
-      return {}
-    }
-    return {
-      "&:hover": {
-        transform: "translateY(-2px) scale(1.02)",
-        boxShadow: "var(--shadow-2)",
-      },
-      "&:active": {
-        transform: "scale(0.997)",
-      },
-    }
-  }, [hoveringDisabled])
+  const hoveringDisabled = editOpen || menuOpen
 
   return (
-    <Box
-      className={cn("news-card")}
-      sx={{
-        width: "100%",
-        maxWidth: 700,
-        borderRadius: { xs: "1.1rem", sm: "1.2rem" },
-        background: "var(--card-bg)",
-        color: "var(--page-text)",
-        position: "relative",
-        cursor: hoveringDisabled ? "default" : "pointer",
-        boxShadow: 5,
-        p: 0,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 340,
-        "&:focus-visible": {
-          outline: "2px solid var(--nav-link)",
-          outlineOffset: "2px",
-        },
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
-        ...interactiveSx,
-      }}
-      role="button"
+    <Card
+      as="article"
+      hoverable={!hoveringDisabled}
+      padding="none"
+      className={cn(
+        "group relative h-full w-full overflow-hidden border border-slate-200/60 bg-[var(--card-bg,#fff)] text-page-foreground shadow-surface",
+        hoveringDisabled ? "cursor-default" : "cursor-pointer",
+        "focus-visible:outline-none",
+      )}
+      role="link"
       tabIndex={0}
+      onClick={handleCardClick}
       onKeyDown={(e) => {
         if (editOpen) return
         if (e.currentTarget !== e.target) return
@@ -288,98 +284,67 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           navigate(`/news/${id}`)
         }
       }}
-      onClick={handleCardClick}
     >
       {user?.role === "admin" && (
         <>
-          <IconButton
-            aria-label={t("news:aria.cardActions")}
-            aria-controls={menuAnchor ? menuId : undefined}
-            aria-haspopup="true"
-            aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-            sx={{
-              position: "absolute",
-              top: 10,
-              right: 10,
-              zIndex: 2,
-              bgcolor: "rgba(255,255,255,0.82)",
-              "&:hover": { bgcolor: "#fff" },
+          <Button
+            ref={menuButtonRef}
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "absolute right-4 top-4 z-20 h-10 w-10 min-h-0 rounded-full border border-slate-200/60 bg-[var(--card-bg,#fff)]/95 p-0 text-nav-link shadow-surface",
+              loading && "pointer-events-none opacity-60",
+            )}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen ? "true" : "false"}
+            aria-label={t("news:aria.cardActions") ?? undefined}
+            onClick={(event) => {
+              event.stopPropagation()
+              setMenuOpen((prev) => !prev)
             }}
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuAnchor(e.currentTarget)
-            }}
-            size="small"
             disabled={loading}
           >
-            <MoreVertIcon />
-          </IconButton>
-          <Menu
-            id={menuId}
-            anchorEl={menuAnchor}
-            open={Boolean(menuAnchor)}
-            onClose={(e) => {
-              if (e) (e as any).stopPropagation?.()
-              setMenuAnchor(null)
-            }}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-            MenuListProps={{ "aria-labelledby": menuId }}
-          >
-            <MenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                openEditDialog()
-                setMenuAnchor(null)
-              }}
+            <MoreVertIcon fontSize="small" />
+          </Button>
+          {menuOpen && (
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label={t("news:aria.cardActions") ?? undefined}
+              className="absolute right-4 top-16 z-30 w-48 rounded-ue-lg border border-slate-200/60 bg-[var(--card-bg,#fff)] p-2 shadow-surface"
             >
-              <EditIcon fontSize="small" sx={{ mr: 1 }} />
-              {t("common:buttons.edit")}
-            </MenuItem>
-            <MenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                setConfirmDeleteOpen(true)
-                setMenuAnchor(null)
-              }}
-            >
-              <DeleteIcon fontSize="small" sx={{ mr: 1 }} color="error" />
-              <span style={{ color: "#d32f2f" }}>{t("common:buttons.delete")}</span>
-            </MenuItem>
-          </Menu>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-ue-lg px-3 py-2 text-sm font-semibold text-page-foreground transition hover:bg-surface-accent/80"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openEditDialog()
+                }}
+              >
+                <EditIcon fontSize="small" />
+                {t("common:buttons.edit")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="mt-1 flex w-full items-center gap-2 rounded-ue-lg px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setConfirmDeleteOpen(true)
+                  closeMenu()
+                }}
+              >
+                <DeleteIcon fontSize="small" />
+                {t("common:buttons.delete")}
+              </button>
+            </div>
+          )}
         </>
       )}
 
-      <Box
-        sx={{
-          width: "100%",
-          height: { xs: 160, sm: 180, md: 220, lg: 240 },
-          borderTopLeftRadius: { xs: "1.1rem", sm: "1.2rem" },
-          borderTopRightRadius: { xs: "1.1rem", sm: "1.2rem" },
-          borderBottom: "1px solid #eee",
-          background: "linear-gradient(135deg, rgba(13,71,161,0.18), rgba(63,81,181,0.08))",
-          position: "relative",
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "stretch",
-          "& img": {
-            display: "block",
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(120deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
-            opacity: cardImageReady ? 0 : 1,
-            transition: "opacity 260ms ease",
-            pointerEvents: "none",
-          },
-        }}
-      >
+      <div className="relative h-[200px] w-full overflow-hidden border-b border-slate-200/60 bg-slate-100/60">
         <SmartImage
           srcRaw={cardImageUrl}
           alt={
@@ -388,198 +353,184 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               : t("news:alt.heroFallback")
           }
           sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "block",
-            objectFit: "cover",
-            objectPosition: "center",
-          }}
+          className="h-full w-full object-cover"
+          style={{ objectFit: "cover" }}
           onLoad={handleCardImageReady}
           onError={handleCardImageReady}
         />
-      </Box>
+        {!cardImageReady && (
+          <div className="absolute inset-0 animate-pulse bg-slate-200/60" aria-hidden />
+        )}
+      </div>
 
-      <Box
-        sx={{
-          p: { xs: 2, sm: 3 },
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <Typography
-          fontWeight={700}
-          variant="h6"
-          mb={1}
-          sx={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            fontSize: "clamp(1.07rem, 3vw, 1.18rem)",
-          }}
-        >
-          {localizedTitle}
-        </Typography>
-
-        <Typography
-          mb={2}
-          variant="body2"
-          color="text.secondary"
-          sx={{
-            minHeight: { xs: 44, sm: 64 },
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            fontSize: "clamp(0.99rem, 2vw, 1.06rem)",
-          }}
-        >
-          {sanitizedPreview}
-        </Typography>
-
-        <Box flex={1} />
-
-        <Typography color="var(--secondary-text)" fontSize={14} sx={{ mt: "auto" }}>
+      <div className="flex flex-1 flex-col gap-4 px-6 pb-6 pt-5">
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold leading-tight text-page-foreground">
+            {localizedTitle}
+          </h3>
+          <p
+            className="text-sm text-secondary"
+            style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+          >
+            {sanitizedPreview}
+          </p>
+        </div>
+        <div className="mt-auto pt-1 text-xs uppercase tracking-[0.18em] text-secondary">
           {createdAtIso && <time dateTime={createdAtIso}>{createdAtLabel}</time>}
-        </Typography>
-      </Box>
+        </div>
+      </div>
 
-      {/* Edit dialog */}
-      <Dialog
+      <Modal
         open={editOpen}
         onClose={closeEditDialog}
-        fullScreen={isMobile}
-        PaperProps={{
-          sx: {
-            borderRadius: { xs: 0, sm: 3 },
-            width: { xs: "100vw", sm: 420 },
-            maxWidth: { xs: "100vw", sm: 450 },
-          },
-        }}
+        labelledBy={editDialogTitleId}
+        fullScreenOnMobile={isMobile}
+        size="sm"
+        panelClassName={cn(isMobile ? "rounded-none" : "sm:rounded-ue-2xl")}
       >
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.2rem" }}>
-          {t("news:dialogs.edit.title")}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
-            <TextField
-              label={t("news:form.title")}
-              value={editData.title}
-              onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
-            />
-            <TextField
-              label={t("news:form.text")}
-              value={editData.content}
-              onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-              multiline
-              rows={4}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
-            />
-            <TextField
-              label={t("news:form.title_en", { defaultValue: "Title (English)" })}
-              value={editData.title_en}
-              onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
-            />
-            <TextField
-              label={t("news:form.content_en", { defaultValue: "News text (English)" })}
-              value={editData.content_en}
-              onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-              multiline
-              rows={4}
-              fullWidth
-              sx={{ fontSize: "1rem" }}
-            />
-            <Box>
-              <Button
-                component="label"
-                variant="contained"
-                disabled={imageLoading}
-                startIcon={<PhotoCamera />}
-                sx={{
-                  minWidth: 120,
-                  fontWeight: 600,
-                  fontSize: "1rem",
-                  borderRadius: 2,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
+        <ModalHeader titleId={editDialogTitleId}>{t("news:dialogs.edit.title")}</ModalHeader>
+        <form
+          className="flex h-full flex-col"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleEdit()
+          }}
+        >
+          <ModalBody>
+            <div className="flex flex-col gap-4">
+              <label htmlFor={editTitleId} className={modalFieldStyles.label}>
+                {t("news:form.title")}
                 <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  ref={imageInputRef}
-                  onChange={handleImageChange}
-                  onClick={(e) => e.stopPropagation()}
+                  id={editTitleId}
+                  type="text"
+                  value={editData.title}
+                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                  className={modalFieldStyles.input}
+                  disabled={loading}
+                  required
                 />
-              </Button>
-              {editImageUrl && (
-                <Box mt={1}>
+              </label>
+              <label htmlFor={editContentId} className={modalFieldStyles.label}>
+                {t("news:form.text")}
+                <textarea
+                  id={editContentId}
+                  value={editData.content}
+                  onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+                  className={modalFieldStyles.textarea}
+                  disabled={loading}
+                  required
+                />
+              </label>
+              <label htmlFor={editTitleEnId} className={modalFieldStyles.label}>
+                {t("news:form.title_en", { defaultValue: "Title (English)" })}
+                <input
+                  id={editTitleEnId}
+                  type="text"
+                  value={editData.title_en}
+                  onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+                  className={modalFieldStyles.input}
+                  disabled={loading}
+                />
+              </label>
+              <label htmlFor={editContentEnId} className={modalFieldStyles.label}>
+                {t("news:form.content_en", { defaultValue: "News text (English)" })}
+                <textarea
+                  id={editContentEnId}
+                  value={editData.content_en}
+                  onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+                  className={modalFieldStyles.textarea}
+                  disabled={loading}
+                />
+              </label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Button
+                  as="label"
+                  variant="outline"
+                  size="md"
+                  className="cursor-pointer"
+                  leadingIcon={<PhotoCamera fontSize="small" />}
+                  disabled={loading || imageLoading}
+                >
+                  {imageLoading
+                    ? t("common:statuses.uploading")
+                    : t("news:form.changePhoto")}
+                  <input
+                    id={editFileInputId}
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={handleImageChange}
+                    disabled={loading || imageLoading}
+                  />
+                </Button>
+                {editImageUrl && (
                   <SmartImage
                     srcRaw={editImageUrl}
                     alt={t("news:alt.preview")}
-                    style={{
-                      width: 140,
-                      maxHeight: 90,
-                      objectFit: "cover",
-                      borderRadius: 8,
-                      border: "1px solid #eee",
-                      display: "block",
-                    }}
+                    className="h-[90px] w-[148px] rounded-ue-lg border border-slate-200/60 shadow-surface"
+                    style={{ objectFit: "cover" }}
                   />
-                </Box>
-              )}
-            </Box>
+                )}
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeEditDialog}
+              disabled={loading || imageLoading}
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              type="submit"
+              loading={loading || imageLoading}
+              disabled={imageLoading}
+            >
+              {t("common:buttons.save")}
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
 
-            <Stack direction="row" gap={2} mt={2}>
-              <Button
-                variant="contained"
-                onClick={handleEdit}
-                disabled={loading || imageLoading}
-                sx={{ fontWeight: 700, borderRadius: 2.2, px: 3, fontSize: "1.02rem" }}
-              >
-                {t("common:buttons.save")}
-              </Button>
-              <Button
-                variant="outlined"
-                color="secondary"
-                onClick={closeEditDialog}
-                sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
-              >
-                {t("common:buttons.cancel")}
-              </Button>
-            </Stack>
-          </Stack>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete confirm */}
-      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
-        <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
-        <DialogContent>
-          <Typography>{t("news:dialogs.delete.description")}</Typography>
-        </DialogContent>
-        <DialogActions>
+      <Modal
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        labelledBy={deleteDialogTitleId}
+        size="sm"
+      >
+        <ModalHeader titleId={deleteDialogTitleId}>{t("news:dialogs.delete.title")}</ModalHeader>
+        <ModalBody>
+          <p className="text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_90%,white_10%)]">
+            {t("news:dialogs.delete.description")}
+          </p>
+        </ModalBody>
+        <ModalFooter>
           <Button
-            variant="outlined"
-            color="secondary"
+            type="button"
+            variant="outline"
             onClick={() => setConfirmDeleteOpen(false)}
             disabled={loading}
           >
             {t("common:buttons.cancel")}
           </Button>
-          <Button variant="contained" color="error" onClick={handleDelete} disabled={loading}>
-            <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
+          <Button
+            type="button"
+            variant="solid"
+            className="!bg-red-500 hover:!bg-red-600 focus-visible:!shadow-[0_0_0_3px_rgba(239,68,68,0.35)]"
+            onClick={() => {
+              void handleDelete()
+            }}
+            loading={loading}
+            leadingIcon={<DeleteIcon fontSize="small" />}
+          >
+            {t("common:buttons.delete")}
           </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        </ModalFooter>
+      </Modal>
+    </Card>
   )
 }
 
