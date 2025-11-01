@@ -358,8 +358,7 @@ export default function NewsDetail() {
                 </h1>
                 {createdAt ? (
                   <p className="text-sm text-[color:var(--secondary-text)]">
-                    {t("news:meta.published")} {" "}
-                    <time dateTime={createdAtIso}>{createdAtLabel}</time>
+                    {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
                   </p>
                 ) : null}
               </div>
@@ -545,10 +544,7 @@ export default function NewsDetail() {
           closeOnEscape={!deleting}
         >
           <ModalContent
-            className={cn(
-              "w-full max-w-md",
-              isMobile && "h-[min(80vh,460px)] max-w-full"
-            )}
+            className={cn("w-full max-w-md", isMobile && "h-[min(80vh,460px)] max-w-full")}
           >
             <ModalHeader>
               <ModalTitle>{t("news:dialogs.delete.title")}</ModalTitle>
