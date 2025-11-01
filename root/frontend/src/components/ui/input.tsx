@@ -90,7 +90,9 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
           )}
         >
           {leadingIcon ? (
-            <span className="inline-flex items-center text-[color:var(--secondary-text)]">{leadingIcon}</span>
+            <span className="inline-flex items-center text-[color:var(--secondary-text)]">
+              {leadingIcon}
+            </span>
           ) : null}
           <input
             ref={ref}
@@ -187,7 +189,9 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           )}
         >
           {leadingIcon ? (
-            <span className="mt-3 inline-flex items-start text-[color:var(--secondary-text)]">{leadingIcon}</span>
+            <span className="mt-3 inline-flex items-start text-[color:var(--secondary-text)]">
+              {leadingIcon}
+            </span>
           ) : null}
           <textarea
             ref={ref}
@@ -230,4 +234,3 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
 )
 
 TextArea.displayName = "TextArea"
-
