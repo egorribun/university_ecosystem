@@ -42,12 +42,12 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     engine = _inspect(sync_url)
     if "idempotent" in dbname:
         metadata = sa.MetaData()
-        _users = sa.Table(
+        users = sa.Table(
             "users",
             metadata,
             sa.Column("id", sa.Integer, primary_key=True),
         )
-        _push = sa.Table(
+        push = sa.Table(
             "push_subscriptions",
             metadata,
             sa.Column("id", sa.Integer, primary_key=True),

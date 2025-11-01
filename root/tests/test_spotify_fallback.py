@@ -6,12 +6,12 @@ import sqlalchemy as sa
 from httpx import AsyncClient
 
 from app.api.spotify import _ensure_access_token, _fallback_now_playing, _save_tokens
+
+_spotify_fallback_now_playing = _fallback_now_playing
 from app.auth.security import get_password_hash
 from app.models.models import User as ModelUser
 
 pytestmark = pytest.mark.anyio("asyncio")
-
-_spotify_fallback_now_playing = _fallback_now_playing
 
 
 def _make_user(

@@ -66,7 +66,7 @@ def _format_room(value: Any, *, locale: str | None = None) -> str | None:
 def _parse_datetime_like(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         try:
             return datetime.fromtimestamp(float(value), UTC)
         except (OSError, OverflowError, ValueError):
@@ -124,7 +124,7 @@ class ScenarioContext:
         value = self.get(*keys)
         if value is None:
             return None
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             if isinstance(value, bool):
                 return None
             return str(int(value))

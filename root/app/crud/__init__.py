@@ -1,7 +1,8 @@
 import json
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -78,7 +79,7 @@ def sanitize_optional_text(value: Any) -> str | None:
 
     if value is None:
         return None
-    if isinstance(value, bytes | bytearray):
+    if isinstance(value, (bytes, bytearray)):
         try:
             decoded = value.decode("utf-8")
         except Exception:

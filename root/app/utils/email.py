@@ -49,16 +49,12 @@ def build_reset_email_content(
     )
     button = translate("email.reset.button", locale=resolved_locale)
     ignore = translate("email.reset.ignore", locale=resolved_locale)
-    link_style = (
-        "display:inline-block;padding:10px 16px;background:#1d5fff;"
-        "color:#fff;border-radius:8px;text-decoration:none"
-    )
     html = f"""
   <div style="font-family:Inter,Arial,sans-serif">
     <h2>{heading}</h2>
     <p>{greeting}</p>
     <p>{instructions}</p>
-    <p><a href="{link}" style="{link_style}">{button}</a></p>
+    <p><a href="{link}" style="display:inline-block;padding:10px 16px;background:#1d5fff;color:#fff;border-radius:8px;text-decoration:none">{button}</a></p>
     <p>{ignore}</p>
   </div>
   """

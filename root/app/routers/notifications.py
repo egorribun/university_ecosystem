@@ -276,7 +276,7 @@ async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> 
     for row in topics_rows:
         if not row:
             continue
-        if isinstance(row, list | tuple | set):
+        if isinstance(row, (list, tuple, set)):
             aggregated.extend(str(item) for item in row if item)
         else:
             aggregated.append(str(row))
