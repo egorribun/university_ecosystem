@@ -17,7 +17,7 @@ import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import AddRoundedIcon from "@mui/icons-material/AddRounded"
 import SmartImage from "@/components/SmartImage"
-import { Button, Modal, ModalBody, ModalFooter, ModalHeader, modalFieldStyles } from "@/components/ui"
+import { Button, Modal, ModalBody, ModalFooter, ModalHeader, Skeleton, modalFieldStyles } from "@/components/ui"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
@@ -64,6 +64,18 @@ const News = () => {
 
   const isInitialLoading = isPending && newsList.length === 0
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
+  const heroDescription = useMemo(
+    () =>
+      t("news:heroDescription", {
+        defaultValue:
+          "Follow the latest updates and key announcements from the university community.",
+      }),
+    [t],
+  )
+  const skeletonItems = useMemo(
+    () => Array.from({ length: isMobile ? 4 : 6 }, (_, index) => index),
+    [isMobile],
+  )
 
   useEffect(() => {
     return () => {
@@ -176,61 +188,75 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <section className="w-full bg-[color:var(--page-bg)]">
-          <div className="relative mx-auto w-full max-w-7xl px-4 pb-16 pt-8 sm:px-8 lg:px-16 xl:px-24">
+        <section className="relative isolate w-full bg-[color:var(--page-bg)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(120%_100%_at_50%_0%,rgba(59,130,246,0.14),transparent)]" aria-hidden />
+          <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-10">
             <div
               data-fade
               style={{ "--fade-delay": "80ms" } as CSSProperties}
-              className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between"
+              className="overflow-hidden rounded-ue-3xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_95%,white_5%)] px-6 py-7 shadow-[0_30px_80px_rgba(15,23,42,0.12)] backdrop-blur"
             >
-              <div className="flex items-center gap-4">
-                <span className="relative grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--dash-card-news-orb,#2563eb)_26%,transparent_74%)] shadow-[0_20px_45px_rgba(59,130,246,0.18)]">
-                  <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.35),transparent_60%)]" aria-hidden />
-                  <ArticleIcon style={{ fontSize: 32, color: "var(--nav-link)" }} />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_72%,white_28%)]">
-                    {t("news:pageSubtitle", { defaultValue: t("news:pageTitle") })}
-                  </p>
-                  <h1 className="text-3xl font-black tracking-tight text-[color:var(--page-text)] sm:text-[clamp(2.1rem,4vw,2.75rem)]">
-                    {t("news:pageTitle")}
-                  </h1>
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-4">
+                  <span className="grid h-14 w-14 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent_72%)] bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent_88%)] text-[color:var(--nav-link)]">
+                    <ArticleIcon fontSize="medium" />
+                  </span>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_70%,white_30%)]">
+                      {t("news:pageSubtitle", { defaultValue: t("news:pageTitle") })}
+                    </p>
+                    <h1 className="text-3xl font-bold tracking-tight text-[color:var(--page-text)] sm:text-[clamp(2.25rem,4vw,2.9rem)]">
+                      {t("news:pageTitle")}
+                    </h1>
+                    <p className="max-w-2xl text-base text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_88%,white_12%)]">
+                      {heroDescription}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {user?.role === "admin" && (
-                <Button
-                  size="md"
-                  className="w-full sm:w-auto"
-                  onClick={() => setAddOpen(true)}
-                  loading={adding}
-                  leadingIcon={<AddRoundedIcon fontSize="small" />}
-                >
-                  {t("news:actions.add")}
-                </Button>
-              )}
+                {user?.role === "admin" && (
+                  <Button
+                    size="md"
+                    className="w-full sm:w-auto"
+                    onClick={() => setAddOpen(true)}
+                    loading={adding}
+                    leadingIcon={<AddRoundedIcon fontSize="small" />}
+                  >
+                    {t("news:actions.add")}
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div
               data-fade
-              style={{ "--fade-delay": "200ms" } as CSSProperties}
-              className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-3"
+              style={{ "--fade-delay": "180ms" } as CSSProperties}
+              className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-3"
             >
-              {Array.isArray(visibleList) &&
-                visibleList.map((news) => (
-                  <div
-                    key={news.id}
-                    className="flex w-full"
-                  >
-                    <NewsCard
-                      {...news}
-                      image_url={news.image_url ?? undefined}
-                      onChange={() => {
-                        void refetchNews()
-                      }}
-                    />
-                  </div>
-                ))}
+              {isInitialLoading
+                ? skeletonItems.map((item) => (
+                    <div
+                      key={`news-skeleton-${item}`}
+                      className="flex w-full"
+                    >
+                      <Skeleton
+                        ariaLabel={t("common:statuses.loading", { defaultValue: "Loading news" })}
+                        className="h-[320px] w-full rounded-ue-2xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)]"
+                      />
+                    </div>
+                  ))
+                : Array.isArray(visibleList) &&
+                  visibleList.map((news) => (
+                    <div key={news.id} className="flex w-full">
+                      <NewsCard
+                        {...news}
+                        image_url={news.image_url ?? undefined}
+                        onChange={() => {
+                          void refetchNews()
+                        }}
+                      />
+                    </div>
+                  ))}
             </div>
 
             {Array.isArray(newsList) && showEmptyState && (
@@ -239,8 +265,8 @@ const News = () => {
                 style={{ "--fade-delay": "260ms" } as CSSProperties}
                 className="mt-16 flex justify-center"
               >
-                <div className="max-w-lg rounded-ue-2xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.36))_65%,transparent_35%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_85%,white_15%)] px-10 py-12 text-center shadow-[0_25px_60px_rgba(15,23,42,0.12)]">
-                  <p className="text-lg font-semibold text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_90%,white_10%)]">
+                <div className="max-w-lg rounded-ue-2xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_96%,white_4%)] px-10 py-12 text-center shadow-[0_26px_70px_rgba(15,23,42,0.12)]">
+                  <p className="text-lg font-semibold text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_88%,white_12%)]">
                     {t("news:states.empty")}
                   </p>
                 </div>
@@ -333,13 +359,8 @@ const News = () => {
                         <SmartImage
                           srcRaw={imagePreview}
                           alt={t("news:alt.newCover")}
-                          style={{
-                            width: 132,
-                            height: 80,
-                            borderRadius: 18,
-                            border: "1px solid rgba(148,163,184,0.32)",
-                            boxShadow: "0 12px 32px rgba(15,23,42,0.18)",
-                          }}
+                          className="h-20 w-[132px] rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] shadow-[0_12px_28px_rgba(15,23,42,0.18)]"
+                          style={{ objectFit: "cover" }}
                         />
                       )}
                     </div>

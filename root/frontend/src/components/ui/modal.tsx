@@ -214,12 +214,14 @@ export function ModalFooter({ children, className }: ModalSectionProps) {
 }
 
 export const modalFieldStyles = {
-  label: "flex flex-col gap-2 text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_65%,white_35%)]",
+  label:
+    "flex flex-col gap-2 text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_72%,white_28%)]",
   input:
-    "w-full rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.38))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_85%,white_15%)] px-4 py-3 text-[color:var(--page-text)] shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-4 focus:ring-[color:var(--nav-link)]/15",
+    "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] px-4 py-2.5 text-[color:var(--page-text)] shadow-[0_4px_18px_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)]/25",
   textarea:
-    "min-h-[140px] w-full rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.38))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_85%,white_15%)] px-4 py-3 text-[color:var(--page-text)] shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-4 focus:ring-[color:var(--nav-link)]/15",
-  helper: "text-xs font-medium text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_86%,white_14%)]",
+    "min-h-[140px] w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] px-4 py-2.5 text-[color:var(--page-text)] shadow-[0_4px_18px_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)]/25",
+  helper:
+    "text-xs font-medium text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_84%,white_16%)]",
 }
 
 export default Modal

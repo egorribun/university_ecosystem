@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 import useMediaQuery from "@/hooks/useMediaQuery"
-import { Button, Modal, ModalBody, ModalFooter, ModalHeader, modalFieldStyles } from "@/components/ui"
+import { Button, Card, Modal, ModalBody, ModalFooter, ModalHeader, modalFieldStyles } from "@/components/ui"
 import { cn } from "@/utils/cn"
 
 dayjs.extend(utc)
@@ -243,8 +243,9 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <section className="w-full bg-[color:var(--page-bg)]">
-        <div className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-6 sm:px-8 lg:px-14">
+      <section className="relative isolate w-full bg-[color:var(--page-bg)]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(110%_100%_at_50%_0%,rgba(59,130,246,0.12),transparent)]" aria-hidden />
+        <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-8 sm:px-6 lg:px-10">
           <div className="mb-6 flex justify-start">
             <Button
               variant="outline"
@@ -257,8 +258,15 @@ export default function NewsDetail() {
             </Button>
           </div>
 
-          <article className="overflow-hidden rounded-ue-3xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_92%,white_8%)] shadow-[0_35px_90px_rgba(15,23,42,0.18)]">
-            <div className="relative h-[260px] w-full overflow-hidden bg-[color:color-mix(in_srgb,var(--dash-card-news-orb,#1d4ed8)_18%,transparent_82%)] sm:h-[320px]">
+          <Card
+            as="article"
+            padding="none"
+            className="overflow-hidden rounded-ue-3xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.3))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_96%,white_4%)] shadow-[0_35px_90px_rgba(15,23,42,0.18)]"
+          >
+            <div
+              className="relative w-full border-b border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.24))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_88%,white_12%)]"
+              style={{ aspectRatio: "16 / 9" }}
+            >
               <SmartImage
                 srcRaw={imageUrl}
                 alt={
@@ -267,27 +275,19 @@ export default function NewsDetail() {
                     : t("news:alt.heroFallback")
                 }
                 onLoad={handleHeroLoad}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  display: "block",
-                  objectFit: "cover",
-                  objectPosition: heroPos,
-                }}
+                className="h-full w-full object-cover"
+                style={{ objectFit: "cover", objectPosition: heroPos }}
               />
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.45),transparent_60%)]" aria-hidden />
             </div>
 
-            <div className="px-6 py-8 sm:px-10 sm:py-10">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h1 className="text-3xl font-black leading-tight text-[color:var(--page-text)] sm:text-[clamp(2.1rem,3.2vw,2.75rem)]">
+            <div className="space-y-8 px-6 py-8 sm:px-10 sm:py-10">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-3">
+                  <h1 className="text-3xl font-bold leading-tight text-[color:var(--page-text)] sm:text-[clamp(2.25rem,3.4vw,2.9rem)]">
                     {displayTitle}
                   </h1>
                   {createdAt && (
-                    <div className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_70%,white_30%)]">
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_70%,white_30%)]">
                       {t("news:meta.published")} {" "}
                       <time dateTime={createdAtIso}>{createdAtLabel}</time>
                     </div>
@@ -296,39 +296,43 @@ export default function NewsDetail() {
 
                 {user?.role === "admin" && (
                   <div className="flex items-center gap-3">
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "h-11 w-11 min-h-0 rounded-full border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.3))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] p-0 text-[color:var(--page-text)] shadow-[0_14px_26px_rgba(15,23,42,0.12)]",
+                        saving || deleting ? "pointer-events-none opacity-50" : "",
+                      )}
                       onClick={openEdit}
                       aria-label={t("news:aria.editNews") ?? undefined}
                       disabled={saving || deleting}
-                      className={cn(
-                        "inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,white_88%,var(--page-bg)_12%)] text-[color:var(--page-text)] shadow-[0_14px_26px_rgba(15,23,42,0.12)] transition",
-                        saving || deleting ? "opacity-50" : "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,white_88%)]",
-                      )}
                     >
                       <EditIcon fontSize="small" />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "h-11 w-11 min-h-0 rounded-full border border-[color:color-mix(in_srgb,rgba(248,113,113,0.4)_70%,transparent_30%)] bg-red-50/80 p-0 text-red-500 shadow-[0_14px_26px_rgba(248,113,113,0.25)]",
+                        deleting || saving ? "pointer-events-none opacity-50" : "hover:bg-red-100",
+                      )}
                       onClick={() => setConfirmDeleteOpen(true)}
                       aria-label={t("news:aria.deleteNews") ?? undefined}
                       disabled={deleting || saving}
-                      className={cn(
-                        "inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--page-border,rgba(248,113,113,0.32))_60%,transparent_40%)] bg-red-50/80 text-red-500 shadow-[0_14px_26px_rgba(248,113,113,0.25)] transition",
-                        deleting || saving ? "opacity-50" : "hover:bg-red-100",
-                      )}
                     >
                       <DeleteIcon fontSize="small" />
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
 
-              <div className="mt-8 text-lg leading-relaxed text-[color:color-mix(in_srgb,var(--page-text)_92%,white_8%)] whitespace-pre-line">
+              <div className="text-base leading-relaxed text-[color:color-mix(in_srgb,var(--page-text)_92%,white_8%)] whitespace-pre-line">
                 {content}
               </div>
             </div>
-          </article>
+          </Card>
         </div>
       </section>
 
@@ -394,40 +398,35 @@ export default function NewsDetail() {
                   disabled={saving}
                 />
               </label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Button
-                  as="label"
-                  variant="outline"
-                  size="md"
-                  className="cursor-pointer"
-                  leadingIcon={<PhotoCamera fontSize="small" />}
-                  disabled={saving}
-                >
-                  {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
-                  <input
-                    id={editFileInputId}
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={handleImageChange}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button
+                    as="label"
+                    variant="outline"
+                    size="md"
+                    className="cursor-pointer"
+                    leadingIcon={<PhotoCamera fontSize="small" />}
                     disabled={saving}
-                  />
-                </Button>
-                {imageUrl && (
-                  <SmartImage
-                    srcRaw={imageUrl}
-                    alt={t("news:alt.preview")}
-                    style={{
-                      width: 148,
-                      height: 90,
-                      borderRadius: 18,
-                      border: "1px solid rgba(148,163,184,0.32)",
-                      boxShadow: "0 12px 28px rgba(15,23,42,0.16)",
-                    }}
-                  />
-                )}
-              </div>
+                  >
+                    {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
+                    <input
+                      id={editFileInputId}
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={handleImageChange}
+                      disabled={saving}
+                    />
+                  </Button>
+                  {imageUrl && (
+                    <SmartImage
+                      srcRaw={imageUrl}
+                      alt={t("news:alt.preview")}
+                      className="h-[90px] w-[148px] rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
+                      style={{ objectFit: "cover" }}
+                    />
+                  )}
+                </div>
             </div>
           </ModalBody>
           <ModalFooter>
