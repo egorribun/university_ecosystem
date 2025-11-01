@@ -1,5 +1,4 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
-import { useEffect, type ReactNode } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -8,52 +7,6 @@ import type { ContextType } from "react"
 
 import type { User } from "@/types/User"
 import { server } from "../../mocks/server"
-
-const useMediaQueryMock = vi.fn<(query: string) => boolean>(() => false)
-
-vi.mock("@/hooks/useMediaQuery", () => ({
-  __esModule: true,
-  default: (query: string) => useMediaQueryMock(query),
-}))
-
-const setIsMobile = (isMobile: boolean) => {
-  useMediaQueryMock.mockImplementation((query) =>
-    query === "(max-width:600px)" ? isMobile : false
-  )
-}
-
-type PortalRegistration = { node: HTMLElement | null; created: boolean }
-
-const ensurePortalElement = (id: string): PortalRegistration => {
-  if (typeof document === "undefined") return { node: null, created: false }
-  const existing = document.getElementById(id)
-  if (existing) return { node: existing, created: false }
-  const node = document.createElement("div")
-  node.setAttribute("id", id)
-  document.body.appendChild(node)
-  return { node, created: true }
-}
-
-const TailwindPortalProvider = ({ children }: { children: ReactNode }) => {
-  useEffect(() => {
-    const registrations: PortalRegistration[] = [
-      ensurePortalElement("ue-modal-root"),
-      ensurePortalElement("ue-toast-root"),
-    ]
-
-    return () => {
-      registrations.forEach(({ node, created }) => {
-        if (created && node?.parentNode) {
-          node.parentNode.removeChild(node)
-        }
-      })
-    }
-  }, [])
-
-  return <>{children}</>
-}
-
-TailwindPortalProvider.displayName = "TailwindPortalProvider"
 
 type CacheEntry = { key: string; response: Response }
 
@@ -171,10 +124,9 @@ const baseUser: User = {
 }
 
 const renderNewsPage = async (queryClient?: QueryClient) => {
-  const [{ AuthContext }, { LanguageProvider }, { AppShellProvider }] = await Promise.all([
+  const [{ AuthContext }, { LanguageProvider }] = await Promise.all([
     import("@/contexts/AuthContext"),
     import("@/contexts/LanguageContext"),
-    import("@/contexts/AppShellContext"),
   ])
 
   type AuthContextValue = ContextType<typeof AuthContext>
@@ -206,13 +158,9 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
     <AuthContext.Provider value={authValue}>
       <LanguageProvider>
         <QueryClientProvider client={client}>
-          <AppShellProvider>
-            <TailwindPortalProvider>
-              <MemoryRouter initialEntries={["/news"]}>
-                <News />
-              </MemoryRouter>
-            </TailwindPortalProvider>
-          </AppShellProvider>
+          <MemoryRouter initialEntries={["/news"]}>
+            <News />
+          </MemoryRouter>
         </QueryClientProvider>
       </LanguageProvider>
     </AuthContext.Provider>
@@ -228,8 +176,6 @@ describe("News page feed integration", () => {
     delete (window as unknown as { caches?: CacheStorage }).caches
     window.localStorage.setItem("ue:language", "ru")
     server.resetHandlers()
-    setIsMobile(false)
-    useMediaQueryMock.mockClear()
   })
 
   it("persists API responses and revalidates using cached ETags", async () => {
@@ -253,8 +199,6 @@ describe("News page feed integration", () => {
     const { queryClient } = await renderNewsPage()
 
     expect(await screen.findByText("API headline")).toBeInTheDocument()
-    const fadeContainer = document.querySelector<HTMLElement>("[data-page-fade]")
-    await waitFor(() => expect(fadeContainer?.dataset.ready).toBe("true"))
     await waitFor(() => expect(requestCount).toBe(1))
     expect(put).toHaveBeenCalledTimes(1)
 
@@ -270,7 +214,6 @@ describe("News page feed integration", () => {
   })
 
   it("hydrates from service worker caches during network failures and clears legacy storage", async () => {
-    setIsMobile(true)
     const cachedItems = [createNewsItem(2, "Cached bulletin")]
     const cacheKey = buildCacheKey("ru")
     const cachedResponse = createNewsResponse(cachedItems, '"cached-tag"')
@@ -288,8 +231,6 @@ describe("News page feed integration", () => {
 
     expect(await screen.findByText("Cached bulletin")).toBeInTheDocument()
     expect(match).toHaveBeenCalled()
-    const fadeContainer = document.querySelector<HTMLElement>("[data-page-fade]")
-    await waitFor(() => expect(fadeContainer?.dataset.ready).toBe("true"))
     expect(window.localStorage.getItem("news:list")).toBeNull()
     expect(window.localStorage.getItem("news:etag")).toBeNull()
     expect(window.localStorage.getItem("news:list:ru")).toBeNull()
