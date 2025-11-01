@@ -12,19 +12,17 @@ import {
   type CSSProperties,
 } from "react"
 import { createNews, uploadNewsImage } from "@/api/news"
-import { Button } from "@/components/ui/button"
 import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalTitle,
-  ModalCloseButton,
-} from "@/components/ui/modal"
-import { TextArea, TextInput } from "@/components/ui/input"
-import useMediaQuery from "@/hooks/useMediaQuery"
-import { cn } from "@/utils/cn"
+  Box,
+  Typography,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Stack,
+  TextField,
+  useMediaQuery,
+} from "@mui/material"
 import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import SmartImage from "@/components/SmartImage"
@@ -161,11 +159,6 @@ const News = () => {
     if (imageInputRef.current) imageInputRef.current.value = ""
   }, [imagePreview])
 
-  const openImagePicker = useCallback(() => {
-    if (adding) return
-    imageInputRef.current?.click()
-  }, [adding])
-
   const visibleList = useMemo(
     () => (visibleCount > 0 ? deferredList.slice(0, visibleCount) : deferredList),
     [deferredList, visibleCount]
@@ -174,199 +167,217 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <section className="relative w-full overflow-x-hidden bg-transparent">
-          <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 pb-16 pt-6 sm:px-6 md:px-10 lg:px-16">
-            <header
-              data-fade
-              style={{ "--fade-delay": "80ms" } as CSSProperties}
-              className="group mb-6 flex items-center gap-4 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)]/75 p-4 shadow-surface backdrop-blur supports-[backdrop-filter]:backdrop-blur-md"
-            >
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:var(--surface-accent,#111827)]/60 text-[color:var(--nav-link)] shadow-inner">
-                <ArticleIcon style={{ fontSize: "1.8rem" }} />
-              </span>
-              <h1 className="font-display text-[clamp(1.4rem,4vw,2.6rem)] font-semibold tracking-tight text-[color:var(--page-text)]">
-                {t("news:pageTitle")}
-              </h1>
-            </header>
-
-            {user?.role === "admin" && (
-              <div
-                data-fade
-                style={{ "--fade-delay": "140ms" } as CSSProperties}
-                className="mb-2 flex justify-start"
-              >
-                <Button
-                  size="md"
-                  className="rounded-ue-lg px-5 font-semibold tracking-tight shadow-surface transition-transform duration-300 hover:-translate-y-[2px] focus-visible:shadow-focus"
-                  onClick={() => setAddOpen(true)}
-                  disabled={adding}
-                >
-                  {t("news:actions.add")}
-                </Button>
-              </div>
-            )}
-
-            <div
-              data-fade
-              style={{ "--fade-delay": "200ms" } as CSSProperties}
-              className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
-            >
-              {Array.isArray(visibleList) &&
-                visibleList.map((news) => (
-                  <div key={news.id} className="flex">
-                    <NewsCard
-                      {...news}
-                      image_url={news.image_url ?? undefined}
-                      onChange={() => {
-                        void refetchNews()
-                      }}
-                    />
-                  </div>
-                ))}
-
-              {Array.isArray(newsList) && showEmptyState && (
-                <div className="col-span-full">
-                  <div className="flex flex-col items-center justify-center gap-3 rounded-ue-xl border border-dashed border-[color:var(--glass-border)]/70 bg-[color:var(--card-bg)]/60 px-6 py-16 text-center text-[color:var(--secondary-text)] shadow-surface">
-                    <ArticleIcon
-                      style={{ fontSize: "2rem", color: "var(--secondary-text)" }}
-                      aria-hidden="true"
-                    />
-                    <p className="text-lg font-medium tracking-tight">{t("news:states.empty")}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <Modal
-            open={addOpen}
-            onOpenChange={(open) => {
-              if (open) {
-                setAddOpen(true)
-                return
-              }
-              handleCloseDialog()
-            }}
-            className={cn("p-4 sm:p-8", isMobile && "p-0")}
-            overlayClassName="backdrop-blur"
+        <Box
+          sx={{
+            width: "100vw",
+            minHeight: "100vh",
+            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
+            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
+            py: { xs: 0, sm: 0, md: 0, lg: 0 },
+            boxSizing: "border-box",
+            overflowX: "hidden",
+          }}
+        >
+          <Stack
+            data-fade
+            style={{ "--fade-delay": "80ms" } as CSSProperties}
+            direction="row"
+            alignItems="center"
+            gap={2}
+            mb={isMobile ? 1.5 : 3}
+            mt={isMobile ? 1.5 : 3}
           >
-            <ModalContent
-              hideScrollbars={isMobile}
-              className={cn(
-                "w-full max-w-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)]/98 shadow-surface-strong",
-                isMobile && "h-screen max-h-none rounded-none border-none"
-              )}
+            <ArticleIcon color="primary" sx={{ fontSize: 34 }} />
+            <Typography
+              variant="h4"
+              fontWeight={700}
+              color="primary.main"
+              sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
             >
-              <ModalHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <ModalTitle className="text-[clamp(1.25rem,2.4vw,1.6rem)] font-semibold text-[color:var(--page-text)]">
-                  {t("news:dialogs.create.title")}
-                </ModalTitle>
-                <ModalCloseButton className="self-start sm:self-center">
-                  {t("common:buttons.close")}
-                </ModalCloseButton>
-              </ModalHeader>
-              <ModalBody className="gap-5">
-                <TextInput
+              {t("news:pageTitle")}
+            </Typography>
+          </Stack>
+
+          {user?.role === "admin" && (
+            <Box
+              data-fade
+              style={{ "--fade-delay": "140ms" } as CSSProperties}
+              sx={{ display: "flex", justifyContent: "flex-start", mb: 2 }}
+            >
+              <Button
+                variant="contained"
+                sx={{
+                  fontWeight: 700,
+                  fontSize: "clamp(1rem, 2.1vw, 1.15rem)",
+                  px: { xs: 2.3, sm: 3 },
+                  py: 1.2,
+                  borderRadius: 3,
+                  letterSpacing: "0.02em",
+                }}
+                onClick={() => setAddOpen(true)}
+                disabled={adding}
+              >
+                {t("news:actions.add")}
+              </Button>
+            </Box>
+          )}
+
+          <Box
+            data-fade
+            style={{ "--fade-delay": "200ms" } as CSSProperties}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: { xs: 2, sm: 3 },
+            }}
+          >
+            {Array.isArray(visibleList) &&
+              visibleList.map((news) => (
+                <Box key={news.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
+                  <NewsCard
+                    {...news}
+                    image_url={news.image_url ?? undefined}
+                    onChange={() => {
+                      void refetchNews()
+                    }}
+                  />
+                </Box>
+              ))}
+
+            {Array.isArray(newsList) && showEmptyState && (
+              <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
+                <Typography fontSize={24} className="events-empty-text">
+                  {t("news:states.empty")}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+
+          <Dialog
+            open={addOpen}
+            onClose={handleCloseDialog}
+            fullScreen={isMobile}
+            PaperProps={{
+              sx: {
+                borderRadius: { xs: 0, sm: 4 },
+                width: { xs: "100vw", sm: 400 },
+                maxWidth: { xs: "100vw", sm: 440 },
+              },
+            }}
+          >
+            <DialogTitle sx={{ fontWeight: 700, fontSize: "1.3rem" }}>
+              {t("news:dialogs.create.title")}
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
+                <TextField
                   label={t("news:form.title")}
                   value={newsData.title}
                   onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
-                  maxLength={100}
+                  fullWidth
+                  inputProps={{ maxLength: 100 }}
+                  sx={{ fontSize: "1rem" }}
                   disabled={adding}
-                  required
                 />
-                <TextArea
+                <TextField
                   label={t("news:form.content")}
                   value={newsData.content}
                   onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
-                  rows={5}
-                  maxLength={3000}
+                  multiline
+                  minRows={5}
+                  fullWidth
+                  inputProps={{ maxLength: 3000 }}
+                  sx={{ fontSize: "1rem" }}
                   disabled={adding}
-                  required
                 />
-                <TextInput
+                <TextField
                   label={t("news:form.title_en", { defaultValue: "Title (English)" })}
                   value={newsData.title_en}
                   onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
-                  maxLength={100}
+                  fullWidth
+                  inputProps={{ maxLength: 100 }}
+                  sx={{ fontSize: "1rem" }}
                   disabled={adding}
                 />
-                <TextArea
+                <TextField
                   label={t("news:form.content_en", { defaultValue: "News text (English)" })}
                   value={newsData.content_en}
                   onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
-                  rows={5}
-                  maxLength={3000}
+                  multiline
+                  minRows={5}
+                  fullWidth
+                  inputProps={{ maxLength: 3000 }}
+                  sx={{ fontSize: "1rem" }}
                   disabled={adding}
                 />
 
-                <div className="rounded-ue-xl border border-dashed border-[color:var(--glass-border)]/70 bg-[color:var(--card-bg)]/60 p-4">
-                  <input
-                    id="news-image-upload"
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    ref={imageInputRef}
-                    onChange={handleImageChange}
-                    aria-label={t("news:form.imageUpload", { defaultValue: "Upload cover image" })}
-                  />
-                  <div className="flex flex-wrap items-center gap-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="cursor-pointer rounded-ue-lg px-4 font-semibold tracking-tight"
-                      disabled={adding}
-                      onClick={openImagePicker}
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <PhotoCamera fontSize="small" />
-                        <span>
-                          {imageFile
-                            ? t("common:buttons.changePhoto")
-                            : t("common:buttons.uploadPhoto")}
-                        </span>
-                      </span>
-                    </Button>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={<PhotoCamera />}
+                    sx={{
+                      minWidth: 120,
+                      fontWeight: 600,
+                      fontSize: "1rem",
+                      borderRadius: 2,
+                    }}
+                    disabled={adding}
+                  >
+                    {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      ref={imageInputRef}
+                      onChange={handleImageChange}
+                    />
+                  </Button>
 
-                    {imagePreview ? (
-                      <div className="relative h-20 w-32 overflow-hidden rounded-ue-lg border border-[color:var(--glass-border)] shadow-surface">
-                        <SmartImage
-                          srcRaw={imagePreview}
-                          alt={t("news:alt.newCover")}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-sm text-[color:var(--secondary-text)]">
-                        {t("news:form.imageHelper", {
-                          defaultValue: "Upload a landscape image to feature alongside your post.",
-                        })}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </ModalBody>
-              <ModalFooter>
-                <Button
-                  variant="outline"
-                  onClick={handleCloseDialog}
-                  disabled={adding}
-                  className="rounded-ue-lg px-5"
-                >
-                  {t("common:buttons.cancel")}
-                </Button>
-                <Button
-                  onClick={handleAddNews}
-                  loading={adding}
-                  disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
-                  className="rounded-ue-lg px-6"
-                >
-                  {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
-                </Button>
-              </ModalFooter>
-            </ModalContent>
-          </Modal>
-        </section>
+                  {imagePreview && (
+                    <SmartImage
+                      srcRaw={imagePreview}
+                      alt={t("news:alt.newCover")}
+                      style={{
+                        width: 100,
+                        height: 60,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        border: "1px solid #eee",
+                        display: "block",
+                      }}
+                    />
+                  )}
+                </Box>
+
+                <Stack direction="row" gap={2} mt={2}>
+                  <Button
+                    variant="contained"
+                    onClick={handleAddNews}
+                    disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
+                    sx={{
+                      fontWeight: 700,
+                      borderRadius: 2.2,
+                      px: 3,
+                      fontSize: "1.02rem",
+                    }}
+                  >
+                    {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={handleCloseDialog}
+                    disabled={adding}
+                    sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
+                  >
+                    {t("common:buttons.cancel")}
+                  </Button>
+                </Stack>
+              </Stack>
+            </DialogContent>
+          </Dialog>
+        </Box>
       </PageFadeIn>
     </Layout>
   )

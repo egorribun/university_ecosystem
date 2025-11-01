@@ -10,7 +10,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
-  type KeyboardEvent as ReactKeyboardEvent,
+  type KeyboardEvent,
   type MutableRefObject,
   type PropsWithChildren,
 } from "react"
@@ -159,7 +159,9 @@ const focusFirstItem = (container: HTMLElement | null) => {
 const getFocusableItems = (container: HTMLElement | null) => {
   if (!container) return []
   return Array.from(
-    container.querySelectorAll<HTMLElement>('[data-ue-dropdown-item]:not([data-disabled="true"])')
+    container.querySelectorAll<HTMLElement>(
+      '[data-ue-dropdown-item]:not([data-disabled="true"])'
+    )
   )
 }
 
@@ -288,7 +290,7 @@ export function DropdownMenuContent({
   }, [open, autoFocus, onOpenChange, triggerRef])
 
   const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    (event: KeyboardEvent<HTMLDivElement>) => {
       if (event.key === "ArrowDown") {
         event.preventDefault()
         focusNextItem(contentRef.current, 1)
@@ -402,3 +404,4 @@ DropdownMenu.displayName = "DropdownMenu"
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger"
 DropdownMenuContent.displayName = "DropdownMenuContent"
 DropdownMenuItem.displayName = "DropdownMenuItem"
+
