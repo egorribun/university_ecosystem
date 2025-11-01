@@ -7,7 +7,7 @@ type LayoutProps = {
 const Layout = ({ children }: LayoutProps) => (
   <main
     id="main"
-    className="min-h-screen w-screen box-border bg-[var(--page-bg)] text-[var(--page-text)]"
+    className="box-border min-h-screen w-full bg-[var(--page-bg)] text-[var(--page-text)]"
   >
     {children}
   </main>
