@@ -13,6 +13,7 @@ type ButtonOwnProps = {
   leadingIcon?: ReactNode
   trailingIcon?: ReactNode
   className?: string
+  disabled?: boolean
 }
 
 export type ButtonProps<T extends ElementType = "button"> = PolymorphicComponentProps<

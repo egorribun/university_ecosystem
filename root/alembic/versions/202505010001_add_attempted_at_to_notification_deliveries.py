@@ -50,7 +50,7 @@ def upgrade() -> None:
                 sa.Column(_COLUMN_NAME, sa.DateTime(timezone=True), nullable=True)
             )
 
-        # Prefer historical timestamps when available to avoid inflating retention windows.
+        # Prefer historical timestamps when available to keep retention windows small.
         op.execute(
             sa.text(
                 textwrap.dedent(

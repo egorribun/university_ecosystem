@@ -185,7 +185,7 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="mx-auto flex w-full max-w-7xl flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-12">
+        <div className="flex w-full flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-10 xl:px-14 2xl:px-20">
           <div
             data-fade
             style={{ "--fade-delay": "80ms" } as CSSProperties}

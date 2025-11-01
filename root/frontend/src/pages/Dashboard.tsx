@@ -758,7 +758,7 @@ export default function Dashboard() {
                       {t("dashboard:viewAll")}
                     </Button>
                   </div>
-                  
+
                   {loadingNews && (
                     <div className="space-y-4" role="presentation">
                       <div className="flex items-center gap-3">
@@ -781,15 +781,15 @@ export default function Dashboard() {
                     <p className="text-sm text-secondary">{t("dashboard:news.empty")}</p>
                   )}
                   {!loadingNews && news.length > 0 && (
-                    <ul
-                      className="space-y-3"
-                      aria-label={t("dashboard:aria.newsList")}
-                    >
+                    <ul className="space-y-3" aria-label={t("dashboard:aria.newsList")}>
                       {news.map((n) => (
                         <li key={n.id} className="dash-list-item">
                           <button
                             type="button"
-                            className={cn(listActionBase, "flex items-start gap-4 text-left sm:gap-5")}
+                            className={cn(
+                              listActionBase,
+                              "flex items-start gap-4 text-left sm:gap-5"
+                            )}
                             onClick={() => navigate(`/news/${n.id}`)}
                             title={n.title}
                             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
@@ -808,7 +808,11 @@ export default function Dashboard() {
                               aria-hidden="true"
                               className="ml-auto inline-flex h-9 w-9 flex-none items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-base text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-[transform,opacity,background-color,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:-translate-y-[calc(var(--dash-hover-lift)/2)] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
                             >
-                              <ArrowForwardRoundedIcon aria-hidden="true" fontSize="inherit" className="h-4 w-4" />
+                              <ArrowForwardRoundedIcon
+                                aria-hidden="true"
+                                fontSize="inherit"
+                                className="h-4 w-4"
+                              />
                             </span>
                           </button>
                         </li>
@@ -880,7 +884,7 @@ export default function Dashboard() {
                       {t("dashboard:scope.week")}
                     </Button>
                   </div>
-                  
+
                   {loadingEvents && (
                     <div className="space-y-3" role="presentation">
                       <Skeleton height={24} />
@@ -906,7 +910,10 @@ export default function Dashboard() {
                           <li key={e.id} className="dash-list-item">
                             <button
                               type="button"
-                              className={cn(listActionBase, "flex flex-col items-start gap-3 text-left sm:gap-3")}
+                              className={cn(
+                                listActionBase,
+                                "flex flex-col items-start gap-3 text-left sm:gap-3"
+                              )}
                               onClick={() => navigate(`/events/${e.id}`)}
                               aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                             >

@@ -128,7 +128,11 @@ def generate_schedule_ics(
         ):
             start_dt = datetime.combine(lesson_date, start_time)
             end_dt = datetime.combine(lesson_date, end_time)
-            uid = f"lesson-{getattr(lesson, 'id', 'x')}-{lesson_date.strftime('%Y%m%d')}@university-ecosystem"
+            uid = (
+                "lesson-"
+                f"{getattr(lesson, 'id', 'x')}-"
+                f"{lesson_date.strftime('%Y%m%d')}@university-ecosystem"
+            )
             description_parts = []
             if lesson_type_display:
                 description_parts.append(
