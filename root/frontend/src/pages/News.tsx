@@ -188,27 +188,33 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <section className="relative isolate w-full bg-[color:var(--page-bg)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(120%_100%_at_50%_0%,rgba(59,130,246,0.14),transparent)]" aria-hidden />
+        <section className="relative isolate w-full bg-page">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(110%_95%_at_50%_0%,rgba(59,130,246,0.12),transparent_70%)]"
+            aria-hidden
+          />
           <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-10">
             <div
               data-fade
               style={{ "--fade-delay": "80ms" } as CSSProperties}
-              className="overflow-hidden rounded-ue-3xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_95%,white_5%)] px-6 py-7 shadow-[0_30px_80px_rgba(15,23,42,0.12)] backdrop-blur"
+              className="relative overflow-hidden rounded-[2rem] border border-slate-200/70 bg-[var(--card-bg,#fff)] px-6 py-8 shadow-surface ring-1 ring-slate-900/5 sm:px-8 lg:px-12"
             >
-              <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="pointer-events-none absolute inset-0 opacity-70 mix-blend-normal">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_65%)]" aria-hidden />
+              </div>
+              <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-4">
-                  <span className="grid h-14 w-14 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent_72%)] bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent_88%)] text-[color:var(--nav-link)]">
+                  <span className="grid h-14 w-14 place-items-center rounded-full border border-slate-200/70 bg-slate-100 text-nav-link shadow-surface">
                     <ArticleIcon fontSize="medium" />
                   </span>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_70%,white_30%)]">
+                  <div className="space-y-2 text-page-foreground">
+                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-secondary">
                       {t("news:pageSubtitle", { defaultValue: t("news:pageTitle") })}
                     </p>
-                    <h1 className="text-3xl font-bold tracking-tight text-[color:var(--page-text)] sm:text-[clamp(2.25rem,4vw,2.9rem)]">
+                    <h1 className="text-3xl font-bold tracking-tight sm:text-[clamp(2.25rem,4vw,2.9rem)]">
                       {t("news:pageTitle")}
                     </h1>
-                    <p className="max-w-2xl text-base text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_88%,white_12%)]">
+                    <p className="max-w-2xl text-base text-secondary">
                       {heroDescription}
                     </p>
                   </div>
@@ -241,7 +247,7 @@ const News = () => {
                     >
                       <Skeleton
                         ariaLabel={t("common:statuses.loading", { defaultValue: "Loading news" })}
-                        className="h-[320px] w-full rounded-ue-2xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)]"
+                        className="h-[320px] w-full rounded-[1.5rem] border border-slate-200/60 bg-slate-100/70"
                       />
                     </div>
                   ))
@@ -265,8 +271,8 @@ const News = () => {
                 style={{ "--fade-delay": "260ms" } as CSSProperties}
                 className="mt-16 flex justify-center"
               >
-                <div className="max-w-lg rounded-ue-2xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_96%,white_4%)] px-10 py-12 text-center shadow-[0_26px_70px_rgba(15,23,42,0.12)]">
-                  <p className="text-lg font-semibold text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_88%,white_12%)]">
+                <div className="max-w-lg rounded-[1.75rem] border border-slate-200/60 bg-[var(--card-bg,#fff)] px-10 py-12 text-center shadow-surface">
+                  <p className="text-lg font-semibold text-secondary">
                     {t("news:states.empty")}
                   </p>
                 </div>
@@ -279,7 +285,7 @@ const News = () => {
               labelledBy={addDialogTitleId}
               fullScreenOnMobile={isMobile}
               size="sm"
-              panelClassName={cn(isMobile ? "rounded-none" : "")}
+              panelClassName={cn(isMobile ? "rounded-none" : "sm:rounded-ue-2xl")}
             >
               <ModalHeader titleId={addDialogTitleId}>
                 {t("news:dialogs.create.title")}

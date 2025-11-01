@@ -269,7 +269,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       hoverable={!hoveringDisabled}
       padding="none"
       className={cn(
-        "group relative h-full w-full overflow-hidden text-[color:var(--page-text)]",
+        "group relative h-full w-full overflow-hidden border border-slate-200/60 bg-[var(--card-bg,#fff)] text-page-foreground shadow-surface",
         hoveringDisabled ? "cursor-default" : "cursor-pointer",
         "focus-visible:outline-none",
       )}
@@ -293,7 +293,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             variant="ghost"
             size="sm"
             className={cn(
-              "absolute right-4 top-4 z-20 h-10 w-10 min-h-0 rounded-full border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.3))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] p-0 text-[color:var(--page-text)] shadow-[0_12px_28px_rgba(15,23,42,0.12)]",
+              "absolute right-4 top-4 z-20 h-10 w-10 min-h-0 rounded-full border border-slate-200/60 bg-[var(--card-bg,#fff)]/95 p-0 text-nav-link shadow-surface",
               loading && "pointer-events-none opacity-60",
             )}
             aria-haspopup="menu"
@@ -312,12 +312,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               ref={menuRef}
               role="menu"
               aria-label={t("news:aria.cardActions") ?? undefined}
-              className="absolute right-4 top-16 z-30 w-48 rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_96%,white_4%)] p-2 shadow-[0_24px_55px_rgba(15,23,42,0.18)]"
+              className="absolute right-4 top-16 z-30 w-48 rounded-ue-lg border border-slate-200/60 bg-[var(--card-bg,#fff)] p-2 shadow-surface"
             >
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded-ue-lg px-3 py-2 text-sm font-semibold text-[color:var(--page-text)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent_90%)]"
+                className="flex w-full items-center gap-2 rounded-ue-lg px-3 py-2 text-sm font-semibold text-page-foreground transition hover:bg-surface-accent/80"
                 onClick={(e) => {
                   e.stopPropagation()
                   openEditDialog()
@@ -329,7 +329,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               <button
                 type="button"
                 role="menuitem"
-                className="mt-1 flex w-full items-center gap-2 rounded-ue-lg px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-500/10"
+                className="mt-1 flex w-full items-center gap-2 rounded-ue-lg px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50"
                 onClick={(e) => {
                   e.stopPropagation()
                   setConfirmDeleteOpen(true)
@@ -344,7 +344,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         </>
       )}
 
-      <div className="relative h-[200px] w-full overflow-hidden border-b border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.24))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_90%,white_10%)]">
+      <div className="relative h-[200px] w-full overflow-hidden border-b border-slate-200/60 bg-slate-100/60">
         <SmartImage
           srcRaw={cardImageUrl}
           alt={
@@ -359,20 +359,23 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           onError={handleCardImageReady}
         />
         {!cardImageReady && (
-          <div className="absolute inset-0 animate-pulse bg-[color:rgba(148,163,184,0.2)]" aria-hidden />
+          <div className="absolute inset-0 animate-pulse bg-slate-200/60" aria-hidden />
         )}
       </div>
 
       <div className="flex flex-1 flex-col gap-4 px-6 pb-6 pt-5">
         <div className="space-y-2">
-          <h3 className="text-lg font-semibold leading-tight text-[color:var(--page-text)]">
+          <h3 className="text-lg font-semibold leading-tight text-page-foreground">
             {localizedTitle}
           </h3>
-          <p className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_88%,white_12%)]" style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+          <p
+            className="text-sm text-secondary"
+            style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+          >
             {sanitizedPreview}
           </p>
         </div>
-        <div className="mt-auto pt-1 text-xs uppercase tracking-[0.18em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_70%,white_30%)]">
+        <div className="mt-auto pt-1 text-xs uppercase tracking-[0.18em] text-secondary">
           {createdAtIso && <time dateTime={createdAtIso}>{createdAtLabel}</time>}
         </div>
       </div>
@@ -383,7 +386,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         labelledBy={editDialogTitleId}
         fullScreenOnMobile={isMobile}
         size="sm"
-        panelClassName={cn(isMobile ? "rounded-none" : "")}
+        panelClassName={cn(isMobile ? "rounded-none" : "sm:rounded-ue-2xl")}
       >
         <ModalHeader titleId={editDialogTitleId}>{t("news:dialogs.edit.title")}</ModalHeader>
         <form
@@ -465,7 +468,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                   <SmartImage
                     srcRaw={editImageUrl}
                     alt={t("news:alt.preview")}
-                    className="h-[90px] w-[148px] rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
+                    className="h-[90px] w-[148px] rounded-ue-lg border border-slate-200/60 shadow-surface"
                     style={{ objectFit: "cover" }}
                   />
                 )}

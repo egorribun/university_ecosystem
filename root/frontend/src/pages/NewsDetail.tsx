@@ -243,8 +243,8 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <section className="relative isolate w-full bg-[color:var(--page-bg)]">
-        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(110%_100%_at_50%_0%,rgba(59,130,246,0.12),transparent)]" aria-hidden />
+      <section className="relative isolate w-full bg-page">
+        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(108%_95%_at_50%_0%,rgba(59,130,246,0.12),transparent_70%)]" aria-hidden />
         <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-8 sm:px-6 lg:px-10">
           <div className="mb-6 flex justify-start">
             <Button
@@ -261,10 +261,10 @@ export default function NewsDetail() {
           <Card
             as="article"
             padding="none"
-            className="overflow-hidden rounded-ue-3xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.3))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_96%,white_4%)] shadow-[0_35px_90px_rgba(15,23,42,0.18)]"
+            className="overflow-hidden rounded-[2rem] border border-slate-200/60 bg-[var(--card-bg,#fff)] shadow-surface"
           >
             <div
-              className="relative w-full border-b border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.24))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_88%,white_12%)]"
+              className="relative w-full border-b border-slate-200/60 bg-slate-100/60"
               style={{ aspectRatio: "16 / 9" }}
             >
               <SmartImage
@@ -282,12 +282,12 @@ export default function NewsDetail() {
 
             <div className="space-y-8 px-6 py-8 sm:px-10 sm:py-10">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-3">
-                  <h1 className="text-3xl font-bold leading-tight text-[color:var(--page-text)] sm:text-[clamp(2.25rem,3.4vw,2.9rem)]">
+                <div className="space-y-3 text-page-foreground">
+                  <h1 className="text-3xl font-bold leading-tight sm:text-[clamp(2.25rem,3.4vw,2.9rem)]">
                     {displayTitle}
                   </h1>
                   {createdAt && (
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_70%,white_30%)]">
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-secondary">
                       {t("news:meta.published")} {" "}
                       <time dateTime={createdAtIso}>{createdAtLabel}</time>
                     </div>
@@ -301,7 +301,7 @@ export default function NewsDetail() {
                       variant="ghost"
                       size="sm"
                       className={cn(
-                        "h-11 w-11 min-h-0 rounded-full border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.3))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] p-0 text-[color:var(--page-text)] shadow-[0_14px_26px_rgba(15,23,42,0.12)]",
+                        "h-11 w-11 min-h-0 rounded-full border border-slate-200/60 bg-[var(--card-bg,#fff)]/95 p-0 text-nav-link shadow-surface",
                         saving || deleting ? "pointer-events-none opacity-50" : "",
                       )}
                       onClick={openEdit}
@@ -315,7 +315,7 @@ export default function NewsDetail() {
                       variant="ghost"
                       size="sm"
                       className={cn(
-                        "h-11 w-11 min-h-0 rounded-full border border-[color:color-mix(in_srgb,rgba(248,113,113,0.4)_70%,transparent_30%)] bg-red-50/80 p-0 text-red-500 shadow-[0_14px_26px_rgba(248,113,113,0.25)]",
+                        "h-11 w-11 min-h-0 rounded-full border border-red-200 bg-red-50/90 p-0 text-red-500 shadow-surface",
                         deleting || saving ? "pointer-events-none opacity-50" : "hover:bg-red-100",
                       )}
                       onClick={() => setConfirmDeleteOpen(true)}
@@ -328,7 +328,7 @@ export default function NewsDetail() {
                 )}
               </div>
 
-              <div className="text-base leading-relaxed text-[color:color-mix(in_srgb,var(--page-text)_92%,white_8%)] whitespace-pre-line">
+              <div className="whitespace-pre-line text-base leading-relaxed text-page-foreground/90">
                 {content}
               </div>
             </div>
@@ -342,7 +342,7 @@ export default function NewsDetail() {
         labelledBy={editDialogTitleId}
         fullScreenOnMobile={isMobile}
         size="sm"
-        panelClassName={cn(isMobile ? "rounded-none" : "")}
+        panelClassName={cn(isMobile ? "rounded-none" : "sm:rounded-ue-2xl")}
       >
         <ModalHeader titleId={editDialogTitleId}>{t("news:dialogs.edit.title")}</ModalHeader>
         <form
@@ -398,35 +398,35 @@ export default function NewsDetail() {
                   disabled={saving}
                 />
               </label>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button
-                    as="label"
-                    variant="outline"
-                    size="md"
-                    className="cursor-pointer"
-                    leadingIcon={<PhotoCamera fontSize="small" />}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Button
+                  as="label"
+                  variant="outline"
+                  size="md"
+                  className="cursor-pointer"
+                  leadingIcon={<PhotoCamera fontSize="small" />}
+                  disabled={saving}
+                >
+                  {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
+                  <input
+                    id={editFileInputId}
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={handleImageChange}
                     disabled={saving}
-                  >
-                    {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
-                    <input
-                      id={editFileInputId}
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={handleImageChange}
-                      disabled={saving}
-                    />
-                  </Button>
-                  {imageUrl && (
-                    <SmartImage
-                      srcRaw={imageUrl}
-                      alt={t("news:alt.preview")}
-                      className="h-[90px] w-[148px] rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.28))_70%,transparent_30%)] shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
-                      style={{ objectFit: "cover" }}
-                    />
-                  )}
-                </div>
+                  />
+                </Button>
+                {imageUrl && (
+                  <SmartImage
+                    srcRaw={imageUrl}
+                    alt={t("news:alt.preview")}
+                    className="h-[90px] w-[148px] rounded-ue-lg border border-slate-200/60 shadow-surface"
+                    style={{ objectFit: "cover" }}
+                  />
+                )}
+              </div>
             </div>
           </ModalBody>
           <ModalFooter>
@@ -484,7 +484,7 @@ export default function NewsDetail() {
       {snack && (
         <div className="pointer-events-none fixed bottom-8 left-1/2 z-[var(--ue-z-index-toast,2147483600)] w-[min(92vw,420px)] -translate-x-1/2">
           <div
-            className="pointer-events-auto rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_70%,transparent_30%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] px-5 py-4 text-center text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,white_10%)] shadow-[0_20px_55px_rgba(15,23,42,0.2)]"
+            className="pointer-events-auto rounded-ue-xl border border-slate-200/60 bg-[var(--card-bg,#fff)] px-5 py-4 text-center text-sm font-semibold text-page-foreground shadow-surface"
             role="status"
             aria-live="polite"
           >

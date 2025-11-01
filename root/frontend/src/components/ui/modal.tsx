@@ -214,14 +214,12 @@ export function ModalFooter({ children, className }: ModalSectionProps) {
 }
 
 export const modalFieldStyles = {
-  label:
-    "flex flex-col gap-2 text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_72%,white_28%)]",
+  label: "flex flex-col gap-2 text-sm font-medium text-secondary",
   input:
-    "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] px-4 py-2.5 text-[color:var(--page-text)] shadow-[0_4px_18px_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)]/25",
+    "w-full rounded-ue-lg border border-slate-200/70 bg-[var(--card-bg,#fff)] px-4 py-2.5 text-page-foreground shadow-surface transition focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30",
   textarea:
-    "min-h-[140px] w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-border,rgba(148,163,184,0.32))_72%,transparent_28%)] bg-[color:color-mix(in_srgb,var(--page-bg,#fff)_94%,white_6%)] px-4 py-2.5 text-[color:var(--page-text)] shadow-[0_4px_18px_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)]/25",
-  helper:
-    "text-xs font-medium text-[color:color-mix(in_srgb,var(--secondary-text,#64748b)_84%,white_16%)]",
+    "min-h-[140px] w-full rounded-ue-lg border border-slate-200/70 bg-[var(--card-bg,#fff)] px-4 py-2.5 text-page-foreground shadow-surface transition focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30",
+  helper: "text-xs font-medium text-secondary",
 }
 
 export default Modal
