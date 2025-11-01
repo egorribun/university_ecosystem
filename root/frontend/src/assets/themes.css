@@ -72,7 +72,8 @@
   --dash-panel-bg-muted: color-mix(in srgb, white 97%, var(--nav-link) 3%);
   --dash-panel-border: color-mix(in srgb, white 62%, var(--nav-link) 38%);
   --dash-panel-shadow: 0 34px 110px -70px color-mix(in srgb, var(--nav-link-hover) 45%, transparent);
-  --dash-panel-shadow-soft: 0 28px 96px -68px color-mix(in srgb, var(--nav-link-hover) 32%, transparent);
+  --dash-panel-shadow-soft: 0 28px 96px -68px
+    color-mix(in srgb, var(--nav-link-hover) 32%, transparent);
   --dash-panel-item-bg: color-mix(in srgb, white 96%, var(--nav-link) 4%);
   --dash-panel-item-bg-alt: color-mix(in srgb, white 94%, var(--nav-link) 6%);
   --dash-panel-item-divider: color-mix(in srgb, white 76%, var(--nav-link) 24%);

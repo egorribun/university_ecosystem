@@ -159,9 +159,7 @@ const focusFirstItem = (container: HTMLElement | null) => {
 const getFocusableItems = (container: HTMLElement | null) => {
   if (!container) return []
   return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      '[data-ue-dropdown-item]:not([data-disabled="true"])'
-    )
+    container.querySelectorAll<HTMLElement>('[data-ue-dropdown-item]:not([data-disabled="true"])')
   )
 }
 
@@ -404,4 +402,3 @@ DropdownMenu.displayName = "DropdownMenu"
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger"
 DropdownMenuContent.displayName = "DropdownMenuContent"
 DropdownMenuItem.displayName = "DropdownMenuItem"
-

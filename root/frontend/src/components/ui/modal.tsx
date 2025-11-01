@@ -129,10 +129,7 @@ export function Modal({
   return createPortal(
     <ModalContext.Provider value={contextValue}>
       <div
-        className={cn(
-          "fixed inset-0 flex items-center justify-center p-4 sm:p-8",
-          className
-        )}
+        className={cn("fixed inset-0 flex items-center justify-center p-4 sm:p-8", className)}
         style={{ zIndex: "var(--ue-z-index-overlay)" }}
       >
         <div
@@ -164,7 +161,12 @@ export interface ModalContentProps extends HTMLAttributes<HTMLDivElement> {
   hideScrollbars?: boolean
 }
 
-export function ModalContent({ hideScrollbars = false, className, children, ...rest }: ModalContentProps) {
+export function ModalContent({
+  hideScrollbars = false,
+  className,
+  children,
+  ...rest
+}: ModalContentProps) {
   const { labelledBy, describedBy, trapRef } = useModalContext()
 
   return (
@@ -217,7 +219,10 @@ export function ModalTitle({ className, children, ...rest }: ComponentPropsWitho
   return (
     <h2
       id={titleId}
-      className={cn("text-2xl font-semibold tracking-tight text-[color:var(--page-text)]", className)}
+      className={cn(
+        "text-2xl font-semibold tracking-tight text-[color:var(--page-text)]",
+        className
+      )}
       {...rest}
     >
       {children}
@@ -310,4 +315,3 @@ ModalDescription.displayName = "ModalDescription"
 ModalBody.displayName = "ModalBody"
 ModalFooter.displayName = "ModalFooter"
 ModalCloseButton.displayName = "ModalCloseButton"
-

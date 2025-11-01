@@ -227,7 +227,10 @@ const News = () => {
               {Array.isArray(newsList) && showEmptyState && (
                 <div className="col-span-full">
                   <div className="flex flex-col items-center justify-center gap-3 rounded-ue-xl border border-dashed border-[color:var(--glass-border)]/70 bg-[color:var(--card-bg)]/60 px-6 py-16 text-center text-[color:var(--secondary-text)] shadow-surface">
-                    <ArticleIcon style={{ fontSize: "2rem", color: "var(--secondary-text)" }} aria-hidden="true" />
+                    <ArticleIcon
+                      style={{ fontSize: "2rem", color: "var(--secondary-text)" }}
+                      aria-hidden="true"
+                    />
                     <p className="text-lg font-medium tracking-tight">{t("news:states.empty")}</p>
                   </div>
                 </div>

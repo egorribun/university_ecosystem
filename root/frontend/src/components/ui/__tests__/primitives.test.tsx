@@ -188,4 +188,3 @@ describe("UI primitives", () => {
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument())
   })
 })
-

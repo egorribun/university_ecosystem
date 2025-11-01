@@ -39,7 +39,12 @@ export interface ToastViewportProps extends PropsWithChildren {
   container?: HTMLElement | null
 }
 
-export function ToastViewport({ position = "bottom-right", className, container, children }: ToastViewportProps) {
+export function ToastViewport({
+  position = "bottom-right",
+  className,
+  container,
+  children,
+}: ToastViewportProps) {
   const portalNode = useMemo(() => container ?? getToastRoot(), [container])
   if (!portalNode) return null
 
@@ -178,7 +183,9 @@ export function Toast({
         </div>
         <div className="flex flex-1 flex-col gap-1">
           {title ? <p className="text-sm font-semibold">{title}</p> : null}
-          {description ? <p className="text-sm text-[color:var(--secondary-text)]">{description}</p> : null}
+          {description ? (
+            <p className="text-sm text-[color:var(--secondary-text)]">{description}</p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {actionLabel ? (
               <button
@@ -252,4 +259,3 @@ export const ToastActionButton = ({ className, ...rest }: ToastActionButtonProps
 ToastViewport.displayName = "ToastViewport"
 Toast.displayName = "Toast"
 ToastActionButton.displayName = "ToastActionButton"
-
