@@ -10,7 +10,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
   type PropsWithChildren,
 } from "react"
@@ -290,7 +290,7 @@ export function DropdownMenuContent({
   }, [open, autoFocus, onOpenChange, triggerRef])
 
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.key === "ArrowDown") {
         event.preventDefault()
         focusNextItem(contentRef.current, 1)
