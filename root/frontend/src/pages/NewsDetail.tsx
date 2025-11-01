@@ -2,38 +2,100 @@ import type React from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  Box,
-  Typography,
-  CircularProgress,
-  Paper,
-  Stack,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Divider,
-  Snackbar,
-  useMediaQuery,
-} from "@mui/material"
-import ArrowBackIcon from "@mui/icons-material/ArrowBack"
-import EditIcon from "@mui/icons-material/Edit"
-import DeleteIcon from "@mui/icons-material/Delete"
-import SaveIcon from "@mui/icons-material/Save"
-import CloseIcon from "@mui/icons-material/Close"
-import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
+import {
+  Button,
+  IconButton,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+  TextArea,
+  TextInput,
+  Toast,
+  ToastViewport,
+} from "@/components/ui"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { cn } from "@/utils/cn"
+
+type ToastIntent = Parameters<typeof Toast>[0] extends { intent?: infer I }
+  ? NonNullable<I>
+  : "info"
+
+type ToastState = {
+  id: number
+  message: string
+  intent: ToastIntent
+}
+
+type IconProps = React.SVGProps<SVGSVGElement> & { className?: string }
+
+const SvgIcon = ({ className, ...rest }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+    className={cn("h-5 w-5", className)}
+    {...rest}
+  />
+)
+
+const ArrowLeftIcon = (props: IconProps) => (
+  <SvgIcon {...props}>
+    <path d="M10.5 19.5 3 12l7.5-7.5" />
+    <path d="M3 12h18" />
+  </SvgIcon>
+)
+
+const PencilIcon = (props: IconProps) => (
+  <SvgIcon {...props}>
+    <path d="m4.75 19.25 1.92-6.73 8.8-8.79a1.78 1.78 0 0 1 2.51 0l1.54 1.54a1.78 1.78 0 0 1 0 2.51l-8.8 8.8z" />
+    <path d="m12.38 6.62 4.5 4.5" />
+  </SvgIcon>
+)
+
+const TrashIcon = (props: IconProps) => (
+  <SvgIcon {...props}>
+    <path d="M5 7h14" />
+    <path d="M19 7v11.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5V7" />
+    <path d="m9.5 7 1-2.5h3L14.5 7" />
+    <path d="M10 12v5" />
+    <path d="M14 12v5" />
+  </SvgIcon>
+)
+
+const CheckIcon = (props: IconProps) => (
+  <SvgIcon {...props}>
+    <path d="m5.5 12.5 4 4 9-9" />
+  </SvgIcon>
+)
+
+const CloseIcon = (props: IconProps) => (
+  <SvgIcon {...props}>
+    <path d="m7 7 10 10M17 7 7 17" />
+  </SvgIcon>
+)
+
+const CameraIcon = (props: IconProps) => (
+  <SvgIcon {...props}>
+    <path d="M3.5 8.5a2 2 0 0 1 2-2h2l1.1-1.8A2 2 0 0 1 9.5 4h5a2 2 0 0 1 1.7.9L17.3 6.5h2.2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2z" />
+    <circle cx={12} cy={13} r={3.2} />
+  </SvgIcon>
+)
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -78,7 +140,9 @@ export default function NewsDetail() {
   const [deleting, setDeleting] = useState(false)
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [snack, setSnack] = useState("")
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [toastState, setToastState] = useState<ToastState | null>(null)
+  const [toastOpen, setToastOpen] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
 
@@ -116,6 +180,11 @@ export default function NewsDetail() {
     setNewImage(null)
   }
 
+  const showToast = (message: string, intent: ToastIntent = "info") => {
+    setToastState({ id: Date.now(), message, intent })
+    setToastOpen(true)
+  }
+
   const openEdit = () => {
     if (!query.data) return
     setEditData({
@@ -126,11 +195,13 @@ export default function NewsDetail() {
       image_url: query.data.image_url || "",
     })
     resetPreview()
+    setErrors({})
     setEditOpen(true)
   }
 
   const closeEdit = () => {
     resetPreview()
+    setErrors({})
     setEditOpen(false)
   }
 
@@ -144,6 +215,22 @@ export default function NewsDetail() {
 
   const handleSave = async () => {
     if (!query.data) return
+    const nextErrors: Record<string, string> = {}
+    if (!editData.title.trim()) {
+      nextErrors.title = t("news:form.validation.titleRequired", {
+        defaultValue: "Title is required",
+      })
+    }
+    if (!editData.content.trim()) {
+      nextErrors.content = t("news:form.validation.contentRequired", {
+        defaultValue: "Content is required",
+      })
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors)
+      return
+    }
+    setErrors({})
     setSaving(true)
     try {
       let imageUrl = editData.image_url
@@ -161,11 +248,11 @@ export default function NewsDetail() {
       const { data } = await updateNews(query.data.id, payload)
       queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news"] })
-      setSnack(t("news:notifications.updated"))
+      showToast(t("news:notifications.updated"), "success")
       closeEdit()
     } catch (error) {
       console.error(error)
-      setSnack(t("news:notifications.savedError"))
+      showToast(t("news:notifications.savedError"), "error")
     } finally {
       setSaving(false)
     }
@@ -176,14 +263,14 @@ export default function NewsDetail() {
     setDeleting(true)
     try {
       await deleteNews(query.data.id)
-      setSnack(t("news:notifications.deleted"))
+      showToast(t("news:notifications.deleted"), "success")
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news"] })
       if (window.history.length > 1) navigate(-1)
       else navigate("/news")
     } catch (error) {
       console.error(error)
-      setSnack(t("news:notifications.deleteError"))
+      showToast(t("news:notifications.deleteError"), "error")
     } finally {
       setDeleting(false)
       setConfirmDeleteOpen(false)
@@ -225,262 +312,287 @@ export default function NewsDetail() {
   const createdAt = query.data?.created_at
   const createdAtIso = useMemo(() => (createdAt ? dayjs(createdAt).toISOString() : ""), [createdAt])
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
+  const heroAlt = displayTitle
+    ? t("news:alt.hero", { title: displayTitle })
+    : t("news:alt.heroFallback")
 
   if (query.isLoading)
     return (
       <Layout>
-        <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}>
-          <CircularProgress />
-        </Box>
+        <div className="grid min-h-[60vh] place-items-center">
+          <span className="h-12 w-12 animate-spin rounded-full border-2 border-[color:rgba(148,163,184,0.38)] border-t-[color:var(--nav-link)]" />
+        </div>
       </Layout>
     )
 
   if (query.isError || !query.data)
     return (
       <Layout>
-        <Box sx={{ p: 2 }}>
-          <Typography color="error">{t("news:states.loadError")}</Typography>
-        </Box>
+        <div className="px-4 py-6 sm:px-6 md:px-10">
+          <p className="text-base font-semibold text-[color:var(--badge-lab)]">
+            {t("news:states.loadError")}
+          </p>
+        </div>
       </Layout>
     )
 
   return (
     <Layout>
-      <Paper
-        elevation={0}
-        sx={{
-          width: "100vw",
-          minHeight: "calc(100vh - 56px)",
-          bgcolor: "background.paper",
-          borderRadius: 0,
-          boxShadow: "none",
-          display: "flex",
-          flexDirection: "column",
-          pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-          pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-          py: { xs: 2, sm: 2, md: 2, lg: 2 },
-          boxSizing: "border-box",
-        }}
-      >
-        <Button
-          onClick={handleBack}
-          startIcon={<ArrowBackIcon />}
-          sx={{
-            mb: 3,
-            alignSelf: "flex-start",
-            fontWeight: 700,
-            borderRadius: 2.5,
-            background: "linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)",
-            color: "#fff",
-            fontSize: "clamp(0.98rem, 2.1vw, 1.17rem)",
-            letterSpacing: "0.02em",
-            px: { xs: 1.6, sm: 2.3, md: 2.9, lg: 3.5 },
-            py: { xs: 0.9, sm: 1.12, md: 1.2, lg: 1.28 },
-            width: { xs: "100%", sm: "auto" },
-            minWidth: { xs: 0, sm: 0 },
-            boxShadow: "0 2px 18px #1976d238, 0 1.5px 8px #0001",
-            transition: "transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s",
-            "&:hover": {
-              background: "linear-gradient(100deg, #1976d2 20%, #449aff 100%)",
-              color: "#eaf6ff",
-              transform: "scale(1.06)",
-              boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002",
-            },
-            "&:active": { transform: "scale(0.98)" },
-          }}
-        >
-          {t("common:buttons.back")}
-        </Button>
-
-        <Stack spacing={2} width="100%" alignSelf="flex-start">
-          <Box display="flex" alignItems="center" flexWrap="wrap">
-            <Typography
-              variant="h3"
-              fontWeight={900}
-              sx={{ mr: 2, fontSize: "clamp(1.28rem,4vw,2.1rem)" }}
+      <div className="flex w-full justify-center bg-transparent">
+        <div className="flex w-full max-w-5xl flex-col px-4 pb-16 pt-6 sm:px-6 md:px-10 lg:px-16">
+          <div className="mb-6 flex w-full flex-col gap-4">
+            <Button
+              onClick={handleBack}
+              leadingIcon={<ArrowLeftIcon className="h-5 w-5" />}
+              size="md"
+              fullWidth={isMobile}
+              className="self-start rounded-ue-xl px-5 py-3 text-[clamp(0.95rem,2.2vw,1.15rem)] font-semibold tracking-wide shadow-surface transition-transform duration-200 hover:-translate-y-[1px]"
             >
-              {displayTitle}
-            </Typography>
+              {t("common:buttons.back")}
+            </Button>
 
-            {user?.role === "admin" && (
-              <>
-                <IconButton
-                  color="primary"
-                  onClick={openEdit}
-                  sx={{ mr: 1 }}
-                  aria-label={t("news:aria.editNews")}
-                  disabled={saving || deleting}
-                >
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  color="error"
-                  onClick={() => setConfirmDeleteOpen(true)}
-                  aria-label={t("news:aria.deleteNews")}
-                  disabled={deleting || saving}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-col gap-2">
+                <h1 className="font-display text-[clamp(1.4rem,4vw,2.4rem)] font-bold leading-tight text-[color:var(--page-text)]">
+                  {displayTitle}
+                </h1>
+                {createdAt ? (
+                  <p className="text-sm text-[color:var(--secondary-text)]">
+                    {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
+                  </p>
+                ) : null}
+              </div>
+
+              {user?.role === "admin" ? (
+                <div className="flex items-center gap-2">
+                  <IconButton
+                    aria-label={t("news:aria.editNews")}
+                    onClick={openEdit}
+                    variant="soft"
+                    disabled={saving || deleting}
+                  >
+                    <PencilIcon />
+                  </IconButton>
+                  <IconButton
+                    aria-label={t("news:aria.deleteNews")}
+                    onClick={() => setConfirmDeleteOpen(true)}
+                    variant="soft"
+                    className="text-[color:var(--badge-lab)] hover:text-[color:var(--badge-lab)]"
+                    disabled={deleting || saving}
+                  >
+                    <TrashIcon />
+                  </IconButton>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-6">
+            <div className="relative w-full overflow-hidden rounded-[min(2rem,calc(var(--ue-radius-lg,1rem)*1.6))] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)]/60 shadow-surface">
+              <div className="aspect-[16/9] w-full md:aspect-[21/9]">
+                {imageUrl ? (
+                  <SmartImage
+                    srcRaw={imageUrl}
+                    alt={heroAlt}
+                    onLoad={handleHeroLoad}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      objectPosition: heroPos,
+                    }}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-[color:rgba(148,163,184,0.12)] text-center text-sm font-semibold text-[color:var(--secondary-text)]">
+                    {t("news:states.noImage")}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="h-px w-full bg-[color:var(--glass-border)]/70" aria-hidden />
+
+            <article className="prose max-w-none text-[color:var(--page-text)] prose-headings:font-semibold prose-p:text-[clamp(1.05rem,2.3vw,1.22rem)] prose-p:leading-relaxed prose-img:rounded-xl">
+              <p className="whitespace-pre-line text-[clamp(1.05rem,2.3vw,1.22rem)] leading-relaxed">
+                {content}
+              </p>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      {editOpen ? (
+        <Modal
+          open={editOpen}
+          onOpenChange={(open) => {
+            if (!open) closeEdit()
+          }}
+          closeOnOverlayClick={!saving}
+          closeOnEscape={!saving}
+        >
+          <ModalContent
+            hideScrollbars
+            className={cn(
+              "w-full max-w-3xl bg-[color:var(--card-bg)]/98",
+              isMobile && "h-[min(95vh,720px)] max-w-full"
             )}
-          </Box>
-
-          {createdAt && (
-            <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
-              {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
-            </Typography>
-          )}
-
-          <Box
-            sx={{
-              width: "100%",
-              maxWidth: { xs: "100%", md: 800, lg: 1000 },
-              aspectRatio: { xs: "16 / 9", md: "21 / 9" },
-              position: "relative",
-              borderRadius: 4,
-              border: "1px solid #eee",
-              overflow: "hidden",
-              bgcolor: "rgba(0,0,0,0.04)",
-            }}
           >
-            <SmartImage
-              srcRaw={imageUrl}
-              alt={
-                displayTitle
-                  ? t("news:alt.hero", { title: displayTitle })
-                  : t("news:alt.heroFallback")
-              }
-              onLoad={handleHeroLoad}
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                display: "block",
-                objectFit: "cover",
-                objectPosition: heroPos,
-              }}
-            />
-          </Box>
-
-          <Divider sx={{ my: 2 }} />
-
-          <Typography
-            variant="body1"
-            fontSize="clamp(1.07rem,2.3vw,1.24rem)"
-            sx={{ whiteSpace: "pre-line" }}
-          >
-            {content}
-          </Typography>
-        </Stack>
-
-        <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
-          <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={1}>
-              <TextField
+            <ModalHeader className="gap-3">
+              <ModalTitle className="text-[clamp(1.25rem,3vw,1.6rem)] font-semibold">
+                {t("news:dialogs.edit.title")}
+              </ModalTitle>
+            </ModalHeader>
+            <ModalBody className="gap-5">
+              <TextInput
                 label={t("news:form.title")}
                 value={editData.title}
-                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                fullWidth
+                onChange={(e) => {
+                  setEditData({ ...editData, title: e.target.value })
+                  if (errors.title) setErrors((prev) => ({ ...prev, title: "" }))
+                }}
+                required
                 disabled={saving}
+                errorText={errors.title || undefined}
               />
-              <TextField
+              <TextArea
                 label={t("news:form.text")}
                 value={editData.content}
-                onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-                multiline
-                rows={4}
-                fullWidth
+                onChange={(e) => {
+                  setEditData({ ...editData, content: e.target.value })
+                  if (errors.content) setErrors((prev) => ({ ...prev, content: "" }))
+                }}
+                rows={5}
+                required
                 disabled={saving}
+                errorText={errors.content || undefined}
               />
-              <TextField
+              <TextInput
                 label={t("news:form.title_en", { defaultValue: "Title (English)" })}
                 value={editData.title_en}
                 onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-                fullWidth
                 disabled={saving}
               />
-              <TextField
+              <TextArea
                 label={t("news:form.content_en", { defaultValue: "News text (English)" })}
                 value={editData.content_en}
                 onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-                multiline
-                rows={4}
-                fullWidth
+                rows={5}
                 disabled={saving}
               />
-              <Box display="flex" gap={2} alignItems="center" mt={1}>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<PhotoCamera />}
-                  sx={{ minWidth: 140 }}
-                  disabled={saving}
+                  as="label"
+                  variant="outline"
+                  size="md"
+                  leadingIcon={<CameraIcon />}
+                  className="cursor-pointer whitespace-nowrap"
+                  loading={saving}
                 >
                   {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
                   <input
                     type="file"
                     accept="image/*"
-                    hidden
                     ref={imageInputRef}
                     onChange={handleImageChange}
+                    className="sr-only"
+                    disabled={saving}
                   />
                 </Button>
-
-                {imageUrl && (
-                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
+                {imageUrl ? (
+                  <div className="h-24 w-full overflow-hidden rounded-xl border border-[color:var(--glass-border)] sm:h-24 sm:w-40">
                     <SmartImage
                       srcRaw={imageUrl}
                       alt={t("news:alt.preview")}
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
-                  </Box>
-                )}
-              </Box>
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button variant="contained" onClick={handleSave} disabled={saving}>
-              <SaveIcon sx={{ mr: 1 }} /> {t("common:buttons.save")}
-            </Button>
-            <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
-              <CloseIcon sx={{ mr: 1 }} /> {t("common:buttons.cancel")}
-            </Button>
-          </DialogActions>
-        </Dialog>
+                  </div>
+                ) : null}
+              </div>
+            </ModalBody>
+            <ModalFooter className="gap-3 sm:flex-row">
+              <Button
+                variant="outline"
+                size="md"
+                className="sm:w-auto"
+                onClick={closeEdit}
+                disabled={saving}
+                leadingIcon={<CloseIcon className="h-5 w-5" />}
+              >
+                {t("common:buttons.cancel")}
+              </Button>
+              <Button
+                size="md"
+                className="sm:w-auto"
+                onClick={handleSave}
+                loading={saving}
+                leadingIcon={<CheckIcon className="h-5 w-5" />}
+              >
+                {t("common:buttons.save")}
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      ) : null}
 
-        <Dialog
+      {confirmDeleteOpen ? (
+        <Modal
           open={confirmDeleteOpen}
-          onClose={() => setConfirmDeleteOpen(false)}
-          fullScreen={isMobile}
+          onOpenChange={(open) => {
+            if (!open) setConfirmDeleteOpen(false)
+          }}
+          closeOnOverlayClick={!deleting}
+          closeOnEscape={!deleting}
         >
-          <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
-          <DialogContent>
-            <Typography>{t("news:dialogs.delete.description")}</Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={() => setConfirmDeleteOpen(false)}
-              disabled={deleting}
-            >
-              {t("common:buttons.cancel")}
-            </Button>
-            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
-              <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
-            </Button>
-          </DialogActions>
-        </Dialog>
+          <ModalContent
+            className={cn("w-full max-w-md", isMobile && "h-[min(80vh,460px)] max-w-full")}
+          >
+            <ModalHeader>
+              <ModalTitle>{t("news:dialogs.delete.title")}</ModalTitle>
+            </ModalHeader>
+            <ModalBody>
+              <p className="text-sm leading-relaxed text-[color:var(--secondary-text)]">
+                {t("news:dialogs.delete.description")}
+              </p>
+            </ModalBody>
+            <ModalFooter className="gap-3 sm:flex-row">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDeleteOpen(false)}
+                disabled={deleting}
+                leadingIcon={<CloseIcon className="h-5 w-5" />}
+              >
+                {t("common:buttons.cancel")}
+              </Button>
+              <Button
+                onClick={handleDelete}
+                loading={deleting}
+                className="bg-[color:var(--badge-lab)] text-white hover:bg-[color:var(--badge-lab)]/90"
+                leadingIcon={<TrashIcon className="h-5 w-5" />}
+              >
+                {t("common:buttons.delete")}
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      ) : null}
 
-        <Snackbar
-          open={!!snack}
-          autoHideDuration={2400}
-          onClose={() => setSnack("")}
-          message={snack}
-        />
-      </Paper>
+      {toastState ? (
+        <ToastViewport position="bottom-right">
+          <Toast
+            key={toastState.id}
+            open={toastOpen}
+            onOpenChange={(open) => {
+              setToastOpen(open)
+              if (!open) {
+                setTimeout(() => setToastState(null), 150)
+              }
+            }}
+            description={toastState.message}
+            intent={toastState.intent}
+            duration={2400}
+          />
+        </ToastViewport>
+      ) : null}
     </Layout>
   )
 }
