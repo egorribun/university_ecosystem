@@ -13,13 +13,10 @@ import {
 } from "react"
 import { createNews, uploadNewsImage } from "@/api/news"
 import {
-  Box,
-  Typography,
   Button,
   Dialog,
   DialogTitle,
   DialogContent,
-  Stack,
   TextField,
   useMediaQuery,
 } from "@mui/material"
@@ -167,217 +164,170 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <Box
-          sx={{
-            width: "100vw",
-            minHeight: "100vh",
-            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-            py: { xs: 0, sm: 0, md: 0, lg: 0 },
-            boxSizing: "border-box",
-            overflowX: "hidden",
-          }}
-        >
-          <Stack
-            data-fade
-            style={{ "--fade-delay": "80ms" } as CSSProperties}
-            direction="row"
-            alignItems="center"
-            gap={2}
-            mb={isMobile ? 1.5 : 3}
-            mt={isMobile ? 1.5 : 3}
-          >
-            <ArticleIcon color="primary" sx={{ fontSize: 34 }} />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              color="primary.main"
-              sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-            >
-              {t("news:pageTitle")}
-            </Typography>
-          </Stack>
-
-          {user?.role === "admin" && (
-            <Box
+        <div className="w-screen min-h-screen overflow-x-hidden px-4 sm:px-6 md:px-8 lg:px-12">
+          <div className="mx-auto flex w-full max-w-6xl flex-col">
+            <div
               data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              sx={{ display: "flex", justifyContent: "flex-start", mb: 2 }}
+              style={{ "--fade-delay": "80ms" } as CSSProperties}
+              className={`flex items-center gap-3 md:gap-4 ${
+                isMobile ? "my-6" : "my-10"
+              }`}
             >
-              <Button
-                variant="contained"
-                sx={{
-                  fontWeight: 700,
-                  fontSize: "clamp(1rem, 2.1vw, 1.15rem)",
-                  px: { xs: 2.3, sm: 3 },
-                  py: 1.2,
-                  borderRadius: 3,
-                  letterSpacing: "0.02em",
-                }}
-                onClick={() => setAddOpen(true)}
-                disabled={adding}
+              <ArticleIcon className="h-9 w-9 text-blue-600 md:h-10 md:w-10" />
+              <h1 className="font-display text-2xl font-bold tracking-tight text-blue-700 md:text-3xl lg:text-4xl">
+                {t("news:pageTitle")}
+              </h1>
+            </div>
+
+            {user?.role === "admin" && (
+              <div
+                data-fade
+                style={{ "--fade-delay": "140ms" } as CSSProperties}
+                className={`flex justify-start ${isMobile ? "mb-4" : "mb-6"}`}
               >
-                {t("news:actions.add")}
-              </Button>
-            </Box>
-          )}
-
-          <Box
-            data-fade
-            style={{ "--fade-delay": "200ms" } as CSSProperties}
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: { xs: 2, sm: 3 },
-            }}
-          >
-            {Array.isArray(visibleList) &&
-              visibleList.map((news) => (
-                <Box key={news.id} sx={{ display: "flex", width: "100%", height: "100%" }}>
-                  <NewsCard
-                    {...news}
-                    image_url={news.image_url ?? undefined}
-                    onChange={() => {
-                      void refetchNews()
-                    }}
-                  />
-                </Box>
-              ))}
-
-            {Array.isArray(newsList) && showEmptyState && (
-              <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
-                <Typography fontSize={24} className="events-empty-text">
-                  {t("news:states.empty")}
-                </Typography>
-              </Box>
+                <Button
+                  variant="contained"
+                  className="!rounded-full !bg-blue-600 !px-5 !py-3 !text-base !font-semibold !tracking-wide !text-white !shadow-sm transition hover:!bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:!cursor-not-allowed disabled:!bg-blue-300"
+                  onClick={() => setAddOpen(true)}
+                  disabled={adding}
+                >
+                  {t("news:actions.add")}
+                </Button>
+              </div>
             )}
-          </Box>
 
-          <Dialog
-            open={addOpen}
-            onClose={handleCloseDialog}
-            fullScreen={isMobile}
-            PaperProps={{
-              sx: {
-                borderRadius: { xs: 0, sm: 4 },
-                width: { xs: "100vw", sm: 400 },
-                maxWidth: { xs: "100vw", sm: 440 },
-              },
-            }}
-          >
-            <DialogTitle sx={{ fontWeight: 700, fontSize: "1.3rem" }}>
-              {t("news:dialogs.create.title")}
-            </DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
-                <TextField
-                  label={t("news:form.title")}
-                  value={newsData.title}
-                  onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
-                  fullWidth
-                  inputProps={{ maxLength: 100 }}
-                  sx={{ fontSize: "1rem" }}
-                  disabled={adding}
-                />
-                <TextField
-                  label={t("news:form.content")}
-                  value={newsData.content}
-                  onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
-                  multiline
-                  minRows={5}
-                  fullWidth
-                  inputProps={{ maxLength: 3000 }}
-                  sx={{ fontSize: "1rem" }}
-                  disabled={adding}
-                />
-                <TextField
-                  label={t("news:form.title_en", { defaultValue: "Title (English)" })}
-                  value={newsData.title_en}
-                  onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
-                  fullWidth
-                  inputProps={{ maxLength: 100 }}
-                  sx={{ fontSize: "1rem" }}
-                  disabled={adding}
-                />
-                <TextField
-                  label={t("news:form.content_en", { defaultValue: "News text (English)" })}
-                  value={newsData.content_en}
-                  onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
-                  multiline
-                  minRows={5}
-                  fullWidth
-                  inputProps={{ maxLength: 3000 }}
-                  sx={{ fontSize: "1rem" }}
-                  disabled={adding}
-                />
-
-                <Box display="flex" alignItems="center" gap={2}>
-                  <Button
-                    component="label"
-                    variant="outlined"
-                    startIcon={<PhotoCamera />}
-                    sx={{
-                      minWidth: 120,
-                      fontWeight: 600,
-                      fontSize: "1rem",
-                      borderRadius: 2,
-                    }}
-                    disabled={adding}
-                  >
-                    {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      ref={imageInputRef}
-                      onChange={handleImageChange}
-                    />
-                  </Button>
-
-                  {imagePreview && (
-                    <SmartImage
-                      srcRaw={imagePreview}
-                      alt={t("news:alt.newCover")}
-                      style={{
-                        width: 100,
-                        height: 60,
-                        objectFit: "cover",
-                        borderRadius: 8,
-                        border: "1px solid #eee",
-                        display: "block",
+            <div
+              data-fade
+              style={{ "--fade-delay": "200ms" } as CSSProperties}
+              className="grid w-full max-w-6xl gap-4 sm:gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]"
+            >
+              {Array.isArray(visibleList) &&
+                visibleList.map((news) => (
+                  <div key={news.id} className="flex h-full w-full">
+                    <NewsCard
+                      {...news}
+                      image_url={news.image_url ?? undefined}
+                      onChange={() => {
+                        void refetchNews()
                       }}
                     />
-                  )}
-                </Box>
+                  </div>
+                ))}
 
-                <Stack direction="row" gap={2} mt={2}>
-                  <Button
-                    variant="contained"
-                    onClick={handleAddNews}
-                    disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
-                    sx={{
-                      fontWeight: 700,
-                      borderRadius: 2.2,
-                      px: 3,
-                      fontSize: "1.02rem",
-                    }}
-                  >
-                    {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    onClick={handleCloseDialog}
+              {Array.isArray(newsList) && showEmptyState && (
+                <div className="col-span-full mt-14 mb-14 text-center">
+                  <p className="text-2xl font-semibold text-secondary">
+                    {t("news:states.empty")}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Dialog
+              open={addOpen}
+              onClose={handleCloseDialog}
+              fullScreen={isMobile}
+              PaperProps={{
+                sx: {
+                  borderRadius: { xs: 0, sm: 4 },
+                  width: { xs: "100vw", sm: 400 },
+                  maxWidth: { xs: "100vw", sm: 440 },
+                },
+              }}
+            >
+              <DialogTitle className="text-xl font-semibold text-page-foreground md:text-2xl">
+                {t("news:dialogs.create.title")}
+              </DialogTitle>
+              <DialogContent className="pb-6">
+                <div className={`mt-2 flex flex-col gap-4 ${isMobile ? "" : "min-w-[340px]"}`}>
+                  <TextField
+                    label={t("news:form.title")}
+                    value={newsData.title}
+                    onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
+                    fullWidth
+                    inputProps={{ maxLength: 100 }}
                     disabled={adding}
-                    sx={{ borderRadius: 2.2, px: 2.5, fontSize: "1.02rem" }}
-                  >
-                    {t("common:buttons.cancel")}
-                  </Button>
-                </Stack>
-              </Stack>
-            </DialogContent>
-          </Dialog>
-        </Box>
+                  />
+                  <TextField
+                    label={t("news:form.content")}
+                    value={newsData.content}
+                    onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
+                    multiline
+                    minRows={5}
+                    fullWidth
+                    inputProps={{ maxLength: 3000 }}
+                    disabled={adding}
+                  />
+                  <TextField
+                    label={t("news:form.title_en", { defaultValue: "Title (English)" })}
+                    value={newsData.title_en}
+                    onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
+                    fullWidth
+                    inputProps={{ maxLength: 100 }}
+                    disabled={adding}
+                  />
+                  <TextField
+                    label={t("news:form.content_en", { defaultValue: "News text (English)" })}
+                    value={newsData.content_en}
+                    onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
+                    multiline
+                    minRows={5}
+                    fullWidth
+                    inputProps={{ maxLength: 3000 }}
+                    disabled={adding}
+                  />
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <Button
+                      component="label"
+                      variant="outlined"
+                      startIcon={<PhotoCamera />}
+                      className="!min-w-[120px] !rounded-lg !border-blue-500 !px-4 !py-2.5 !font-semibold !text-blue-600 hover:!border-blue-600 hover:!bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:!cursor-not-allowed"
+                      disabled={adding}
+                    >
+                      {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        ref={imageInputRef}
+                        onChange={handleImageChange}
+                      />
+                    </Button>
+
+                    {imagePreview && (
+                      <SmartImage
+                        srcRaw={imagePreview}
+                        alt={t("news:alt.newCover")}
+                        className="h-16 w-24 rounded-lg border border-slate-10 object-cover"
+                      />
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+                    <Button
+                      variant="contained"
+                      onClick={handleAddNews}
+                      disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
+                      className="!rounded-lg !bg-blue-600 !px-4 !py-2.5 !text-base !font-semibold !text-white !shadow-sm transition hover:!bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:!cursor-not-allowed disabled:!bg-blue-300"
+                    >
+                      {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={handleCloseDialog}
+                      disabled={adding}
+                      className="!rounded-lg !border-slate-40 !px-4 !py-2.5 !text-base !font-semibold !text-secondary hover:!border-slate-40 hover:!bg-slate-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:!cursor-not-allowed"
+                    >
+                      {t("common:buttons.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
       </PageFadeIn>
     </Layout>
   )
