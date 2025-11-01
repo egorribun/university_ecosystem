@@ -181,11 +181,9 @@ def configure_metrics(app: FastAPI) -> None:
         in _PLACEHOLDER_PASSWORDS
     ):
         logger.warning(
-            
-                "Metrics endpoint is enabled but METRICS_BASIC_AUTH_PASSWORD uses "
-                "a placeholder value; refusing to expose /metrics until strong "
-                "credentials are configured."
-            
+            "Metrics endpoint is enabled but METRICS_BASIC_AUTH_PASSWORD uses "
+            "a placeholder value; refusing to expose /metrics until strong "
+            "credentials are configured."
         )
         return
 
