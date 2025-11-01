@@ -853,7 +853,10 @@ async def _acknowledge_persistent_job(
                         if metrics is not None:
                             metrics.failed_jobs_total.inc()
                         logger.error(
-                            "Notification job exhausted retries; moving to dead-letter queue",
+                            (
+                                "Notification job exhausted retries; moving to "
+                                "dead-letter queue"
+                            ),
                             extra={
                                 "job": job,
                                 "queue_id": job.queue_id,

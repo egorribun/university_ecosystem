@@ -1,5 +1,5 @@
 import pytest
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 from sqlalchemy import select
 from starlette.requests import Request
 

@@ -105,7 +105,10 @@ async def test_security_headers_development_report_only(monkeypatch):
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
     assert "default-src 'self'" in report_only
     assert (
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'"
+        (
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 "
+            "'report-sample'"
+        )
         in report_only
     )
     assert (
