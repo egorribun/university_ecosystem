@@ -210,14 +210,12 @@ describe("News page feed rendering", () => {
     useMediaQueryMock.mockReset()
   })
 
-  it.each(
-    [
-      ["light", false],
-      ["light", true],
-      ["dark", false],
-      ["dark", true],
-    ] as const
-  )(
+  it.each([
+    ["light", false],
+    ["light", true],
+    ["dark", false],
+    ["dark", true],
+  ] as const)(
     "renders a large news feed without blur in %s mode (mobile=%s)",
     async (mode, isMobile) => {
       currentMode = mode
