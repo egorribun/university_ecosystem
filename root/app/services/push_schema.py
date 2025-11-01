@@ -109,7 +109,10 @@ def ensure_push_subscription_schema_sync(engine: Engine | None) -> None:
                 _ensure_columns(connection)
         except OperationalError as exc:
             logger.warning(
-                "Push subscription schema creation skipped; database is unavailable: %s",
+                (
+                    "Push subscription schema creation skipped; database is "
+                    "unavailable: %s"
+                ),
                 exc,
                 exc_info=False,
             )

@@ -68,7 +68,7 @@ async def test_save_image_uses_storage_backend(monkeypatch):
     method, (relative_path, data), kwargs = backend.calls[0]
     assert method == "save"
     assert relative_path.startswith("avatars/")
-    assert isinstance(data, (bytes, bytearray))
+    assert isinstance(data, bytes | bytearray)
     assert kwargs["content_type"] in {"image/webp", "image/png"}
 
 

@@ -34,6 +34,10 @@ from app.services.email_change_cleanup import (
     cleanup_stale_email_change_tokens,
     start_email_change_cleanup_scheduler,
 )
+from app.services.notification_queue import (
+    DeadLetterCleanupConfig,
+    start_dead_letter_cleanup_scheduler,
+)
 from app.services.notifications import (
     cleanup_stale_notifications,
     start_notifications_scheduler,
@@ -112,12 +116,10 @@ async def lifespan(app: FastAPI):
         settings.notification_queue_dead_letter_retention_days > 0
         and settings.notification_queue_dead_letter_cleanup_interval_seconds > 0
     ):
-        stop_dead_letter_cleanup = await notification_queue.start_dead_letter_cleanup_scheduler(
-            config=notification_queue.DeadLetterCleanupConfig(
+        stop_dead_letter_cleanup = await start_dead_letter_cleanup_scheduler(
+            config=DeadLetterCleanupConfig(
                 retention_days=settings.notification_queue_dead_letter_retention_days,
-                interval_seconds=(
-                    settings.notification_queue_dead_letter_cleanup_interval_seconds
-                ),
+                interval_seconds=settings.notification_queue_dead_letter_cleanup_interval_seconds,
             )
         )
     if settings.session_cleanup_interval_seconds > 0:
