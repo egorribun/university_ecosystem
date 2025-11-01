@@ -1,24 +1,6 @@
-import type React from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  Box,
-  Typography,
-  CircularProgress,
-  Paper,
-  Stack,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Divider,
-  Snackbar,
-  useMediaQuery,
-} from "@mui/material"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -28,15 +10,46 @@ import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
+import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage } from "@/api/news"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
+import { Button } from "@/components/ui"
+import Dialog from "@/components/Dialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
+
+const inputClass =
+  "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
+const textareaClass = `${inputClass} min-h-[160px] resize-y leading-relaxed`
+const iconButtonClass =
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/85 text-[color:var(--nav-link)] shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+
+type FieldProps = {
+  label: ReactNode
+  htmlFor: string
+  children: ReactNode
+  required?: boolean
+}
+
+function Field({ label, htmlFor, children, required = false }: FieldProps) {
+  return (
+    <div className="space-y-2">
+      <label
+        htmlFor={htmlFor}
+        className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
+      >
+        {label}
+        {required ? <span className="ml-1 text-[#f87171]">*</span> : null}
+      </label>
+      {children}
+    </div>
+  )
+}
 
 async function fetchNews(id: string) {
   const numericId = Number(id)
@@ -63,7 +76,6 @@ export default function NewsDetail() {
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
-  const isMobile = useMediaQuery("(max-width:600px)")
 
   const [editOpen, setEditOpen] = useState(false)
   const [editData, setEditData] = useState({
@@ -80,6 +92,7 @@ export default function NewsDetail() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const editTitleRef = useRef<HTMLInputElement>(null)
   const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
 
   const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
@@ -106,6 +119,12 @@ export default function NewsDetail() {
       if (previewUrl) URL.revokeObjectURL(previewUrl)
     }
   }, [previewUrl])
+
+  useEffect(() => {
+    if (!snack) return
+    const timeout = window.setTimeout(() => setSnack(""), 2400)
+    return () => window.clearTimeout(timeout)
+  }, [snack])
 
   const resetPreview = () => {
     if (previewUrl) {
@@ -229,258 +248,255 @@ export default function NewsDetail() {
   if (query.isLoading)
     return (
       <Layout>
-        <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}>
-          <CircularProgress />
-        </Box>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-[color:var(--nav-link)]" />
+        </div>
       </Layout>
     )
 
   if (query.isError || !query.data)
     return (
       <Layout>
-        <Box sx={{ p: 2 }}>
-          <Typography color="error">{t("news:states.loadError")}</Typography>
-        </Box>
+        <div className="px-4 py-10">
+          <p className="text-lg font-semibold text-[#f87171]">{t("news:states.loadError")}</p>
+        </div>
       </Layout>
     )
 
   return (
     <Layout>
-      <Paper
-        elevation={0}
-        sx={{
-          width: "100vw",
-          minHeight: "calc(100vh - 56px)",
-          bgcolor: "background.paper",
-          borderRadius: 0,
-          boxShadow: "none",
-          display: "flex",
-          flexDirection: "column",
-          pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-          pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-          py: { xs: 2, sm: 2, md: 2, lg: 2 },
-          boxSizing: "border-box",
-        }}
-      >
+      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-10">
         <Button
+          variant="outline"
           onClick={handleBack}
-          startIcon={<ArrowBackIcon />}
-          sx={{
-            mb: 3,
-            alignSelf: "flex-start",
-            fontWeight: 700,
-            borderRadius: 2.5,
-            background: "linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)",
-            color: "#fff",
-            fontSize: "clamp(0.98rem, 2.1vw, 1.17rem)",
-            letterSpacing: "0.02em",
-            px: { xs: 1.6, sm: 2.3, md: 2.9, lg: 3.5 },
-            py: { xs: 0.9, sm: 1.12, md: 1.2, lg: 1.28 },
-            width: { xs: "100%", sm: "auto" },
-            minWidth: { xs: 0, sm: 0 },
-            boxShadow: "0 2px 18px #1976d238, 0 1.5px 8px #0001",
-            transition: "transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s",
-            "&:hover": {
-              background: "linear-gradient(100deg, #1976d2 20%, #449aff 100%)",
-              color: "#eaf6ff",
-              transform: "scale(1.06)",
-              boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002",
-            },
-            "&:active": { transform: "scale(0.98)" },
-          }}
+          leadingIcon={<ArrowBackIcon className="text-[1.1rem]" />}
+          className="w-full max-w-[220px] justify-center border-white/20 text-[clamp(0.95rem,2vw,1.1rem)] sm:w-auto"
         >
           {t("common:buttons.back")}
         </Button>
 
-        <Stack spacing={2} width="100%" alignSelf="flex-start">
-          <Box display="flex" alignItems="center" flexWrap="wrap">
-            <Typography
-              variant="h3"
-              fontWeight={900}
-              sx={{ mr: 2, fontSize: "clamp(1.28rem,4vw,2.1rem)" }}
-            >
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-[clamp(1.55rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
               {displayTitle}
-            </Typography>
+            </h1>
 
             {user?.role === "admin" && (
-              <>
-                <IconButton
-                  color="primary"
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
                   onClick={openEdit}
-                  sx={{ mr: 1 }}
-                  aria-label={t("news:aria.editNews")}
+                  className={iconButtonClass}
+                  aria-label={t("news:aria.editNews") ?? ""}
                   disabled={saving || deleting}
                 >
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  color="error"
+                  <EditIcon fontSize="small" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => setConfirmDeleteOpen(true)}
-                  aria-label={t("news:aria.deleteNews")}
+                  className={cn(iconButtonClass, "text-[#e11d48]")}
+                  aria-label={t("news:aria.deleteNews") ?? ""}
                   disabled={deleting || saving}
                 >
-                  <DeleteIcon />
-                </IconButton>
-              </>
+                  <DeleteIcon fontSize="small" />
+                </button>
+              </div>
             )}
-          </Box>
+          </div>
 
           {createdAt && (
-            <Typography color="text.secondary" fontSize="clamp(0.92rem,1.5vw,1.12rem)">
+            <p className="text-sm font-medium text-[color:var(--secondary-text)]">
               {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
-            </Typography>
+            </p>
           )}
 
-          <Box
-            sx={{
-              width: "100%",
-              maxWidth: { xs: "100%", md: 800, lg: 1000 },
-              aspectRatio: { xs: "16 / 9", md: "21 / 9" },
-              position: "relative",
-              borderRadius: 4,
-              border: "1px solid #eee",
-              overflow: "hidden",
-              bgcolor: "rgba(0,0,0,0.04)",
-            }}
-          >
-            <SmartImage
-              srcRaw={imageUrl}
-              alt={
-                displayTitle
-                  ? t("news:alt.hero", { title: displayTitle })
-                  : t("news:alt.heroFallback")
-              }
-              onLoad={handleHeroLoad}
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                display: "block",
-                objectFit: "cover",
-                objectPosition: heroPos,
-              }}
-            />
-          </Box>
+          <div className="mt-4 w-full max-w-4xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+            <div className="relative aspect-[16/9] w-full">
+              <SmartImage
+                srcRaw={imageUrl}
+                alt={
+                  displayTitle
+                    ? t("news:alt.hero", { title: displayTitle })
+                    : t("news:alt.heroFallback")
+                }
+                onLoad={handleHeroLoad}
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ objectPosition: heroPos }}
+              />
+            </div>
+          </div>
 
-          <Divider sx={{ my: 2 }} />
+          <div className="my-6 h-px w-full max-w-4xl bg-white/10" />
 
-          <Typography
-            variant="body1"
-            fontSize="clamp(1.07rem,2.3vw,1.24rem)"
-            sx={{ whiteSpace: "pre-line" }}
-          >
+          <p className="whitespace-pre-line text-[clamp(1.05rem,2.3vw,1.25rem)] leading-relaxed text-[color:var(--page-text)]">
             {content}
-          </Typography>
-        </Stack>
+          </p>
+        </div>
+      </div>
 
-        <Dialog open={editOpen} onClose={closeEdit} fullScreen={isMobile}>
-          <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={1}>
-              <TextField
-                label={t("news:form.title")}
-                value={editData.title}
-                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                fullWidth
-                disabled={saving}
-              />
-              <TextField
-                label={t("news:form.text")}
-                value={editData.content}
-                onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-                multiline
-                rows={4}
-                fullWidth
-                disabled={saving}
-              />
-              <TextField
-                label={t("news:form.title_en", { defaultValue: "Title (English)" })}
-                value={editData.title_en}
-                onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-                fullWidth
-                disabled={saving}
-              />
-              <TextField
-                label={t("news:form.content_en", { defaultValue: "News text (English)" })}
-                value={editData.content_en}
-                onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-                multiline
-                rows={4}
-                fullWidth
-                disabled={saving}
-              />
-              <Box display="flex" gap={2} alignItems="center" mt={1}>
-                <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<PhotoCamera />}
-                  sx={{ minWidth: 140 }}
-                  disabled={saving}
-                >
-                  {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    ref={imageInputRef}
-                    onChange={handleImageChange}
-                  />
-                </Button>
-
-                {imageUrl && (
-                  <Box sx={{ width: 120, maxHeight: 70, borderRadius: 2, overflow: "hidden" }}>
-                    <SmartImage
-                      srcRaw={imageUrl}
-                      alt={t("news:alt.preview")}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  </Box>
-                )}
-              </Box>
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button variant="contained" onClick={handleSave} disabled={saving}>
-              <SaveIcon sx={{ mr: 1 }} /> {t("common:buttons.save")}
-            </Button>
-            <Button variant="outlined" color="secondary" onClick={closeEdit} disabled={saving}>
-              <CloseIcon sx={{ mr: 1 }} /> {t("common:buttons.cancel")}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        <Dialog
-          open={confirmDeleteOpen}
-          onClose={() => setConfirmDeleteOpen(false)}
-          fullScreen={isMobile}
-        >
-          <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
-          <DialogContent>
-            <Typography>{t("news:dialogs.delete.description")}</Typography>
-          </DialogContent>
-          <DialogActions>
+      <Dialog
+        open={editOpen}
+        onClose={closeEdit}
+        title={t("news:dialogs.edit.title")}
+        size="md"
+        fullScreenOnMobile
+        closeLabel={t("common:buttons.close")}
+        bodyClassName="space-y-4"
+        footerClassName="flex-col-reverse gap-3 sm:flex-row"
+        footer={
+          <>
             <Button
-              variant="outlined"
-              color="secondary"
-              onClick={() => setConfirmDeleteOpen(false)}
-              disabled={deleting}
+              variant="outline"
+              onClick={closeEdit}
+              disabled={saving}
+              className="w-full sm:w-auto"
+              leadingIcon={<CloseIcon fontSize="small" />}
             >
               {t("common:buttons.cancel")}
             </Button>
-            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
-              <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
+            <Button
+              onClick={() => {
+                void handleSave()
+              }}
+              disabled={saving}
+              loading={saving}
+              className="w-full sm:w-auto"
+              leadingIcon={<SaveIcon fontSize="small" />}
+            >
+              {t("common:buttons.save")}
             </Button>
-          </DialogActions>
-        </Dialog>
+          </>
+        }
+        initialFocus={() => editTitleRef.current ?? undefined}
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleSave()
+          }}
+        >
+          <Field label={t("news:form.title") ?? ""} htmlFor="news-detail-title" required>
+            <input
+              id="news-detail-title"
+              ref={editTitleRef}
+              type="text"
+              value={editData.title}
+              onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+              disabled={saving}
+              className={inputClass}
+            />
+          </Field>
 
-        <Snackbar
-          open={!!snack}
-          autoHideDuration={2400}
-          onClose={() => setSnack("")}
-          message={snack}
-        />
-      </Paper>
+          <Field label={t("news:form.text") ?? ""} htmlFor="news-detail-content" required>
+            <textarea
+              id="news-detail-content"
+              value={editData.content}
+              onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+              disabled={saving}
+              className={textareaClass}
+              rows={5}
+            />
+          </Field>
+
+          <Field
+            label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
+            htmlFor="news-detail-title-en"
+          >
+            <input
+              id="news-detail-title-en"
+              type="text"
+              value={editData.title_en}
+              onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+              disabled={saving}
+              className={inputClass}
+            />
+          </Field>
+
+          <Field
+            label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+            htmlFor="news-detail-content-en"
+          >
+            <textarea
+              id="news-detail-content-en"
+              value={editData.content_en}
+              onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+              disabled={saving}
+              className={textareaClass}
+              rows={5}
+            />
+          </Field>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              as="label"
+              variant="outline"
+              size="sm"
+              leadingIcon={<PhotoCamera className="text-[1.15rem]" />}
+              className="w-full sm:w-auto"
+              disabled={saving}
+            >
+              {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                ref={imageInputRef}
+                onChange={handleImageChange}
+              />
+            </Button>
+
+            {imageUrl ? (
+              <SmartImage
+                srcRaw={imageUrl}
+                alt={t("news:alt.preview")}
+                className="h-20 w-full max-w-[180px] rounded-ue-md border border-white/10 object-cover shadow-surface"
+              />
+            ) : null}
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        title={t("news:dialogs.delete.title")}
+        bodyClassName="space-y-4"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleting}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                void handleDelete()
+              }}
+              disabled={deleting}
+              loading={deleting}
+              className="w-full bg-[linear-gradient(98deg,#dc2626,#b91c1c)] text-white hover:bg-[linear-gradient(98deg,#b91c1c,#991b1b)] sm:w-auto"
+              leadingIcon={<DeleteIcon fontSize="small" />}
+            >
+              {t("common:buttons.delete")}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[0.98rem] text-[color:var(--secondary-text)]">
+          {t("news:dialogs.delete.description")}
+        </p>
+      </Dialog>
+
+      {snack ? (
+        <div className="fixed bottom-6 left-1/2 z-[999] w-[min(90vw,360px)] -translate-x-1/2 rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/95 px-4 py-3 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface-strong backdrop-blur-xl">
+          {snack}
+        </div>
+      ) : null}
     </Layout>
   )
 }
