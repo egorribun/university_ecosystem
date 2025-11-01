@@ -246,6 +246,13 @@ body.dark {
   --placeholder-fg: rgba(255, 255, 255, 0.58);
   --ue-focus-ring: 0 0 0 1px rgba(6, 11, 20, 0.92), 0 0 0 4px rgba(127, 182, 230, 0.45);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar-root {
+    animation: none;
+    opacity: 1;
+  }
+}
 ::selection {
   background: var(--selection-bg);
   color: var(--selection-text);

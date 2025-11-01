@@ -153,6 +153,7 @@ const Navbar = () => {
           zIndex: "var(--ue-z-index-nav)",
           transition: prefersReducedMotion ? "none" : undefined,
           animation: prefersReducedMotion ? "none" : undefined,
+          opacity: prefersReducedMotion ? 1 : undefined,
         }}
       >
         <div
