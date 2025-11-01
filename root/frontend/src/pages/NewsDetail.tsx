@@ -265,7 +265,7 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-10">
+      <div className="flex w-full flex-col px-3 pb-16 pt-5 sm:px-6 md:px-10 lg:px-14 xl:px-20 2xl:px-28">
         <Button
           variant="outline"
           onClick={handleBack}
@@ -275,14 +275,14 @@ export default function NewsDetail() {
           {t("common:buttons.back")}
         </Button>
 
-        <div className="mt-6 flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="mt-6 flex flex-col gap-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <h1 className="text-[clamp(1.55rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
               {displayTitle}
             </h1>
 
             {user?.role === "admin" && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 lg:justify-end">
                 <button
                   type="button"
                   onClick={openEdit}
@@ -311,8 +311,8 @@ export default function NewsDetail() {
             </p>
           )}
 
-          <div className="mt-4 w-full max-w-4xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
-            <div className="relative aspect-[16/9] w-full">
+          <div className="mt-2 w-full overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+            <div className="relative aspect-[16/9] w-full sm:aspect-[2/1] lg:aspect-[21/9]">
               <SmartImage
                 srcRaw={imageUrl}
                 alt={
@@ -327,9 +327,9 @@ export default function NewsDetail() {
             </div>
           </div>
 
-          <div className="my-6 h-px w-full max-w-4xl bg-white/10" />
+          <div className="my-8 h-px w-full bg-white/10" />
 
-          <p className="whitespace-pre-line text-[clamp(1.05rem,2.3vw,1.25rem)] leading-relaxed text-[color:var(--page-text)]">
+          <p className="whitespace-pre-line text-[clamp(1.05rem,2.3vw,1.28rem)] leading-relaxed text-[color:var(--page-text)]">
             {content}
           </p>
         </div>
