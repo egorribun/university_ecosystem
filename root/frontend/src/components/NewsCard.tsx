@@ -29,49 +29,25 @@ import { useTranslation } from "react-i18next"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
 const DotsVerticalIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    viewBox="0 0 20 20"
-    fill="currentColor"
-    aria-hidden
-    focusable="false"
-    {...props}
-  >
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden focusable="false" {...props}>
     <path d="M10 4a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
   </svg>
 )
 
 const PencilSquareIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden
-    focusable="false"
-    {...props}
-  >
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden focusable="false" {...props}>
     <path d="M4 17.25V20h2.75l8.08-8.08-2.75-2.75L4 17.25zm13.71-9.04a1 1 0 000-1.41l-1.51-1.51a1 1 0 00-1.41 0l-1.34 1.34 2.75 2.75 1.51-1.17z" />
   </svg>
 )
 
 const TrashIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden
-    focusable="false"
-    {...props}
-  >
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden focusable="false" {...props}>
     <path d="M9 3a1 1 0 00-1 1v1H4.5a1 1 0 000 2H5v11a3 3 0 003 3h8a3 3 0 003-3V7h.5a1 1 0 000-2H16V4a1 1 0 00-1-1H9zm1 2h4V4h-4v1zm-1 4a1 1 0 012 0v8a1 1 0 11-2 0V9zm6-1a1 1 0 00-1 1v8a1 1 0 102 0V9a1 1 0 00-1-1z" />
   </svg>
 )
 
 const CameraIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden
-    focusable="false"
-    {...props}
-  >
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden focusable="false" {...props}>
     <path d="M9.5 4.5l-.72 1.44A1 1 0 017.89 6H6a3 3 0 00-3 3v8a3 3 0 003 3h12a3 3 0 003-3V9a3 3 0 00-3-3h-1.89a1 1 0 01-.89-.56L14.5 4.5h-5zm2.5 5.5a4 4 0 110 8 4 4 0 010-8zm0 2a2 2 0 100 4 2 2 0 000-4z" />
   </svg>
 )
@@ -464,9 +440,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                   imageInputRef.current?.click()
                 }}
               >
-                {imageLoading
-                  ? t("common:statuses.uploading")
-                  : t("news:form.changePhoto")}
+                {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
               </Button>
               <input
                 type="file"
@@ -487,12 +461,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             </div>
           </ModalBody>
           <ModalFooter className="flex flex-col gap-3 px-6 pb-6 sm:flex-row sm:justify-end">
-            <Button
-              variant="solid"
-              onClick={handleEdit}
-              loading={loading}
-              disabled={imageLoading}
-            >
+            <Button variant="solid" onClick={handleEdit} loading={loading} disabled={imageLoading}>
               {t("common:buttons.save")}
             </Button>
             <Button variant="outline" onClick={closeEditDialog} disabled={loading || imageLoading}>
@@ -518,7 +487,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             <p>{t("news:dialogs.delete.description")}</p>
           </ModalBody>
           <ModalFooter className="flex flex-col gap-3 px-6 pb-6 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setConfirmDeleteOpen(false)} disabled={loading}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={loading}
+            >
               {t("common:buttons.cancel")}
             </Button>
             <Button
