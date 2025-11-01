@@ -1,8 +1,8 @@
-import type { ReactNode } from "react"
-import { render, screen } from "@testing-library/react"
+import { useEffect, type ReactNode } from "react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { ThemeProvider, createTheme } from "@mui/material/styles"
 import { LanguageProvider } from "@/contexts/LanguageContext"
+import { AppShellProvider } from "@/contexts/AppShellContext"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("../../components/NewsCard", () => {
@@ -26,6 +26,13 @@ vi.mock("../../contexts/AuthContext", () => ({
   }),
 }))
 
+const useMediaQueryMock = vi.fn<(query: string) => boolean>(() => false)
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  __esModule: true,
+  default: (query: string) => useMediaQueryMock(query),
+}))
+
 vi.mock("@/hooks/useNewsFeed", () => ({
   useNewsFeed: vi.fn(),
 }))
@@ -43,6 +50,45 @@ const largeFeed = Array.from({ length: 96 }, (_, index) => ({
 
 const useNewsFeedMock = vi.mocked(useNewsFeed)
 
+type PortalRegistration = { node: HTMLElement | null; created: boolean }
+
+const ensurePortalElement = (id: string): PortalRegistration => {
+  if (typeof document === "undefined") return { node: null, created: false }
+  const existing = document.getElementById(id)
+  if (existing) return { node: existing, created: false }
+  const node = document.createElement("div")
+  node.setAttribute("id", id)
+  document.body.appendChild(node)
+  return { node, created: true }
+}
+
+const TailwindPortalProvider = ({ children }: { children: ReactNode }) => {
+  useEffect(() => {
+    const registrations: PortalRegistration[] = [
+      ensurePortalElement("ue-modal-root"),
+      ensurePortalElement("ue-toast-root"),
+    ]
+
+    return () => {
+      registrations.forEach(({ node, created }) => {
+        if (created && node?.parentNode) {
+          node.parentNode.removeChild(node)
+        }
+      })
+    }
+  }, [])
+
+  return <>{children}</>
+}
+
+TailwindPortalProvider.displayName = "TailwindPortalProvider"
+
+const setIsMobile = (isMobile: boolean) => {
+  useMediaQueryMock.mockImplementation((query) =>
+    query === "(max-width:600px)" ? isMobile : false
+  )
+}
+
 const buildWrapper = (mode: "light" | "dark") => {
   const client = new QueryClient({
     defaultOptions: {
@@ -50,13 +96,13 @@ const buildWrapper = (mode: "light" | "dark") => {
     },
   })
 
-  const theme = createTheme({ palette: { mode } })
-
   const NewsTestWrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <LanguageProvider>
-        <ThemeProvider theme={theme}>{children}</ThemeProvider>
-      </LanguageProvider>
+      <AppShellProvider>
+        <LanguageProvider>
+          <TailwindPortalProvider>{children}</TailwindPortalProvider>
+        </LanguageProvider>
+      </AppShellProvider>
     </QueryClientProvider>
   )
 
@@ -154,19 +200,29 @@ describe("News page feed rendering", () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useNewsFeed>)
     localStorage.setItem("ue:language", "en")
+    setIsMobile(false)
   })
 
   afterEach(() => {
     localStorage.clear()
     matchMediaMock.mockClear()
     useNewsFeedMock.mockClear()
+    useMediaQueryMock.mockReset()
   })
 
-  it.each([["light"], ["dark"]] as const)(
-    "renders a large news feed without blur in %s mode",
-    async (mode) => {
+  it.each(
+    [
+      ["light", false],
+      ["light", true],
+      ["dark", false],
+      ["dark", true],
+    ] as const
+  )(
+    "renders a large news feed without blur in %s mode (mobile=%s)",
+    async (mode, isMobile) => {
       currentMode = mode
       const wrapper = buildWrapper(mode)
+      setIsMobile(isMobile)
 
       const { container } = render(<News />, { wrapper })
 
@@ -176,6 +232,7 @@ describe("News page feed rendering", () => {
       const fadeContainer = container.querySelector<HTMLElement>("[data-page-fade]")
       expect(fadeContainer).not.toBeNull()
       expect(fadeContainer?.dataset.effect).toBeUndefined()
+      await waitFor(() => expect(fadeContainer?.dataset.ready).toBe("true"))
       expect(useNewsFeedMock).toHaveBeenCalled()
     }
   )
