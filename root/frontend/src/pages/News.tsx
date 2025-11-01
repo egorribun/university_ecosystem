@@ -252,11 +252,7 @@ const News = () => {
                     {t("news:states.empty")}
                   </p>
                   {user?.role === "admin" && (
-                    <Button
-                      size="lg"
-                      onClick={() => setAddOpen(true)}
-                      className="px-6"
-                    >
+                    <Button size="lg" onClick={() => setAddOpen(true)} className="px-6">
                       {t("news:actions.add")}
                     </Button>
                   )}
