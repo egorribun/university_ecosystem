@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -93,51 +101,85 @@ export default function NewsDetail() {
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
-  const defaultHeroBox = useMemo(
-    () => ({ min: "320px", preferred: "56vh", max: "520px" }),
-    []
-  )
-  const [heroPos, setHeroPos] = useState("50% 38%")
-  const [heroBox, setHeroBox] = useState(defaultHeroBox)
+  const [heroRatio, setHeroRatio] = useState<number | null>(null)
 
-  const computeHeroBox = useCallback(
-    (ratio: number) => {
-      if (!Number.isFinite(ratio) || ratio <= 0) return defaultHeroBox
+  const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
+    const img = event.currentTarget
+    const width = img.naturalWidth || 0
+    const height = img.naturalHeight || 0
+    if (!width || !height) return
 
-      if (ratio < 0.72)
-        return { min: "460px", preferred: "70vh", max: "840px" }
-      if (ratio < 0.95)
-        return { min: "420px", preferred: "66vh", max: "760px" }
-      if (ratio > 2.8)
-        return { min: "260px", preferred: "46vh", max: "380px" }
-      if (ratio > 2.1)
-        return { min: "300px", preferred: "50vh", max: "440px" }
-      return defaultHeroBox
-    },
-    [defaultHeroBox]
-  )
-
-  const computeHeroPos = useCallback((ratio: number) => {
-    if (!Number.isFinite(ratio) || ratio <= 0) return "50% 38%"
-    if (ratio <= 1.05) return "50% 34%"
-    if (ratio >= 2.2) return "50% 46%"
-    if (ratio >= 1.6) return "50% 42%"
-    return "50% 38%"
+    setHeroRatio(width / height)
   }, [])
 
-  const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>(
-    (event) => {
-      const img = event.currentTarget
-      const w = img.naturalWidth || 0
-      const h = img.naturalHeight || 0
-      if (!w || !h) return
+  const heroFrame = useMemo(() => {
+    const base = {
+      container: {
+        minHeight: "320px",
+        height: "clamp(320px, 56vh, 520px)",
+        maxHeight: "520px",
+      } satisfies CSSProperties,
+      objectFit: "cover" as const,
+      objectPosition: "50% 40%",
+      backdrop: "color-mix(in srgb, var(--glass-bg) 80%, black 20%)",
+    }
 
-      const ratio = w / h
-      setHeroPos(computeHeroPos(ratio))
-      setHeroBox(computeHeroBox(ratio))
-    },
-    [computeHeroBox, computeHeroPos]
-  )
+    if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
+      return base
+    }
+
+    const ratio = Math.min(Math.max(heroRatio, 0.35), 4)
+
+    if (ratio < 0.82) {
+      return {
+        container: {
+          aspectRatio: ratio,
+          minHeight: "440px",
+          maxHeight: "82vh",
+        } satisfies CSSProperties,
+        objectFit: "contain" as const,
+        objectPosition: "50% 50%",
+        backdrop: "color-mix(in srgb, var(--glass-bg) 75%, black 25%)",
+      }
+    }
+
+    if (ratio < 1.18) {
+      return {
+        container: {
+          aspectRatio: ratio,
+          minHeight: "360px",
+          maxHeight: "76vh",
+        } satisfies CSSProperties,
+        objectFit: "cover" as const,
+        objectPosition: "50% 38%",
+        backdrop: "var(--glass-bg)",
+      }
+    }
+
+    if (ratio > 2.6) {
+      return {
+        container: {
+          aspectRatio: ratio,
+          minHeight: "260px",
+          maxHeight: "60vh",
+        } satisfies CSSProperties,
+        objectFit: "cover" as const,
+        objectPosition: "50% 46%",
+        backdrop: "color-mix(in srgb, var(--glass-bg) 80%, black 20%)",
+      }
+    }
+
+    return {
+      container: {
+        aspectRatio: ratio,
+        minHeight: "300px",
+        maxHeight: "68vh",
+      } satisfies CSSProperties,
+      objectFit: "cover" as const,
+      objectPosition: "50% 40%",
+      backdrop: "var(--glass-bg)",
+    }
+  }, [heroRatio])
 
   const query = useQuery({
     queryKey: ["news", id, language],
@@ -258,9 +300,8 @@ export default function NewsDetail() {
   }, [previewUrl, rawImageUrl])
 
   useEffect(() => {
-    setHeroPos("50% 38%")
-    setHeroBox(defaultHeroBox)
-  }, [defaultHeroBox, imageUrl])
+    setHeroRatio(null)
+  }, [imageUrl])
 
   const displayTitle = useMemo(() => {
     const localized = query.data?.title ?? ""
@@ -350,11 +391,10 @@ export default function NewsDetail() {
 
           <figure className="w-full max-w-5xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
             <div
-              className="flex w-full items-center justify-center overflow-hidden bg-[color:color-mix(in_srgb,var(--glass-bg)_80%,black_20%)]"
+              className="flex w-full items-center justify-center overflow-hidden"
               style={{
-                minHeight: heroBox.min,
-                height: heroBox.preferred,
-                maxHeight: heroBox.max,
+                ...heroFrame.container,
+                background: heroFrame.backdrop,
               }}
             >
               <SmartImage
@@ -366,7 +406,10 @@ export default function NewsDetail() {
                 }
                 onLoad={handleHeroLoad}
                 className="h-full w-full"
-                style={{ objectFit: "cover", objectPosition: heroPos }}
+                style={{
+                  objectFit: heroFrame.objectFit,
+                  objectPosition: heroFrame.objectPosition,
+                }}
               />
             </div>
             {displayTitle ? null : (
