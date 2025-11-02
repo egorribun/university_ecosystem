@@ -3,6 +3,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
+import ArrowOutwardIcon from "@mui/icons-material/ArrowOutward"
+import ArticleIcon from "@mui/icons-material/Article"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import api from "../api/client"
@@ -349,9 +351,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         type="button"
         onClick={handleCardClick}
         disabled={hoveringDisabled}
-        className="flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
+        className="group/button relative flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
       >
-        <div className="relative w-full border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
+        <div className="relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
           <div
             className={cn(
               "absolute inset-0 animate-pulse bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
@@ -359,21 +361,41 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             )}
             aria-hidden
           />
-          <SmartImage
-            srcRaw={cardImageUrl}
-            alt={
-              localizedTitle
-                ? t("news:alt.hero", { title: localizedTitle })
-                : t("news:alt.heroFallback")
-            }
-            sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-            className="relative h-[180px] w-full object-cover sm:h-[220px]"
-            onLoad={handleCardImageReady}
-            onError={handleCardImageReady}
-          />
+          {cardImageUrl ? (
+            <>
+              <SmartImage
+                srcRaw={cardImageUrl}
+                alt={
+                  localizedTitle
+                    ? t("news:alt.hero", { title: localizedTitle })
+                    : t("news:alt.heroFallback")
+                }
+                sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+                className="relative h-[180px] w-full object-cover transition duration-700 ease-out sm:h-[220px]"
+                onLoad={handleCardImageReady}
+                onError={handleCardImageReady}
+              />
+              <div
+                className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(15,23,42,0)_30%,rgba(15,23,42,0.75)_95%)] opacity-100"
+                aria-hidden
+              />
+            </>
+          ) : (
+            <div className="flex h-[180px] w-full items-center justify-center bg-glass/70 text-white/70 sm:h-[220px]">
+              <ArticleIcon className="h-12 w-12" fontSize="large" />
+            </div>
+          )}
+          {createdAtIso ? (
+            <time
+              dateTime={createdAtIso}
+              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
+            >
+              {createdAtLabel}
+            </time>
+          ) : null}
         </div>
 
-        <div className="flex flex-1 flex-col gap-3 px-4 py-5 sm:px-5 sm:py-6">
+        <div className="flex flex-1 flex-col gap-3 px-4 py-5 transition duration-300 ease-out group-hover:translate-y-[-1px] group-focus-visible/button:translate-y-[-1px] sm:px-5 sm:py-6">
           <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold">
             {localizedTitle}
           </h3>
@@ -390,8 +412,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             {sanitizedPreview}
           </p>
 
-          <div className="mt-auto pt-2 text-sm text-[color:var(--secondary-text)]">
-            {createdAtIso && <time dateTime={createdAtIso}>{createdAtLabel}</time>}
+          <div className="mt-auto flex items-center gap-2 pt-2 text-[color:var(--nav-link)]">
+            <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-y-0 group-focus-visible/button:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
+              {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
+            </span>
+            <ArrowOutwardIcon
+              fontSize="small"
+              className="translate-x-0 text-[color:var(--nav-link)] opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+            />
           </div>
         </div>
       </button>
