@@ -118,12 +118,9 @@ export default function NewsDetail() {
 
   const TOAST_DURATION = 3600
 
-  const showToast = useCallback(
-    (message: string, status: ToastStatus = "info") => {
-      setToast({ id: Date.now(), message, status })
-    },
-    []
-  )
+  const showToast = useCallback((message: string, status: ToastStatus = "info") => {
+    setToast({ id: Date.now(), message, status })
+  }, [])
 
   const updateProgress = useCallback(() => {
     const doc = document.documentElement
@@ -368,7 +365,10 @@ export default function NewsDetail() {
         const text = chunk.trim()
         if (!text) return null
 
-        const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean)
+        const lines = text
+          .split(/\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
         if (!lines.length) return null
 
         if (lines.every((line) => /^[-*]\s+/.test(line))) {
@@ -396,7 +396,10 @@ export default function NewsDetail() {
         }
 
         if (text.startsWith(">")) {
-          const quote = lines.map((line) => line.replace(/^>\s?/, "")).join("\n").trim()
+          const quote = lines
+            .map((line) => line.replace(/^>\s?/, ""))
+            .join("\n")
+            .trim()
           return (
             <blockquote key={`news-detail-quote-${index}`}>
               {quote.split(/\n{2,}/).map((paragraph, quoteIndex) => (
@@ -433,12 +436,16 @@ export default function NewsDetail() {
       )
     } catch (error) {
       console.error(error)
-      showToast(t("news:notifications.linkCopyError", { defaultValue: "Unable to copy link" }), "error")
+      showToast(
+        t("news:notifications.linkCopyError", { defaultValue: "Unable to copy link" }),
+        "error"
+      )
     }
   }, [showToast, t])
 
   const handleShare = useCallback(async () => {
-    const shareTitle = displayTitle || t("news:share.fallbackTitle", { defaultValue: "University news" })
+    const shareTitle =
+      displayTitle || t("news:share.fallbackTitle", { defaultValue: "University news" })
     const shareData = {
       title: shareTitle,
       text: shareTitle,
@@ -448,7 +455,10 @@ export default function NewsDetail() {
     if (navigator.share) {
       try {
         await navigator.share(shareData)
-        showToast(t("news:notifications.shareOpened", { defaultValue: "Share dialog opened" }), "success")
+        showToast(
+          t("news:notifications.shareOpened", { defaultValue: "Share dialog opened" }),
+          "success"
+        )
       } catch (error) {
         if ((error as DOMException)?.name === "AbortError") return
         console.error(error)
@@ -627,9 +637,7 @@ export default function NewsDetail() {
             </aside>
           </div>
 
-          <section className="prose-neutral">
-            {contentNodes.length ? contentNodes : null}
-          </section>
+          <section className="prose-neutral">{contentNodes.length ? contentNodes : null}</section>
         </article>
       </div>
 
