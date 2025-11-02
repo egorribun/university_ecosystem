@@ -93,16 +93,25 @@ export default function NewsDetail() {
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
-  const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
+  const [heroPos, setHeroPos] = useState("50% 38%")
+  const [heroFit, setHeroFit] = useState<"cover" | "contain">("cover")
 
   const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
     const img = e.currentTarget
     const w = img.naturalWidth || 0
     const h = img.naturalHeight || 0
     if (!w || !h) return
-    const r = w / h
-    if (r < 0.9) setHeroPos("50% 18%")
-    else if (r > 2) setHeroPos("50% 50%")
+    const ratio = w / h
+
+    if (ratio < 0.85 || ratio > 2.7) {
+      setHeroFit("contain")
+      setHeroPos("50% 50%")
+      return
+    }
+
+    setHeroFit("cover")
+    if (ratio < 1.1) setHeroPos("50% 32%")
+    else if (ratio > 1.9) setHeroPos("50% 46%")
     else setHeroPos("50% 38%")
   }
 
@@ -226,6 +235,7 @@ export default function NewsDetail() {
 
   useEffect(() => {
     setHeroPos("50% 38%")
+    setHeroFit("cover")
   }, [imageUrl])
 
   const displayTitle = useMemo(() => {
@@ -265,25 +275,60 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col px-3 pb-16 pt-5 sm:px-6 md:px-10 lg:px-14 xl:px-20 2xl:px-28">
+      <div className="flex w-full flex-col gap-8 px-3 pb-16 pt-5 sm:px-8 md:px-12 lg:px-16 xl:px-20 2xl:px-28">
         <Button
           variant="outline"
           onClick={handleBack}
           leadingIcon={<ArrowBackIcon className="text-[1.1rem]" />}
-          className="w-full max-w-[220px] justify-center border-white/20 text-[clamp(0.95rem,2vw,1.1rem)] sm:w-auto"
+          className="w-fit justify-start border-white/20 text-[clamp(0.95rem,2vw,1.1rem)]"
         >
           {t("common:buttons.back")}
         </Button>
 
-        <div className="mt-6 flex flex-col gap-10 lg:flex-col lg:gap-10">
-          <div className="mx-auto max-w-4xl space-y-4">
-            <h1 className="text-[clamp(1.55rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
+        <article className="flex w-full flex-col gap-8">
+          <header className="flex w-full flex-col gap-4 text-left">
+            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
               {displayTitle}
             </h1>
-          </div>
 
-          <figure className="overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
-            <div className="relative aspect-[16/9] w-full before:absolute before:inset-0 before:z-[1] before:bg-gradient-to-t before:from-black/65 before:to-transparent before:content-[''] sm:aspect-[2/1] lg:aspect-[21/9]">
+            {createdAt ? (
+              <p className="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                {t("news:meta.published")}
+                <span className="ml-2 font-semibold text-[color:var(--page-text)]">
+                  <time dateTime={createdAtIso}>{createdAtLabel}</time>
+                </span>
+              </p>
+            ) : null}
+
+            {user?.role === "admin" ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={openEdit}
+                  className={iconButtonClass}
+                  aria-label={t("news:aria.editNews") ?? ""}
+                  disabled={saving || deleting}
+                >
+                  <EditIcon fontSize="small" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  className={cn(iconButtonClass, "text-[#e11d48]")}
+                  aria-label={t("news:aria.deleteNews") ?? ""}
+                  disabled={deleting || saving}
+                >
+                  <DeleteIcon fontSize="small" />
+                </button>
+              </div>
+            ) : null}
+          </header>
+
+          <figure className="w-full max-w-5xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+            <div
+              className="flex w-full items-center justify-center overflow-hidden"
+              style={{ height: heroFit === "contain" ? "min(360px, 58vh)" : "min(440px, 62vh)" }}
+            >
               <SmartImage
                 srcRaw={imageUrl}
                 alt={
@@ -292,8 +337,8 @@ export default function NewsDetail() {
                     : t("news:alt.heroFallback")
                 }
                 onLoad={handleHeroLoad}
-                className="absolute inset-0 h-full w-full object-cover"
-                style={{ objectPosition: heroPos }}
+                className="h-full w-full"
+                style={{ objectFit: heroFit, objectPosition: heroPos }}
               />
             </div>
             <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
@@ -301,58 +346,18 @@ export default function NewsDetail() {
             </figcaption>
           </figure>
 
-          <div className="mx-auto max-w-4xl space-y-8">
-            <aside className="flex flex-col gap-3 rounded-ue-xl bg-glass/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              {createdAt && (
-                <p className="text-sm font-medium text-[color:var(--secondary-text)]">
-                  {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
-                </p>
-              )}
+          <section className="max-w-4xl space-y-6 text-[1.05rem] leading-8 text-secondary">
+            {content?.split(/\n{2,}/).map((chunk, index) => {
+              const text = chunk.trim()
 
-              {user?.role === "admin" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={openEdit}
-                    className={iconButtonClass}
-                    aria-label={t("news:aria.editNews") ?? ""}
-                    disabled={saving || deleting}
-                  >
-                    <EditIcon fontSize="small" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDeleteOpen(true)}
-                    className={cn(iconButtonClass, "text-[#e11d48]")}
-                    aria-label={t("news:aria.deleteNews") ?? ""}
-                    disabled={deleting || saving}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </button>
-                </div>
-              )}
-            </aside>
+              if (!text) return null
 
-            <div className="h-px w-full bg-white/10" />
-
-            <div className="space-y-6">
-              {content?.split(/\n{2,}/).map((chunk, index) => {
-                const text = chunk.trim()
-
-                if (!text) return null
-
-                return (
-                  <p
-                    key={`news-detail-paragraph-${index}`}
-                    className="text-[1.1rem] leading-8 text-secondary"
-                  >
-                    {text}
-                  </p>
-                )
-              })}
-            </div>
-          </div>
-        </div>
+              return (
+                <p key={`news-detail-paragraph-${index}`}>{text}</p>
+              )
+            })}
+          </section>
+        </article>
       </div>
 
       <Dialog
