@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -113,71 +105,44 @@ export default function NewsDetail() {
   }, [])
 
   const heroFrame = useMemo(() => {
-    const base = {
-      container: {
-        minHeight: "320px",
-        height: "clamp(320px, 56vh, 520px)",
-        maxHeight: "520px",
-      } satisfies CSSProperties,
-      objectFit: "cover" as const,
-      objectPosition: "50% 40%",
-      backdrop: "color-mix(in srgb, var(--glass-bg) 80%, black 20%)",
-    }
-
     if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
-      return base
+      return {
+        container: "min-h-[320px] h-[clamp(320px,56vh,520px)] max-h-[520px]",
+        image: "object-cover object-[50%_40%]",
+        backdrop: "bg-[color:color-mix(in_srgb,var(--glass-bg)_80%,black_20%)]",
+      }
     }
 
     const ratio = Math.min(Math.max(heroRatio, 0.35), 4)
 
     if (ratio < 0.82) {
       return {
-        container: {
-          aspectRatio: ratio,
-          minHeight: "440px",
-          maxHeight: "82vh",
-        } satisfies CSSProperties,
-        objectFit: "contain" as const,
-        objectPosition: "50% 50%",
-        backdrop: "color-mix(in srgb, var(--glass-bg) 75%, black 25%)",
+        container: "min-h-[440px] max-h-[82vh] aspect-[3/4]",
+        image: "object-contain object-center",
+        backdrop: "bg-[color:color-mix(in_srgb,var(--glass-bg)_75%,black_25%)]",
       }
     }
 
     if (ratio < 1.18) {
       return {
-        container: {
-          aspectRatio: ratio,
-          minHeight: "360px",
-          maxHeight: "76vh",
-        } satisfies CSSProperties,
-        objectFit: "cover" as const,
-        objectPosition: "50% 38%",
-        backdrop: "var(--glass-bg)",
+        container: "min-h-[360px] max-h-[76vh] aspect-[5/4]",
+        image: "object-cover object-[50%_38%]",
+        backdrop: "bg-[var(--glass-bg)]",
       }
     }
 
     if (ratio > 2.6) {
       return {
-        container: {
-          aspectRatio: ratio,
-          minHeight: "260px",
-          maxHeight: "60vh",
-        } satisfies CSSProperties,
-        objectFit: "cover" as const,
-        objectPosition: "50% 46%",
-        backdrop: "color-mix(in srgb, var(--glass-bg) 80%, black 20%)",
+        container: "min-h-[260px] max-h-[60vh] aspect-[21/9]",
+        image: "object-cover object-[50%_46%]",
+        backdrop: "bg-[color:color-mix(in_srgb,var(--glass-bg)_80%,black_20%)]",
       }
     }
 
     return {
-      container: {
-        aspectRatio: ratio,
-        minHeight: "300px",
-        maxHeight: "68vh",
-      } satisfies CSSProperties,
-      objectFit: "cover" as const,
-      objectPosition: "50% 40%",
-      backdrop: "var(--glass-bg)",
+      container: "min-h-[300px] max-h-[68vh] aspect-video",
+      image: "object-cover object-[50%_40%]",
+      backdrop: "bg-[var(--glass-bg)]",
     }
   }, [heroRatio])
 
@@ -340,7 +305,7 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-8 px-3 pb-16 pt-5 sm:px-8 md:px-12 lg:px-16 xl:px-20 2xl:px-28">
+      <div className="flex w-full flex-col gap-8 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
         <Button
           variant="outline"
           onClick={handleBack}
@@ -350,7 +315,7 @@ export default function NewsDetail() {
           {t("common:buttons.back")}
         </Button>
 
-        <article className="flex w-full flex-col gap-8">
+        <article className="flex w-full flex-col items-start gap-8">
           <header className="flex w-full flex-col gap-4 text-left">
             <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
               {displayTitle}
@@ -389,13 +354,13 @@ export default function NewsDetail() {
             ) : null}
           </header>
 
-          <figure className="w-full max-w-5xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
             <div
-              className="flex w-full items-center justify-center overflow-hidden"
-              style={{
-                ...heroFrame.container,
-                background: heroFrame.backdrop,
-              }}
+              className={cn(
+                "flex w-full items-center justify-center overflow-hidden",
+                heroFrame.container,
+                heroFrame.backdrop
+              )}
             >
               <SmartImage
                 srcRaw={imageUrl}
@@ -405,11 +370,7 @@ export default function NewsDetail() {
                     : t("news:alt.heroFallback")
                 }
                 onLoad={handleHeroLoad}
-                className="h-full w-full"
-                style={{
-                  objectFit: heroFrame.objectFit,
-                  objectPosition: heroFrame.objectPosition,
-                }}
+                className={cn("h-full w-full", heroFrame.image)}
               />
             </div>
             {displayTitle ? null : (
@@ -419,7 +380,7 @@ export default function NewsDetail() {
             )}
           </figure>
 
-          <section className="max-w-4xl space-y-6 text-[1.05rem] leading-8 text-secondary">
+          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
             {content?.split(/\n{2,}/).map((chunk, index) => {
               const text = chunk.trim()
 
