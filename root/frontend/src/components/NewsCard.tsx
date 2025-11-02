@@ -1,15 +1,4 @@
-import {
-  FC,
-  memo,
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-  type ReactNode,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-} from "react"
+import { FC, memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
 import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -37,14 +26,14 @@ const inputClass =
   "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
 const textareaClass = `${inputClass} min-h-[128px] resize-y leading-relaxed`
 
-const menuTriggerClass =
-  "pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-[color:var(--nav-link)] shadow-[0_12px_34px_rgba(15,23,42,0.28)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black/10"
+const iconButtonClass =
+  "inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/80 text-[color:var(--nav-link)] shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
 
 const menuPanelClass =
-  "pointer-events-auto absolute right-0 top-12 z-20 min-w-[196px] overflow-hidden rounded-ue-lg border border-white/10 bg-[color:color-mix(in_srgb,var(--card-bg)_78%,rgba(15,23,42,1)_22%)]/85 shadow-[0_26px_60px_rgba(15,23,42,0.45)] backdrop-blur-2xl ring-1 ring-white/10"
+  "absolute right-0 top-12 z-20 min-w-[180px] overflow-hidden rounded-ue-md border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/98 shadow-surface-strong backdrop-blur-xl"
 
 const menuItemClass =
-  "flex w-full items-center gap-3 px-4 py-2.5 text-left text-[0.95rem] font-medium text-[color:var(--page-text)] transition hover:bg-white/8 focus-visible:outline-none focus-visible:bg-white/12"
+  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-[color:var(--page-text)] transition hover:bg-[color:var(--glass-bg)]/80 focus-visible:outline-none focus-visible:bg-[color:var(--glass-bg)]"
 
 type NewsCardProps = {
   id: number
@@ -123,9 +112,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
-  const [isImageLoaded, setIsImageLoaded] = useState(!image_url)
-  const [imageErrored, setImageErrored] = useState(false)
-  const [spotlight, setSpotlight] = useState<{ x: string; y: string }>({ x: "50%", y: "50%" })
+  const [cardImageReady, setCardImageReady] = useState(!image_url)
 
   const menuId = `news-card-menu-${id}`
   const menuButtonId = `${menuId}-button`
@@ -149,46 +136,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   )
   const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
   const cardImageUrl = useMemo(() => image_url || "", [image_url])
-  const localeMetadataLabel = useMemo(
-    () =>
-      language === "en"
-        ? t("news:meta.locale.en", { defaultValue: "Interface locale: EN" })
-        : t("news:meta.locale.ru", { defaultValue: "Локализация интерфейса: RU" }),
-    [language, t]
-  )
-  const cardDynamicStyle = useMemo(
-    () =>
-      ({
-        "--card-spot-x": spotlight.x,
-        "--card-spot-y": spotlight.y,
-      }) as CSSProperties,
-    [spotlight]
-  )
-  const blurOverlayStyle = useMemo(
-    () =>
-      ({
-        backgroundImage:
-          "radial-gradient(circle at center, rgba(148, 163, 184, 0.28), transparent 65%), url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.05' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)' opacity='0.32'/%3E%3C/svg%3E\")",
-        backgroundSize: "125% 125%, 200px 200px",
-        backgroundBlendMode: "screen",
-      }) as CSSProperties,
-    []
-  )
 
   useEffect(() => {
-    setIsImageLoaded(!cardImageUrl)
-    setImageErrored(false)
+    setCardImageReady(!cardImageUrl)
   }, [cardImageUrl])
 
-  const handleImageLoad = useCallback(() => {
-    setIsImageLoaded(true)
-    setImageErrored(false)
-  }, [])
-
-  const handleImageError = useCallback(() => {
-    setIsImageLoaded(true)
-    setImageErrored(true)
-  }, [])
+  const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
   useEffect(() => {
     if (!newImage) {
@@ -327,193 +280,141 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const hoveringDisabled = editOpen || menuOpen
 
-  const handlePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (hoveringDisabled) return
-      const bounds = event.currentTarget.getBoundingClientRect()
-      if (!bounds.width || !bounds.height) return
-      const relativeX = ((event.clientX - bounds.left) / bounds.width) * 100
-      const relativeY = ((event.clientY - bounds.top) / bounds.height) * 100
-      const nextSpot = {
-        x: `${Math.min(100, Math.max(0, relativeX))}%`,
-        y: `${Math.min(100, Math.max(0, relativeY))}%`,
-      }
-      setSpotlight((prev) => (prev.x === nextSpot.x && prev.y === nextSpot.y ? prev : nextSpot))
-    },
-    [hoveringDisabled]
-  )
-
-  const handlePointerLeave = useCallback(() => {
-    setSpotlight((prev) => (prev.x === "50%" && prev.y === "50%" ? prev : { x: "50%", y: "50%" }))
-  }, [])
-
   return (
     <article
       className={cn(
-        "group relative h-full w-full",
-        hoveringDisabled ? "cursor-default" : "cursor-pointer"
+        "group relative flex h-full w-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
+        hoveringDisabled
+          ? "cursor-default"
+          : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
       )}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerLeave}
-      style={cardDynamicStyle}
     >
-      <div
-        className={cn(
-          "relative flex h-full w-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out [will-change:transform] before:pointer-events-none before:absolute before:inset-[-1px] before:rounded-[inherit] before:content-[''] before:bg-[conic-gradient(from_140deg_at_center,rgba(59,130,246,0.45),rgba(129,140,248,0.7),rgba(236,72,153,0.45),rgba(59,130,246,0.45))] before:opacity-0 before:transition before:duration-500 before:ease-out before:[mask-image:radial-gradient(circle_at_center,black_48%,transparent_80%)] before:[-webkit-mask-image:radial-gradient(circle_at_center,black_48%,transparent_80%)] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:content-[''] after:opacity-0 after:transition after:duration-300 after:ease-out after:[background:radial-gradient(180px_circle_at_var(--card-spot-x,_var(--card-spot-y)),rgba(59,130,246,0.16),transparent_70%)]",
-          hoveringDisabled
-            ? ""
-            : "group-hover:-translate-y-[2px] group-hover:scale-[1.015] group-hover:shadow-surface-strong group-focus-within:-translate-y-[2px] group-focus-within:scale-[1.015] group-focus-visible:shadow-surface-strong group-active:scale-[0.995] group-hover:before:opacity-100 group-focus-visible:before:opacity-100 group-hover:after:opacity-100 group-focus-visible:after:opacity-100"
-        )}
-      >
-        {user?.role === "admin" && (
-          <div className="pointer-events-none absolute right-3 top-3 z-30 flex flex-col items-end gap-2">
-            <button
-              ref={menuButtonRef}
-              type="button"
-              id={menuButtonId}
-              aria-label={t("news:aria.cardActions") ?? ""}
-              aria-controls={menuOpen ? menuId : undefined}
-              aria-haspopup="true"
-              aria-expanded={menuOpen ? "true" : undefined}
-              className={menuTriggerClass}
-              title={t("news:tooltips.openMenu", { defaultValue: "Управление карточкой" }) ?? ""}
-              onClick={(event) => {
-                event.stopPropagation()
-                setMenuOpen((open) => !open)
-              }}
-              disabled={loading}
-              data-news-card-menu-button
-            >
-              <MoreVertIcon fontSize="small" />
-            </button>
-            {menuOpen ? (
-              <div
-                ref={menuRef}
-                id={menuId}
-                role="menu"
-                aria-labelledby={menuButtonId}
-                data-news-card-menu
-                className={cn(menuPanelClass, "mt-2 p-2 backdrop-saturate-[1.25]")}
-              >
-                <button
-                  ref={firstMenuItemRef}
-                  type="button"
-                  className={menuItemClass}
-                  title={t("news:tooltips.edit", { defaultValue: "Редактировать новость" }) ?? ""}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openEditDialog()
-                  }}
-                >
-                  <EditIcon fontSize="small" className="text-[color:var(--nav-link)]" />
-                  {t("common:buttons.edit")}
-                </button>
-                <button
-                  type="button"
-                  className={cn(menuItemClass, "text-[#e11d48]")}
-                  title={t("news:tooltips.delete", { defaultValue: "Удалить карточку" }) ?? ""}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setConfirmDeleteOpen(true)
-                    closeMenu()
-                  }}
-                >
-                  <DeleteIcon fontSize="small" className="text-[#e11d48]" />
-                  {t("common:buttons.delete")}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleCardClick}
-          disabled={hoveringDisabled}
-          className="group/button relative flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
-        >
-          <div className="relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
+      {user?.role === "admin" && (
+        <div className="absolute right-3 top-3 z-10">
+          <button
+            ref={menuButtonRef}
+            type="button"
+            id={menuButtonId}
+            aria-label={t("news:aria.cardActions") ?? ""}
+            aria-controls={menuOpen ? menuId : undefined}
+            aria-haspopup="true"
+            aria-expanded={menuOpen ? "true" : undefined}
+            className={iconButtonClass}
+            onClick={(event) => {
+              event.stopPropagation()
+              setMenuOpen((open) => !open)
+            }}
+            disabled={loading}
+            data-news-card-menu-button
+          >
+            <MoreVertIcon fontSize="small" />
+          </button>
+          {menuOpen ? (
             <div
-              className={cn(
-                "pointer-events-none absolute inset-0 z-[2] flex flex-col items-center justify-center gap-2 text-white/70 backdrop-blur-[18px] transition-opacity duration-500 ease-out [mask-image:radial-gradient(circle_at_center,rgba(0,0,0,0.9)_55%,transparent_95%)] [backdrop-filter:saturate(135%)]",
-                isImageLoaded ? "opacity-0" : "opacity-100"
-              )}
-              style={blurOverlayStyle}
-              aria-hidden
+              ref={menuRef}
+              id={menuId}
+              role="menu"
+              aria-labelledby={menuButtonId}
+              data-news-card-menu
+              className={menuPanelClass}
             >
-              <span className="rounded-ue-pill bg-black/40 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.32em] text-white/70 shadow-[0_6px_18px_rgba(15,23,42,0.4)]">
-                {t("news:statuses.loadingImage", { defaultValue: "Загрузка..." })}
-              </span>
-            </div>
-            {!imageErrored && cardImageUrl ? (
-              <>
-                <SmartImage
-                  srcRaw={cardImageUrl}
-                  alt={
-                    localizedTitle
-                      ? t("news:alt.hero", { title: localizedTitle })
-                      : t("news:alt.heroFallback")
-                  }
-                  sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-                  className="relative h-[180px] w-full object-cover transition duration-700 ease-out sm:h-[220px]"
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
-                />
-                <div
-                  className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(15,23,42,0)_30%,rgba(15,23,42,0.75)_95%)]"
-                  aria-hidden
-                />
-              </>
-            ) : (
-              <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 bg-[color:color-mix(in_srgb,var(--card-bg)_82%,rgba(15,23,42,1)_18%)] text-white/65 sm:h-[220px]">
-                <ArticleIcon className="h-12 w-12" fontSize="large" />
-                <span className="text-[0.75rem] uppercase tracking-[0.32em] text-white/45">
-                  {t("news:meta.fallback", { defaultValue: "изображение недоступно" })}
-                </span>
-              </div>
-            )}
-            {createdAtIso ? (
-              <time
-                dateTime={createdAtIso}
-                className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/55 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
+              <button
+                ref={firstMenuItemRef}
+                type="button"
+                className={menuItemClass}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  openEditDialog()
+                }}
               >
-                {createdAtLabel}
-              </time>
-            ) : null}
-          </div>
-
-          <div className="flex flex-1 flex-col gap-4 px-4 py-5 transition duration-300 ease-out group-hover:translate-y-[-1px] group-focus-visible/button:translate-y-[-1px] sm:px-5 sm:py-6">
-            {(createdAtLabel || localeMetadataLabel) && (
-              <div className="flex flex-col gap-1 text-[0.72rem] uppercase tracking-[0.28em] text-white/50">
-                {createdAtLabel ? (
-                  <span className="font-semibold tracking-[0.34em] text-[color:var(--nav-link)]">
-                    {createdAtLabel}
-                  </span>
-                ) : null}
-                <span className="text-white/40">{localeMetadataLabel}</span>
-              </div>
-            )}
-
-            <h3 className="text-balance text-[clamp(1.07rem,3vw,1.18rem)] font-semibold leading-snug transition-colors duration-300 group-hover:text-white">
-              {localizedTitle}
-            </h3>
-
-            <p className="max-h-[5.25rem] overflow-hidden text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3 transition-[max-height] duration-500 ease-out group-hover:max-h-[32rem] group-hover:line-clamp-none group-focus-visible/button:max-h-[32rem] group-focus-visible/button:line-clamp-none">
-              {sanitizedPreview}
-            </p>
-
-            <div className="mt-auto flex items-center gap-2 pt-2 text-[color:var(--nav-link)]">
-              <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-y-0 group-focus-visible/button:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-                {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
-              </span>
-              <ArrowOutwardIcon
-                fontSize="small"
-                className="translate-x-0 text-[color:var(--nav-link)] opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
-              />
+                <EditIcon fontSize="small" className="text-[color:var(--nav-link)]" />
+                {t("common:buttons.edit")}
+              </button>
+              <button
+                type="button"
+                className={cn(menuItemClass, "text-[#e11d48]")}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setConfirmDeleteOpen(true)
+                  closeMenu()
+                }}
+              >
+                <DeleteIcon fontSize="small" className="text-[#e11d48]" />
+                {t("common:buttons.delete")}
+              </button>
             </div>
+          ) : null}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={handleCardClick}
+        disabled={hoveringDisabled}
+        className="group/button relative flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
+      >
+        <div className="relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
+          <div
+            className={cn(
+              "absolute inset-0 animate-pulse bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
+              cardImageReady ? "opacity-0" : "opacity-100"
+            )}
+            aria-hidden
+          />
+          {cardImageUrl ? (
+            <>
+              <SmartImage
+                srcRaw={cardImageUrl}
+                alt={
+                  localizedTitle
+                    ? t("news:alt.hero", { title: localizedTitle })
+                    : t("news:alt.heroFallback")
+                }
+                sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+                className="relative h-[180px] w-full object-cover transition duration-700 ease-out sm:h-[220px]"
+                onLoad={handleCardImageReady}
+                onError={handleCardImageReady}
+              />
+              <div
+                className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(15,23,42,0)_30%,rgba(15,23,42,0.75)_95%)] opacity-100"
+                aria-hidden
+              />
+            </>
+          ) : (
+            <div className="flex h-[180px] w-full items-center justify-center bg-glass/70 text-white/70 sm:h-[220px]">
+              <ArticleIcon className="h-12 w-12" fontSize="large" />
+            </div>
+          )}
+          {createdAtIso ? (
+            <time
+              dateTime={createdAtIso}
+              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
+            >
+              {createdAtLabel}
+            </time>
+          ) : null}
+        </div>
+
+        <div className="flex flex-1 flex-col gap-3 px-4 py-5 transition duration-300 ease-out group-hover:translate-y-[-1px] group-focus-visible/button:translate-y-[-1px] sm:px-5 sm:py-6">
+          <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold">
+            {localizedTitle}
+          </h3>
+
+          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3">
+            {sanitizedPreview}
+          </p>
+
+          <div className="mt-auto flex items-center gap-2 pt-2 text-[color:var(--nav-link)]">
+            <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-y-0 group-focus-visible/button:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
+              {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
+            </span>
+            <ArrowOutwardIcon
+              fontSize="small"
+              className="translate-x-0 text-[color:var(--nav-link)] opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+            />
           </div>
-        </button>
-      </div>
+        </div>
+      </button>
 
       <Dialog
         open={editOpen}
