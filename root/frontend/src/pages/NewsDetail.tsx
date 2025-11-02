@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -93,27 +101,85 @@ export default function NewsDetail() {
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
-  const [heroPos, setHeroPos] = useState("50% 38%")
-  const [heroFit, setHeroFit] = useState<"cover" | "contain">("cover")
+  const [heroRatio, setHeroRatio] = useState<number | null>(null)
 
-  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
-    const img = e.currentTarget
-    const w = img.naturalWidth || 0
-    const h = img.naturalHeight || 0
-    if (!w || !h) return
-    const ratio = w / h
+  const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
+    const img = event.currentTarget
+    const width = img.naturalWidth || 0
+    const height = img.naturalHeight || 0
+    if (!width || !height) return
 
-    if (ratio < 0.85 || ratio > 2.7) {
-      setHeroFit("contain")
-      setHeroPos("50% 50%")
-      return
+    setHeroRatio(width / height)
+  }, [])
+
+  const heroFrame = useMemo(() => {
+    const base = {
+      container: {
+        minHeight: "320px",
+        height: "clamp(320px, 56vh, 520px)",
+        maxHeight: "520px",
+      } satisfies CSSProperties,
+      objectFit: "cover" as const,
+      objectPosition: "50% 40%",
+      backdrop: "color-mix(in srgb, var(--glass-bg) 80%, black 20%)",
     }
 
-    setHeroFit("cover")
-    if (ratio < 1.1) setHeroPos("50% 32%")
-    else if (ratio > 1.9) setHeroPos("50% 46%")
-    else setHeroPos("50% 38%")
-  }
+    if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
+      return base
+    }
+
+    const ratio = Math.min(Math.max(heroRatio, 0.35), 4)
+
+    if (ratio < 0.82) {
+      return {
+        container: {
+          aspectRatio: ratio,
+          minHeight: "440px",
+          maxHeight: "82vh",
+        } satisfies CSSProperties,
+        objectFit: "contain" as const,
+        objectPosition: "50% 50%",
+        backdrop: "color-mix(in srgb, var(--glass-bg) 75%, black 25%)",
+      }
+    }
+
+    if (ratio < 1.18) {
+      return {
+        container: {
+          aspectRatio: ratio,
+          minHeight: "360px",
+          maxHeight: "76vh",
+        } satisfies CSSProperties,
+        objectFit: "cover" as const,
+        objectPosition: "50% 38%",
+        backdrop: "var(--glass-bg)",
+      }
+    }
+
+    if (ratio > 2.6) {
+      return {
+        container: {
+          aspectRatio: ratio,
+          minHeight: "260px",
+          maxHeight: "60vh",
+        } satisfies CSSProperties,
+        objectFit: "cover" as const,
+        objectPosition: "50% 46%",
+        backdrop: "color-mix(in srgb, var(--glass-bg) 80%, black 20%)",
+      }
+    }
+
+    return {
+      container: {
+        aspectRatio: ratio,
+        minHeight: "300px",
+        maxHeight: "68vh",
+      } satisfies CSSProperties,
+      objectFit: "cover" as const,
+      objectPosition: "50% 40%",
+      backdrop: "var(--glass-bg)",
+    }
+  }, [heroRatio])
 
   const query = useQuery({
     queryKey: ["news", id, language],
@@ -234,8 +300,7 @@ export default function NewsDetail() {
   }, [previewUrl, rawImageUrl])
 
   useEffect(() => {
-    setHeroPos("50% 38%")
-    setHeroFit("cover")
+    setHeroRatio(null)
   }, [imageUrl])
 
   const displayTitle = useMemo(() => {
@@ -327,7 +392,10 @@ export default function NewsDetail() {
           <figure className="w-full max-w-5xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
             <div
               className="flex w-full items-center justify-center overflow-hidden"
-              style={{ height: heroFit === "contain" ? "min(360px, 58vh)" : "min(440px, 62vh)" }}
+              style={{
+                ...heroFrame.container,
+                background: heroFrame.backdrop,
+              }}
             >
               <SmartImage
                 srcRaw={imageUrl}
@@ -338,7 +406,10 @@ export default function NewsDetail() {
                 }
                 onLoad={handleHeroLoad}
                 className="h-full w-full"
-                style={{ objectFit: heroFit, objectPosition: heroPos }}
+                style={{
+                  objectFit: heroFrame.objectFit,
+                  objectPosition: heroFrame.objectPosition,
+                }}
               />
             </div>
             {displayTitle ? null : (
