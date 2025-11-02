@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -366,7 +359,7 @@ export default function NewsDetail() {
               className={cn(
                 "flex w-full items-center justify-center overflow-hidden",
                 heroFrame.container,
-                heroFrame.backdrop,
+                heroFrame.backdrop
               )}
             >
               <SmartImage
@@ -387,7 +380,7 @@ export default function NewsDetail() {
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-secondary">
+          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
             {content?.split(/\n{2,}/).map((chunk, index) => {
               const text = chunk.trim()
 

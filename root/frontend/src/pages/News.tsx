@@ -200,10 +200,7 @@ const News = () => {
           </div>
 
           {user?.role === "admin" && (
-            <div
-              data-fade
-              className="mb-6 flex justify-start [--fade-delay:140ms]"
-            >
+            <div data-fade className="mb-6 flex justify-start [--fade-delay:140ms]">
               <Button
                 size="lg"
                 onClick={() => setAddOpen(true)}
