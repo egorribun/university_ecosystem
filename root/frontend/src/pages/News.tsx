@@ -135,7 +135,7 @@ const AnimatedNewsGrid = ({
     if (!container) return
 
     const elements = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-animated-card="true"]'),
+      container.querySelectorAll<HTMLElement>('[data-animated-card="true"]')
     )
 
     const showImmediately = () => {
@@ -161,7 +161,7 @@ const AnimatedNewsGrid = ({
           }
         })
       },
-      { threshold: 0.18, rootMargin: "0px 0px -12% 0px" },
+      { threshold: 0.18, rootMargin: "0px 0px -12% 0px" }
     )
 
     elements.forEach((element) => {
@@ -175,7 +175,7 @@ const AnimatedNewsGrid = ({
 
   const getDelayClass = useCallback(
     (index: number) => revealDelayClasses[Math.min(index, revealDelayClasses.length - 1)],
-    [],
+    []
   )
 
   const cardClassName =
@@ -200,11 +200,7 @@ const AnimatedNewsGrid = ({
         data-animated-card="true"
         className={`${cardClassName} ${getDelayClass(index)}`}
       >
-        <NewsCard
-          {...item}
-          image_url={item.image_url ?? undefined}
-          onChange={onRefresh}
-        />
+        <NewsCard {...item} image_url={item.image_url ?? undefined} onChange={onRefresh} />
       </div>
     ))
 
@@ -213,8 +209,14 @@ const AnimatedNewsGrid = ({
       data-fade
       className="relative isolate mt-2 overflow-hidden rounded-ue-2xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_90%,white_10%)]/90 p-5 shadow-[0_35px_80px_-45px_rgba(15,23,42,0.85)] backdrop-blur-2xl [--fade-delay:200ms] sm:p-8 before:pointer-events-none before:absolute before:-left-1/2 before:top-[-38%] before:h-[520px] before:w-[520px] before:translate-x-1/2 before:rounded-full before:bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--glass-highlight)_70%,transparent)_0%,transparent_72%)] before:opacity-70 before:blur-3xl before:content-[''] before:animate-[float_18s_infinite] after:pointer-events-none after:absolute after:-bottom-40 after:right-[-18%] after:h-[460px] after:w-[460px] after:rounded-full after:bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--nav-link)_52%,transparent)_0%,transparent_75%)] after:opacity-55 after:blur-[120px] after:content-[''] after:animate-[float_24s_infinite] after:[animation-delay:3s]"
     >
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_65%)] mix-blend-soft-light" aria-hidden />
-      <div ref={containerRef} className="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 sm:gap-6">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_65%)] mix-blend-soft-light"
+        aria-hidden
+      />
+      <div
+        ref={containerRef}
+        className="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 sm:gap-6"
+      >
         {isLoading ? renderSkeletons() : renderNewsCards()}
         {showEmptyState && (
           <div className="col-span-full flex justify-center">
