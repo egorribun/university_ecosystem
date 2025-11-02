@@ -267,7 +267,10 @@ const News = () => {
                   data-fade
                   className="relative flex w-full max-w-[420px] flex-col items-center gap-5 overflow-hidden rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface"
                 >
-                  <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_65%)]" />
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_65%)]"
+                  />
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                     <ArticleIcon className="text-[2.2rem]" />
                   </span>

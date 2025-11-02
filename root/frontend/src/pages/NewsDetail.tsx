@@ -616,8 +616,14 @@ export default function NewsDetail() {
 
       {snack ? (
         <div className="fixed bottom-6 left-1/2 z-[999] w-[min(90vw,360px)] -translate-x-1/2 overflow-hidden rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/95 px-4 py-3 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface-strong backdrop-blur-xl">
-          <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,255,0.16),transparent_65%)]" />
-          <span aria-hidden className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/45 to-transparent" />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,255,0.16),transparent_65%)]"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/45 to-transparent"
+          />
           <span className="relative block">{snack}</span>
         </div>
       ) : null}
