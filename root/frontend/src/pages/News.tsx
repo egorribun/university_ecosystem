@@ -11,6 +11,7 @@ import {
   startTransition,
   useMemo,
   type ReactNode,
+  type CSSProperties,
 } from "react"
 import { createNews, uploadNewsImage } from "@/api/news"
 import ArticleIcon from "@mui/icons-material/Article"
@@ -186,27 +187,42 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="flex w-full flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+        <div className="relative isolate flex w-full flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+          <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+            <div className="absolute -left-[12%] top-[-18%] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.28),transparent_70%)] blur-3xl opacity-70" />
+            <div className="absolute right-[-8%] top-[32%] h-[360px] w-[360px] rounded-full bg-[radial-gradient(circle_at_center,rgba(129,140,248,0.32),transparent_68%)] blur-3xl opacity-75 motion-safe:animate-[spin_28s_linear_infinite]" />
+            <div className="absolute bottom-[-24%] left-[18%] h-[320px] w-[320px] rounded-full bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.22),transparent_70%)] blur-3xl opacity-60" />
+          </div>
+
           <div
             data-fade
-            className="mb-4 mt-4 flex flex-wrap items-center gap-3 text-nav-link [--fade-delay:80ms] sm:mb-8 sm:mt-6"
+            className="mb-3 mt-4 flex flex-wrap items-center gap-3 text-nav-link [--fade-delay:80ms] sm:mb-6 sm:mt-6"
           >
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
-              <ArticleIcon className="text-[1.85rem]" />
+            <span className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[color:var(--glass-bg)]/75 text-[color:var(--nav-link)] shadow-surface">
+              <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.65),transparent_60%)] opacity-80" />
+              <ArticleIcon className="relative text-[1.85rem]" />
             </span>
-            <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
-              {t("news:pageTitle")}
-            </h1>
+            <div className="space-y-1">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
+                {t("news:pageTitle")}
+              </h1>
+              <p className="text-[0.9rem] font-medium uppercase tracking-[0.32em] text-[color:color-mix(in_srgb,var(--secondary-text)_75%,white_25%)]">
+                {t("news:pageTagline", {
+                  defaultValue: "Curated highlights and stories from the university ecosystem",
+                })}
+              </p>
+            </div>
           </div>
 
           {user?.role === "admin" && (
-            <div data-fade className="mb-6 flex justify-start [--fade-delay:140ms]">
+            <div data-fade className="mb-7 flex justify-start [--fade-delay:140ms]">
               <Button
                 size="lg"
                 onClick={() => setAddOpen(true)}
                 disabled={adding}
-                className="px-6 text-[clamp(1rem,2.2vw,1.1rem)]"
+                className="group relative overflow-hidden px-6 text-[clamp(1rem,2.2vw,1.1rem)]"
               >
+                <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.28),transparent_65%)] opacity-0 transition duration-300 group-hover:opacity-100 group-focus-visible:opacity-100" />
                 {t("news:actions.add")}
               </Button>
             </div>
@@ -214,17 +230,27 @@ const News = () => {
 
           <div
             data-fade
-            className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 [--fade-delay:200ms] sm:gap-6"
+            className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 [--fade-delay:220ms] sm:gap-6"
           >
             {isInitialLoading
               ? Array.from({ length: skeletonCount }).map((_, index) => (
-                  <div key={`news-skeleton-${index}`} className="flex h-full w-full">
+                  <div
+                    key={`news-skeleton-${index}`}
+                    className="flex h-full w-full"
+                    data-fade
+                    style={{ "--fade-delay": `${240 + index * 40}ms` } as CSSProperties}
+                  >
                     <NewsCardSkeleton />
                   </div>
                 ))
               : Array.isArray(visibleList) &&
-                visibleList.map((news) => (
-                  <div key={news.id} className="flex h-full w-full">
+                visibleList.map((news, index) => (
+                  <div
+                    key={news.id}
+                    className="flex h-full w-full"
+                    data-fade
+                    style={{ "--fade-delay": `${240 + index * 50}ms` } as CSSProperties}
+                  >
                     <NewsCard
                       {...news}
                       image_url={news.image_url ?? undefined}
@@ -237,7 +263,11 @@ const News = () => {
 
             {showEmptyState && (
               <div className="col-span-full mt-16 flex justify-start">
-                <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
+                <div
+                  data-fade
+                  className="relative flex w-full max-w-[420px] flex-col items-center gap-5 overflow-hidden rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface"
+                >
+                  <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_65%)]" />
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                     <ArticleIcon className="text-[2.2rem]" />
                   </span>

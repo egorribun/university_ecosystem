@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type CSSProperties,
+} from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -284,6 +292,19 @@ export default function NewsDetail() {
   const createdAt = query.data?.created_at
   const createdAtIso = useMemo(() => (createdAt ? dayjs(createdAt).toISOString() : ""), [createdAt])
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
+  const readingMinutes = useMemo(() => {
+    if (!content) return null
+    const words = content.split(/\s+/).filter((word) => word.trim().length > 0)
+    if (!words.length) return null
+    return Math.max(1, Math.round(words.length / 180))
+  }, [content])
+  const contentParagraphs = useMemo(() => {
+    if (!content) return []
+    return content
+      .split(/\n{2,}/)
+      .map((chunk) => chunk.trim())
+      .filter((chunk) => chunk.length > 0)
+  }, [content])
 
   if (query.isLoading)
     return (
@@ -305,91 +326,135 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-8 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
-        <Button
-          variant="outline"
-          onClick={handleBack}
-          leadingIcon={<ArrowBackIcon className="text-[1.1rem]" />}
-          className="w-fit justify-start border-white/20 text-[clamp(0.95rem,2vw,1.1rem)]"
-        >
-          {t("common:buttons.back")}
-        </Button>
+      <div className="relative isolate">
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -left-[14%] top-[-12%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.24),transparent_68%)] blur-3xl opacity-75" />
+          <div className="absolute right-[-16%] top-[18%] h-[460px] w-[460px] rounded-full bg-[radial-gradient(circle_at_center,rgba(124,58,237,0.28),transparent_70%)] blur-3xl opacity-70" />
+          <div className="absolute bottom-[-22%] left-[10%] h-[380px] w-[380px] rounded-full bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.2),transparent_70%)] blur-3xl opacity-60" />
+        </div>
 
-        <article className="flex w-full flex-col items-start gap-8">
-          <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
-              {displayTitle}
-            </h1>
+        <div className="flex w-full flex-col gap-8 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+          <Button
+            data-fade
+            variant="outline"
+            onClick={handleBack}
+            leadingIcon={<ArrowBackIcon className="text-[1.1rem]" />}
+            className="w-fit justify-start border-white/20 text-[clamp(0.95rem,2vw,1.1rem)] [--fade-delay:80ms]"
+          >
+            {t("common:buttons.back")}
+          </Button>
 
-            {createdAt ? (
-              <p className="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
-                {t("news:meta.published")}
-                <span className="ml-2 font-semibold text-[color:var(--page-text)]">
-                  <time dateTime={createdAtIso}>{createdAtLabel}</time>
-                </span>
-              </p>
-            ) : null}
-
-            {user?.role === "admin" ? (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={openEdit}
-                  className={iconButtonClass}
-                  aria-label={t("news:aria.editNews") ?? ""}
-                  disabled={saving || deleting}
-                >
-                  <EditIcon fontSize="small" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDeleteOpen(true)}
-                  className={cn(iconButtonClass, "text-[#e11d48]")}
-                  aria-label={t("news:aria.deleteNews") ?? ""}
-                  disabled={deleting || saving}
-                >
-                  <DeleteIcon fontSize="small" />
-                </button>
+          <article className="relative flex w-full flex-col items-start gap-8">
+            <header data-fade className="flex w-full flex-col gap-4 text-left [--fade-delay:140ms]">
+              <div className="max-w-5xl space-y-3">
+                <h1 className="text-balance text-[clamp(1.7rem,4.6vw,2.6rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
+                  {displayTitle}
+                </h1>
+                <p className="text-[0.95rem] font-medium uppercase tracking-[0.32em] text-[color:color-mix(in_srgb,var(--secondary-text)_80%,white_20%)]">
+                  {t("news:pageTagline", {
+                    defaultValue: "In-depth insights shaping our academic community",
+                  })}
+                </p>
               </div>
-            ) : null}
-          </header>
 
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
-            <div
-              className={cn(
-                "flex w-full items-center justify-center overflow-hidden",
-                heroFrame.container,
-                heroFrame.backdrop
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {createdAt ? (
+                  <span className="inline-flex items-center gap-2 rounded-ue-pill border border-white/14 bg-[color:var(--glass-bg)]/70 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                    {t("news:meta.published")}
+                    <time dateTime={createdAtIso} className="text-[color:var(--page-text)]">
+                      {createdAtLabel}
+                    </time>
+                  </span>
+                ) : null}
+
+                {readingMinutes ? (
+                  <span className="inline-flex items-center gap-2 rounded-ue-pill border border-white/14 bg-[color:var(--glass-bg)]/65 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                    {t("news:meta.readingTime", {
+                      count: readingMinutes,
+                      defaultValue: `${readingMinutes} min read`,
+                    })}
+                  </span>
+                ) : null}
+              </div>
+
+              {user?.role === "admin" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={openEdit}
+                    className={iconButtonClass}
+                    aria-label={t("news:aria.editNews") ?? ""}
+                    disabled={saving || deleting}
+                  >
+                    <EditIcon fontSize="small" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteOpen(true)}
+                    className={cn(iconButtonClass, "text-[#e11d48]")}
+                    aria-label={t("news:aria.deleteNews") ?? ""}
+                    disabled={deleting || saving}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </button>
+                </div>
+              ) : null}
+            </header>
+
+            <figure
+              data-fade
+              className="group/hero relative w-full max-w-5xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface [--fade-delay:200ms]"
             >
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={
-                  displayTitle
-                    ? t("news:alt.hero", { title: displayTitle })
-                    : t("news:alt.heroFallback")
-                }
-                onLoad={handleHeroLoad}
-                className={cn("h-full w-full", heroFrame.image)}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.28),transparent_75%)] opacity-0 transition duration-700 ease-out group-hover/hero:opacity-100"
               />
-            </div>
-            {displayTitle ? null : (
-              <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
-                {t("news:alt.heroFallback")}
-              </figcaption>
-            )}
-          </figure>
+              <div
+                className={cn(
+                  "relative flex w-full items-center justify-center overflow-hidden",
+                  heroFrame.container,
+                  heroFrame.backdrop
+                )}
+              >
+                <SmartImage
+                  srcRaw={imageUrl}
+                  alt={
+                    displayTitle
+                      ? t("news:alt.hero", { title: displayTitle })
+                      : t("news:alt.heroFallback")
+                  }
+                  onLoad={handleHeroLoad}
+                  className={cn(
+                    "h-full w-full transition duration-700 ease-out motion-safe:group-hover/hero:scale-[1.03]",
+                    heroFrame.image
+                  )}
+                />
+              </div>
+              {displayTitle ? null : (
+                <figcaption className="relative border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
+                  {t("news:alt.heroFallback")}
+                </figcaption>
+              )}
+            </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
-            {content?.split(/\n{2,}/).map((chunk, index) => {
-              const text = chunk.trim()
-
-              if (!text) return null
-
-              return <p key={`news-detail-paragraph-${index}`}>{text}</p>
-            })}
-          </section>
-        </article>
+            <section className="max-w-4xl self-start space-y-5 text-[1.05rem]">
+              {contentParagraphs.map((text, index) => (
+                <p
+                  key={`news-detail-paragraph-${index}`}
+                  data-fade
+                  style={{ "--fade-delay": `${260 + index * 50}ms` } as CSSProperties}
+                  className="group/paragraph relative overflow-hidden rounded-ue-xl border border-transparent bg-transparent px-5 py-4 text-[color:var(--secondary-text)] leading-[1.85] transition duration-300 ease-out hover:border-white/12 hover:bg-[color:color-mix(in_srgb,var(--card-bg)_86%,white_14%)] sm:px-6"
+                >
+                  <span className="relative z-[1] block">{text}</span>
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 rounded-ue-xl bg-[radial-gradient(circle_at_top,rgba(148,163,255,0.18),transparent_65%)] opacity-0 transition duration-500 ease-out group-hover/paragraph:opacity-100"
+                  />
+                </p>
+              ))}
+            </section>
+          </article>
+        </div>
       </div>
 
       <Dialog
@@ -550,8 +615,10 @@ export default function NewsDetail() {
       </Dialog>
 
       {snack ? (
-        <div className="fixed bottom-6 left-1/2 z-[999] w-[min(90vw,360px)] -translate-x-1/2 rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/95 px-4 py-3 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface-strong backdrop-blur-xl">
-          {snack}
+        <div className="fixed bottom-6 left-1/2 z-[999] w-[min(90vw,360px)] -translate-x-1/2 overflow-hidden rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/95 px-4 py-3 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface-strong backdrop-blur-xl">
+          <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,255,0.16),transparent_65%)]" />
+          <span aria-hidden className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/45 to-transparent" />
+          <span className="relative block">{snack}</span>
         </div>
       ) : null}
     </Layout>
