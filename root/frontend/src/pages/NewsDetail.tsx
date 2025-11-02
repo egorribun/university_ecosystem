@@ -275,44 +275,15 @@ export default function NewsDetail() {
           {t("common:buttons.back")}
         </Button>
 
-        <div className="mt-6 flex flex-col gap-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="mt-6 flex flex-col gap-10 lg:flex-col lg:gap-10">
+          <div className="mx-auto max-w-4xl space-y-4">
             <h1 className="text-[clamp(1.55rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
               {displayTitle}
             </h1>
-
-            {user?.role === "admin" && (
-              <div className="flex items-center gap-2 lg:justify-end">
-                <button
-                  type="button"
-                  onClick={openEdit}
-                  className={iconButtonClass}
-                  aria-label={t("news:aria.editNews") ?? ""}
-                  disabled={saving || deleting}
-                >
-                  <EditIcon fontSize="small" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDeleteOpen(true)}
-                  className={cn(iconButtonClass, "text-[#e11d48]")}
-                  aria-label={t("news:aria.deleteNews") ?? ""}
-                  disabled={deleting || saving}
-                >
-                  <DeleteIcon fontSize="small" />
-                </button>
-              </div>
-            )}
           </div>
 
-          {createdAt && (
-            <p className="text-sm font-medium text-[color:var(--secondary-text)]">
-              {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
-            </p>
-          )}
-
-          <div className="mt-2 w-full overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
-            <div className="relative aspect-[16/9] w-full sm:aspect-[2/1] lg:aspect-[21/9]">
+          <figure className="overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+            <div className="relative aspect-[16/9] w-full before:absolute before:inset-0 before:z-[1] before:bg-gradient-to-t before:from-black/65 before:to-transparent before:content-[''] sm:aspect-[2/1] lg:aspect-[21/9]">
               <SmartImage
                 srcRaw={imageUrl}
                 alt={
@@ -325,13 +296,65 @@ export default function NewsDetail() {
                 style={{ objectPosition: heroPos }}
               />
             </div>
+            <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
+              {displayTitle || t("news:alt.heroFallback")}
+            </figcaption>
+          </figure>
+
+          <div className="mx-auto max-w-4xl space-y-8">
+            <aside className="flex flex-col gap-3 rounded-ue-xl bg-glass/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              {createdAt && (
+                <p className="text-sm font-medium text-[color:var(--secondary-text)]">
+                  {t("news:meta.published")}{" "}
+                  <time dateTime={createdAtIso}>{createdAtLabel}</time>
+                </p>
+              )}
+
+              {user?.role === "admin" && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openEdit}
+                    className={iconButtonClass}
+                    aria-label={t("news:aria.editNews") ?? ""}
+                    disabled={saving || deleting}
+                  >
+                    <EditIcon fontSize="small" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteOpen(true)}
+                    className={cn(iconButtonClass, "text-[#e11d48]")}
+                    aria-label={t("news:aria.deleteNews") ?? ""}
+                    disabled={deleting || saving}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </button>
+                </div>
+              )}
+            </aside>
+
+            <div className="h-px w-full bg-white/10" />
+
+            <div className="space-y-6">
+              {content
+                ?.split(/\n{2,}/)
+                .map((chunk, index) => {
+                  const text = chunk.trim()
+
+                  if (!text) return null
+
+                  return (
+                    <p
+                      key={`news-detail-paragraph-${index}`}
+                      className="text-[1.1rem] leading-8 text-secondary"
+                    >
+                      {text}
+                    </p>
+                  )
+                })}
+            </div>
           </div>
-
-          <div className="my-8 h-px w-full bg-white/10" />
-
-          <p className="whitespace-pre-line text-[clamp(1.05rem,2.3vw,1.28rem)] leading-relaxed text-[color:var(--page-text)]">
-            {content}
-          </p>
         </div>
       </div>
 
