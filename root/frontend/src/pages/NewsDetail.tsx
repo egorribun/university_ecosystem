@@ -341,9 +341,11 @@ export default function NewsDetail() {
                 style={{ objectFit: heroFit, objectPosition: heroPos }}
               />
             </div>
-            <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
-              {displayTitle || t("news:alt.heroFallback")}
-            </figcaption>
+            {displayTitle ? null : (
+              <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
+                {t("news:alt.heroFallback")}
+              </figcaption>
+            )}
           </figure>
 
           <section className="max-w-4xl space-y-6 text-[1.05rem] leading-8 text-secondary">
