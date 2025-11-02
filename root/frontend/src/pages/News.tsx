@@ -10,7 +10,6 @@ import {
   useDeferredValue,
   startTransition,
   useMemo,
-  type CSSProperties,
   type ReactNode,
 } from "react"
 import { createNews, uploadNewsImage } from "@/api/news"
@@ -187,11 +186,10 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="flex w-full flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-10 xl:px-14 2xl:px-20">
+        <div className="flex w-full flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
           <div
             data-fade
-            style={{ "--fade-delay": "80ms" } as CSSProperties}
-            className="mb-4 mt-4 flex flex-wrap items-center gap-3 text-nav-link sm:mb-8 sm:mt-6"
+            className="mb-4 mt-4 flex flex-wrap items-center gap-3 text-nav-link [--fade-delay:80ms] sm:mb-8 sm:mt-6"
           >
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
               <ArticleIcon className="text-[1.85rem]" />
@@ -204,8 +202,7 @@ const News = () => {
           {user?.role === "admin" && (
             <div
               data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              className="mb-6 flex justify-start"
+              className="mb-6 flex justify-start [--fade-delay:140ms]"
             >
               <Button
                 size="lg"
@@ -220,8 +217,7 @@ const News = () => {
 
           <div
             data-fade
-            style={{ "--fade-delay": "200ms" } as CSSProperties}
-            className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 sm:gap-6"
+            className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 [--fade-delay:200ms] sm:gap-6"
           >
             {isInitialLoading
               ? Array.from({ length: skeletonCount }).map((_, index) => (
@@ -243,7 +239,7 @@ const News = () => {
                 ))}
 
             {showEmptyState && (
-              <div className="col-span-full mt-16 flex justify-center">
+              <div className="col-span-full mt-16 flex justify-start">
                 <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                     <ArticleIcon className="text-[2.2rem]" />

@@ -400,15 +400,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             {localizedTitle}
           </h3>
 
-          <p
-            className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)]"
-            style={{
-              overflow: "hidden",
-              display: "-webkit-box",
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: "vertical",
-            }}
-          >
+          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3">
             {sanitizedPreview}
           </p>
 

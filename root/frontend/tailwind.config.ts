@@ -1,4 +1,5 @@
 import plugin from "tailwindcss/plugin";
+import lineClamp from "@tailwindcss/line-clamp";
 import type { Config } from "tailwindcss";
 
 const attributeSelector = (attribute: "data" | "aria", value: string) => {
@@ -164,6 +165,7 @@ const config: Config = {
         return selector ? `.peer${selector} ~ &` : ".peer ~ &";
       });
     }),
+    lineClamp,
   ],
 };
 
