@@ -180,7 +180,7 @@
   }
 
   .prose-neutral blockquote {
-    @apply relative overflow-hidden rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--glass-bg)_82%,black_18%)]/70 px-6 py-5 font-medium italic text-[color:var(--page-text)] shadow-surface;
+    @apply relative overflow-hidden rounded-ue-lg border border-white/10 bg-[color:color-mix(in_srgb,var(--glass-bg)_82%,black_18%)] bg-opacity-70 px-6 py-5 font-medium italic text-[color:var(--page-text)] shadow-surface;
   }
 
   .prose-neutral blockquote::before {
@@ -232,7 +232,7 @@
   }
 
   .toast-bubble {
-    @apply relative w-[min(92vw,360px)] overflow-hidden rounded-ue-xl border border-white/16 bg-[color:color-mix(in_srgb,var(--card-bg)_78%,transparent_22%)]/85 px-5 py-4 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface backdrop-blur-xl;
+    @apply relative w-[min(92vw,360px)] overflow-hidden rounded-ue-xl border border-white/20 bg-[color:color-mix(in_srgb,var(--card-bg)_78%,transparent_22%)] bg-opacity-80 px-5 py-4 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface backdrop-blur-xl;
   }
 
   .toast-bubble--success {
@@ -244,7 +244,7 @@
   }
 
   .toast-bubble--info {
-    @apply border-white/18;
+    @apply border-white/20;
   }
 
   .toast-bubble__progress {
