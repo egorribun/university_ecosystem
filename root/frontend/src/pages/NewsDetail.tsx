@@ -352,9 +352,7 @@ export default function NewsDetail() {
 
               if (!text) return null
 
-              return (
-                <p key={`news-detail-paragraph-${index}`}>{text}</p>
-              )
+              return <p key={`news-detail-paragraph-${index}`}>{text}</p>
             })}
           </section>
         </article>
