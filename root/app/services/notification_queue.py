@@ -494,12 +494,27 @@ async def _pending_persistent_jobs() -> int:
         return int(result.scalar_one())
 
 
+async def _persistent_jobs_exist() -> bool:
+    async with async_session() as session:
+        try:
+            result = await session.execute(
+                select(func.count()).select_from(NotificationQueueJob)
+            )
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "no such table" in message:
+                return False
+            raise
+        count = result.scalar_one()
+        return int(count or 0) > 0
+
+
 async def _clear_persistent_jobs() -> None:
     if not _use_persistent_backend():
         return
 
     try:
-        if await _pending_persistent_jobs() == 0:
+        if not await _persistent_jobs_exist():
             return
     except OperationalError as exc:
         if "locked" not in str(exc).lower():

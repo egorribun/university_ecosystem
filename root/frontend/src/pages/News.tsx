@@ -12,7 +12,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react"
-import { createNews, uploadNewsImage } from "@/api/news"
+import { createNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import SmartImage from "@/components/SmartImage"
@@ -63,6 +63,173 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
   )
 }
 
+const revealDelayClasses = [
+  "delay-[0ms]",
+  "delay-[60ms]",
+  "delay-[120ms]",
+  "delay-[180ms]",
+  "delay-[240ms]",
+  "delay-[300ms]",
+  "delay-[360ms]",
+  "delay-[420ms]",
+  "delay-[480ms]",
+  "delay-[540ms]",
+  "delay-[600ms]",
+  "delay-[660ms]",
+  "delay-[720ms]",
+  "delay-[780ms]",
+  "delay-[840ms]",
+  "delay-[900ms]",
+] as const
+
+type AnimatedNewsGridProps = {
+  news: NewsItem[]
+  isLoading: boolean
+  skeletonCount: number
+  showEmptyState: boolean
+  onRefresh: () => void
+  emptyState?: ReactNode
+}
+
+const usePrefersReducedMotion = () => {
+  const [prefers, setPrefers] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+
+    const updatePreference = () => {
+      setPrefers(mediaQuery.matches)
+    }
+
+    updatePreference()
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updatePreference)
+      return () => mediaQuery.removeEventListener("change", updatePreference)
+    }
+
+    mediaQuery.addListener(updatePreference)
+    return () => mediaQuery.removeListener(updatePreference)
+  }, [])
+
+  return prefers
+}
+
+const AnimatedNewsGrid = ({
+  news,
+  isLoading,
+  skeletonCount,
+  showEmptyState,
+  onRefresh,
+  emptyState,
+}: AnimatedNewsGridProps) => {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const prefersReducedMotion = usePrefersReducedMotion()
+  const revealSignature = useMemo(() => news.map((item) => item.id).join("|"), [news])
+  const totalItems = isLoading ? skeletonCount : news.length
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const elements = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-animated-card="true"]')
+    )
+
+    const showImmediately = () => {
+      elements.forEach((element) => {
+        element.classList.remove("opacity-0", "translate-y-6")
+        element.classList.add("opacity-100", "translate-y-0")
+      })
+    }
+
+    if (prefersReducedMotion || typeof IntersectionObserver === "undefined") {
+      showImmediately()
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const target = entry.target as HTMLElement
+            target.classList.add("opacity-100", "translate-y-0")
+            target.classList.remove("opacity-0", "translate-y-6")
+            observer.unobserve(target)
+          }
+        })
+      },
+      { threshold: 0.18, rootMargin: "0px 0px -12% 0px" }
+    )
+
+    elements.forEach((element) => {
+      element.classList.remove("opacity-100", "translate-y-0")
+      element.classList.add("opacity-0", "translate-y-6")
+      observer.observe(element)
+    })
+
+    return () => observer.disconnect()
+  }, [prefersReducedMotion, revealSignature, totalItems, isLoading, skeletonCount])
+
+  const getDelayClass = useCallback(
+    (index: number) => revealDelayClasses[Math.min(index, revealDelayClasses.length - 1)],
+    []
+  )
+
+  const cardClassName =
+    "group/card relative flex h-full w-full min-h-[360px] items-stretch overflow-visible " +
+    "transform-gpu opacity-0 translate-y-6 transition-[transform,opacity] duration-[680ms] ease-out will-change-transform will-change-opacity"
+
+  const renderSkeletons = () =>
+    Array.from({ length: skeletonCount }).map((_, index) => (
+      <div
+        key={`news-skeleton-${index}`}
+        data-animated-card="true"
+        className={`${cardClassName} ${getDelayClass(index)}`}
+      >
+        <NewsCardSkeleton />
+      </div>
+    ))
+
+  const renderNewsCards = () =>
+    news.map((item, index) => (
+      <div
+        key={item.id}
+        data-animated-card="true"
+        className={`${cardClassName} ${getDelayClass(index)}`}
+      >
+        <NewsCard {...item} image_url={item.image_url ?? undefined} onChange={onRefresh} />
+      </div>
+    ))
+
+  return (
+    <div
+      data-fade
+      className="relative isolate mt-2 overflow-hidden rounded-ue-2xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_90%,white_10%)]/90 p-5 shadow-[0_35px_80px_-45px_rgba(15,23,42,0.85)] backdrop-blur-2xl [--fade-delay:200ms] sm:p-8 before:pointer-events-none before:absolute before:-left-1/2 before:top-[-38%] before:h-[520px] before:w-[520px] before:translate-x-1/2 before:rounded-full before:bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--glass-highlight)_70%,transparent)_0%,transparent_72%)] before:opacity-70 before:blur-3xl before:content-[''] before:animate-[float_18s_infinite] after:pointer-events-none after:absolute after:-bottom-40 after:right-[-18%] after:h-[460px] after:w-[460px] after:rounded-full after:bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--nav-link)_52%,transparent)_0%,transparent_75%)] after:opacity-55 after:blur-[120px] after:content-[''] after:animate-[float_24s_infinite] after:[animation-delay:3s]"
+    >
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_65%)] mix-blend-soft-light"
+        aria-hidden
+      />
+      <div
+        ref={containerRef}
+        className="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 sm:gap-6"
+      >
+        {isLoading ? renderSkeletons() : renderNewsCards()}
+        {showEmptyState && (
+          <div className="col-span-full flex justify-center">
+            <div className="relative isolate flex w-full max-w-[440px] flex-col items-center gap-5 rounded-ue-xl border border-white/10 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/90 px-6 py-12 text-center text-[color:var(--secondary-text)] shadow-surface before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--nav-link)_28%,transparent)_0%,transparent_74%)] before:opacity-80 before:blur-3xl before:content-[''] before:animate-[float_18s_infinite] before:[animation-delay:-2s] after:pointer-events-none after:absolute after:-top-28 after:left-1/2 after:h-[320px] after:w-[320px] after:-translate-x-1/2 after:rounded-full after:bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--glass-highlight)_65%,transparent)_0%,transparent_70%)] after:opacity-65 after:blur-3xl after:content-[''] after:animate-[float_22s_infinite]">
+              {emptyState}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const News = () => {
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
@@ -82,6 +249,7 @@ const News = () => {
   const isInitialLoading = isPending && newsList.length === 0
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
   const skeletonCount = Math.max(visibleCount || 0, 6)
+  const isAdmin = user?.role === "admin"
 
   useEffect(() => {
     return () => {
@@ -183,6 +351,29 @@ const News = () => {
     [deferredList, visibleCount]
   )
 
+  const handleRefreshNews = useCallback(() => {
+    void refetchNews()
+  }, [refetchNews])
+
+  const emptyStateContent = useMemo(
+    () => (
+      <>
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
+          <ArticleIcon className="text-[2.2rem]" />
+        </span>
+        <p className="text-lg font-semibold text-[color:var(--page-text)] sm:text-xl">
+          {t("news:states.empty")}
+        </p>
+        {isAdmin && (
+          <Button size="lg" onClick={() => setAddOpen(true)} className="px-6">
+            {t("news:actions.add")}
+          </Button>
+        )}
+      </>
+    ),
+    [isAdmin, t]
+  )
+
   return (
     <Layout>
       <PageFadeIn>
@@ -199,7 +390,7 @@ const News = () => {
             </h1>
           </div>
 
-          {user?.role === "admin" && (
+          {isAdmin && (
             <div data-fade className="mb-6 flex justify-start [--fade-delay:140ms]">
               <Button
                 size="lg"
@@ -212,47 +403,14 @@ const News = () => {
             </div>
           )}
 
-          <div
-            data-fade
-            className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 [--fade-delay:200ms] sm:gap-6"
-          >
-            {isInitialLoading
-              ? Array.from({ length: skeletonCount }).map((_, index) => (
-                  <div key={`news-skeleton-${index}`} className="flex h-full w-full">
-                    <NewsCardSkeleton />
-                  </div>
-                ))
-              : Array.isArray(visibleList) &&
-                visibleList.map((news) => (
-                  <div key={news.id} className="flex h-full w-full">
-                    <NewsCard
-                      {...news}
-                      image_url={news.image_url ?? undefined}
-                      onChange={() => {
-                        void refetchNews()
-                      }}
-                    />
-                  </div>
-                ))}
-
-            {showEmptyState && (
-              <div className="col-span-full mt-16 flex justify-start">
-                <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
-                    <ArticleIcon className="text-[2.2rem]" />
-                  </span>
-                  <p className="text-lg font-semibold text-[color:var(--page-text)] sm:text-xl">
-                    {t("news:states.empty")}
-                  </p>
-                  {user?.role === "admin" && (
-                    <Button size="lg" onClick={() => setAddOpen(true)} className="px-6">
-                      {t("news:actions.add")}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <AnimatedNewsGrid
+            news={visibleList}
+            isLoading={isInitialLoading}
+            skeletonCount={skeletonCount}
+            showEmptyState={showEmptyState}
+            onRefresh={handleRefreshNews}
+            emptyState={emptyStateContent}
+          />
 
           <Dialog
             open={addOpen}
