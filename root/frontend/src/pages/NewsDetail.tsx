@@ -305,8 +305,7 @@ export default function NewsDetail() {
             <aside className="flex flex-col gap-3 rounded-ue-xl bg-glass/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               {createdAt && (
                 <p className="text-sm font-medium text-[color:var(--secondary-text)]">
-                  {t("news:meta.published")}{" "}
-                  <time dateTime={createdAtIso}>{createdAtLabel}</time>
+                  {t("news:meta.published")} <time dateTime={createdAtIso}>{createdAtLabel}</time>
                 </p>
               )}
 
@@ -337,22 +336,20 @@ export default function NewsDetail() {
             <div className="h-px w-full bg-white/10" />
 
             <div className="space-y-6">
-              {content
-                ?.split(/\n{2,}/)
-                .map((chunk, index) => {
-                  const text = chunk.trim()
+              {content?.split(/\n{2,}/).map((chunk, index) => {
+                const text = chunk.trim()
 
-                  if (!text) return null
+                if (!text) return null
 
-                  return (
-                    <p
-                      key={`news-detail-paragraph-${index}`}
-                      className="text-[1.1rem] leading-8 text-secondary"
-                    >
-                      {text}
-                    </p>
-                  )
-                })}
+                return (
+                  <p
+                    key={`news-detail-paragraph-${index}`}
+                    className="text-[1.1rem] leading-8 text-secondary"
+                  >
+                    {text}
+                  </p>
+                )
+              })}
             </div>
           </div>
         </div>
