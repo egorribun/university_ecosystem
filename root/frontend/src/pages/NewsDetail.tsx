@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -93,27 +93,51 @@ export default function NewsDetail() {
   const [snack, setSnack] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
+  const defaultHeroBox = useMemo(
+    () => ({ min: "320px", preferred: "56vh", max: "520px" }),
+    []
+  )
   const [heroPos, setHeroPos] = useState("50% 38%")
-  const [heroFit, setHeroFit] = useState<"cover" | "contain">("cover")
+  const [heroBox, setHeroBox] = useState(defaultHeroBox)
 
-  const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
-    const img = e.currentTarget
-    const w = img.naturalWidth || 0
-    const h = img.naturalHeight || 0
-    if (!w || !h) return
-    const ratio = w / h
+  const computeHeroBox = useCallback(
+    (ratio: number) => {
+      if (!Number.isFinite(ratio) || ratio <= 0) return defaultHeroBox
 
-    if (ratio < 0.85 || ratio > 2.7) {
-      setHeroFit("contain")
-      setHeroPos("50% 50%")
-      return
-    }
+      if (ratio < 0.72)
+        return { min: "460px", preferred: "70vh", max: "840px" }
+      if (ratio < 0.95)
+        return { min: "420px", preferred: "66vh", max: "760px" }
+      if (ratio > 2.8)
+        return { min: "260px", preferred: "46vh", max: "380px" }
+      if (ratio > 2.1)
+        return { min: "300px", preferred: "50vh", max: "440px" }
+      return defaultHeroBox
+    },
+    [defaultHeroBox]
+  )
 
-    setHeroFit("cover")
-    if (ratio < 1.1) setHeroPos("50% 32%")
-    else if (ratio > 1.9) setHeroPos("50% 46%")
-    else setHeroPos("50% 38%")
-  }
+  const computeHeroPos = useCallback((ratio: number) => {
+    if (!Number.isFinite(ratio) || ratio <= 0) return "50% 38%"
+    if (ratio <= 1.05) return "50% 34%"
+    if (ratio >= 2.2) return "50% 46%"
+    if (ratio >= 1.6) return "50% 42%"
+    return "50% 38%"
+  }, [])
+
+  const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>(
+    (event) => {
+      const img = event.currentTarget
+      const w = img.naturalWidth || 0
+      const h = img.naturalHeight || 0
+      if (!w || !h) return
+
+      const ratio = w / h
+      setHeroPos(computeHeroPos(ratio))
+      setHeroBox(computeHeroBox(ratio))
+    },
+    [computeHeroBox, computeHeroPos]
+  )
 
   const query = useQuery({
     queryKey: ["news", id, language],
@@ -235,8 +259,8 @@ export default function NewsDetail() {
 
   useEffect(() => {
     setHeroPos("50% 38%")
-    setHeroFit("cover")
-  }, [imageUrl])
+    setHeroBox(defaultHeroBox)
+  }, [defaultHeroBox, imageUrl])
 
   const displayTitle = useMemo(() => {
     const localized = query.data?.title ?? ""
@@ -326,8 +350,12 @@ export default function NewsDetail() {
 
           <figure className="w-full max-w-5xl overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
             <div
-              className="flex w-full items-center justify-center overflow-hidden"
-              style={{ height: heroFit === "contain" ? "min(360px, 58vh)" : "min(440px, 62vh)" }}
+              className="flex w-full items-center justify-center overflow-hidden bg-[color:color-mix(in_srgb,var(--glass-bg)_80%,black_20%)]"
+              style={{
+                minHeight: heroBox.min,
+                height: heroBox.preferred,
+                maxHeight: heroBox.max,
+              }}
             >
               <SmartImage
                 srcRaw={imageUrl}
@@ -338,7 +366,7 @@ export default function NewsDetail() {
                 }
                 onLoad={handleHeroLoad}
                 className="h-full w-full"
-                style={{ objectFit: heroFit, objectPosition: heroPos }}
+                style={{ objectFit: "cover", objectPosition: heroPos }}
               />
             </div>
             {displayTitle ? null : (
