@@ -12,32 +12,6 @@ import {
   type CSSProperties,
 } from "react"
 import api from "../api/client"
-import {
-  Box,
-  Typography,
-  Button,
-  Stack,
-  TextField,
-  MenuItem,
-  Select,
-  InputLabel,
-  FormControl,
-  Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Paper,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  Chip,
-  LinearProgress,
-} from "@mui/material"
 import DeleteIcon from "@mui/icons-material/Delete"
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
 import AddIcon from "@mui/icons-material/Add"
@@ -45,7 +19,6 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime"
 import SchoolIcon from "@mui/icons-material/School"
 import RoomIcon from "@mui/icons-material/Room"
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
-import useMediaQuery from "@mui/material/useMediaQuery"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
@@ -53,6 +26,10 @@ import "dayjs/locale/en"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
+import { Button, Chip, ProgressBar, Tooltip } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 dayjs.extend(isoWeek)
 
@@ -469,6 +446,11 @@ export default function Schedule() {
       },
     ]
   }, [editLesson?.lesson_type, lessonTypeLabels, lessonTypeOptions])
+  useEffect(() => {
+    if (!snack || typeof window === "undefined") return
+    const id = window.setTimeout(() => setSnack(""), 2200)
+    return () => window.clearTimeout(id)
+  }, [snack])
   const addDayLabel = addDay ? getDayLabel(addDay) : ""
   const isMobile = useMediaQuery("(max-width:1730px)")
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
@@ -478,7 +460,7 @@ export default function Schedule() {
     headRefs.current = Array(weekdayBackend.length).fill(null)
   if (dayCardRefs.current.length !== weekdayBackend.length)
     dayCardRefs.current = Array(weekdayBackend.length).fill(null)
-  const mainAlignSx = { ml: { xs: 0, sm: 2, md: 3, lg: 6 }, mr: { xs: 0, sm: 2, md: 3, lg: 6 } }
+  const mainAlignClass = "mx-auto w-full max-w-[980px] px-4 sm:px-8 lg:px-16"
   const todayIdx = getTodayIdx()
   const hasToday = todayIdx >= 0 && todayIdx < weekdayBackend.length
   const [nowTick, setNowTick] = useState(dayjs())
@@ -726,50 +708,53 @@ export default function Schedule() {
     return set
   }, [filteredSchedule])
 
-  const badgeBase = {
-    display: "inline-flex",
-    alignItems: "center",
-    px: 1.3,
-    py: 1.2,
-    borderRadius: 999,
-    fontWeight: 700,
-    lineHeight: 1,
-    fontSize: "clamp(.78rem, .7rem + .35vw, .98rem)",
-    userSelect: "none",
-    whiteSpace: "nowrap",
-  } as const
+  const badgeGhostClass =
+    "inline-flex items-center rounded-ue-pill border border-[color:var(--btn-border)] bg-[color:var(--btn-bg)] px-3 py-1.5 text-[clamp(0.78rem,0.7rem+0.35vw,0.98rem)] font-semibold tracking-tight text-[color:var(--nav-text)] shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
 
-  const badgeGhost = {
-    ...badgeBase,
-    background: "var(--btn-bg)",
-    color: "var(--nav-text)",
-    border: "1px solid var(--btn-border)",
-  } as const
+  const headerCardClass =
+    "rounded-ue-xl border border-[color:var(--btn-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-5 py-4 shadow-[0_12px_36px_rgba(15,23,42,0.14),0_4px_16px_rgba(15,23,42,0.08)]"
 
-  const headerCardSx = {
-    borderRadius: 4,
-    p: 2,
-    background: "var(--card-bg)",
-    boxShadow: "0 12px 36px #00000012, 0 4px 14px #0000000a",
-    border: "1px solid var(--btn-border)",
-  }
+  const iconButtonClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--btn-border)] bg-[color:var(--card-bg)] text-[color:var(--nav-link)] shadow-[0_6px_18px_rgba(15,23,42,0.12)] transition focus-visible:outline-none focus-visible:shadow-focus hover:bg-[color:var(--option-bg)]"
+
+  const chipBaseClass =
+    "inline-flex items-center gap-1.5 rounded-ue-pill border border-[color:var(--btn-border)] bg-[color:var(--card-bg)] px-3 py-1 text-[0.78rem] font-semibold tracking-tight text-[color:var(--page-text)] shadow-[0_8px_20px_rgba(15,23,42,0.12)]"
+
+  const inputClass =
+    "w-full rounded-ue-lg border border-[color:var(--btn-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-3 py-2.5 text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
 
   const headerActions = (
-    <Stack direction="row" spacing={2} alignItems="center" mb={2.5} flexWrap="wrap">
-      <Typography component="span">{t("schedule:week.label")}</Typography>
+    <div className="flex flex-wrap items-center gap-3 text-[color:var(--page-text)]">
+      <span className="text-sm font-semibold uppercase tracking-[0.14em] text-[color:var(--secondary-text)]">
+        {t("schedule:week.label")}
+      </span>
       <Button
-        variant={currentParity === "odd" ? "contained" : "outlined"}
+        size="sm"
+        variant={currentParity === "odd" ? "solid" : "outline"}
+        className={cn(
+          "rounded-ue-full px-4",
+          currentParity === "odd"
+            ? "shadow-[0_10px_22px_rgba(37,99,235,0.28)]"
+            : "border-[color:var(--btn-border)] bg-[color:var(--option-bg)] text-[color:var(--page-text)]"
+        )}
         onClick={() => setCurrentParity("odd")}
       >
         {t("schedule:week.odd")}
       </Button>
       <Button
-        variant={currentParity === "even" ? "contained" : "outlined"}
+        size="sm"
+        variant={currentParity === "even" ? "solid" : "outline"}
+        className={cn(
+          "rounded-ue-full px-4",
+          currentParity === "even"
+            ? "shadow-[0_10px_22px_rgba(37,99,235,0.28)]"
+            : "border-[color:var(--btn-border)] bg-[color:var(--option-bg)] text-[color:var(--page-text)]"
+        )}
         onClick={() => setCurrentParity("even")}
       >
         {t("schedule:week.even")}
       </Button>
-    </Stack>
+    </div>
   )
 
   const renderBreakChip = (rowIdx: number, colIdx: number) => {
@@ -780,18 +765,11 @@ export default function Schedule() {
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-      <Box
-        sx={{
-          position: "absolute",
-          top: -10,
-          left: "50%",
-          transform: "translateX(-50%)",
-          pointerEvents: "none",
-          zIndex: 3,
-        }}
-      >
-        <Chip size="small" label={t("schedule:break", { minutes: gap })} className="chip-break" />
-      </Box>
+      <div className="pointer-events-none absolute -top-2.5 left-1/2 z-30 -translate-x-1/2">
+        <Chip size="sm" className={cn(chipBaseClass, "chip-break !px-3 !py-1 text-[0.72rem]")}>
+          {t("schedule:break", { minutes: gap })}
+        </Chip>
+      </div>
     )
   }
 
@@ -810,276 +788,187 @@ export default function Schedule() {
     onOpen: () => void
     hasBreakBefore: boolean
   }) => (
-    <Box
+    <button
+      type="button"
       onClick={onOpen}
-      sx={{
-        minHeight: lessonCardHeight,
-        p: 1.2,
-        pl: 1.8,
-        pr: 1.4,
-        borderRadius: 2,
-        background: "var(--option-bg)",
-        border: "1px solid var(--btn-border)",
-        boxShadow: "var(--option-shadow)",
-        transition: "transform .2s, box-shadow .2s",
-        position: "relative",
-        cursor: "pointer",
-        mt: hasBreakBefore ? 2.5 : 0,
-        "&:hover": {
-          transform: "translateY(-1px)",
-          boxShadow: "0 10px 28px #0000001f, 0 2px 10px #0003",
-        },
-      }}
+      className={cn(
+        "group relative flex min-h-[148px] w-full cursor-pointer flex-col rounded-ue-lg border border-[color:var(--btn-border)] bg-[color:var(--option-bg)] px-5 pb-4 pt-3 text-left text-[color:var(--page-text)] shadow-[var(--option-shadow)] transition-[transform,box-shadow] duration-200 ease-out",
+        "hover:-translate-y-[1px] hover:shadow-[0_12px_32px_rgba(15,23,42,0.18),0_3px_12px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:shadow-focus",
+        hasBreakBefore ? "mt-6" : ""
+      )}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
-      <Box
-        sx={{
-          position: "absolute",
-          left: -1,
-          top: -1,
-          bottom: -1,
-          width: 6,
-          borderTopLeftRadius: 8,
-          borderBottomLeftRadius: 8,
-          background: getLessonTypeColor(lesson.lesson_type),
-        }}
+      <span
+        aria-hidden
+        className="absolute -left-[1px] top-0 h-full w-1.5 rounded-bl-ue-lg rounded-tl-ue-lg"
+        style={{ background: getLessonTypeColor(lesson.lesson_type) }}
       />
-      <Stack spacing={0.6}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Chip
-            size="small"
-            label={lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
-            sx={{
-              height: 22,
-              fontWeight: 700,
-              color: "#fff",
+            size="sm"
+            className={cn(
+              "chip-type !border-transparent !px-3 !py-1 text-[0.72rem] font-semibold uppercase tracking-tight text-white shadow-[0_12px_24px_rgba(15,23,42,0.14)]",
+              chipBaseClass
+            )}
+            style={{
               background: getLessonTypeColor(lesson.lesson_type),
+              color: "#fff",
             }}
-          />
+          >
+            {lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
+          </Chip>
           <Chip
-            size="small"
-            className="chip-time"
-            icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
-            label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
-            sx={{ bgcolor: "transparent", border: "1px solid var(--btn-border)" }}
-          />
-        </Stack>
-        <Typography
-          fontWeight={800}
-          sx={{
-            color: "var(--page-text)",
-            fontSize: "1rem",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
+            size="sm"
+            className={cn(
+              chipBaseClass,
+              "chip-time !border-[color:var(--btn-border)] !bg-[color:var(--table-header-bg)] !px-3 !py-1 text-[0.72rem]"
+            )}
+            leadingIcon={<AccessTimeIcon style={{ fontSize: 16 }} />}
+          >
+            {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+          </Chip>
+        </div>
+        <h3 className="line-clamp-2 text-[1.02rem] font-semibold leading-snug text-[color:var(--page-text)]">
           {lesson.subject}
-        </Typography>
-        <Stack direction="row" gap={1} flexWrap="wrap">
+        </h3>
+        <div className="flex flex-wrap items-center gap-2">
           <Chip
-            size="small"
-            variant="outlined"
-            icon={<SchoolIcon sx={{ fontSize: 16 }} />}
-            label={lesson.teacher}
-            sx={(theme) => {
-              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
-              return {
-                borderColor: "var(--btn-border)",
-                color: "var(--page-text)",
-                "& .MuiChip-icon": { color: primaryColor },
-              }
-            }}
-          />
+            as="span"
+            size="sm"
+            className={cn(
+              chipBaseClass,
+              "!border-[color:var(--btn-border)] !bg-transparent !px-3 !py-1 text-[0.72rem]"
+            )}
+            leadingIcon={<SchoolIcon fontSize="small" />}
+          >
+            {lesson.teacher}
+          </Chip>
           <Chip
-            size="small"
-            variant="outlined"
-            icon={<RoomIcon sx={{ fontSize: 16 }} />}
-            label={lesson.room}
-            sx={(theme) => {
-              const primaryColor = theme.vars?.palette.primary.main ?? theme.palette.primary.main
-              return {
-                borderColor: "var(--btn-border)",
-                color: "var(--page-text)",
-                "& .MuiChip-icon": { color: primaryColor },
-              }
-            }}
-          />
-        </Stack>
-      </Stack>
-      <Tooltip title={t("schedule:lesson.details")}>
-        <InfoOutlinedIcon
-          sx={{
-            position: "absolute",
-            right: 8,
-            bottom: 8,
-            fontSize: 18,
-            color: "var(--secondary-text)",
-          }}
-        />
+            as="span"
+            size="sm"
+            className={cn(
+              chipBaseClass,
+              "!border-[color:var(--btn-border)] !bg-transparent !px-3 !py-1 text-[0.72rem]"
+            )}
+            leadingIcon={<RoomIcon fontSize="small" />}
+          >
+            {lesson.room}
+          </Chip>
+        </div>
+      </div>
+      <Tooltip content={t("schedule:lesson.details")}>
+        <span className="pointer-events-none absolute bottom-3 right-3 text-[color:var(--secondary-text)]">
+          <InfoOutlinedIcon style={{ fontSize: 18 }} />
+        </span>
       </Tooltip>
       {(user?.role === "admin" || user?.role === "teacher") && (
-        <IconButton
+        <button
+          type="button"
           aria-label={t("schedule:aria.deleteLesson")}
-          size="small"
-          sx={{ position: "absolute", top: 6, right: 6, bgcolor: "var(--card-bg)", zIndex: 2 }}
+          className={cn(
+            iconButtonClass,
+            "absolute right-3 top-3 z-20 h-8 w-8 bg-[color:var(--card-bg)] text-[color:var(--danger-text,#ef4444)]"
+          )}
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
           }}
         >
-          <DeleteIcon fontSize="small" color="error" />
-        </IconButton>
+          <DeleteIcon fontSize="small" className="text-[color:var(--danger-text,#ef4444)]" />
+        </button>
       )}
       {isConflict && (
-        <Box
-          sx={{
-            position: "absolute",
-            inset: 0,
-            borderRadius: 2,
-            boxShadow: "0 0 0 3px #ef535033 inset",
-            pointerEvents: "none",
-          }}
-        />
+        <div className="pointer-events-none absolute inset-0 rounded-ue-lg ring-[3px] ring-[rgba(239,83,80,0.3)]" />
       )}
-    </Box>
+    </button>
   )
 
   const renderTable = () => {
     const visibleRows = tableRows.slice(0, rowLimit)
     return (
-      <TableContainer
-        component={Paper}
+      <div
         ref={tableScrollRef}
-        sx={{
-          width: "100%",
-          maxWidth: "min(98vw,1920px)",
-          mx: "auto",
-          borderRadius: { xs: 2, md: 4 },
-          boxShadow: 5,
-          minHeight: 360,
-          bgcolor: "var(--card-bg)",
-          color: "var(--page-text)",
-          overflowX: "auto",
-          scrollBehavior: "smooth",
-          contentVisibility: "auto",
-          containIntrinsicSize: "600px",
-        }}
+        className="schedule-table-container relative mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-ue-2xl border border-[color:var(--btn-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] shadow-[0_24px_56px_rgba(15,23,42,0.16)]"
+        style={{ minHeight: 360 }}
       >
-        <Table stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell
-                align="center"
-                sx={{
-                  fontWeight: 700,
-                  width: 45,
-                  background: "var(--table-header-bg)",
-                  zIndex: 10,
-                  position: "sticky",
-                  left: 0,
-                  color: "var(--page-text)",
-                  fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
-                }}
-              >
+        <table className="schedule-table w-full border-collapse text-[0.97rem]">
+          <thead className="sticky top-0 z-40 bg-[color:var(--table-header-bg)]">
+            <tr>
+              <th className="sticky left-0 z-50 min-w-[58px] border-b border-[color:var(--glass-border)] bg-[color:var(--table-header-bg)] px-4 py-3 text-center text-[clamp(0.98rem,1.7vw,1.13rem)] font-semibold uppercase tracking-wide">
                 №
-              </TableCell>
+              </th>
               {weekdayBackend.map((day, idx) => {
                 const label = weekdayLabels[idx] ?? day
+                const isToday = hasToday && idx === todayIdx
                 return (
-                  <TableCell
-                    align="center"
+                  <th
                     key={day}
                     ref={(el: HTMLTableCellElement | null) => {
                       headRefs.current[idx] = el
                     }}
-                    sx={{
-                      fontWeight: 700,
-                      background:
-                        hasToday && idx === todayIdx
-                          ? "var(--table-row-today)"
-                          : "var(--table-header-bg)",
-                      fontSize: "clamp(0.97rem, 1.4vw, 1.11rem)",
-                      zIndex: 5,
-                      color: "var(--page-text)",
-                      position: "relative",
-                      borderLeft: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
-                      borderRight: hasToday && idx === todayIdx ? "2px solid #2563eb55" : undefined,
-                    }}
+                    className={cn(
+                      "schedule-table-head sticky top-0 z-40 border-b border-[color:var(--glass-border)] px-4 py-3 text-center text-[clamp(0.97rem,1.4vw,1.11rem)] font-semibold uppercase tracking-wide transition-colors duration-200",
+                      isToday
+                        ? "bg-[color:var(--table-row-today)] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.22)]"
+                        : "bg-[color:var(--table-header-bg)]"
+                    )}
                   >
-                    <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
-                      {label}
+                    <div className="flex items-center justify-center gap-2">
+                      <span>{label}</span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
-                        <IconButton
-                          size="small"
+                        <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation()
                             setAddDay(day)
                             setAddDialogOpen(true)
                           }}
-                          sx={{
-                            ml: 1,
-                            border: "1px solid var(--btn-border)",
-                            bgcolor: "var(--card-bg)",
-                            "&:hover": { bgcolor: "var(--option-bg)" },
-                            height: 26,
-                            width: 26,
-                          }}
+                          className={cn(
+                            iconButtonClass,
+                            "ml-1 h-7 w-7 border-[color:var(--btn-border)] bg-[color:var(--card-bg)]"
+                          )}
                           aria-label={t("schedule:aria.addLesson", { day: label })}
                         >
                           <AddIcon fontSize="small" />
-                        </IconButton>
+                        </button>
                       )}
-                    </Box>
-                  </TableCell>
+                    </div>
+                  </th>
                 )
               })}
-            </TableRow>
-          </TableHead>
-          <TableBody sx={{ contentVisibility: "auto" }}>
+            </tr>
+          </thead>
+          <tbody>
             {visibleRows.length === 0 ? (
-              <TableRow>
-                <TableCell align="center" colSpan={weekdayBackend.length + 1}>
+              <tr>
+                <td
+                  className="px-6 py-14 text-center text-[color:var(--secondary-text)]"
+                  colSpan={weekdayBackend.length + 1}
+                >
                   {t("schedule:table.noLessons")}
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ) : (
               visibleRows.map((row, rowIdx) => (
-                <TableRow key={rowIdx} sx={{ "&:hover": { background: "var(--table-row-hover)" } }}>
-                  <TableCell
-                    align="center"
-                    sx={{
-                      fontWeight: 700,
-                      background: "var(--table-header-bg)",
-                      position: "sticky",
-                      left: 0,
-                      color: "var(--page-text)",
-                      fontSize: "clamp(0.98rem,1.7vw,1.13rem)",
-                    }}
-                  >
+                <tr
+                  key={rowIdx}
+                  className="group transition-colors duration-200 hover:bg-[color:var(--table-row-hover)]"
+                >
+                  <th className="sticky left-0 z-30 border-b border-[color:var(--glass-border)] bg-[color:var(--table-header-bg)] px-4 py-3 text-center text-[clamp(0.98rem,1.7vw,1.13rem)] font-semibold">
                     {rowIdx + 1}
-                  </TableCell>
+                  </th>
                   {row.map((lesson, colIdx) => {
                     const colIsToday = hasToday && colIdx === todayIdx
+                    const cellClass = cn(
+                      "schedule-table-cell relative border-b border-[color:var(--glass-border)] px-3 py-3 align-top transition-colors duration-200",
+                      colIsToday ? "bg-[color:var(--table-row-today)]" : "bg-transparent"
+                    )
                     if (!lesson) {
                       return (
-                        <TableCell
-                          key={`empty-${rowIdx}-${colIdx}`}
-                          sx={{
-                            background: colIsToday ? "var(--table-row-today)" : "transparent",
-                            p: 1.2,
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              minHeight: lessonCardHeight,
-                              borderRadius: 2,
-                              border: "1px dashed var(--glass-border)",
-                              bgcolor: "transparent",
-                            }}
-                          />
-                        </TableCell>
+                        <td key={`empty-${rowIdx}-${colIdx}`} className={cellClass}>
+                          <div className="min-h-[148px] rounded-ue-lg border border-dashed border-[color:var(--glass-border)]" />
+                        </td>
                       )
                     }
                     let hasBreakBefore = false
@@ -1092,17 +981,7 @@ export default function Schedule() {
                     }
                     const isConflict = conflictedIds.has(lesson.id)
                     return (
-                      <TableCell
-                        align="center"
-                        key={lesson.id ?? `${rowIdx}-${colIdx}`}
-                        sx={{
-                          position: "relative",
-                          color: "var(--page-text)",
-                          background: colIsToday ? "var(--table-row-today)" : "transparent",
-                          overflow: "visible",
-                          p: 1.2,
-                        }}
-                      >
+                      <td key={lesson.id ?? `${rowIdx}-${colIdx}`} className={cellClass}>
                         {renderBreakChip(rowIdx, colIdx)}
                         <LessonCellCard
                           lesson={lesson}
@@ -1114,38 +993,48 @@ export default function Schedule() {
                           }}
                           onDelete={() => handleDeleteLesson(lesson.id)}
                         />
-                      </TableCell>
+                      </td>
                     )
                   })}
-                </TableRow>
+                </tr>
               ))
             )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </tbody>
+        </table>
+      </div>
     )
   }
 
   const renderMobileDayAnchors = () => (
-    <Stack direction="row" gap={1} sx={{ overflowX: "auto", pb: 1, px: 0.5 }}>
-      {weekdayBackend.map((day, i) => (
-        <Chip
-          key={day}
-          clickable
-          className="chip-day"
-          color={hasToday && i === todayIdx ? "primary" : "default"}
-          label={weekdayShort[i] ?? getDayLabel(day)}
-          onClick={() =>
-            dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
-          sx={{ flex: "0 0 auto" }}
-        />
-      ))}
-    </Stack>
+    <div className="flex w-full gap-2 overflow-x-auto pb-2 pl-1 pr-1">
+      {weekdayBackend.map((day, i) => {
+        const isToday = hasToday && i === todayIdx
+        return (
+          <Chip
+            key={day}
+            as="button"
+            type="button"
+            size="sm"
+            className={cn(
+              chipBaseClass,
+              "chip-day flex-shrink-0 !px-3 !py-1 text-[0.75rem]",
+              isToday
+                ? "shadow-[0_12px_28px_rgba(37,99,235,0.32)]"
+                : "border-[color:var(--btn-border)] bg-[color:var(--card-bg)]"
+            )}
+            onClick={() =>
+              dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          >
+            {weekdayShort[i] ?? getDayLabel(day)}
+          </Chip>
+        )
+      })}
+    </div>
   )
 
   const renderMobileCards = () => (
-    <Stack spacing={2} sx={{ width: "100%", mt: 1 }}>
+    <div className="mt-2 flex w-full flex-col gap-4">
       {renderMobileDayAnchors()}
       {weekdayBackend.map((day, dayIdx) => {
         const label = weekdayLabels[dayIdx] ?? day
@@ -1153,662 +1042,670 @@ export default function Schedule() {
           .filter((l) => l.weekday === day)
           .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
         return (
-          <Paper
+          <section
             key={day}
             ref={(el: HTMLDivElement | null) => {
               dayCardRefs.current[dayIdx] = el
             }}
-            elevation={4}
-            sx={{
-              borderRadius: 3,
-              p: 2,
-              mb: 1,
-              bgcolor:
-                hasToday && dayIdx === todayIdx ? "var(--table-row-today)" : "var(--card-bg)",
-              border: "1px solid var(--btn-border)",
-              boxShadow: "0 10px 30px #00000014, 0 3px 12px #0000000a",
-              contentVisibility: "auto",
-              containIntrinsicSize: "400px",
-            }}
+            className={cn(
+              "rounded-ue-2xl border border-[color:var(--btn-border)] bg-[color:var(--card-bg)] p-4 shadow-[0_10px_30px_rgba(15,23,42,0.16),0_3px_12px_rgba(15,23,42,0.08)]",
+              hasToday && dayIdx === todayIdx ? "bg-[color:var(--table-row-today)]" : ""
+            )}
           >
-            <Box display="flex" alignItems="center" mb={1} gap={1}>
-              <Typography fontWeight={800} fontSize="1.12rem">
-                {label}
-              </Typography>
+            <div className="mb-3 flex items-center gap-2">
+              <h3 className="text-[1.12rem] font-semibold text-[color:var(--page-text)]">{label}</h3>
               {(user?.role === "admin" || user?.role === "teacher") && (
-                <IconButton
-                  size="small"
+                <button
+                  type="button"
+                  className={cn(
+                    iconButtonClass,
+                    "ml-1 h-7 w-7 border-[color:var(--btn-border)] bg-[color:var(--card-bg)]"
+                  )}
                   onClick={(e) => {
                     e.stopPropagation()
                     setAddDay(day)
                     setAddDialogOpen(true)
                   }}
-                  sx={{
-                    ml: 0.5,
-                    border: "1px solid var(--btn-border)",
-                    bgcolor: "var(--card-bg)",
-                    "&:hover": { bgcolor: "var(--option-bg)" },
-                    height: 26,
-                    width: 26,
-                  }}
                   aria-label={t("schedule:aria.addLesson", { day: label })}
                 >
                   <AddIcon fontSize="small" />
-                </IconButton>
+                </button>
               )}
-            </Box>
+            </div>
             {lessons.length === 0 ? (
-              <Typography sx={{ color: "var(--secondary-text)" }}>
+              <p className="text-[color:var(--secondary-text)]">
                 {t("schedule:mobile.noLessons")}
-              </Typography>
+              </p>
             ) : (
-              <Stack spacing={1}>
+              <div className="flex flex-col gap-3">
                 {lessons.map((lesson, idx) => {
                   const prev = lessons[idx - 1]
                   const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
                   return (
-                    <Box key={lesson.id}>
-                      {idx > 0 && gap > 0 && (
+                    <div key={lesson.id} className="space-y-2">
+                      {idx > 0 && gap > 0 ? (
                         <Chip
-                          size="small"
-                          label={t("schedule:break", { minutes: gap })}
-                          className="chip-break"
-                          sx={{ mb: 0.8 }}
-                        />
-                      )}
-                      <Box
+                          size="sm"
+                          className={cn(chipBaseClass, "chip-break !px-3 !py-1 text-[0.72rem]")}
+                        >
+                          {t("schedule:break", { minutes: gap })}
+                        </Chip>
+                      ) : null}
+                      <button
+                        type="button"
                         onClick={() => {
                           setDialogLesson(lesson)
                           setOpenDialog(true)
                         }}
-                        sx={{
-                          p: 1.3,
-                          borderRadius: 2,
-                          background: "var(--option-bg)",
-                          boxShadow: "var(--option-shadow)",
-                          border: "1px solid var(--btn-border)",
-                          cursor: "pointer",
-                          transition: "transform .2s, box-shadow .2s",
-                          "&:hover": {
-                            background: "var(--option-hover-bg)",
-                            transform: "translateY(-1px)",
-                            boxShadow: "0 8px 26px #2175ee20, 0 1.5px 8px #0002",
-                          },
-                          position: "relative",
-                        }}
+                        className="group relative w-full rounded-ue-xl border border-[color:var(--btn-border)] bg-[color:var(--option-bg)] px-4 py-3 text-left text-[color:var(--page-text)] shadow-[var(--option-shadow)] transition-[transform,box-shadow,background-color] duration-200 ease-out hover:-translate-y-[1px] hover:bg-[color:var(--option-hover-bg)] hover:shadow-[0_12px_32px_rgba(15,23,42,0.18)] focus-visible:outline-none focus-visible:shadow-focus"
                       >
-                        <Box
-                          sx={{
-                            position: "absolute",
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: 6,
-                            borderTopLeftRadius: 8,
-                            borderBottomLeftRadius: 8,
-                            background: getLessonTypeColor(lesson.lesson_type),
-                          }}
+                        <span
+                          aria-hidden
+                          className="absolute left-0 top-0 h-full w-1.5 rounded-bl-ue-xl rounded-tl-ue-xl"
+                          style={{ background: getLessonTypeColor(lesson.lesson_type) }}
                         />
-                        <Stack
-                          direction="row"
-                          gap={1}
-                          alignItems="center"
-                          flexWrap="wrap"
-                          sx={{ pl: 1 }}
-                        >
+                        <div className="flex flex-wrap items-center gap-2 pl-2">
                           <Chip
-                            size="small"
-                            label={
-                              lessonTypeLabels.get(lesson.lesson_type ?? "") ??
-                              lesson.lesson_type ??
-                              ""
-                            }
-                            className="chip-type"
-                            sx={{
+                            size="sm"
+                            className={cn(
+                              chipBaseClass,
+                              "chip-type !border-transparent !px-3 !py-1 text-[0.72rem] font-semibold uppercase text-white"
+                            )}
+                            style={{
                               background: getLessonTypeColor(lesson.lesson_type),
                               color: "#fff",
-                              height: 24,
-                              fontWeight: 700,
                             }}
-                          />
+                          >
+                            {lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
+                          </Chip>
                           <Chip
-                            size="small"
-                            className="chip-time"
-                            icon={<AccessTimeIcon sx={{ fontSize: 16 }} />}
-                            label={`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
-                          />
-                        </Stack>
-                        <Typography
-                          fontWeight={700}
-                          fontSize="1.02rem"
-                          sx={{
-                            color: "var(--page-text)",
-                            pl: 1,
-                            mt: 0.5,
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
+                            size="sm"
+                            className={cn(
+                              chipBaseClass,
+                              "chip-time !border-[color:var(--btn-border)] !bg-[color:var(--table-header-bg)] !px-3 !py-1 text-[0.72rem]"
+                            )}
+                            leadingIcon={<AccessTimeIcon style={{ fontSize: 16 }} />}
+                          >
+                            {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+                          </Chip>
+                        </div>
+                        <h4 className="pl-2 pt-2 text-[1.02rem] font-semibold leading-snug text-[color:var(--page-text)]">
                           {lesson.subject}
-                        </Typography>
-                        <Stack direction="row" gap={1} flexWrap="wrap" sx={{ pl: 1, mt: 0.4 }}>
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-2 pl-2 pt-2">
                           <Chip
-                            size="small"
-                            variant="outlined"
-                            icon={<SchoolIcon sx={{ fontSize: 16 }} />}
-                            label={lesson.teacher}
-                            sx={(theme) => {
-                              const primaryColor =
-                                theme.vars?.palette.primary.main ?? theme.palette.primary.main
-                              return {
-                                borderColor: primaryColor,
-                                color: primaryColor,
-                                fontWeight: 600,
-                                "& .MuiChip-icon": { color: primaryColor },
-                              }
-                            }}
-                          />
+                            size="sm"
+                            className={cn(
+                              chipBaseClass,
+                              "!border-[color:var(--btn-border)] !bg-transparent !px-3 !py-1 text-[0.72rem]"
+                            )}
+                            leadingIcon={<SchoolIcon fontSize="small" />}
+                          >
+                            {lesson.teacher}
+                          </Chip>
                           <Chip
-                            size="small"
-                            variant="outlined"
-                            icon={<RoomIcon sx={{ fontSize: 16 }} />}
-                            label={lesson.room}
-                            sx={(theme) => {
-                              const primaryColor =
-                                theme.vars?.palette.primary.main ?? theme.palette.primary.main
-                              return {
-                                borderColor: primaryColor,
-                                color: primaryColor,
-                                fontWeight: 600,
-                                "& .MuiChip-icon": { color: primaryColor },
-                              }
-                            }}
-                          />
-                        </Stack>
-                      </Box>
-                    </Box>
+                            size="sm"
+                            className={cn(
+                              chipBaseClass,
+                              "!border-[color:var(--btn-border)] !bg-transparent !px-3 !py-1 text-[0.72rem]"
+                            )}
+                            leadingIcon={<RoomIcon fontSize="small" />}
+                          >
+                            {lesson.room}
+                          </Chip>
+                        </div>
+                      </button>
+                    </div>
                   )
                 })}
-              </Stack>
+              </div>
             )}
-          </Paper>
+          </section>
         )
       })}
-    </Stack>
+    </div>
   )
 
   if (loading)
     return (
       <Layout>
-        <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
+        <div className="flex min-h-[70vh] items-center justify-center text-[color:var(--page-text)]">
           {t("common:statuses.loading")}
-        </Box>
+        </div>
       </Layout>
     )
 
   return (
     <Layout>
+
       <PageFadeIn>
         <style>{`
         @media print {
-          body { background: #fff !important; }
+          body { background: #fff !important; color: #000 !important; }
           .no-print { display: none !important; }
-          table { box-shadow: none !important; }
-          .MuiTableCell-root { border: 1px solid #999 !important; }
-          .MuiTableHead-root .MuiTableCell-root { background: #eee !important; color: #000 !important; }
-          .MuiPaper-root { box-shadow: none !important; }
+          .schedule-table-container { box-shadow: none !important; border: 1px solid #999 !important; }
+          .schedule-table { border-collapse: collapse !important; }
+          .schedule-table th,
+          .schedule-table td { border: 1px solid #999 !important; color: #000 !important; }
+          .schedule-table thead th { background: #eee !important; color: #000 !important; }
         }
       `}</style>
-        <Box
-          sx={{
-            width: "100vw",
-            minHeight: "100vh",
-            bgcolor: "var(--page-bg)",
-            color: "var(--page-text)",
-            py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 },
-          }}
-        >
-          <Box
-            sx={{
-              ...mainAlignSx,
-              ml: { xs: 2, sm: 4, md: 5, lg: 8 },
-              mr: { xs: 2, sm: 4, md: 5, lg: 8 },
-              maxWidth: 980,
-              mb: 2,
-              mt: 0,
-            }}
-          >
-            <Stack
+        <div className="min-h-[100vh] w-full bg-[color:var(--page-bg)] pb-16 pt-12 text-[color:var(--page-text)]">
+          <div className={cn(mainAlignClass, "space-y-6")}>
+            <div
               data-fade
               style={{ "--fade-delay": "80ms" } as CSSProperties}
-              direction="row"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1.3}
-              mb={2.2}
-              mt={0.5}
+              className="flex flex-wrap items-center gap-3"
             >
-              <CalendarMonthIcon color="primary" sx={{ fontSize: 34 }} />
-              <Typography
-                variant="h4"
-                fontWeight={700}
-                color="primary.main"
-                sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-              >
+              <span className="flex h-12 w-12 items-center justify-center rounded-ue-xl border border-[color:var(--btn-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] text-[color:var(--nav-link)] shadow-[0_18px_40px_rgba(37,99,235,0.22)]">
+                <CalendarMonthIcon style={{ fontSize: 30 }} />
+              </span>
+              <h1 className="text-[clamp(1.8rem,4vw,2.7rem)] font-bold text-[color:var(--nav-link)]">
                 {user?.role === "student"
                   ? t("schedule:title.student")
                   : t("schedule:title.default")}
-              </Typography>
-              <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>{todayLabel}</Box>
-              {activeGroupName && (
-                <Box sx={{ ...badgeGhost, transform: "translateY(8px)" }}>
+              </h1>
+              <span className={cn(badgeGhostClass, "translate-y-[8px]")}>{todayLabel}</span>
+              {activeGroupName ? (
+                <span className={cn(badgeGhostClass, "translate-y-[8px]")}>
                   {t("schedule:header.groupName", { name: activeGroupName })}
-                </Box>
-              )}
-            </Stack>
+                </span>
+              ) : null}
+            </div>
 
-            <Stack
+            <div
               data-fade
               style={{ "--fade-delay": "140ms" } as CSSProperties}
-              direction="row"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1}
-              mb={2}
             >
               {headerActions}
-            </Stack>
+            </div>
 
-            <Box
+            <div
               data-fade
               style={{ "--fade-delay": "200ms" } as CSSProperties}
-              className="no-print"
-              sx={{ ...headerCardSx, mb: 2 }}
+              className={cn("no-print", headerCardClass, "space-y-3")}
             >
               {currentLesson ? (
-                <Box>
-                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                    <Chip size="small" className="chip-clock" label={t("schedule:chips.current")} />
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Chip size="sm" className={cn(chipBaseClass, "chip-clock !px-3 !py-1 text-[0.72rem]")}>
+                      {t("schedule:chips.current")}
+                    </Chip>
                     <Chip
-                      size="small"
-                      className="chip-time"
-                      label={`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
-                    />
-                    <Typography sx={{ fontWeight: 800 }}>{currentLesson.subject}</Typography>
-                    {!!timeLeftText && (
-                      <Chip size="small" className="chip-left" label={timeLeftText} />
-                    )}
-                  </Stack>
-                  <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
+                      size="sm"
+                      className={cn(
+                        chipBaseClass,
+                        "chip-time !border-[color:var(--btn-border)] !bg-[color:var(--table-header-bg)] !px-3 !py-1 text-[0.72rem]"
+                      )}
+                    >
+                      {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                    </Chip>
+                    <span className="text-[1.05rem] font-semibold text-[color:var(--page-text)]">
+                      {currentLesson.subject}
+                    </span>
+                    {timeLeftText ? (
+                      <Chip
+                        size="sm"
+                        className={cn(chipBaseClass, "chip-left !px-3 !py-1 text-[0.72rem]")}
+                      >
+                        {timeLeftText}
+                      </Chip>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<SchoolIcon sx={{ fontSize: 16 }} />}
-                      label={currentLesson.teacher}
-                      sx={(theme) => {
-                        const primaryColor =
-                          theme.vars?.palette.primary.main ?? theme.palette.primary.main
-                        return { "& .MuiChip-icon": { color: primaryColor } }
-                      }}
-                    />
+                      size="sm"
+                      className={cn(
+                        chipBaseClass,
+                        "!border-[color:var(--btn-border)] !bg-transparent !px-3 !py-1 text-[0.72rem]"
+                      )}
+                      leadingIcon={<SchoolIcon fontSize="small" />}
+                    >
+                      {currentLesson.teacher}
+                    </Chip>
                     <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<RoomIcon sx={{ fontSize: 16 }} />}
-                      label={currentLesson.room}
-                      sx={(theme) => {
-                        const primaryColor =
-                          theme.vars?.palette.primary.main ?? theme.palette.primary.main
-                        return { "& .MuiChip-icon": { color: primaryColor } }
-                      }}
-                    />
-                  </Stack>
-                  <LinearProgress
+                      size="sm"
+                      className={cn(
+                        chipBaseClass,
+                        "!border-[color:var(--btn-border)] !bg-transparent !px-3 !py-1 text-[0.72rem]"
+                      )}
+                      leadingIcon={<RoomIcon fontSize="small" />}
+                    >
+                      {currentLesson.room}
+                    </Chip>
+                  </div>
+                  <ProgressBar
                     value={currentProgress}
-                    variant="determinate"
-                    className="lesson-progress"
-                    sx={{
-                      mt: 1.5,
-                      height: 8,
-                      borderRadius: 999,
-                      backgroundColor: "var(--progress-track)",
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor: "var(--progress-bar)",
-                        transition: "transform 0.4s linear",
-                      },
-                    }}
-                    aria-label={t("schedule:aria.currentProgress")}
+                    className="h-2.5 rounded-ue-pill bg-[color:var(--progress-track)]"
+                    barClassName="bg-[color:var(--progress-bar)]"
+                    ariaLabel={t("schedule:aria.currentProgress")}
                   />
-                </Box>
+                </div>
               ) : nextLesson ? (
-                <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                  <Chip size="small" className="chip-clock" label={t("schedule:chips.next")} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Chip size="sm" className={cn(chipBaseClass, "chip-clock !px-3 !py-1 text-[0.72rem]")}>
+                    {t("schedule:chips.next")}
+                  </Chip>
                   <Chip
-                    size="small"
-                    className="chip-time"
-                    label={`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
-                  />
-                  <Typography sx={{ fontWeight: 800 }}>{nextLesson.subject}</Typography>
-                  {!!timeLeftText && (
-                    <Chip size="small" className="chip-left" label={timeLeftText} />
-                  )}
-                </Stack>
+                    size="sm"
+                    className={cn(
+                      chipBaseClass,
+                      "chip-time !border-[color:var(--btn-border)] !bg-[color:var(--table-header-bg)] !px-3 !py-1 text-[0.72rem]"
+                    )}
+                  >
+                    {`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
+                  </Chip>
+                  <span className="text-[1.05rem] font-semibold text-[color:var(--page-text)]">
+                    {nextLesson.subject}
+                  </span>
+                  {timeLeftText ? (
+                    <Chip
+                      size="sm"
+                      className={cn(chipBaseClass, "chip-left !px-3 !py-1 text-[0.72rem]")}
+                    >
+                      {timeLeftText}
+                    </Chip>
+                  ) : null}
+                </div>
               ) : (
-                <Typography sx={{ color: "var(--secondary-text)" }}>
+                <p className="text-[color:var(--secondary-text)]">
                   {t("schedule:summary.noMoreToday")}
-                </Typography>
+                </p>
               )}
-            </Box>
+            </div>
 
             {(user?.role === "teacher" || user?.role === "admin") && (
-              <FormControl
+              <div
                 data-fade
                 style={{ "--fade-delay": "240ms" } as CSSProperties}
-                fullWidth
-                sx={{ mb: 2, maxWidth: 340 }}
+                className="no-print w-full max-w-sm"
               >
-                <InputLabel>{t("schedule:form.groupLabel")}</InputLabel>
-                <Select
-                  value={selectedGroup ?? ""}
-                  label={t("schedule:form.groupLabel")}
-                  onChange={(e) => setSelectedGroup(Number(e.target.value))}
-                >
-                  {groups.map((g) => (
-                    <MenuItem value={g.id} key={g.id}>
-                      {g.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                  {t("schedule:form.groupLabel")}
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedGroup ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSelectedGroup(value ? Number(value) : null)
+                    }}
+                    className={cn(inputClass, "appearance-none pr-10")}
+                  >
+                    <option value="" disabled hidden>
+                      {t("schedule:form.groupLabel")}
+                    </option>
+                    {groups.map((g) => (
+                      <option value={g.id} key={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[color:var(--secondary-text)]">
+                    ▾
+                  </span>
+                </div>
+              </div>
             )}
-          </Box>
-
-          <Box
+          </div>
+          <div
             data-fade
             style={{ "--fade-delay": "280ms" } as CSSProperties}
-            sx={{ ...mainAlignSx, maxWidth: 1920, px: { xs: 1, md: 2 } }}
+            className="mx-auto mt-10 w-full max-w-[1920px] px-2 sm:px-4"
           >
             {isMobile ? renderMobileCards() : renderTable()}
-          </Box>
+          </div>
+        </div>
 
-          <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-            <DialogTitle>
-              {dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
-            </DialogTitle>
-            <DialogContent>
-              {dialogLesson && (
-                <Box>
-                  <Box mb={1}>
-                    <b>{t("schedule:dialog.typeLabel")}:</b>{" "}
-                    <span
-                      style={{
-                        color: "#fff",
-                        background: getLessonTypeColor(dialogLesson.lesson_type),
-                        borderRadius: 5,
-                        padding: "2px 8px",
-                      }}
-                    >
-                      {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ??
-                        dialogLesson.lesson_type ??
-                        ""}
-                    </span>
-                  </Box>
-                  <Box>
-                    <b>{t("schedule:dialog.timeLabel")}:</b> {getTimeStr(dialogLesson)}–
-                    {getEndTimeStr(dialogLesson)}
-                  </Box>
-                  <Box>
-                    <b>{t("schedule:dialog.teacherLabel")}:</b> {dialogLesson.teacher}
-                  </Box>
-                  <Box>
-                    <b>{t("schedule:dialog.roomLabel")}:</b> {dialogLesson.room}
-                  </Box>
-                  <Stack direction="row" gap={1.2} mt={2}>
-                    {(user?.role === "admin" || user?.role === "teacher") && (
-                      <Button
-                        variant="outlined"
-                        onClick={() => {
-                          if (!dialogLesson) return
-                          setEditing(true)
-                          setEditLesson({
-                            ...dialogLesson,
-                            lesson_type: resolveLessonTypeId(dialogLesson.lesson_type),
-                          })
-                        }}
-                      >
-                        {t("schedule:buttons.edit")}
-                      </Button>
-                    )}
-                    <Button
-                      variant="outlined"
-                      color="secondary"
-                      onClick={() => setOpenDialog(false)}
-                    >
-                      {t("schedule:buttons.close")}
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={editing} onClose={() => setEditing(false)}>
-            <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
-            <DialogContent>
-              {editLesson && (
-                <Stack spacing={2} mt={1}>
-                  <TextField
-                    label={t("schedule:form.subject")}
-                    value={editLesson.subject}
-                    onChange={(e) => setEditLesson({ ...editLesson, subject: e.target.value })}
-                  />
-                  <TextField
-                    label={t("schedule:form.teacher")}
-                    value={editLesson.teacher}
-                    onChange={(e) => setEditLesson({ ...editLesson, teacher: e.target.value })}
-                  />
-                  <TextField
-                    label={t("schedule:form.room")}
-                    value={editLesson.room}
-                    onChange={(e) => setEditLesson({ ...editLesson, room: e.target.value })}
-                  />
-                  <TextField
-                    select
-                    label={t("schedule:form.lessonType")}
-                    value={editLesson.lesson_type}
-                    onChange={(e) => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
-                  >
-                    {editingLessonTypeOptions.map((option) => (
-                      <MenuItem value={option.value} key={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    select
-                    label={t("schedule:form.day")}
-                    value={editLesson.weekday}
-                    onChange={(e) => setEditLesson({ ...editLesson, weekday: e.target.value })}
-                  >
-                    {weekdayBackend.map((day) => (
-                      <MenuItem key={day} value={day}>
-                        {getDayLabel(day)}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    type="time"
-                    label={t("schedule:form.startTime")}
-                    value={getTimeStr(editLesson)}
-                    onChange={(e) =>
-                      setEditLesson({
-                        ...editLesson,
-                        start_time: `${editLesson.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00`,
-                      })
-                    }
-                  />
-                  <TextField
-                    type="time"
-                    label={t("schedule:form.endTime")}
-                    value={getEndTimeStr(editLesson)}
-                    onChange={(e) =>
-                      setEditLesson({
-                        ...editLesson,
-                        end_time: `${editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00`,
-                      })
-                    }
-                  />
-                  <TextField
-                    select
-                    label={t("schedule:form.week")}
-                    value={editLesson.parity}
-                    onChange={(e) =>
-                      setEditLesson((prev) =>
-                        prev ? { ...prev, parity: e.target.value as LessonParity } : prev
-                      )
-                    }
-                  >
-                    <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
-                    <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
-                    <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
-                  </TextField>
-                  <Box display="flex" gap={2} mt={2}>
-                    <Button
-                      variant="contained"
-                      onClick={async () => {
-                        if (!editLesson) return
-                        const optimisticId = editLesson.id
-                        const backup = groupSchedule.map((l) => ({ ...l }))
-                        const backendLessonType = toBackendLessonType(editLesson.lesson_type)
-                        const updatedLesson: Lesson = {
-                          ...editLesson,
-                          lesson_type: backendLessonType,
-                        }
-                        applyScheduleUpdate((prev) =>
-                          prev.map((l) => (l.id === optimisticId ? updatedLesson : l))
-                        )
-                        try {
-                          await api.patch(`/schedule/${optimisticId}`, {
-                            subject: editLesson.subject,
-                            teacher: editLesson.teacher,
-                            room: editLesson.room,
-                            lesson_type: backendLessonType,
-                            weekday: editLesson.weekday,
-                            start_time: editLesson.start_time,
-                            end_time: editLesson.end_time,
-                            parity: editLesson.parity,
-                          })
-                          setSnack(t("schedule:snackbar.updated"))
-                          setEditing(false)
-                          setOpenDialog(false)
-                          await scheduleQuery.refetch().catch(() => {})
-                        } catch {
-                          setSnack(t("schedule:snackbar.updateError"))
-                          applyScheduleUpdate(() => backup)
-                        }
-                      }}
-                    >
-                      {t("common:buttons.save")}
-                    </Button>
-                    <Button variant="outlined" color="secondary" onClick={() => setEditing(false)}>
-                      {t("common:buttons.cancel")}
-                    </Button>
-                  </Box>
-                </Stack>
-              )}
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)}>
-            <DialogTitle>
-              {`${t("schedule:dialog.addTitle")}${addDayLabel ? ` (${addDayLabel})` : ""}`}
-            </DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} mt={1} sx={{ minWidth: { xs: "auto", sm: 340 } }}>
-                <TextField
-                  label={t("schedule:form.subject")}
-                  value={addFields.subject}
-                  onChange={(e) => setAddFields({ ...addFields, subject: e.target.value })}
-                  fullWidth
-                />
-                <TextField
-                  label={t("schedule:form.teacher")}
-                  value={addFields.teacher}
-                  onChange={(e) => setAddFields({ ...addFields, teacher: e.target.value })}
-                  fullWidth
-                />
-                <TextField
-                  label={t("schedule:form.room")}
-                  value={addFields.room}
-                  onChange={(e) => setAddFields({ ...addFields, room: e.target.value })}
-                  fullWidth
-                />
-                <TextField
-                  select
-                  label={t("schedule:form.lessonType")}
-                  value={addFields.lessonType}
-                  onChange={(e) => setAddFields({ ...addFields, lessonType: e.target.value })}
-                  fullWidth
+        <Dialog
+          open={openDialog}
+          onClose={() => setOpenDialog(false)}
+          title={dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
+          bodyClassName="space-y-3 text-[color:var(--page-text)]"
+          footer={
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              {(user?.role === "admin" || user?.role === "teacher") && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (!dialogLesson) return
+                    setEditing(true)
+                    setEditLesson({
+                      ...dialogLesson,
+                      lesson_type: resolveLessonTypeId(dialogLesson.lesson_type),
+                    })
+                  }}
                 >
-                  {lessonTypeOptions.map((option) => (
-                    <MenuItem value={option.value} key={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  type="time"
-                  label={t("schedule:form.startTime")}
-                  value={addFields.startTime}
-                  onChange={(e) => setAddFields({ ...addFields, startTime: e.target.value })}
-                  fullWidth
-                />
-                <TextField
-                  type="time"
-                  label={t("schedule:form.endTime")}
-                  value={addFields.endTime}
-                  onChange={(e) => setAddFields({ ...addFields, endTime: e.target.value })}
-                  fullWidth
-                />
-                <TextField
-                  select
-                  label={t("schedule:form.week")}
-                  value={addFields.parity}
-                  onChange={(e) =>
-                    setAddFields((prev) => ({ ...prev, parity: e.target.value as LessonParity }))
+                  {t("schedule:buttons.edit")}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setOpenDialog(false)}>
+                {t("schedule:buttons.close")}
+              </Button>
+            </div>
+          }
+          closeLabel={t("schedule:buttons.close")}
+        >
+          {dialogLesson ? (
+            <div className="space-y-2">
+              <p>
+                <span className="font-semibold">{t("schedule:dialog.typeLabel")}:</span>{" "}
+                <span
+                  className="inline-flex rounded-ue-pill px-3 py-1 text-sm font-semibold text-white"
+                  style={{ background: getLessonTypeColor(dialogLesson.lesson_type) }}
+                >
+                  {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ?? dialogLesson.lesson_type ?? ""}
+                </span>
+              </p>
+              <p>
+                <span className="font-semibold">{t("schedule:dialog.timeLabel")}:</span>{" "}
+                {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}
+              </p>
+              <p>
+                <span className="font-semibold">{t("schedule:dialog.teacherLabel")}:</span>{" "}
+                {dialogLesson.teacher}
+              </p>
+              <p>
+                <span className="font-semibold">{t("schedule:dialog.roomLabel")}:</span>{" "}
+                {dialogLesson.room}
+              </p>
+            </div>
+          ) : null}
+        </Dialog>
+
+        <Dialog
+          open={editing}
+          onClose={() => setEditing(false)}
+          title={t("schedule:dialog.editTitle")}
+          bodyClassName="space-y-3"
+          footer={
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="solid"
+                onClick={async () => {
+                  if (!editLesson) return
+                  const optimisticId = editLesson.id
+                  const backup = groupSchedule.map((l) => ({ ...l }))
+                  const backendLessonType = toBackendLessonType(editLesson.lesson_type)
+                  const updatedLesson: Lesson = {
+                    ...editLesson,
+                    lesson_type: backendLessonType,
                   }
-                  fullWidth
+                  applyScheduleUpdate((prev) =>
+                    prev.map((l) => (l.id === optimisticId ? updatedLesson : l))
+                  )
+                  try {
+                    await api.patch(`/schedule/${optimisticId}`, {
+                      subject: editLesson.subject,
+                      teacher: editLesson.teacher,
+                      room: editLesson.room,
+                      lesson_type: backendLessonType,
+                      weekday: editLesson.weekday,
+                      start_time: editLesson.start_time,
+                      end_time: editLesson.end_time,
+                      parity: editLesson.parity,
+                    })
+                    setSnack(t("schedule:snackbar.updated"))
+                    setEditing(false)
+                    setOpenDialog(false)
+                    await scheduleQuery.refetch().catch(() => {})
+                  } catch {
+                    setSnack(t("schedule:snackbar.updateError"))
+                    applyScheduleUpdate(() => backup)
+                  }
+                }}
+              >
+                {t("common:buttons.save")}
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(false)}>
+                {t("common:buttons.cancel")}
+              </Button>
+            </div>
+          }
+        >
+          {editLesson ? (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.subject")}
+                </span>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={editLesson.subject}
+                  onChange={(e) => setEditLesson({ ...editLesson, subject: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.teacher")}
+                </span>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={editLesson.teacher}
+                  onChange={(e) => setEditLesson({ ...editLesson, teacher: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.room")}
+                </span>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={editLesson.room}
+                  onChange={(e) => setEditLesson({ ...editLesson, room: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.lessonType")}
+                </span>
+                <select
+                  className={inputClass}
+                  value={editLesson.lesson_type}
+                  onChange={(e) => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
                 >
-                  <MenuItem value="both">{t("schedule:week.both")}</MenuItem>
-                  <MenuItem value="odd">{t("schedule:week.odd")}</MenuItem>
-                  <MenuItem value="even">{t("schedule:week.even")}</MenuItem>
-                </TextField>
-                <Box display="flex" gap={2} mt={2}>
-                  <Button variant="contained" onClick={handleAddLesson}>
-                    {t("schedule:buttons.add")}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    onClick={() => setAddDialogOpen(false)}
-                  >
-                    {t("common:buttons.cancel")}
-                  </Button>
-                </Box>
-              </Stack>
-            </DialogContent>
-          </Dialog>
+                  {editingLessonTypeOptions.map((option) => (
+                    <option value={option.value} key={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.day")}
+                </span>
+                <select
+                  className={inputClass}
+                  value={editLesson.weekday}
+                  onChange={(e) => setEditLesson({ ...editLesson, weekday: e.target.value })}
+                >
+                  {weekdayBackend.map((day) => (
+                    <option key={day} value={day}>
+                      {getDayLabel(day)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.startTime")}
+                </span>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={getTimeStr(editLesson)}
+                  onChange={(e) =>
+                    setEditLesson({
+                      ...editLesson,
+                      start_time: `${editLesson.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00`,
+                    })
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.endTime")}
+                </span>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={getEndTimeStr(editLesson)}
+                  onChange={(e) =>
+                    setEditLesson({
+                      ...editLesson,
+                      end_time: `${editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")}${e.target.value}:00`,
+                    })
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                  {t("schedule:form.week")}
+                </span>
+                <select
+                  className={inputClass}
+                  value={editLesson.parity}
+                  onChange={(e) =>
+                    setEditLesson((prev) =>
+                      prev ? { ...prev, parity: e.target.value as LessonParity } : prev
+                    )
+                  }
+                >
+                  <option value="both">{t("schedule:week.both")}</option>
+                  <option value="odd">{t("schedule:week.odd")}</option>
+                  <option value="even">{t("schedule:week.even")}</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+        </Dialog>
 
-          <Snackbar
-            open={!!snack}
-            autoHideDuration={2200}
-            onClose={() => setSnack("")}
-            message={snack}
-            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          />
-        </Box>
+        <Dialog
+          open={addDialogOpen}
+          onClose={() => setAddDialogOpen(false)}
+          title={`${t("schedule:dialog.addTitle")}${addDayLabel ? " (" + addDayLabel + ")" : ""}`}
+          bodyClassName="space-y-3"
+          footer={
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="solid" onClick={handleAddLesson}>
+                {t("schedule:buttons.add")}
+              </Button>
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+                {t("common:buttons.cancel")}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.subject")}
+              </span>
+              <input
+                type="text"
+                className={inputClass}
+                value={addFields.subject}
+                onChange={(e) => setAddFields({ ...addFields, subject: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.teacher")}
+              </span>
+              <input
+                type="text"
+                className={inputClass}
+                value={addFields.teacher}
+                onChange={(e) => setAddFields({ ...addFields, teacher: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.room")}
+              </span>
+              <input
+                type="text"
+                className={inputClass}
+                value={addFields.room}
+                onChange={(e) => setAddFields({ ...addFields, room: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.lessonType")}
+              </span>
+              <select
+                className={inputClass}
+                value={addFields.lessonType}
+                onChange={(e) => setAddFields({ ...addFields, lessonType: e.target.value })}
+              >
+                {lessonTypeOptions.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.startTime")}
+              </span>
+              <input
+                type="time"
+                className={inputClass}
+                value={addFields.startTime}
+                onChange={(e) => setAddFields({ ...addFields, startTime: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.endTime")}
+              </span>
+              <input
+                type="time"
+                className={inputClass}
+                value={addFields.endTime}
+                onChange={(e) => setAddFields({ ...addFields, endTime: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                {t("schedule:form.week")}
+              </span>
+              <select
+                className={inputClass}
+                value={addFields.parity}
+                onChange={(e) =>
+                  setAddFields((prev) => ({ ...prev, parity: e.target.value as LessonParity }))
+                }
+              >
+                <option value="both">{t("schedule:week.both")}</option>
+                <option value="odd">{t("schedule:week.odd")}</option>
+                <option value="even">{t("schedule:week.even")}</option>
+              </select>
+            </label>
+          </div>
+        </Dialog>
+
+        {snack ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none fixed inset-x-0 bottom-6 z-[var(--ue-z-index-toast,1800)] flex justify-center"
+          >
+            <button
+              type="button"
+              onClick={() => setSnack("")}
+              className="pointer-events-auto rounded-ue-lg border border-[color:var(--btn-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-2 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_20px_40px_rgba(15,23,42,0.22)] focus-visible:outline-none focus-visible:shadow-focus"
+            >
+              {snack}
+            </button>
+          </div>
+        ) : null}
       </PageFadeIn>
     </Layout>
   )
