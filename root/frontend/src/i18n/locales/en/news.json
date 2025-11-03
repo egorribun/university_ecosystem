@@ -36,6 +36,8 @@
   "meta": {
     "published": "Published",
     "readingTime_one": "{{count}} min read",
+    "readingTime_few": "{{count}} min read",
+    "readingTime_many": "{{count}} min read",
     "readingTime_other": "{{count}} min read"
   },
   "notifications": {
