@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type SVGProps,
+} from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
@@ -7,6 +15,8 @@ import DeleteIcon from "@mui/icons-material/Delete"
 import SaveIcon from "@mui/icons-material/Save"
 import CloseIcon from "@mui/icons-material/Close"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
+import TelegramIcon from "@mui/icons-material/Telegram"
+import WhatsAppIcon from "@mui/icons-material/WhatsApp"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
@@ -14,6 +24,7 @@ import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage } from "@/api/ne
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
+import { Tooltip } from "@/components/ui/tooltip"
 import Dialog from "@/components/Dialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -28,6 +39,14 @@ const inputClass =
 const textareaClass = `${inputClass} min-h-[160px] resize-y leading-relaxed`
 const iconButtonClass =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/85 text-[color:var(--nav-link)] shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+
+function VkIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="m9.489.004.729-.003h3.564l.73.003.914.01.433.007.418.011.403.014.388.016.374.021.36.025.345.03.333.033c1.74.196 2.933.616 3.833 1.516.9.9 1.32 2.092 1.516 3.833l.034.333.029.346.025.36.02.373.025.588.012.41.013.644.009.915.004.98-.001 3.313-.003.73-.01.914-.007.433-.011.418-.014.403-.016.388-.021.374-.025.36-.03.345-.033.333c-.196 1.74-.616 2.933-1.516 3.833-.9.9-2.092 1.32-3.833 1.516l-.333.034-.346.029-.36.025-.373.02-.588.025-.41.012-.644.013-.915.009-.98.004-3.313-.001-.73-.003-.914-.01-.433-.007-.418-.011-.403-.014-.388-.016-.374-.021-.36-.025-.345-.03-.333-.033c-1.74-.196-2.933-.616-3.833-1.516-.9-.9-1.32-2.092-1.516-3.833l-.034-.333-.029-.346-.025-.36-.02-.373-.025-.588-.012-.41-.013-.644-.009-.915-.004-.98.001-3.313.003-.73.01-.914.007-.433.011-.418.014-.403.016-.388.021-.374.025-.36.03-.345.033-.333c.196-1.74.616-2.933 1.516-3.833.9-.9 2.092-1.32 3.833-1.516l.333-.034.346-.029.36-.025.373-.02.588-.025.41-.012.644-.013.915-.009ZM6.79 7.3H4.05c.13 6.24 3.25 9.99 8.72 9.99h.31v-3.57c2.01.2 3.53 1.67 4.14 3.57h2.84c-.78-2.84-2.83-4.41-4.11-5.01 1.28-.74 3.08-2.54 3.51-4.98h-2.58c-.56 1.98-2.22 3.78-3.8 3.95V7.3H10.5v6.92c-1.6-.4-3.62-2.34-3.71-6.92Z" />
+    </svg>
+  )
+}
 
 type FieldProps = {
   label: ReactNode
@@ -91,6 +110,7 @@ export default function NewsDetail() {
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
+  const [shareUrl, setShareUrl] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
@@ -165,6 +185,11 @@ export default function NewsDetail() {
     const timeout = window.setTimeout(() => setSnack(""), 2400)
     return () => window.clearTimeout(timeout)
   }, [snack])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setShareUrl(window.location.href)
+  }, [id])
 
   const resetPreview = () => {
     if (previewUrl) {
@@ -281,9 +306,53 @@ export default function NewsDetail() {
     if (language === "en" && english.trim()) return english
     return localized || english
   }, [language, query.data?.content, query.data?.content_en])
+  const readingMinutes = useMemo(() => {
+    const text = content || ""
+    if (!text.trim()) return 1
+    const words = text
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter(Boolean).length
+    if (!words) return 1
+    return Math.max(1, Math.round(words / 180))
+  }, [content])
   const createdAt = query.data?.created_at
   const createdAtIso = useMemo(() => (createdAt ? dayjs(createdAt).toISOString() : ""), [createdAt])
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
+  const shareFallbackTitle = t("news:meta.shareDefaultTitle")
+  const shareTargets = useMemo(() => {
+    const currentUrl = shareUrl || (typeof window !== "undefined" ? window.location.href : "")
+    const message = (displayTitle && displayTitle.trim()) || shareFallbackTitle
+    const encodedUrl = encodeURIComponent(currentUrl)
+    const encodedMessage = encodeURIComponent(message)
+    const messageWithUrl = encodedMessage + (encodedUrl ? `%20${encodedUrl}` : "")
+
+    return [
+      {
+        id: "vk",
+        name: "VK",
+        href: `https://vk.com/share.php?url=${encodedUrl}&title=${encodedMessage}`,
+        renderIcon: (className: string) => <VkIcon className={className} />,
+      },
+      {
+        id: "telegram",
+        name: "Telegram",
+        href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedMessage}`,
+        renderIcon: (className: string) => (
+          <TelegramIcon className={className} fontSize="inherit" />
+        ),
+      },
+      {
+        id: "whatsapp",
+        name: "WhatsApp",
+        href: `https://api.whatsapp.com/send?text=${messageWithUrl}`,
+        renderIcon: (className: string) => (
+          <WhatsAppIcon className={className} fontSize="inherit" />
+        ),
+      },
+    ]
+  }, [displayTitle, shareFallbackTitle, shareUrl])
+  const shareTooltipLabel = t("news:meta.shareTooltip")
 
   if (query.isLoading)
     return (
@@ -353,6 +422,49 @@ export default function NewsDetail() {
               </div>
             ) : null}
           </header>
+
+          <section className="w-full max-w-5xl self-start rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/70 p-5 shadow-surface">
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                  <span aria-hidden className="text-base text-[color:var(--nav-link)]">
+                    ◆
+                  </span>
+                  {t("news:meta.shareHeading")}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {shareTargets.map(({ id, name, href, renderIcon }) => (
+                    <Tooltip key={id} content={shareTooltipLabel}>
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.18)] transition hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                        aria-label={t("news:aria.shareOn", { network: name }) ?? undefined}
+                      >
+                        {renderIcon("h-5 w-5")}
+                      </a>
+                    </Tooltip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-ue-lg border border-white/10 bg-[color:color-mix(in_srgb,var(--glass-bg)_85%,black_15%)]/70 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                  <span aria-hidden className="text-base text-[color:var(--nav-link)]">
+                    ◆
+                  </span>
+                  {t("news:meta.readingHeading")}
+                </div>
+                <p className="text-[clamp(1.05rem,2vw,1.2rem)] font-semibold text-[color:var(--page-text)]">
+                  {t("news:meta.readingTimeLabel", { count: readingMinutes })}
+                </p>
+                <p className="text-sm leading-6 text-[color:var(--secondary-text)]">
+                  {t("news:meta.readingTimeNote")}
+                </p>
+              </div>
+            </div>
+          </section>
 
           <figure className="w-full max-w-5xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
             <div

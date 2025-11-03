@@ -33,7 +33,13 @@
     }
   },
   "meta": {
-    "published": "Published:"
+    "published": "Published:",
+    "shareHeading": "Share buttons",
+    "shareTooltip": "Share",
+    "shareDefaultTitle": "Check out this university news",
+    "readingHeading": "Reading time",
+    "readingTimeLabel": "Reading time: {{count}} min",
+    "readingTimeNote": "(calculated from the article length)"
   },
   "notifications": {
     "updated": "News updated",
@@ -50,6 +56,7 @@
   "aria": {
     "cardActions": "News actions",
     "editNews": "Edit news",
-    "deleteNews": "Delete news"
+    "deleteNews": "Delete news",
+    "shareOn": "Share on {{network}}"
   }
 }
