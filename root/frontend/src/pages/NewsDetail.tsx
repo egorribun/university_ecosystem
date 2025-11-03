@@ -338,13 +338,17 @@ export default function NewsDetail() {
         id: "telegram",
         name: "Telegram",
         href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedMessage}`,
-        renderIcon: (className: string) => <TelegramIcon className={className} fontSize="inherit" />,
+        renderIcon: (className: string) => (
+          <TelegramIcon className={className} fontSize="inherit" />
+        ),
       },
       {
         id: "whatsapp",
         name: "WhatsApp",
         href: `https://api.whatsapp.com/send?text=${messageWithUrl}`,
-        renderIcon: (className: string) => <WhatsAppIcon className={className} fontSize="inherit" />,
+        renderIcon: (className: string) => (
+          <WhatsAppIcon className={className} fontSize="inherit" />
+        ),
       },
     ]
   }, [displayTitle, shareFallbackTitle, shareUrl])
@@ -423,7 +427,9 @@ export default function NewsDetail() {
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
-                  <span aria-hidden className="text-base text-[color:var(--nav-link)]">◆</span>
+                  <span aria-hidden className="text-base text-[color:var(--nav-link)]">
+                    ◆
+                  </span>
                   {t("news:meta.shareHeading")}
                 </div>
                 <div className="flex flex-wrap gap-3">
@@ -445,13 +451,17 @@ export default function NewsDetail() {
 
               <div className="space-y-3 rounded-ue-lg border border-white/10 bg-[color:color-mix(in_srgb,var(--glass-bg)_85%,black_15%)]/70 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
-                  <span aria-hidden className="text-base text-[color:var(--nav-link)]">◆</span>
+                  <span aria-hidden className="text-base text-[color:var(--nav-link)]">
+                    ◆
+                  </span>
                   {t("news:meta.readingHeading")}
                 </div>
                 <p className="text-[clamp(1.05rem,2vw,1.2rem)] font-semibold text-[color:var(--page-text)]">
                   {t("news:meta.readingTimeLabel", { count: readingMinutes })}
                 </p>
-                <p className="text-sm leading-6 text-[color:var(--secondary-text)]">{t("news:meta.readingTimeNote")}</p>
+                <p className="text-sm leading-6 text-[color:var(--secondary-text)]">
+                  {t("news:meta.readingTimeNote")}
+                </p>
               </div>
             </div>
           </section>
