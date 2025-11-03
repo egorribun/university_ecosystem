@@ -609,7 +609,9 @@ export default function NewsDetail() {
               >
                 {option.icon}
               </span>
-              <span className="text-sm font-semibold text-[color:var(--page-text)]">{option.label}</span>
+              <span className="text-sm font-semibold text-[color:var(--page-text)]">
+                {option.label}
+              </span>
             </a>
           ))}
         </div>
