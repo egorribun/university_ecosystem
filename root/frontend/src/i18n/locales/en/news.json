@@ -33,6 +33,18 @@
       "description": "This action cannot be undone. Confirm deletion."
     }
   },
+  "shareDialog": {
+    "title": "Share this news",
+    "subtitle": "",
+    "description": "Choose how you'd like to share this link.",
+    "copy": "Copy link",
+    "copySuccess": "Link copied!",
+    "options": {
+      "telegram": "Telegram",
+      "whatsapp": "WhatsApp",
+      "email": "Email"
+    }
+  },
   "meta": {
     "published": "Published",
     "readingTime_one": "{{count}} min read",

@@ -8,6 +8,10 @@ import SaveIcon from "@mui/icons-material/Save"
 import CloseIcon from "@mui/icons-material/Close"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import IosShareIcon from "@mui/icons-material/IosShare"
+import ContentCopyIcon from "@mui/icons-material/ContentCopy"
+import TelegramIcon from "@mui/icons-material/Telegram"
+import WhatsAppIcon from "@mui/icons-material/WhatsApp"
+import AlternateEmailIcon from "@mui/icons-material/AlternateEmail"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
@@ -93,9 +97,13 @@ export default function NewsDetail() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
   const [sharing, setSharing] = useState(false)
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [copyingLink, setCopyingLink] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
+  const copyTimeoutRef = useRef<number | null>(null)
 
   const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
     const img = event.currentTarget
@@ -167,6 +175,24 @@ export default function NewsDetail() {
     const timeout = window.setTimeout(() => setSnack(""), 2400)
     return () => window.clearTimeout(timeout)
   }, [snack])
+
+  useEffect(() => {
+    if (shareDialogOpen) return
+    if (copyTimeoutRef.current) {
+      window.clearTimeout(copyTimeoutRef.current)
+      copyTimeoutRef.current = null
+    }
+    setCopiedLink(false)
+  }, [shareDialogOpen])
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        window.clearTimeout(copyTimeoutRef.current)
+        copyTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   const resetPreview = () => {
     if (previewUrl) {
@@ -301,43 +327,68 @@ export default function NewsDetail() {
     return Math.max(1, Math.round(words / wordsPerMinute))
   }, [content])
 
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return ""
+    return window.location.href
+  }, [id, language])
+
+  const shareOptions = useMemo(() => {
+    if (!shareUrl) return []
+    const encodedUrl = encodeURIComponent(shareUrl)
+    const shareTitle = displayTitle || t("news:pageTitle")
+    const encodedTitle = encodeURIComponent(shareTitle)
+
+    return [
+      {
+        id: "telegram",
+        label: t("news:shareDialog.options.telegram", { defaultValue: "Telegram" }),
+        href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`,
+        icon: <TelegramIcon fontSize="small" />,
+        accent: "text-[#229ED9]",
+      },
+      {
+        id: "whatsapp",
+        label: t("news:shareDialog.options.whatsapp", { defaultValue: "WhatsApp" }),
+        href: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
+        icon: <WhatsAppIcon fontSize="small" />,
+        accent: "text-[#25D366]",
+      },
+      {
+        id: "email",
+        label: t("news:shareDialog.options.email", { defaultValue: "Email" }),
+        href: `mailto:?subject=${encodedTitle}&body=${encodedTitle}%0A${encodedUrl}`,
+        icon: <AlternateEmailIcon fontSize="small" />,
+        accent: "text-[#6366F1]",
+      },
+    ]
+  }, [displayTitle, shareUrl, t])
+
   const handleShare = useCallback(async () => {
     if (sharing) return
 
-    const shareUrl = typeof window !== "undefined" ? window.location.href : ""
-    if (!shareUrl) return
+    const url = typeof window !== "undefined" ? window.location.href : ""
+    if (!url) return
 
     const title = displayTitle || t("news:pageTitle")
     const shareData = {
       title,
       text: title,
-      url: shareUrl,
+      url,
     }
+
+    const canUseNativeShare =
+      typeof navigator !== "undefined" &&
+      typeof navigator.share === "function" &&
+      (!navigator.canShare || navigator.canShare(shareData))
 
     try {
       setSharing(true)
-      if (navigator.share) {
+      if (canUseNativeShare) {
         await navigator.share(shareData)
         setSnack(t("news:notifications.shareSuccess"))
-        return
+      } else {
+        setShareDialogOpen(true)
       }
-
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl)
-        setSnack(t("news:notifications.linkCopied"))
-        return
-      }
-
-      const textarea = document.createElement("textarea")
-      textarea.value = shareUrl
-      textarea.setAttribute("readonly", "")
-      textarea.style.position = "absolute"
-      textarea.style.left = "-9999px"
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand("copy")
-      document.body.removeChild(textarea)
-      setSnack(t("news:notifications.linkCopied"))
     } catch (error) {
       const message = (error as DOMException | Error)?.name ?? ""
       if (message === "AbortError") return
@@ -347,6 +398,42 @@ export default function NewsDetail() {
       setSharing(false)
     }
   }, [displayTitle, sharing, t])
+
+  const handleCopyLink = useCallback(async () => {
+    if (!shareUrl || copyingLink) return
+    setCopyingLink(true)
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl)
+      } else {
+        const textarea = document.createElement("textarea")
+        textarea.value = shareUrl
+        textarea.setAttribute("readonly", "")
+        textarea.style.position = "absolute"
+        textarea.style.left = "-9999px"
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand("copy")
+        document.body.removeChild(textarea)
+      }
+
+      setCopiedLink(true)
+      setSnack(t("news:notifications.linkCopied"))
+      if (copyTimeoutRef.current) {
+        window.clearTimeout(copyTimeoutRef.current)
+      }
+      copyTimeoutRef.current = window.setTimeout(() => {
+        setCopiedLink(false)
+        copyTimeoutRef.current = null
+      }, 2200)
+    } catch (error) {
+      console.error(error)
+      setSnack(t("news:notifications.shareError"))
+    } finally {
+      setCopyingLink(false)
+    }
+  }, [copyingLink, shareUrl, t])
 
   if (query.isLoading)
     return (
@@ -479,6 +566,54 @@ export default function NewsDetail() {
           </section>
         </article>
       </div>
+
+      <Dialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        title={t("news:shareDialog.title")}
+        subtitle={t("news:shareDialog.subtitle")}
+        bodyClassName="space-y-4"
+        footer={
+          <Button
+            onClick={() => {
+              void handleCopyLink()
+            }}
+            loading={copyingLink}
+            leadingIcon={<ContentCopyIcon fontSize="small" />}
+            className="w-full sm:w-auto"
+          >
+            {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
+          </Button>
+        }
+        footerClassName="sm:flex-row sm:justify-end"
+      >
+        <p className="text-[0.95rem] leading-relaxed text-[color:var(--secondary-text)]">
+          {t("news:shareDialog.description")}
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          {shareOptions.map((option) => (
+            <a
+              key={`share-option-${option.id}`}
+              href={option.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setShareDialogOpen(false)}
+              className="group flex items-center gap-3 rounded-ue-lg border border-white/10 bg-white/5 px-4 py-3 transition hover:border-white/20 hover:bg-white/10"
+            >
+              <span
+                className={cn(
+                  "inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[1.2rem] text-[color:var(--nav-link)] shadow-surface transition group-hover:scale-105",
+                  option.accent
+                )}
+              >
+                {option.icon}
+              </span>
+              <span className="text-sm font-semibold text-[color:var(--page-text)]">{option.label}</span>
+            </a>
+          ))}
+        </div>
+      </Dialog>
 
       <Dialog
         open={editOpen}
