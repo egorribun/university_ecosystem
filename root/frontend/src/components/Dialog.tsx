@@ -98,7 +98,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-start justify-center overflow-y-auto px-4 py-6 sm:px-6"
+      className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-center justify-center overflow-y-auto px-4 py-8 sm:px-6 sm:py-12"
       role="presentation"
     >
       <div
