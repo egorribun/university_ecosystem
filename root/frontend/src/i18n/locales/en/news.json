@@ -9,7 +9,8 @@
     "publish": "Publish",
     "edit": "Edit news",
     "delete": "Delete news",
-    "back": "Back"
+    "back": "Back",
+    "share": "Share"
   },
   "form": {
     "title": "Title",
@@ -33,13 +34,18 @@
     }
   },
   "meta": {
-    "published": "Published:"
+    "published": "Published",
+    "readingTime_one": "{{count}} min read",
+    "readingTime_other": "{{count}} min read"
   },
   "notifications": {
     "updated": "News updated",
     "savedError": "Failed to save the news",
     "deleted": "News deleted",
-    "deleteError": "Failed to delete the news"
+    "deleteError": "Failed to delete the news",
+    "shareSuccess": "Share sheet opened",
+    "linkCopied": "Link copied to clipboard",
+    "shareError": "Failed to share the news"
   },
   "alt": {
     "hero": "News cover image {{title}}",
@@ -50,6 +56,7 @@
   "aria": {
     "cardActions": "News actions",
     "editNews": "Edit news",
-    "deleteNews": "Delete news"
+    "deleteNews": "Delete news",
+    "shareNews": "Share this news"
   }
 }

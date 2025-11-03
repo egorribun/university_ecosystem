@@ -7,6 +7,7 @@ import DeleteIcon from "@mui/icons-material/Delete"
 import SaveIcon from "@mui/icons-material/Save"
 import CloseIcon from "@mui/icons-material/Close"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
+import IosShareIcon from "@mui/icons-material/IosShare"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
@@ -91,6 +92,7 @@ export default function NewsDetail() {
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
+  const [sharing, setSharing] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
@@ -285,6 +287,67 @@ export default function NewsDetail() {
   const createdAtIso = useMemo(() => (createdAt ? dayjs(createdAt).toISOString() : ""), [createdAt])
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
+  const readingTimeMinutes = useMemo(() => {
+    const text = content
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+    if (!text) return null
+
+    const words = text.split(/\s+/).filter(Boolean).length
+    if (!words) return null
+
+    const wordsPerMinute = 220
+    return Math.max(1, Math.round(words / wordsPerMinute))
+  }, [content])
+
+  const handleShare = useCallback(async () => {
+    if (sharing) return
+
+    const shareUrl = typeof window !== "undefined" ? window.location.href : ""
+    if (!shareUrl) return
+
+    const title = displayTitle || t("news:pageTitle")
+    const shareData = {
+      title,
+      text: title,
+      url: shareUrl,
+    }
+
+    try {
+      setSharing(true)
+      if (navigator.share) {
+        await navigator.share(shareData)
+        setSnack(t("news:notifications.shareSuccess"))
+        return
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl)
+        setSnack(t("news:notifications.linkCopied"))
+        return
+      }
+
+      const textarea = document.createElement("textarea")
+      textarea.value = shareUrl
+      textarea.setAttribute("readonly", "")
+      textarea.style.position = "absolute"
+      textarea.style.left = "-9999px"
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+      setSnack(t("news:notifications.linkCopied"))
+    } catch (error) {
+      const message = (error as DOMException | Error)?.name ?? ""
+      if (message === "AbortError") return
+      console.error(error)
+      setSnack(t("news:notifications.shareError"))
+    } finally {
+      setSharing(false)
+    }
+  }, [displayTitle, sharing, t])
+
   if (query.isLoading)
     return (
       <Layout>
@@ -321,14 +384,39 @@ export default function NewsDetail() {
               {displayTitle}
             </h1>
 
-            {createdAt ? (
-              <p className="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
-                {t("news:meta.published")}
-                <span className="ml-2 font-semibold text-[color:var(--page-text)]">
-                  <time dateTime={createdAtIso}>{createdAtLabel}</time>
-                </span>
-              </p>
-            ) : null}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2 text-[0.9rem] text-[color:var(--secondary-text)]">
+                {createdAt ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                    <span>{t("news:meta.published")}</span>
+                    <span aria-hidden>•</span>
+                    <time dateTime={createdAtIso} className="text-[color:var(--page-text)]">
+                      {createdAtLabel}
+                    </time>
+                  </span>
+                ) : null}
+
+                {readingTimeMinutes !== null ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.78rem] font-medium tracking-wide text-[color:var(--page-text)]">
+                    {t("news:meta.readingTime", { count: readingTimeMinutes })}
+                  </span>
+                ) : null}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void handleShare()
+                }}
+                leadingIcon={<IosShareIcon fontSize="small" />}
+                className="w-full sm:w-auto"
+                loading={sharing}
+                aria-label={t("news:aria.shareNews") ?? ""}
+              >
+                {t("news:actions.share")}
+              </Button>
+            </div>
 
             {user?.role === "admin" ? (
               <div className="flex flex-wrap gap-2">
