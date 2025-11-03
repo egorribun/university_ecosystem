@@ -9,7 +9,8 @@
     "publish": "Опубликовать",
     "edit": "Редактировать новость",
     "delete": "Удалить новость",
-    "back": "Назад"
+    "back": "Назад",
+    "share": "Поделиться"
   },
   "form": {
     "title": "Заголовок",
@@ -33,13 +34,20 @@
     }
   },
   "meta": {
-    "published": "Опубликовано:"
+    "published": "Опубликовано",
+    "readingTime_one": "Время чтения: {{count}} минута",
+    "readingTime_few": "Время чтения: {{count}} минуты",
+    "readingTime_many": "Время чтения: {{count}} минут",
+    "readingTime_other": "Время чтения: {{count}} минуты"
   },
   "notifications": {
     "updated": "Новость обновлена",
     "savedError": "Ошибка сохранения",
     "deleted": "Новость удалена",
-    "deleteError": "Ошибка удаления"
+    "deleteError": "Ошибка удаления",
+    "shareSuccess": "Окно отправки открыто",
+    "linkCopied": "Ссылка скопирована",
+    "shareError": "Не удалось поделиться новостью"
   },
   "alt": {
     "hero": "Изображение новости {{title}}",
@@ -50,6 +58,7 @@
   "aria": {
     "cardActions": "Действия с новостью",
     "editNews": "Редактировать новость",
-    "deleteNews": "Удалить новость"
+    "deleteNews": "Удалить новость",
+    "shareNews": "Поделиться новостью"
   }
 }
