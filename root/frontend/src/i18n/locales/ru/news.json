@@ -33,6 +33,18 @@
       "description": "Действие необратимо. Подтвердите удаление."
     }
   },
+  "shareDialog": {
+    "title": "Поделиться новостью",
+    "subtitle": "",
+    "description": "Выберите сервис, через который хотите поделиться ссылкой.",
+    "copy": "Скопировать ссылку",
+    "copySuccess": "Ссылка скопирована!",
+    "options": {
+      "telegram": "Telegram",
+      "whatsapp": "WhatsApp",
+      "email": "Почта"
+    }
+  },
   "meta": {
     "published": "Опубликовано",
     "readingTime_one": "Время чтения: {{count}} минута",
