@@ -248,10 +248,13 @@ const Dialog = ({
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
+      role="presentation"
     >
       <div 
         className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
         <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
@@ -877,13 +880,14 @@ export default function Schedule() {
     onOpen: () => void
     hasBreakBefore: boolean
   }) => (
-    <div
+    <button
       onClick={onOpen}
       style={{ minHeight: `${lessonCardHeight}px` }}
-      className={`group relative p-3 pl-5 pr-4 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 ${
+      className={`group relative p-3 pl-5 pr-4 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 w-full text-left ${
         hasBreakBefore ? "mt-6" : ""
       } ${isConflict ? "ring-2 ring-red-400/50" : ""}`}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
+      type="button"
     >
       <div
         className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
@@ -933,7 +937,7 @@ export default function Schedule() {
           <TrashIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
         </button>
       )}
-    </div>
+    </button>
   )
 
   const renderTable = () => {
@@ -1132,12 +1136,13 @@ export default function Schedule() {
                           {t("schedule:break", { minutes: gap })}
                         </span>
                       )}
-                      <div
+                      <button
                         onClick={() => {
                           setDialogLesson(lesson)
                           setOpenDialog(true)
                         }}
-                        className="relative p-3 pl-5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer hover:-translate-y-0.5"
+                        className="relative p-3 pl-5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer hover:-translate-y-0.5 w-full text-left"
+                        type="button"
                       >
                         <div
                           className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
@@ -1170,7 +1175,7 @@ export default function Schedule() {
                             {lesson.room}
                           </span>
                         </div>
-                      </div>
+                      </button>
                     </div>
                   )
                 })}
