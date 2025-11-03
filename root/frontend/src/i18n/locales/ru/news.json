@@ -49,15 +49,6 @@
     "linkCopied": "Ссылка скопирована",
     "shareError": "Не удалось поделиться новостью"
   },
-  "share": {
-    "dialogTitle": "Поделиться новостью",
-    "linkLabel": "Ссылка на новость",
-    "copyLink": "Скопировать ссылку",
-    "shareVia": "Поделиться через",
-    "telegram": "Telegram",
-    "whatsapp": "WhatsApp",
-    "email": "Почта"
-  },
   "alt": {
     "hero": "Изображение новости {{title}}",
     "heroFallback": "Изображение новости",
