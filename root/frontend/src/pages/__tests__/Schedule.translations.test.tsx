@@ -1,5 +1,5 @@
 import { MemoryRouter } from "react-router-dom"
-import { render, screen, cleanup, waitFor } from "@testing-library/react"
+import { render, screen, cleanup } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import Schedule from "@/pages/Schedule"
@@ -117,9 +117,6 @@ function renderSchedule() {
 }
 
 describe("Schedule translations", () => {
-  // Store original innerWidth
-  const originalInnerWidth = window.innerWidth
-
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem("ue:language", "en")
@@ -137,22 +134,9 @@ describe("Schedule translations", () => {
 
   afterEach(() => {
     cleanup()
-    // Restore original innerWidth
-    Object.defineProperty(window, "innerWidth", {
-      writable: true,
-      configurable: true,
-      value: originalInnerWidth,
-    })
   })
 
   it("renders English weekday headers and lesson labels", async () => {
-    // Set desktop viewport size BEFORE rendering to ensure table view
-    Object.defineProperty(window, "innerWidth", {
-      writable: true,
-      configurable: true,
-      value: 1920,
-    })
-
     apiGetMock.mockImplementation(async (url: string) => {
       if (url === "/groups") {
         return { data: [{ id: 1, name: "CS-101" }] }
@@ -182,16 +166,7 @@ describe("Schedule translations", () => {
 
     try {
       expect(await screen.findByText("My schedule")).toBeInTheDocument()
-
-      // Wait for table to render with columnheader (desktop view)
-      await waitFor(
-        () => {
-          const header = screen.queryByRole("columnheader", { name: "Monday" })
-          expect(header).toBeInTheDocument()
-        },
-        { timeout: 3000 }
-      )
-
+      expect(await screen.findByRole("columnheader", { name: "Monday" })).toBeInTheDocument()
       expect(await screen.findByText("Lecture")).toBeInTheDocument()
     } finally {
       client.clear()
