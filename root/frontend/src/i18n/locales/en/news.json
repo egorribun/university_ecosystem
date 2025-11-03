@@ -49,6 +49,15 @@
     "linkCopied": "Link copied to clipboard",
     "shareError": "Failed to share the news"
   },
+  "share": {
+    "dialogTitle": "Share this news",
+    "linkLabel": "Link to the news",
+    "copyLink": "Copy link",
+    "shareVia": "Share via",
+    "telegram": "Telegram",
+    "whatsapp": "WhatsApp",
+    "email": "Email"
+  },
   "alt": {
     "hero": "News cover image {{title}}",
     "heroFallback": "News cover image",
