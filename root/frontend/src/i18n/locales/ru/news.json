@@ -33,13 +33,7 @@
     }
   },
   "meta": {
-    "published": "Опубликовано:",
-    "shareHeading": "Кнопки поделиться",
-    "shareTooltip": "Поделиться",
-    "shareDefaultTitle": "Посмотрите новость университета",
-    "readingHeading": "Чтение времени",
-    "readingTimeLabel": "Время чтения: {{count}} мин",
-    "readingTimeNote": "(определяется по количеству слов в тексте)"
+    "published": "Опубликовано:"
   },
   "notifications": {
     "updated": "Новость обновлена",
@@ -56,7 +50,6 @@
   "aria": {
     "cardActions": "Действия с новостью",
     "editNews": "Редактировать новость",
-    "deleteNews": "Удалить новость",
-    "shareOn": "Поделиться в {{network}}"
+    "deleteNews": "Удалить новость"
   }
 }
