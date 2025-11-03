@@ -384,7 +384,7 @@ export default function NewsDetail() {
               {displayTitle}
             </h1>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="flex flex-wrap items-center gap-2 text-[0.9rem] text-[color:var(--secondary-text)]">
                 {createdAt ? (
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
@@ -401,21 +401,21 @@ export default function NewsDetail() {
                     {t("news:meta.readingTime", { count: readingTimeMinutes })}
                   </span>
                 ) : null}
-              </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void handleShare()
-                }}
-                leadingIcon={<IosShareIcon fontSize="small" />}
-                className="w-full sm:w-auto"
-                loading={sharing}
-                aria-label={t("news:aria.shareNews") ?? ""}
-              >
-                {t("news:actions.share")}
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void handleShare()
+                  }}
+                  leadingIcon={<IosShareIcon fontSize="small" />}
+                  className="w-full basis-full sm:w-auto sm:basis-auto"
+                  loading={sharing}
+                  aria-label={t("news:aria.shareNews") ?? ""}
+                >
+                  {t("news:actions.share")}
+                </Button>
+              </div>
             </div>
 
             {user?.role === "admin" ? (
