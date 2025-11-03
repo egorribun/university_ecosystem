@@ -24,14 +24,18 @@ test.describe("News detail sharing (desktop)", () => {
     await mock.login(page)
 
     await page.goto("/news/1")
-    await expect(page.getByRole("heading", { name: /(Новость дня|News of the day)/i })).toBeVisible()
+    await expect(
+      page.getByRole("heading", { name: /(Новость дня|News of the day)/i })
+    ).toBeVisible()
 
     const shareButton = page.getByRole("button", { name: /(Поделиться|Share)/i })
     await expect(shareButton).toBeVisible()
     await shareButton.click()
 
     await expect(page.getByText(/Ссылка скопирована|Link copied/i)).toBeVisible()
-    const copiedLink = await page.evaluate(() => (window as typeof window & { __copiedLink?: string }).__copiedLink)
+    const copiedLink = await page.evaluate(
+      () => (window as typeof window & { __copiedLink?: string }).__copiedLink
+    )
     expect(copiedLink).toContain("/news/1")
   })
 })
@@ -57,15 +61,17 @@ test.describe("News detail sharing (mobile)", () => {
     await mock.login(page)
 
     await page.goto("/news/1")
-    await expect(page.getByRole("heading", { name: /(Новость дня|News of the day)/i })).toBeVisible()
+    await expect(
+      page.getByRole("heading", { name: /(Новость дня|News of the day)/i })
+    ).toBeVisible()
 
     const shareButton = page.getByRole("button", { name: /(Поделиться|Share)/i })
     await expect(shareButton).toBeVisible()
     await shareButton.click()
 
     await expect(page.getByText(/Окно отправки открыто|Share sheet opened/i)).toBeVisible()
-    const sharedPayload = await page.evaluate(
-      () => (window as typeof window & { __sharedPayloads?: ShareData[] }).__sharedPayloads?.at(0)
+    const sharedPayload = await page.evaluate(() =>
+      (window as typeof window & { __sharedPayloads?: ShareData[] }).__sharedPayloads?.at(0)
     )
     expect(sharedPayload?.url).toContain("/news/1")
     expect(sharedPayload?.title).toBeTruthy()
