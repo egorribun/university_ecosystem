@@ -8,6 +8,10 @@ import SaveIcon from "@mui/icons-material/Save"
 import CloseIcon from "@mui/icons-material/Close"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
 import IosShareIcon from "@mui/icons-material/IosShare"
+import ContentCopyIcon from "@mui/icons-material/ContentCopy"
+import TelegramIcon from "@mui/icons-material/Telegram"
+import WhatsAppIcon from "@mui/icons-material/WhatsApp"
+import EmailIcon from "@mui/icons-material/Email"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
@@ -93,6 +97,8 @@ export default function NewsDetail() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snack, setSnack] = useState("")
   const [sharing, setSharing] = useState(false)
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [shareLink, setShareLink] = useState("")
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
@@ -307,6 +313,8 @@ export default function NewsDetail() {
     const shareUrl = typeof window !== "undefined" ? window.location.href : ""
     if (!shareUrl) return
 
+    setShareLink(shareUrl)
+
     const title = displayTitle || t("news:pageTitle")
     const shareData = {
       title,
@@ -315,29 +323,17 @@ export default function NewsDetail() {
     }
 
     try {
-      setSharing(true)
-      if (navigator.share) {
+      const canUseNavigatorShare =
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
+
+      if (canUseNavigatorShare) {
+        setSharing(true)
         await navigator.share(shareData)
         setSnack(t("news:notifications.shareSuccess"))
         return
       }
-
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl)
-        setSnack(t("news:notifications.linkCopied"))
-        return
-      }
-
-      const textarea = document.createElement("textarea")
-      textarea.value = shareUrl
-      textarea.setAttribute("readonly", "")
-      textarea.style.position = "absolute"
-      textarea.style.left = "-9999px"
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand("copy")
-      document.body.removeChild(textarea)
-      setSnack(t("news:notifications.linkCopied"))
     } catch (error) {
       const message = (error as DOMException | Error)?.name ?? ""
       if (message === "AbortError") return
@@ -346,7 +342,78 @@ export default function NewsDetail() {
     } finally {
       setSharing(false)
     }
+
+    setShareDialogOpen(true)
   }, [displayTitle, sharing, t])
+
+  const copyShareLink = useCallback(async () => {
+    if (!shareLink) return
+
+    const fallbackCopy = () => {
+      if (typeof document === "undefined") return
+      const textarea = document.createElement("textarea")
+      textarea.value = shareLink
+      textarea.setAttribute("readonly", "")
+      textarea.style.position = "absolute"
+      textarea.style.left = "-9999px"
+      document.body.appendChild(textarea)
+      textarea.select()
+      const successful = document.execCommand("copy")
+      document.body.removeChild(textarea)
+      if (!successful) {
+        throw new Error("CopyCommandFailed")
+      }
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareLink)
+      } else {
+        fallbackCopy()
+      }
+      setSnack(t("news:notifications.linkCopied"))
+      setShareDialogOpen(false)
+    } catch (error) {
+      try {
+        fallbackCopy()
+        setSnack(t("news:notifications.linkCopied"))
+        setShareDialogOpen(false)
+      } catch (fallbackError) {
+        console.error(error)
+        console.error(fallbackError)
+        setSnack(t("news:notifications.shareError"))
+      }
+    }
+  }, [shareLink, t])
+
+  const shareTargets = useMemo(() => {
+    if (!shareLink) return []
+
+    const title = displayTitle || t("news:pageTitle")
+    const encodedUrl = encodeURIComponent(shareLink)
+    const encodedTitle = encodeURIComponent(title)
+
+    return [
+      {
+        id: "telegram",
+        label: t("news:share.telegram"),
+        href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`,
+        icon: <TelegramIcon fontSize="small" />,
+      },
+      {
+        id: "whatsapp",
+        label: t("news:share.whatsapp"),
+        href: `https://wa.me/?text=${encodeURIComponent(`${title} ${shareLink}`)}`,
+        icon: <WhatsAppIcon fontSize="small" />,
+      },
+      {
+        id: "email",
+        label: t("news:share.email"),
+        href: `mailto:?subject=${encodedTitle}&body=${encodeURIComponent(`${title}\n${shareLink}`)}`,
+        icon: <EmailIcon fontSize="small" />,
+      },
+    ]
+  }, [displayTitle, shareLink, t])
 
   if (query.isLoading)
     return (
@@ -601,6 +668,78 @@ export default function NewsDetail() {
             ) : null}
           </div>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        title={t("news:share.dialogTitle")}
+        bodyClassName="space-y-5"
+        footer={
+          <Button
+            variant="outline"
+            onClick={() => setShareDialogOpen(false)}
+            className="w-full sm:w-auto"
+          >
+            {t("common:buttons.close")}
+          </Button>
+        }
+        closeLabel={t("common:buttons.close") ?? ""}
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {t("news:share.linkLabel")}
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={shareLink}
+                readOnly
+                onFocus={(event) => event.currentTarget.select()}
+                className={cn(
+                  inputClass,
+                  "cursor-text text-ellipsis focus:border-[color:var(--nav-link)]"
+                )}
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  void copyShareLink()
+                }}
+                leadingIcon={<ContentCopyIcon fontSize="small" />}
+                className="w-full sm:w-auto"
+              >
+                {t("news:share.copyLink")}
+              </Button>
+            </div>
+          </div>
+
+          {shareTargets.length ? (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold uppercase tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_80%,white_20%)]">
+                {t("news:share.shareVia")}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {shareTargets.map((target) => (
+                  <Button
+                    key={target.id}
+                    as="a"
+                    href={target.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="outline"
+                    leadingIcon={target.icon}
+                    onClick={() => setShareDialogOpen(false)}
+                    className="w-full"
+                  >
+                    {target.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </Dialog>
 
       <Dialog
