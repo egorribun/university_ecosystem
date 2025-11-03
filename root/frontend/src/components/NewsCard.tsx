@@ -283,24 +283,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   return (
     <article
       className={cn(
-        "group relative isolate flex h-full w-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
+        "group relative flex h-full w-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
         hoveringDisabled
           ? "cursor-default"
-          : "cursor-pointer motion-safe:hover:-translate-y-[3px] motion-safe:hover:scale-[1.012] motion-safe:hover:shadow-surface-strong motion-safe:active:scale-[0.995]"
+          : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
       )}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-[1] rounded-ue-xl bg-[radial-gradient(circle_at_top,rgba(148,163,255,0.22),transparent_65%)] opacity-0 transition duration-500 ease-out group-hover:opacity-100 group-focus-within:opacity-100"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -inset-px -z-[2] rounded-[inherit] bg-[conic-gradient(from_160deg_at_40%_20%,rgba(59,130,246,0.32),rgba(14,165,233,0.18),rgba(192,132,252,0.26),rgba(59,130,246,0.32))] opacity-0 transition duration-500 ease-out group-hover:opacity-100 group-focus-within:opacity-100"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-px bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-0 transition duration-500 ease-out group-hover:opacity-100 group-focus-within:opacity-100"
-      />
       {user?.role === "admin" && (
         <div className="absolute right-3 top-3 z-10">
           <button
@@ -365,15 +353,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         disabled={hoveringDisabled}
         className="group/button relative flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
       >
-        <div className="group/image relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_20%_-10%,rgba(255,255,255,0.22),transparent_65%)] opacity-0 transition duration-700 ease-out group-hover/image:opacity-100"
-          />
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-[-40%] z-[2] w-1/2 bg-[linear-gradient(110deg,transparent,rgba(255,255,255,0.45),transparent)] opacity-0 transition duration-700 ease-out group-hover/image:translate-x-[220%] group-hover/image:opacity-80"
-          />
+        <div className="relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
           <div
             className={cn(
               "absolute inset-0 animate-pulse bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
@@ -391,7 +371,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                     : t("news:alt.heroFallback")
                 }
                 sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-                className="relative z-[1] h-[180px] w-full object-cover transition duration-700 ease-out motion-safe:group-hover/image:scale-[1.04] sm:h-[220px]"
+                className="relative h-[180px] w-full object-cover transition duration-700 ease-out sm:h-[220px]"
                 onLoad={handleCardImageReady}
                 onError={handleCardImageReady}
               />
@@ -408,7 +388,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           {createdAtIso ? (
             <time
               dateTime={createdAtIso}
-              className="absolute bottom-3 left-3 z-[3] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70 group-hover/image:translate-y-[-2px] group-hover/image:bg-black/70"
+              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
             >
               {createdAtLabel}
             </time>
@@ -420,7 +400,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             {localizedTitle}
           </h3>
 
-          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3 transition-colors duration-300 ease-out group-hover:text-[color:var(--page-text)]">
+          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3">
             {sanitizedPreview}
           </p>
 
@@ -434,10 +414,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             />
           </div>
         </div>
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-4 bottom-[-18%] h-24 translate-y-0 rounded-full bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.18),transparent_70%)] opacity-0 transition duration-500 ease-out group-hover:translate-y-[-16%] group-hover:opacity-90"
-        />
       </button>
 
       <Dialog
