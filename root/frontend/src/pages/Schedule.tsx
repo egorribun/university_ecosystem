@@ -778,10 +778,19 @@ export default function Schedule() {
   }) => (
     <div
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+      role="button"
+      tabIndex={0}
       className={cn(
         "relative cursor-pointer rounded-ue-md border border-white/12 bg-[color:var(--option-bg)] shadow-surface transition-[transform,box-shadow] duration-200",
         hasBreakBefore ? "mt-6" : "",
-        "hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(0,0,0,0.12),0_2px_10px_rgba(0,0,0,0.19)]"
+        "hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(0,0,0,0.12),0_2px_10px_rgba(0,0,0,0.19)]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
       )}
       style={{ minHeight: lessonCardHeight, padding: "10px 11px 10px 14px" }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
@@ -1072,7 +1081,16 @@ export default function Schedule() {
                           setDialogLesson(lesson)
                           setOpenDialog(true)
                         }}
-                        className="relative cursor-pointer rounded-ue-md border border-white/12 bg-[color:var(--option-bg)] p-3 shadow-surface transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-[color:var(--option-hover-bg)] hover:shadow-[0_8px_26px_rgba(33,117,238,0.125),0_1.5px_8px_rgba(0,0,0,0.125)]"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault()
+                            setDialogLesson(lesson)
+                            setOpenDialog(true)
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="relative cursor-pointer rounded-ue-md border border-white/12 bg-[color:var(--option-bg)] p-3 shadow-surface transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-[color:var(--option-hover-bg)] hover:shadow-[0_8px_26px_rgba(33,117,238,0.125),0_1.5px_8px_rgba(0,0,0,0.125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
                       >
                         <div
                           className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-[8px]"
