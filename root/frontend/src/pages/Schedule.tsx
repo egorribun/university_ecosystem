@@ -190,7 +190,15 @@ const toDayjs = (s?: string | null) => {
   return dayjs(dayjs().format("YYYY-MM-DDT") + (s.length === 5 ? s + ":00" : s))
 }
 
-function Snackbar({ open, message, onClose }: { open: boolean; message: string; onClose: () => void }) {
+function Snackbar({
+  open,
+  message,
+  onClose,
+}: {
+  open: boolean
+  message: string
+  onClose: () => void
+}) {
   useEffect(() => {
     if (!open || !message) return
     const timer = setTimeout(() => {
@@ -959,9 +967,7 @@ export default function Schedule() {
                             colIsToday ? "bg-[color:var(--table-row-today)]" : ""
                           )}
                         >
-                          <div
-                            className="min-h-[148px] rounded-ue-md border border-dashed border-white/8 bg-transparent"
-                          />
+                          <div className="min-h-[148px] rounded-ue-md border border-dashed border-white/8 bg-transparent" />
                         </td>
                       )
                     }
@@ -1211,11 +1217,7 @@ export default function Schedule() {
               )}
             </div>
 
-            <div
-              data-fade
-              style={fadeDelayStyle("140ms")}
-              className="mb-6"
-            >
+            <div data-fade style={fadeDelayStyle("140ms")} className="mb-6">
               {headerActions}
             </div>
 
@@ -1246,14 +1248,18 @@ export default function Schedule() {
                     <Badge
                       size="xs"
                       variant="outline"
-                      leadingIcon={<SchoolIcon className="text-[16px] text-[color:var(--nav-link)]" />}
+                      leadingIcon={
+                        <SchoolIcon className="text-[16px] text-[color:var(--nav-link)]" />
+                      }
                     >
                       {currentLesson.teacher}
                     </Badge>
                     <Badge
                       size="xs"
                       variant="outline"
-                      leadingIcon={<RoomIcon className="text-[16px] text-[color:var(--nav-link)]" />}
+                      leadingIcon={
+                        <RoomIcon className="text-[16px] text-[color:var(--nav-link)]" />
+                      }
                     >
                       {currentLesson.room}
                     </Badge>
@@ -1290,11 +1296,7 @@ export default function Schedule() {
             </div>
 
             {(user?.role === "teacher" || user?.role === "admin") && (
-              <div
-                data-fade
-                style={fadeDelayStyle("240ms")}
-                className="mb-6 max-w-[340px]"
-              >
+              <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 max-w-[340px]">
                 <label className="mb-1.5 block text-sm font-semibold text-[color:var(--secondary-text)]">
                   {t("schedule:form.groupLabel")}
                 </label>
@@ -1328,63 +1330,63 @@ export default function Schedule() {
           >
             {dialogLesson && (
               <div className="space-y-2">
-                  <div>
-                    <strong className="text-[color:var(--page-text)]">
-                      {t("schedule:dialog.typeLabel")}:
-                    </strong>{" "}
-                    <Badge
-                      size="xs"
-                      style={{
-                        color: "#fff",
-                        background: getLessonTypeColor(dialogLesson.lesson_type),
+                <div>
+                  <strong className="text-[color:var(--page-text)]">
+                    {t("schedule:dialog.typeLabel")}:
+                  </strong>{" "}
+                  <Badge
+                    size="xs"
+                    style={{
+                      color: "#fff",
+                      background: getLessonTypeColor(dialogLesson.lesson_type),
+                    }}
+                  >
+                    {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ??
+                      dialogLesson.lesson_type ??
+                      ""}
+                  </Badge>
+                </div>
+                <div>
+                  <strong className="text-[color:var(--page-text)]">
+                    {t("schedule:dialog.timeLabel")}:
+                  </strong>{" "}
+                  {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}
+                </div>
+                <div>
+                  <strong className="text-[color:var(--page-text)]">
+                    {t("schedule:dialog.teacherLabel")}:
+                  </strong>{" "}
+                  {dialogLesson.teacher}
+                </div>
+                <div>
+                  <strong className="text-[color:var(--page-text)]">
+                    {t("schedule:dialog.roomLabel")}:
+                  </strong>{" "}
+                  {dialogLesson.room}
+                </div>
+                <div className="flex gap-3 pt-4">
+                  {(user?.role === "admin" || user?.role === "teacher") && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (!dialogLesson) return
+                        setEditing(true)
+                        setEditLesson({
+                          ...dialogLesson,
+                          lesson_type: resolveLessonTypeId(dialogLesson.lesson_type),
+                        })
+                        setOpenDialog(false)
                       }}
                     >
-                      {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ??
-                        dialogLesson.lesson_type ??
-                        ""}
-                    </Badge>
-                  </div>
-                  <div>
-                    <strong className="text-[color:var(--page-text)]">
-                      {t("schedule:dialog.timeLabel")}:
-                    </strong>{" "}
-                    {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}
-                  </div>
-                  <div>
-                    <strong className="text-[color:var(--page-text)]">
-                      {t("schedule:dialog.teacherLabel")}:
-                    </strong>{" "}
-                    {dialogLesson.teacher}
-                  </div>
-                  <div>
-                    <strong className="text-[color:var(--page-text)]">
-                      {t("schedule:dialog.roomLabel")}:
-                    </strong>{" "}
-                    {dialogLesson.room}
-                  </div>
-                  <div className="flex gap-3 pt-4">
-                    {(user?.role === "admin" || user?.role === "teacher") && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          if (!dialogLesson) return
-                          setEditing(true)
-                          setEditLesson({
-                            ...dialogLesson,
-                            lesson_type: resolveLessonTypeId(dialogLesson.lesson_type),
-                          })
-                          setOpenDialog(false)
-                        }}
-                      >
-                        {t("schedule:buttons.edit")}
-                      </Button>
-                    )}
-                    <Button variant="outline" onClick={() => setOpenDialog(false)}>
-                      {t("schedule:buttons.close")}
+                      {t("schedule:buttons.edit")}
                     </Button>
-                  </div>
+                  )}
+                  <Button variant="outline" onClick={() => setOpenDialog(false)}>
+                    {t("schedule:buttons.close")}
+                  </Button>
                 </div>
-              )}
+              </div>
+            )}
           </Dialog>
 
           <Dialog
@@ -1401,9 +1403,7 @@ export default function Schedule() {
                   <input
                     type="text"
                     value={editLesson.subject || ""}
-                    onChange={(e) =>
-                      setEditLesson({ ...editLesson, subject: e.target.value })
-                    }
+                    onChange={(e) => setEditLesson({ ...editLesson, subject: e.target.value })}
                     className={inputClass}
                   />
                 </div>
@@ -1414,9 +1414,7 @@ export default function Schedule() {
                   <input
                     type="text"
                     value={editLesson.teacher || ""}
-                    onChange={(e) =>
-                      setEditLesson({ ...editLesson, teacher: e.target.value })
-                    }
+                    onChange={(e) => setEditLesson({ ...editLesson, teacher: e.target.value })}
                     className={inputClass}
                   />
                 </div>
@@ -1427,9 +1425,7 @@ export default function Schedule() {
                   <input
                     type="text"
                     value={editLesson.room || ""}
-                    onChange={(e) =>
-                      setEditLesson({ ...editLesson, room: e.target.value })
-                    }
+                    onChange={(e) => setEditLesson({ ...editLesson, room: e.target.value })}
                     className={inputClass}
                   />
                 </div>
@@ -1439,9 +1435,7 @@ export default function Schedule() {
                   </label>
                   <select
                     value={editLesson.lesson_type || ""}
-                    onChange={(e) =>
-                      setEditLesson({ ...editLesson, lesson_type: e.target.value })
-                    }
+                    onChange={(e) => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
                     className={inputClass}
                   >
                     {editingLessonTypeOptions.map((option) => (
@@ -1457,9 +1451,7 @@ export default function Schedule() {
                   </label>
                   <select
                     value={editLesson.weekday}
-                    onChange={(e) =>
-                      setEditLesson({ ...editLesson, weekday: e.target.value })
-                    }
+                    onChange={(e) => setEditLesson({ ...editLesson, weekday: e.target.value })}
                     className={inputClass}
                   >
                     {weekdayBackend.map((day) => (
