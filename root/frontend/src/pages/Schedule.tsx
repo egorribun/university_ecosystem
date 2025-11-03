@@ -766,8 +766,8 @@ export default function Schedule() {
     if (gap <= 0) return null
     return (
       <div className="absolute left-1/2 top-[-12px] z-[3] -translate-x-1/2 pointer-events-none">
-        <Badge 
-          size="xs" 
+        <Badge
+          size="xs"
           className="chip-break font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_94%,yellow_6%)] border-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] text-[color:var(--page-text)] shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
         >
           {t("schedule:break", { minutes: gap })}
@@ -918,7 +918,12 @@ export default function Schedule() {
                     style={{ fontSize: "clamp(0.94rem, 1.5vw, 1.12rem)" }}
                   >
                     <div className="flex items-center justify-center gap-2">
-                      <span className={cn("tracking-tight", isTodayCol && "text-[color:var(--nav-link)]")}>
+                      <span
+                        className={cn(
+                          "tracking-tight",
+                          isTodayCol && "text-[color:var(--nav-link)]"
+                        )}
+                      >
                         {label}
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
@@ -970,7 +975,9 @@ export default function Schedule() {
                           key={`empty-${rowIdx}-${colIdx}`}
                           className={cn(
                             "p-3",
-                            colIsToday ? "bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)]" : ""
+                            colIsToday
+                              ? "bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)]"
+                              : ""
                           )}
                         >
                           <div className="min-h-[148px] rounded-ue-lg border border-dashed border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)]" />
@@ -991,7 +998,9 @@ export default function Schedule() {
                         key={lesson.id ?? `${rowIdx}-${colIdx}`}
                         className={cn(
                           "relative overflow-visible p-3 text-[color:var(--page-text)] transition-colors duration-150",
-                          colIsToday ? "bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)]" : ""
+                          colIsToday
+                            ? "bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)]"
+                            : ""
                         )}
                       >
                         {renderBreakChip(rowIdx, colIdx)}
@@ -1059,10 +1068,12 @@ export default function Schedule() {
             )}
           >
             <div className="mb-3 flex items-center gap-2">
-              <h3 className={cn(
-                "text-lg font-extrabold tracking-tight text-[color:var(--page-text)]",
-                isToday && "text-[color:var(--nav-link)]"
-              )}>
+              <h3
+                className={cn(
+                  "text-lg font-extrabold tracking-tight text-[color:var(--page-text)]",
+                  isToday && "text-[color:var(--nav-link)]"
+                )}
+              >
                 {label}
               </h3>
               {(user?.role === "admin" || user?.role === "teacher") && (
@@ -1092,8 +1103,8 @@ export default function Schedule() {
                   return (
                     <div key={lesson.id}>
                       {idx > 0 && gap > 0 && (
-                        <Badge 
-                          size="xs" 
+                        <Badge
+                          size="xs"
                           className="chip-break mb-2 font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_94%,yellow_6%)] border-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] text-[color:var(--page-text)] shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
                         >
                           {t("schedule:break", { minutes: gap })}
@@ -1254,16 +1265,12 @@ export default function Schedule() {
               {currentLesson ? (
                 <div className="relative z-[1]">
                   <div className="mb-4 flex flex-wrap items-center gap-2.5">
-                    <Badge 
-                      size="sm" 
-                      tone="primary"
-                      className="chip-clock font-semibold"
-                    >
+                    <Badge size="sm" tone="primary" className="chip-clock font-semibold">
                       {t("schedule:chips.current")}
                     </Badge>
-                    <Badge 
-                      size="sm" 
-                      variant="outline" 
+                    <Badge
+                      size="sm"
+                      variant="outline"
                       className="chip-time font-medium"
                       leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                     >
@@ -1273,8 +1280,8 @@ export default function Schedule() {
                       {currentLesson.subject}
                     </h3>
                     {!!timeLeftText && (
-                      <Badge 
-                        size="sm" 
+                      <Badge
+                        size="sm"
                         className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)]"
                       >
                         {timeLeftText}
@@ -1308,17 +1315,17 @@ export default function Schedule() {
                 </div>
               ) : nextLesson ? (
                 <div className="relative z-[1] flex flex-wrap items-center gap-2.5">
-                  <Badge 
-                    size="sm" 
+                  <Badge
+                    size="sm"
                     variant="outline"
                     tone="primary"
                     className="chip-clock font-semibold border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
                   >
                     {t("schedule:chips.next")}
                   </Badge>
-                  <Badge 
-                    size="sm" 
-                    variant="outline" 
+                  <Badge
+                    size="sm"
+                    variant="outline"
                     className="chip-time font-medium"
                     leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                   >
@@ -1328,8 +1335,8 @@ export default function Schedule() {
                     {nextLesson.subject}
                   </h3>
                   {!!timeLeftText && (
-                    <Badge 
-                      size="sm" 
+                    <Badge
+                      size="sm"
                       className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)]"
                     >
                       {timeLeftText}
@@ -1407,17 +1414,13 @@ export default function Schedule() {
                   <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {t("schedule:dialog.teacherLabel")}:
                   </span>
-                  <p className="text-base text-[color:var(--page-text)]">
-                    {dialogLesson.teacher}
-                  </p>
+                  <p className="text-base text-[color:var(--page-text)]">{dialogLesson.teacher}</p>
                 </div>
                 <div className="space-y-1">
                   <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {t("schedule:dialog.roomLabel")}:
                   </span>
-                  <p className="text-base text-[color:var(--page-text)]">
-                    {dialogLesson.room}
-                  </p>
+                  <p className="text-base text-[color:var(--page-text)]">{dialogLesson.room}</p>
                 </div>
                 <div className="flex gap-3 pt-2">
                   {(user?.role === "admin" || user?.role === "teacher") && (
@@ -1437,8 +1440,8 @@ export default function Schedule() {
                       {t("schedule:buttons.edit")}
                     </Button>
                   )}
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setOpenDialog(false)}
                     className="font-semibold"
                   >
@@ -1614,8 +1617,8 @@ export default function Schedule() {
                   >
                     {t("common:buttons.save")}
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setEditing(false)}
                     className="font-semibold"
                   >
@@ -1723,8 +1726,8 @@ export default function Schedule() {
                 <Button variant="solid" onClick={handleAddLesson} className="font-semibold">
                   {t("schedule:buttons.add")}
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setAddDialogOpen(false)}
                   className="font-semibold"
                 >
