@@ -73,6 +73,9 @@ export default function MapContent() {
   const toggleSelectedBg = alpha(lightThemePrimary, 0.24)
   const toggleHoverColor = lightThemePrimary
   const inactiveIconColor = alpha(lightThemeTextPrimary, 0.88)
+  // Цвета для кнопки пробок (используем цвета светлой темы для обеих тем)
+  const trafficActiveColor = "#d32f2f" // error.main светлой темы
+  const trafficActiveHoverColor = "#c62828" // error.dark светлой темы
 
   useEffect(() => {
     const qs = new URLSearchParams(location.search)
@@ -389,10 +392,10 @@ export default function MapContent() {
                   className="glass glass--btn"
                   sx={{
                     touchAction: "manipulation",
-                    color: traffic ? theme.palette.error.light : inactiveIconColor,
+                    color: traffic ? trafficActiveColor : inactiveIconColor,
                     transition: "color 160ms ease",
                     "&:hover": {
-                      color: traffic ? theme.palette.error.main : toggleHoverColor,
+                      color: traffic ? trafficActiveHoverColor : toggleHoverColor,
                     },
                   }}
                 >

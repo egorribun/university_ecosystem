@@ -1449,11 +1449,11 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 .map-head {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: 4px;
+  left: 4px;
+  right: 4px;
   z-index: 50;
-  padding: 14px 18px;
+  padding: 18px 22px;
   background:
     radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 65%),
     radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 65%),
@@ -1798,11 +1798,11 @@ body.dark .glass:not(.map-head) {
 }
 .map-page .map-head {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: 4px;
+  left: 4px;
+  right: 4px;
   z-index: 50;
-  padding: 14px 18px;
+  padding: 18px 22px;
 }
 .map-controls-glass {
   padding-bottom: max(env(safe-area-inset-bottom), 12px);
