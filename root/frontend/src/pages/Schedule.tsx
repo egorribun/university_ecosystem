@@ -937,7 +937,8 @@ export default function Schedule() {
                       <span
                         className={cn(
                           "tracking-tight transition-colors duration-200",
-                          isTodayCol && "text-[color:var(--nav-link)] font-extrabold dark:text-[color:color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
+                          isTodayCol &&
+                            "text-[color:var(--nav-link)] font-extrabold dark:text-[color:color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
                         )}
                       >
                         {label}
@@ -1088,7 +1089,8 @@ export default function Schedule() {
               <h3
                 className={cn(
                   "text-lg font-extrabold tracking-tight text-[color:var(--page-text)] transition-colors duration-200",
-                  isToday && "text-[color:var(--nav-link)] dark:text-[color:color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
+                  isToday &&
+                    "text-[color:var(--nav-link)] dark:text-[color:color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
                 )}
               >
                 {label}
