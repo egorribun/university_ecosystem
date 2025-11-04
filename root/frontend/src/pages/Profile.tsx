@@ -29,7 +29,12 @@ type SnackState = {
 // Icon Components (inline SVG)
 const EmailIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+    />
   </svg>
 )
 
@@ -41,7 +46,12 @@ const TelegramIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
 
 const ContentCopyIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+    />
   </svg>
 )
 
@@ -65,19 +75,30 @@ const CheckIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 
 const AlertCircleIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
   </svg>
 )
 
 const InfoIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
   </svg>
 )
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const { t } = useTranslation(["profile"])
-  const prefersReduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const prefersReduce =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const reduced = useReducedMotion()
   const duration = data.duration_ms ?? 0
 
@@ -212,7 +233,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               {t("profile:nowPlaying.paused")}
             </span>
           )}
-          
+
           {/* Progress Bar */}
           <div className="flex items-center gap-2 w-full">
             <div className="flex-1 h-1.5 bg-white/20 dark:bg-white/10 rounded-full overflow-hidden">
@@ -238,7 +259,7 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
     <div className="relative grid grid-cols-[14px_1fr] items-center gap-3 px-3 py-3 min-h-[44px] rounded-2xl border border-white/10 dark:border-white/[0.12] backdrop-blur-md bg-gradient-to-br from-white/[0.06] via-white/[0.03] to-white/[0.02] dark:from-white/[0.04] dark:via-white/[0.02] dark:to-white/[0.01]">
       {/* Dot Indicator */}
       <div className="w-2 h-2 rounded-full bg-blue-400 dark:bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.22)] justify-self-center" />
-      
+
       {/* Content */}
       <p className="text-sm leading-tight text-gray-900 dark:text-gray-100">
         <span className="font-bold">{label}:</span> {value}
@@ -331,7 +352,7 @@ export default function Profile() {
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
-  
+
   const coverParallax = reduced ? 0 : Math.min(scrollY * 0.1, 40)
   const coverScale = reduced ? 1 : Math.min(1 + scrollY * 0.00014, 1.04)
 
@@ -545,7 +566,7 @@ export default function Profile() {
     if (isMobile) return 132
     return isTwoCol ? 188 : 168
   }, [isMobile, isTwoCol])
-  
+
   const avatarSize = `${avatarPx}px`
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
@@ -659,7 +680,7 @@ export default function Profile() {
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
                       />
-                      
+
                       {/* Cover Gradient Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent via-40% to-black/90" />
 
@@ -685,7 +706,7 @@ export default function Profile() {
                               className="w-full h-full object-cover"
                             />
                           </div>
-                          
+
                           {/* Inner Ring Shine */}
                           <div className="absolute inset-0 rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(255,255,255,0.3)] pointer-events-none" />
                         </div>
@@ -754,7 +775,9 @@ export default function Profile() {
                               }}
                               className="inline-flex px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full bg-white/20 dark:bg-white/10 text-white dark:text-white/90 backdrop-blur-md border border-white/20 dark:border-white/10"
                               style={{
-                                animation: reduced ? "none" : `border-pulse 12s ease-in-out infinite ${idx * 90}ms`,
+                                animation: reduced
+                                  ? "none"
+                                  : `border-pulse 12s ease-in-out infinite ${idx * 90}ms`,
                               }}
                             >
                               {chip}
@@ -881,7 +904,7 @@ export default function Profile() {
                           <p className="text-xs text-gray-600 dark:text-gray-400 -mt-2">
                             {t("profile:form.telegramHint")}
                           </p>
-                          
+
                           {user!.role === "teacher" && (
                             <>
                               <input
@@ -900,7 +923,7 @@ export default function Profile() {
                               />
                             </>
                           )}
-                          
+
                           {user!.role === "student" && (
                             <>
                               <textarea
@@ -968,7 +991,7 @@ export default function Profile() {
                               />
                             </>
                           )}
-                          
+
                           {/* Action Buttons */}
                           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center pt-2">
                             <button
@@ -1058,7 +1081,9 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
+                                        initial={
+                                          isTest || reduced ? false : { opacity: 0, scale: 0.9 }
+                                        }
                                         animate={{ opacity: 1, scale: 1 }}
                                         transition={{
                                           duration: isTest || reduced ? 0 : 0.5,
@@ -1105,7 +1130,7 @@ export default function Profile() {
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer"
           onClick={closeQrModal}
           onKeyDown={(e) => {
-            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
               e.preventDefault()
               closeQrModal()
             }
@@ -1178,7 +1203,7 @@ export default function Profile() {
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer"
           onClick={() => setAchOpen(null)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
               e.preventDefault()
               setAchOpen(null)
             }
