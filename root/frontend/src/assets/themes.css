@@ -1377,7 +1377,7 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   background: #d7e7f633;
   border-radius: 12px;
 }
-.glass {
+.glass:not(.map-head) {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
@@ -1389,7 +1389,7 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   overflow: hidden;
   border-radius: 16px;
 }
-.glass--panel::before {
+.glass--panel:not(.map-head)::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1402,7 +1402,7 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
     transparent
   );
 }
-.glass--panel::after {
+.glass--panel:not(.map-head)::after {
   content: "";
   position: absolute;
   top: -48px;
@@ -1453,7 +1453,112 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   left: 12px;
   right: 12px;
   z-index: 50;
-  padding: 10px;
+  padding: 14px 18px;
+  background:
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.16),
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.2);
+  -webkit-backdrop-filter: blur(32px) saturate(200%) contrast(1.05) brightness(1.02);
+  backdrop-filter: blur(32px) saturate(200%) contrast(1.05) brightness(1.02);
+  border-radius: 20px;
+  transition:
+    background var(--anim-med),
+    border-color var(--anim-med),
+    box-shadow var(--anim-med);
+}
+body.dark .map-head {
+  background:
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.48),
+    0 10px 32px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(36px) saturate(200%) contrast(1.08) brightness(1.01);
+  backdrop-filter: blur(36px) saturate(200%) contrast(1.08) brightness(1.01);
+}
+.map-head::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.12) 35%,
+      rgba(255, 255, 255, 0.04) 65%,
+      transparent 100%
+    ),
+    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.24), transparent 70%);
+  mix-blend-mode: overlay;
+  opacity: 0.85;
+}
+body.dark .map-head::before {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.08) 35%,
+      rgba(255, 255, 255, 0.02) 65%,
+      transparent 100%
+    ),
+    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.14), transparent 70%);
+  opacity: 0.75;
+}
+.map-head::after {
+  content: "";
+  position: absolute;
+  top: -60px;
+  left: -70px;
+  width: 320px;
+  height: 240px;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 70%),
+    conic-gradient(
+      from 210deg at 26% 18%,
+      rgba(255, 255, 255, 0.35),
+      rgba(255, 255, 255, 0.18) 18%,
+      transparent 40%
+    );
+  filter: blur(2px);
+  opacity: 0.6;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+body.dark .map-head::after {
+  background:
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 70%),
+    conic-gradient(
+      from 210deg at 26% 18%,
+      rgba(255, 255, 255, 0.22),
+      rgba(255, 255, 255, 0.12) 18%,
+      transparent 40%
+    );
+  opacity: 0.5;
+}
+.map-head > * {
+  position: relative;
+  z-index: 2;
+}
+.map-head .MuiSvgIcon-root {
+  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.6));
+  position: relative;
+  z-index: 2;
+}
+body.dark .map-head .MuiSvgIcon-root {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
 }
 .map-controls-glass {
   position: absolute;
@@ -1500,7 +1605,7 @@ body.dark {
   --glass-tint-2: rgba(255, 255, 255, 0.02);
   --glass-tint-3: rgba(255, 255, 255, 0.01);
 }
-.glass {
+.glass:not(.map-head) {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) contrast(1.03) brightness(1.01);
   backdrop-filter: blur(var(--glass-blur)) saturate(180%) contrast(1.03) brightness(1.01);
   background:
@@ -1509,20 +1614,20 @@ body.dark {
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
     rgba(255, 255, 255, var(--glass-alpha));
 }
-body.dark .glass {
+body.dark .glass:not(.map-head) {
   background:
     radial-gradient(120% 80% at -10% -20%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 60%),
     radial-gradient(140% 100% at 110% 120%, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 60%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.008)),
     rgba(8, 12, 18, calc(var(--glass-alpha) * 1.6));
 }
-.glass--panel {
+.glass--panel:not(.map-head) {
   border-radius: 18px;
   box-shadow:
     0 20px 58px rgba(0, 0, 0, 0.14),
     inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
-.glass--panel::before {
+.glass--panel:not(.map-head)::before {
   background:
     linear-gradient(
       180deg,
@@ -1532,7 +1637,7 @@ body.dark .glass {
     ),
     radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.12), transparent 62%);
 }
-.glass--panel::after {
+.glass--panel:not(.map-head)::after {
   top: -56px;
   left: -64px;
   width: 280px;
@@ -1591,11 +1696,11 @@ body.dark .glass {
     inset 0 0 0 4px rgba(255, 255, 255, 0.04),
     0 18px 48px rgba(0, 0, 0, 0.16);
 }
-.glass--sheen {
+.glass--sheen:not(.map-head) {
   position: relative;
   overflow: hidden;
 }
-.glass--sheen::after {
+.glass--sheen:not(.map-head)::after {
   content: "";
   position: absolute;
   inset: -40%;
@@ -1613,7 +1718,7 @@ body.dark .glass {
   opacity: 0.7;
   mix-blend-mode: screen;
 }
-.glass--sheen:hover::after {
+.glass--sheen:not(.map-head):hover::after {
   transform: translateX(20%) rotate(10deg);
   opacity: 0.86;
 }
@@ -1674,18 +1779,30 @@ body.dark .glass {
   left: 12px;
   right: 12px;
   z-index: 50;
+  padding: 14px 18px;
 }
 .map-controls-glass {
   padding-bottom: max(env(safe-area-inset-bottom), 12px);
 }
 .map-title {
-  color: #000 !important;
+  color: rgba(0, 0, 0, 0.92) !important;
+  text-shadow:
+    0 1px 2px rgba(255, 255, 255, 0.8),
+    0 0 8px rgba(255, 255, 255, 0.4);
+  position: relative;
+  z-index: 1;
 }
 [data-mui-color-scheme="dark"] .map-title {
-  color: #000 !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(0, 0, 0, 0.3);
 }
 body.dark .map-title {
-  color: #000 !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(0, 0, 0, 0.3);
 }
 .map-controls-glass {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
@@ -1714,38 +1831,55 @@ body.dark .map-title {
 .map-head .map-btn--open,
 .map-head .map-btn--reset {
   color: var(--nav-link);
-  border-color: rgba(0, 94, 162, 0.48);
+  border-color: rgba(255, 255, 255, 0.4);
   background:
-    radial-gradient(140% 160% at 15% 10%, rgba(0, 94, 162, 0.25), rgba(0, 94, 162, 0) 58%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    radial-gradient(140% 160% at 15% 10%, rgba(0, 94, 162, 0.18), rgba(0, 94, 162, 0) 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
   box-shadow:
-    0 10px 28px rgba(0, 94, 162, 0.24),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.03);
+    0 8px 24px rgba(0, 94, 162, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 2;
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
 }
 .map-head .map-btn--open:hover,
 .map-head .map-btn--reset:hover {
   box-shadow:
-    0 14px 36px rgba(26, 68, 128, 0.32),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+    0 12px 32px rgba(26, 68, 128, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.15);
   transform: translateY(-1px) scale(1.02);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 .map-head .map-btn--open:active,
 .map-head .map-btn--reset:active {
   transform: translateY(0) scale(0.98);
   box-shadow:
-    0 8px 22px rgba(0, 94, 162, 0.22),
-    inset 0 6px 14px rgba(0, 0, 0, 0.1);
+    0 6px 18px rgba(0, 94, 162, 0.18),
+    inset 0 4px 12px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 body.dark .map-head .map-btn--open,
 body.dark .map-head .map-btn--reset {
   color: var(--link-color);
-  border-color: rgba(105, 169, 220, 0.55);
+  border-color: rgba(255, 255, 255, 0.28);
   background:
-    radial-gradient(140% 160% at 15% 10%, rgba(105, 169, 220, 0.22), rgba(105, 169, 220, 0) 58%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+    radial-gradient(140% 160% at 15% 10%, rgba(105, 169, 220, 0.16), rgba(105, 169, 220, 0) 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
   box-shadow:
-    0 12px 30px rgba(105, 169, 220, 0.24),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+    0 10px 28px rgba(105, 169, 220, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+body.dark .map-head .map-btn--open:hover,
+body.dark .map-head .map-btn--reset:hover {
+  box-shadow:
+    0 14px 36px rgba(105, 169, 220, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.36);
 }
 :where(
   button,
@@ -1862,7 +1996,7 @@ body.dark .profile-edit .Mui-focused .MuiOutlinedInput-notchedOutline {
   .navbar-root {
     transition: none !important;
   }
-  .glass--sheen::after {
+  .glass--sheen:not(.map-head)::after {
     display: none;
   }
 }
