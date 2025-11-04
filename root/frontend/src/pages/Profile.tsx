@@ -1214,8 +1214,15 @@ export default function Profile() {
       {/* QR Dialog */}
       {qrOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("profile:dialog.qr.title")}
           className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={closeQrModal}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") closeQrModal()
+          }}
+          tabIndex={0}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -1263,8 +1270,15 @@ export default function Profile() {
       {/* Achievement Dialog */}
       {achOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={achOpen.name}
           className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={() => setAchOpen(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setAchOpen(null)
+          }}
+          tabIndex={0}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
