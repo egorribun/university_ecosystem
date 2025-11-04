@@ -98,7 +98,9 @@ const InfoIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const { t } = useTranslation(["profile"])
   const prefersReduce =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const reduced = useReducedMotion()
   const duration = data.duration_ms ?? 0
 
@@ -236,11 +238,17 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 
           {/* Progress Bar */}
           <div className="flex items-center gap-2 w-full">
-            <div className="flex-1 h-1.5 bg-white/20 dark:bg-white/10 rounded-full overflow-hidden">
+            <div
+              role="progressbar"
+              aria-label={t("profile:nowPlaying.progress")}
+              aria-valuenow={Math.round(pct)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="flex-1 h-1.5 bg-white/20 dark:bg-white/10 rounded-full overflow-hidden"
+            >
               <div
                 className="h-full bg-gradient-to-r from-green-400 to-green-300 dark:from-green-500 dark:to-green-400 rounded-full transition-all duration-200"
                 style={{ width: `${pct}%` }}
-                aria-label={t("profile:nowPlaying.progress")}
               />
             </div>
             <span className="text-xs text-white/70 dark:text-white/60 whitespace-nowrap tabular-nums">
@@ -273,8 +281,14 @@ export default function Profile() {
   const [snack, setSnack] = useState<SnackState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const isMobile = typeof window !== "undefined" && window.innerWidth <= 640
-  const isTwoCol = typeof window !== "undefined" && window.innerWidth >= 1400
+  const isMobile =
+    typeof window !== "undefined" && typeof window.innerWidth === "number"
+      ? window.innerWidth <= 640
+      : false
+  const isTwoCol =
+    typeof window !== "undefined" && typeof window.innerWidth === "number"
+      ? window.innerWidth >= 1400
+      : false
   const reduced = useReducedMotion()
   const { t } = useTranslation(["profile", "common"])
   const [scrollY, setScrollY] = useState(0)
