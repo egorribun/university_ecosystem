@@ -1455,17 +1455,15 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.005), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.008), rgba(255, 255, 255, 0.003));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.04),
     0 8px 24px rgba(0, 0, 0, 0.02),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
-  -webkit-backdrop-filter: blur(16px) saturate(180%) contrast(1.01) brightness(1.005);
-  backdrop-filter: blur(16px) saturate(180%) contrast(1.01) brightness(1.005);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   transition:
     background var(--anim-med),
@@ -1474,17 +1472,15 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 body.dark .map-head {
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.008), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.004), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.006), rgba(255, 255, 255, 0.002));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.008));
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.15),
     0 8px 24px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.03);
-  -webkit-backdrop-filter: blur(18px) saturate(180%) contrast(1.01) brightness(1.005);
-  backdrop-filter: blur(18px) saturate(180%) contrast(1.01) brightness(1.005);
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 .map-head::before {
   content: "";
@@ -1881,8 +1877,6 @@ body.dark .map-title {
     inset 0 -1px 0 rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 2;
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  backdrop-filter: blur(16px) saturate(180%);
 }
 .map-head .map-btn--open:hover,
 .map-head .map-btn--reset:hover {
