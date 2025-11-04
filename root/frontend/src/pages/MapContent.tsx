@@ -249,8 +249,16 @@ export default function MapContent() {
               src={mapSrc}
               title={t("map.iframeTitle")}
               width="100%"
-              height="100%"
-              style={{ border: 0, position: "absolute", inset: 0, display: "block" }}
+              height="calc(100% + 35px)"
+              style={{
+                border: 0,
+                position: "absolute",
+                top: "-35px",
+                left: 0,
+                right: 0,
+                bottom: "-35px",
+                display: "block",
+              }}
               allowFullScreen
               loading="lazy"
               onLoad={() => {
