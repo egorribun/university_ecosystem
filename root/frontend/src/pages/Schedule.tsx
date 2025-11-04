@@ -1271,7 +1271,7 @@ export default function Schedule() {
               style={fadeDelayStyle("200ms")}
               className={cn(
                 "no-print group relative isolate mb-6 overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-6 shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_16px_48px_rgba(0,0,0,0.12),0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.16),0_6px_20px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_20px_56px_rgba(0,0,0,0.24),0_8px_24px_rgba(0,0,0,0.12)]",
-                !isMobile && "mx-auto max-w-4xl"
+                !isMobile && "max-w-4xl"
               )}
             >
               <span
