@@ -1214,8 +1214,16 @@ export default function Profile() {
       {/* QR Dialog */}
       {qrOpen && (
         <div
+          role="button"
+          tabIndex={-1}
           className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={closeQrModal}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              closeQrModal()
+            }
+          }}
         >
           <motion.div
             role="dialog"
@@ -1270,8 +1278,16 @@ export default function Profile() {
       {/* Achievement Dialog */}
       {achOpen && (
         <div
+          role="button"
+          tabIndex={-1}
           className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={() => setAchOpen(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              setAchOpen(null)
+            }
+          }}
         >
           <motion.div
             role="dialog"
