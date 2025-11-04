@@ -64,21 +64,16 @@ export default function MapContent() {
   const iframeLoadedRef = useRef(false)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [privacyBlocksEmbeds, setPrivacyBlocksEmbeds] = useState(() => detectEmbedOptOut())
-  const toggleBaseColor =
-    theme.palette.mode === "dark"
-      ? alpha(theme.palette.common.white, 0.88)
-      : alpha(theme.palette.text.primary, 0.88)
+  // Используем цвета светлой темы для обеих тем (темный текст)
+  const lightThemeTextPrimary = "#101621" // --page-text светлой темы
+  const toggleBaseColor = alpha(lightThemeTextPrimary, 0.88)
   const toggleSelectedColor = theme.palette.common.white
   const toggleSelectedBg =
     theme.palette.mode === "dark"
       ? alpha(theme.palette.primary.light, 0.45)
       : alpha(theme.palette.primary.main, 0.24)
-  const toggleHoverColor =
-    theme.palette.mode === "dark" ? theme.palette.common.white : theme.palette.primary.main
-  const inactiveIconColor =
-    theme.palette.mode === "dark"
-      ? alpha(theme.palette.common.white, 0.88)
-      : alpha(theme.palette.text.primary, 0.88)
+  const toggleHoverColor = theme.palette.primary.main
+  const inactiveIconColor = alpha(lightThemeTextPrimary, 0.88)
 
   useEffect(() => {
     const qs = new URLSearchParams(location.search)
@@ -222,7 +217,7 @@ export default function MapContent() {
           <Box className="glass glass--panel glass--sheen map-head">
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Stack direction="row" alignItems="center" spacing={1.5}>
-                <MapIcon color="primary" sx={{ fontSize: isMobile ? 26 : 34 }} />
+                <MapIcon sx={{ fontSize: isMobile ? 26 : 34, color: "#0f4faa" }} />
                 <Typography
                   className="map-title"
                   variant="h4"
