@@ -1464,8 +1464,8 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
     0 8px 24px rgba(0, 0, 0, 0.02),
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(255, 255, 255, 0.05);
-  -webkit-backdrop-filter: blur(48px) saturate(200%) contrast(1.02) brightness(1.01);
-  backdrop-filter: blur(48px) saturate(200%) contrast(1.02) brightness(1.01);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) contrast(1.01) brightness(1.005);
+  backdrop-filter: blur(16px) saturate(180%) contrast(1.01) brightness(1.005);
   border-radius: 20px;
   transition:
     background var(--anim-med),
@@ -1483,8 +1483,8 @@ body.dark .map-head {
     0 8px 24px rgba(0, 0, 0, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 -1px 0 rgba(255, 255, 255, 0.03);
-  -webkit-backdrop-filter: blur(52px) saturate(200%) contrast(1.02) brightness(1.01);
-  backdrop-filter: blur(52px) saturate(200%) contrast(1.02) brightness(1.01);
+  -webkit-backdrop-filter: blur(18px) saturate(180%) contrast(1.01) brightness(1.005);
+  backdrop-filter: blur(18px) saturate(180%) contrast(1.01) brightness(1.005);
 }
 .map-head::before {
   content: "";
