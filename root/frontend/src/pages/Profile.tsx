@@ -1242,14 +1242,28 @@ export default function Profile() {
 
       {qrOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-dialog-title"
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
           onClick={closeQrModal}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              closeQrModal()
+            }
+          }}
         >
           <div
+            role="document"
             className="glass max-w-xs w-full rounded-2xl backdrop-blur-md bg-glass/90 dark:bg-glass/90 p-6"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                closeQrModal()
+              }
+            }}
           >
-            <h2 className="text-center font-black tracking-wide mb-4 text-xl">
+            <h2 id="qr-dialog-title" className="text-center font-black tracking-wide mb-4 text-xl">
               {t("profile:dialog.qr.title")}
             </h2>
             <div className="flex flex-col items-center justify-center gap-5 min-h-[320px]">
@@ -1287,14 +1301,30 @@ export default function Profile() {
 
       {achOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ach-dialog-title"
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
           onClick={() => setAchOpen(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setAchOpen(null)
+            }
+          }}
         >
           <div
+            role="document"
             className="glass max-w-xs w-full rounded-2xl backdrop-blur-md bg-glass/90 dark:bg-glass/90 p-6"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setAchOpen(null)
+              }
+            }}
           >
-            <h2 className="font-black text-xl mb-4">{achOpen.name}</h2>
+            <h2 id="ach-dialog-title" className="font-black text-xl mb-4">
+              {achOpen.name}
+            </h2>
             <div className="flex flex-col gap-5 mb-4">
               {achOpen.issuer && (
                 <p className="m-0">
