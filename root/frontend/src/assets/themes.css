@@ -1533,7 +1533,12 @@ body.dark .map-head::before {
   height: 300px;
   border-radius: 50%;
   background:
-    radial-gradient(closest-side, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.15) 30%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(
+      closest-side,
+      rgba(255, 255, 255, 0.25) 0%,
+      rgba(255, 255, 255, 0.15) 30%,
+      rgba(255, 255, 255, 0) 70%
+    ),
     conic-gradient(
       from 210deg at 26% 18%,
       rgba(255, 255, 255, 0.18),
@@ -1551,7 +1556,12 @@ body.dark .map-head::before {
 }
 body.dark .map-head::after {
   background:
-    radial-gradient(closest-side, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.1) 30%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(
+      closest-side,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.1) 30%,
+      rgba(255, 255, 255, 0) 70%
+    ),
     conic-gradient(
       from 210deg at 26% 18%,
       rgba(255, 255, 255, 0.12),
