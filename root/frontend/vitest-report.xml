@@ -1,0 +1,708 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="192" failures="0" errors="0" time="28.662">
+    <testsuite name="src/app/ErrorBoundary.test.tsx" timestamp="2025-11-04T23:51:01.314Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.27075123">
+        <testcase classname="src/app/ErrorBoundary.test.tsx" name="ErrorBoundary &gt; logs, dispatches and renders a fallback screen" time="0.219029599">
+        </testcase>
+        <testcase classname="src/app/ErrorBoundary.test.tsx" name="ErrorBoundary &gt; allows retrying rendering after the issue is resolved" time="0.049375552">
+            <system-err>
+Error: Controlled failure
+    at Problem (/workspace/root/frontend/src/app/ErrorBoundary.test.tsx:71:13)
+    at Object.react-stack-bottom-frame (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:23863:20)
+    at renderWithHooks (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:5529:22)
+    at updateFunctionComponent (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:8897:19)
+    at beginWork (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:10522:18)
+    at runWithFiberInDEV (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:1522:13)
+    at performUnitOfWork (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15140:22)
+    at workLoopSync (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:14956:41)
+    at renderRootSync (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:14936:11)
+    at performWorkOnRoot (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:14462:44) {
+  [stack]: [Getter/Setter],
+  [message]: &apos;Controlled failure&apos;
+}
+
+The above error occurred in the &lt;Problem&gt; component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+
+[ErrorBoundary] Unhandled error captured Error: Controlled failure
+    at Problem (/workspace/root/frontend/src/app/ErrorBoundary.test.tsx:71:13)
+    at Object.react-stack-bottom-frame (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:23863:20)
+    at renderWithHooks (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:5529:22)
+    at updateFunctionComponent (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:8897:19)
+    at beginWork (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:10522:18)
+    at runWithFiberInDEV (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:1522:13)
+    at performUnitOfWork (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15140:22)
+    at workLoopSync (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:14956:41)
+    at renderRootSync (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:14936:11)
+    at performWorkOnRoot (/workspace/root/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:14462:44) {
+  componentStack: &apos;\n&apos; +
+    &apos;    at Problem (/workspace/root/frontend/src/app/ErrorBoundary.test.tsx:107:13)\n&apos; +
+    &apos;    at ErrorBoundary (/workspace/root/frontend/src/app/ErrorBoundary.tsx:121:1)\n&apos; +
+    &apos;    at Harness (/workspace/root/frontend/src/app/ErrorBoundary.test.tsx:52:67)&apos;
+}
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/authTranslations.test.tsx" timestamp="2025-11-04T23:51:01.318Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.409763015">
+        <testcase classname="src/tests/authTranslations.test.tsx" name="auth page translations &gt; renders login content for Russian and English locales" time="0.407437209">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/i18n.test.tsx" timestamp="2025-11-04T23:51:01.319Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.125430127">
+        <testcase classname="src/tests/i18n.test.tsx" name="i18n integration &gt; renders default locale and responds to language changes" time="0.122870278">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/navigationTranslations.test.tsx" timestamp="2025-11-04T23:51:01.320Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.246774333">
+        <testcase classname="src/tests/navigationTranslations.test.tsx" name="navigation components translations &gt; updates footer translations when switching languages" time="0.129747696">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/navigationTranslations.test.tsx" name="navigation components translations &gt; switches bottom navigation labels with locale" time="0.11469098">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/observability.test.ts" timestamp="2025-11-04T23:51:01.320Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.005655631">
+        <testcase classname="src/tests/observability.test.ts" name="initObservability &gt; initializes Sentry when DSN is provided outside of development" time="0.002496588">
+        </testcase>
+        <testcase classname="src/tests/observability.test.ts" name="initObservability &gt; skips initialization when DSN is missing" time="0.000356973">
+        </testcase>
+        <testcase classname="src/tests/observability.test.ts" name="initObservability &gt; skips initialization in development" time="0.000627606">
+            <system-out>
+Sentry disabled in development mode; skipping initialization
+
+            </system-out>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/pageTranslations.test.tsx" timestamp="2025-11-04T23:51:01.320Z" hostname="cursor" tests="14" failures="0" errors="0" skipped="0" time="2.826080848">
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches activity page translations" time="0.365727414">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches schedule page translations" time="0.116336578">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches settings translations including notifications" time="0.190976721">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches profile translations" time="0.06830565">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches events page translations" time="0.148788384">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches map controls translations" time="0.281579387">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches admin users page translations" time="0.21867531">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches dashboard page translations" time="0.725122295">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches news page translations" time="0.077553864">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; renders login page in Russian when seeded and toggles to English" time="0.150457635">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches register page translations" time="0.157935306">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches forgot password page translations" time="0.094502624">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches reset password page translations" time="0.093906784">
+        </testcase>
+        <testcase classname="src/tests/pageTranslations.test.tsx" name="page translations &gt; switches notifications bell translations" time="0.133118545">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/staticShellI18n.test.ts" timestamp="2025-11-04T23:51:01.322Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.027210416">
+        <testcase classname="src/tests/staticShellI18n.test.ts" name="static shell i18n integration &gt; applies english meta tags" time="0.015092299">
+        </testcase>
+        <testcase classname="src/tests/staticShellI18n.test.ts" name="static shell i18n integration &gt; populates the offline fallback in english" time="0.00791075">
+        </testcase>
+        <testcase classname="src/tests/staticShellI18n.test.ts" name="static shell i18n integration &gt; ships an english manifest variant" time="0.002063269">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/sw.test.ts" timestamp="2025-11-04T23:51:01.322Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.368944709">
+        <testcase classname="src/tests/sw.test.ts" name="service worker offline queues &gt; storePendingNavigation persists navigation requests" time="0.319178124">
+        </testcase>
+        <testcase classname="src/tests/sw.test.ts" name="service worker offline queues &gt; processPendingNavigations and processPendingReports clear processed entries" time="0.022102671">
+        </testcase>
+        <testcase classname="src/tests/sw.test.ts" name="service worker offline queues &gt; notificationclick queues offline interactions and clears them via processAllQueues" time="0.025184599">
+            <system-err>
+SW: failed to open client for notification click Error: offline
+    at Object.&lt;anonymous&gt; (/workspace/root/frontend/src/tests/sw.test.ts:208:13)
+    at Object.mockCall (file:///workspace/root/frontend/node_modules/@vitest/spy/dist/index.js:61:17)
+    at Object.spy [as openWindow] (file:///workspace/root/frontend/node_modules/tinyspy/dist/index.js:45:80)
+    at focusOrOpenClient (/workspace/root/frontend/src/sw.ts:302:26)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at /workspace/root/frontend/src/sw.ts:570:33
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/translationParity.test.ts" timestamp="2025-11-04T23:51:01.323Z" hostname="cursor" tests="15" failures="0" errors="0" skipped="0" time="0.013095537">
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; exposes the same set of locale files" time="0.001130229">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in activity.json" time="0.000888181">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in admin.json" time="0.000500269">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in auth.json" time="0.000572052">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in common.json" time="0.000318663">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in dashboard.json" time="0.000399823">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in events.json" time="0.000483">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in navigation.json" time="0.000288532">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in news.json" time="0.000432558">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in notifications.json" time="0.000327311">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in profile.json" time="0.000286155">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in schedule.json" time="0.000387281">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in settings.json" time="0.000691308">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in stories.json" time="0.003238401">
+        </testcase>
+        <testcase classname="src/tests/translationParity.test.ts" name="i18n locales parity between en and ru &gt; has matching keys in system.json" time="0.000531698">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/webVitals.test.ts" timestamp="2025-11-04T23:51:01.324Z" hostname="cursor" tests="4" failures="0" errors="0" skipped="0" time="0.004462254">
+        <testcase classname="src/tests/webVitals.test.ts" name="initWebVitals &gt; registers listeners when enabled in production" time="0.001395614">
+        </testcase>
+        <testcase classname="src/tests/webVitals.test.ts" name="initWebVitals &gt; skips initialization when the feature flag is disabled" time="0.000389057">
+        </testcase>
+        <testcase classname="src/tests/webVitals.test.ts" name="initWebVitals &gt; does not run in development mode" time="0.000212177">
+        </testcase>
+        <testcase classname="src/tests/webVitals.test.ts" name="initWebVitals &gt; skips gracefully when the DOM is unavailable" time="0.000277102">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/api/__tests__/client.etag.test.ts" timestamp="2025-11-04T23:51:01.324Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.03525201">
+        <testcase classname="src/api/__tests__/client.etag.test.ts" name="API ETag interceptor &gt; reuses cached ETags for subsequent requests when an etagCacheKey is provided" time="0.033113303">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/api/__tests__/client.language.test.ts" timestamp="2025-11-04T23:51:01.324Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.050311056">
+        <testcase classname="src/api/__tests__/client.language.test.ts" name="API language interceptor &gt; requests English localized resources when the UI language is set to en" time="0.037990356">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.language.test.ts" name="API language interceptor &gt; respects an explicit Accept-Language header override" time="0.003196008">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.language.test.ts" name="API language interceptor &gt; falls back to the default locale for unsupported languages" time="0.006883993">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/api/__tests__/client.rateLimit.test.ts" timestamp="2025-11-04T23:51:01.324Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.018241225">
+        <testcase classname="src/api/__tests__/client.rateLimit.test.ts" name="API client rate limit queue &gt; queues rapid navigation bursts to avoid 429 responses" time="0.0160431">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/api/__tests__/client.types.test.ts" timestamp="2025-11-04T23:51:01.325Z" hostname="cursor" tests="6" failures="0" errors="0" skipped="0" time="0.003808153">
+        <testcase classname="src/api/__tests__/client.types.test.ts" name="typed api client &gt; fetchNews matches schema" time="0.00070138">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.types.test.ts" name="typed api client &gt; createNews payload aligns with schema" time="0.000213858">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.types.test.ts" name="typed api client &gt; uploadNewsImage returns a string" time="0.00011851">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.types.test.ts" name="typed api client &gt; createEvent payload aligns with schema" time="0.00010308">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.types.test.ts" name="typed api client &gt; uploadEventImage returns a string" time="0.000103204">
+        </testcase>
+        <testcase classname="src/api/__tests__/client.types.test.ts" name="typed api client &gt; notifications list matches schema" time="0.000133646">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/app/__tests__/a11y.test.tsx" timestamp="2025-11-04T23:51:01.325Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="1.037655169">
+        <testcase classname="src/app/__tests__/a11y.test.tsx" name="Accessibility checks &gt; Navbar has no axe violations" time="0.387566338">
+            <system-out>
+[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/app/__tests__/a11y.test.tsx" name="Accessibility checks &gt; Dashboard page has no axe violations" time="0.353388152">
+            <system-err>
+[MSW] Error: intercepted a request without a matching request handler:
+
+  • GET https://api.open-meteo.com/v1/forecast?latitude=55.71392&amp;longitude=37.81474&amp;current=temperature_2m%2Cweather_code&amp;timeformat=iso8601&amp;forecast_days=1&amp;timezone=auto
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+An update to PageFadeIn inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/app/__tests__/a11y.test.tsx" name="Accessibility checks &gt; Profile page has no axe violations" time="0.294351943">
+            <system-err>
+An update to PageFadeIn inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/app/__tests__/globalErrorHandlers.test.ts" timestamp="2025-11-04T23:51:01.326Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.013350111">
+        <testcase classname="src/app/__tests__/globalErrorHandlers.test.ts" name="initGlobalErrorHandlers &gt; registers listeners and logs unhandled errors" time="0.00939482">
+        </testcase>
+        <testcase classname="src/app/__tests__/globalErrorHandlers.test.ts" name="initGlobalErrorHandlers &gt; logs axios-specific rejections and non-error reasons" time="0.001225593">
+        </testcase>
+        <testcase classname="src/app/__tests__/globalErrorHandlers.test.ts" name="initGlobalErrorHandlers &gt; removes listeners when reset is invoked" time="0.00051883">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/app/__tests__/logger.test.ts" timestamp="2025-11-04T23:51:01.326Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.00964278">
+        <testcase classname="src/app/__tests__/logger.test.ts" name="logger &gt; captures errors and forwards them to the console" time="0.005851894">
+        </testcase>
+        <testcase classname="src/app/__tests__/logger.test.ts" name="logger &gt; captures messages when no error object is provided" time="0.000777962">
+        </testcase>
+        <testcase classname="src/app/__tests__/logger.test.ts" name="logger &gt; captures warning messages" time="0.000730503">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/AsyncImage.test.tsx" timestamp="2025-11-04T23:51:01.326Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.049236084">
+        <testcase classname="src/components/__tests__/AsyncImage.test.tsx" name="AsyncImage &gt; renders skeleton while loading and hides it after load" time="0.029259927">
+        </testcase>
+        <testcase classname="src/components/__tests__/AsyncImage.test.tsx" name="AsyncImage &gt; displays fallback on error" time="0.0097534">
+        </testcase>
+        <testcase classname="src/components/__tests__/AsyncImage.test.tsx" name="AsyncImage &gt; forces reload when version changes" time="0.007949867">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/BackToTop.test.tsx" timestamp="2025-11-04T23:51:01.326Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.128114857">
+        <testcase classname="src/components/__tests__/BackToTop.test.tsx" name="BackToTop &gt; renders hidden button by default" time="0.081338616">
+        </testcase>
+        <testcase classname="src/components/__tests__/BackToTop.test.tsx" name="BackToTop &gt; toggles visibility after scrolling" time="0.023230768">
+        </testcase>
+        <testcase classname="src/components/__tests__/BackToTop.test.tsx" name="BackToTop &gt; scrolls smoothly to top when clicked" time="0.021259176">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/DashboardStories.test.tsx" timestamp="2025-11-04T23:51:01.327Z" hostname="cursor" tests="4" failures="0" errors="0" skipped="0" time="0.841013733">
+        <testcase classname="src/components/__tests__/DashboardStories.test.tsx" name="DashboardStories &gt; opens a story and allows navigation via buttons" time="0.548916967">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/components/__tests__/DashboardStories.test.tsx" name="DashboardStories &gt; auto-advances stories after the progress completes" time="0.098864865">
+        </testcase>
+        <testcase classname="src/components/__tests__/DashboardStories.test.tsx" name="DashboardStories &gt; responds to keyboard shortcuts" time="0.18134636">
+        </testcase>
+        <testcase classname="src/components/__tests__/DashboardStories.test.tsx" name="DashboardStories &gt; omits the stories heading when there are no stories" time="0.009494244">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/LoadingState.test.tsx" timestamp="2025-11-04T23:51:01.327Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.160271406">
+        <testcase classname="src/components/__tests__/LoadingState.test.tsx" name="LoadingState &gt; renders an accessible busy status with page landmarks" time="0.157975166">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/MobileBottomNav.test.tsx" timestamp="2025-11-04T23:51:01.327Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.088884685">
+        <testcase classname="src/components/__tests__/MobileBottomNav.test.tsx" name="MobileBottomNav &gt; does not render on auth pages" time="0.012746111">
+        </testcase>
+        <testcase classname="src/components/__tests__/MobileBottomNav.test.tsx" name="MobileBottomNav &gt; renders links for main sections" time="0.073742327">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/Navbar.test.tsx" timestamp="2025-11-04T23:51:01.327Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.644396669">
+        <testcase classname="src/components/__tests__/Navbar.test.tsx" name="Navbar &gt; traps focus within the mobile drawer and closes on Escape" time="0.45871674">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/components/__tests__/Navbar.test.tsx" name="Navbar &gt; closes the drawer when navigating to another route" time="0.183288807">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/NotificationsBell.test.tsx" timestamp="2025-11-04T23:51:01.327Z" hostname="cursor" tests="5" failures="0" errors="0" skipped="0" time="1.055991972">
+        <testcase classname="src/components/__tests__/NotificationsBell.test.tsx" name="NotificationsBell &gt; renders an error message and disables bulk actions when loading fails" time="0.463254437">
+        </testcase>
+        <testcase classname="src/components/__tests__/NotificationsBell.test.tsx" name="NotificationsBell &gt; retries fetching notifications when requested" time="0.171644252">
+        </testcase>
+        <testcase classname="src/components/__tests__/NotificationsBell.test.tsx" name="NotificationsBell &gt; renders pagination controls and requests more notifications" time="0.17435419">
+        </testcase>
+        <testcase classname="src/components/__tests__/NotificationsBell.test.tsx" name="NotificationsBell &gt; disables the pagination button while loading more" time="0.189943994">
+        </testcase>
+        <testcase classname="src/components/__tests__/NotificationsBell.test.tsx" name="NotificationsBell &gt; surfaces pagination errors to the user" time="0.054310657">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/__tests__/WeatherWidget.test.tsx" timestamp="2025-11-04T23:51:01.328Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.043336118">
+        <testcase classname="src/components/__tests__/WeatherWidget.test.tsx" name="WeatherWidget &gt; renders the current weather with tooltip details" time="0.032891708">
+        </testcase>
+        <testcase classname="src/components/__tests__/WeatherWidget.test.tsx" name="WeatherWidget &gt; disables icon animation when reduced motion is requested" time="0.003233364">
+        </testcase>
+        <testcase classname="src/components/__tests__/WeatherWidget.test.tsx" name="WeatherWidget &gt; renders nothing when weather data is unavailable" time="0.001640742">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/contexts/__tests__/AuthContext.mfa.test.tsx" timestamp="2025-11-04T23:51:01.328Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.235982697">
+        <testcase classname="src/contexts/__tests__/AuthContext.mfa.test.tsx" name="AuthProvider MFA state machine &gt; surfaces login MFA challenges and clears them after successful verification" time="0.090949014">
+        </testcase>
+        <testcase classname="src/contexts/__tests__/AuthContext.mfa.test.tsx" name="AuthProvider MFA state machine &gt; provides step-up challenges and resets state on verification" time="0.077790715">
+        </testcase>
+        <testcase classname="src/contexts/__tests__/AuthContext.mfa.test.tsx" name="AuthProvider MFA state machine &gt; surfaces verification errors when the wrong OTP is provided" time="0.064274738">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/contexts/__tests__/AuthContext.test.tsx" timestamp="2025-11-04T23:51:01.328Z" hostname="cursor" tests="4" failures="0" errors="0" skipped="0" time="0.238478128">
+        <testcase classname="src/contexts/__tests__/AuthContext.test.tsx" name="AuthProvider caching &gt; stores the current user in the query cache and local storage" time="0.065396151">
+        </testcase>
+        <testcase classname="src/contexts/__tests__/AuthContext.test.tsx" name="AuthProvider caching &gt; removes cached profile information on logout" time="0.056889334">
+        </testcase>
+        <testcase classname="src/contexts/__tests__/AuthContext.test.tsx" name="AuthProvider caching &gt; synchronizes cached profile state when storage changes" time="0.056532851">
+        </testcase>
+        <testcase classname="src/contexts/__tests__/AuthContext.test.tsx" name="AuthProvider caching &gt; discards tampered cached envelopes" time="0.057113284">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/hooks/__tests__/useFocusTrap.test.tsx" timestamp="2025-11-04T23:51:01.329Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.28527539">
+        <testcase classname="src/hooks/__tests__/useFocusTrap.test.tsx" name="useFocusTrap &gt; focuses the initial element and restores focus on close" time="0.253649603">
+        </testcase>
+        <testcase classname="src/hooks/__tests__/useFocusTrap.test.tsx" name="useFocusTrap &gt; invokes onDeactivate when trap deactivates" time="0.028164511">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/hooks/__tests__/useMediaQuery.test.tsx" timestamp="2025-11-04T23:51:01.329Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.014596589">
+        <testcase classname="src/hooks/__tests__/useMediaQuery.test.tsx" name="useMediaQuery &gt; returns the current match result" time="0.009715169">
+        </testcase>
+        <testcase classname="src/hooks/__tests__/useMediaQuery.test.tsx" name="useMediaQuery &gt; updates when the media query changes" time="0.002511741">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/hooks/__tests__/useNowPlaying.test.tsx" timestamp="2025-11-04T23:51:01.329Z" hostname="cursor" tests="5" failures="0" errors="0" skipped="0" time="0.183765808">
+        <testcase classname="src/hooks/__tests__/useNowPlaying.test.tsx" name="fetchNowPlaying &gt; normalizes a playing track" time="0.00354142">
+        </testcase>
+        <testcase classname="src/hooks/__tests__/useNowPlaying.test.tsx" name="fetchNowPlaying &gt; returns null for 204 responses" time="0.00046467">
+        </testcase>
+        <testcase classname="src/hooks/__tests__/useNowPlaying.test.tsx" name="fetchNowPlaying &gt; records rate limit window on 429 errors" time="0.001578379">
+        </testcase>
+        <testcase classname="src/hooks/__tests__/useNowPlaying.test.tsx" name="useNowPlaying &gt; exposes paused track data and stores it in cache" time="0.070486078">
+        </testcase>
+        <testcase classname="src/hooks/__tests__/useNowPlaying.test.tsx" name="useNowPlaying &gt; falls back to cached value before network resolves" time="0.104972246">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/hooks/__tests__/useScrollRestoration.test.tsx" timestamp="2025-11-04T23:51:01.329Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.107089063">
+        <testcase classname="src/hooks/__tests__/useScrollRestoration.test.tsx" name="useScrollRestoration &gt; marks and restores scroll position around navigation" time="0.104772603">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/ForgotPassword.test.tsx" timestamp="2025-11-04T23:51:01.330Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.914176084">
+        <testcase classname="src/pages/__tests__/ForgotPassword.test.tsx" name="ForgotPassword page &gt; shows validation message for malformed email" time="0.393776378">
+        </testcase>
+        <testcase classname="src/pages/__tests__/ForgotPassword.test.tsx" name="ForgotPassword page &gt; confirms submission and starts cooldown" time="0.345912341">
+        </testcase>
+        <testcase classname="src/pages/__tests__/ForgotPassword.test.tsx" name="ForgotPassword page &gt; is accessible for assistive technologies" time="0.172058191">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Login.test.tsx" timestamp="2025-11-04T23:51:01.330Z" hostname="cursor" tests="7" failures="0" errors="0" skipped="0" time="3.919845055">
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; blocks submission for invalid email" time="0.657979535">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; submits credentials and redirects on success" time="0.943690025">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; returns server errors to the user" time="0.419143286">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; shows lockout messaging with retry information" time="0.341973707">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; transitions to MFA verification when additional challenges are required" time="0.582288587">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; displays errors for invalid OTP attempts and allows retry" time="0.691491104">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Login.test.tsx" name="Login page &gt; meets basic accessibility requirements" time="0.280655764">
+            <system-err>
+An update to AuthProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to AuthProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/News.performance.test.tsx" timestamp="2025-11-04T23:51:01.330Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.12033486">
+        <testcase classname="src/pages/__tests__/News.performance.test.tsx" name="News page feed rendering &gt; renders a large news feed without blur in light mode" time="0.065283352">
+        </testcase>
+        <testcase classname="src/pages/__tests__/News.performance.test.tsx" name="News page feed rendering &gt; renders a large news feed without blur in dark mode" time="0.05271819">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Profile.nowPlaying.test.tsx" timestamp="2025-11-04T23:51:01.331Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.128383014">
+        <testcase classname="src/pages/__tests__/Profile.nowPlaying.test.tsx" name="NowPlayingCard &gt; matches snapshot when playing" time="0.030950585">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Profile.nowPlaying.test.tsx" name="NowPlayingCard &gt; matches snapshot when paused" time="0.010329612">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Profile.nowPlaying.test.tsx" name="NowPlayingCard &gt; reflects updated progress when data changes" time="0.084761088">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Register.test.tsx" timestamp="2025-11-04T23:51:01.331Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="2.7924898">
+        <testcase classname="src/pages/__tests__/Register.test.tsx" name="Register page &gt; surfaces API error messages" time="1.436590822">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Register.test.tsx" name="Register page &gt; sends registration payload and navigates to login" time="0.934409264">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Register.test.tsx" name="Register page &gt; passes automated accessibility checks" time="0.418391538">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/ResetPassword.test.tsx" timestamp="2025-11-04T23:51:01.331Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="1.3189226">
+        <testcase classname="src/pages/__tests__/ResetPassword.test.tsx" name="ResetPassword page &gt; propagates API errors to the user" time="0.789596242">
+        </testcase>
+        <testcase classname="src/pages/__tests__/ResetPassword.test.tsx" name="ResetPassword page &gt; submits the new password and shows success state" time="0.526963994">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Schedule.translations.test.tsx" timestamp="2025-11-04T23:51:01.331Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.310593123">
+        <testcase classname="src/pages/__tests__/Schedule.translations.test.tsx" name="Schedule translations &gt; renders English weekday headers and lesson labels" time="0.308168134">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Settings.media.test.tsx" timestamp="2025-11-04T23:51:01.331Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="1.373200191">
+        <testcase classname="src/pages/__tests__/Settings.media.test.tsx" name="Settings media actions &gt; uploads avatar and refreshes the profile" time="0.573060814">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.media.test.tsx" name="Settings media actions &gt; shows an error when avatar upload fails" time="0.402851567">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.media.test.tsx" name="Settings media actions &gt; uploads cover and updates preview" time="0.394884045">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Settings.notifications.test.tsx" timestamp="2025-11-04T23:51:01.332Z" hostname="cursor" tests="7" failures="0" errors="0" skipped="0" time="0.145667223">
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; enables notifications when subscription is ensured" time="0.022773423">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; disables notifications and removes subscription" time="0.056532339">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; updates topics when toggles change" time="0.054361746">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; persists topic selection locally when notifications are disabled" time="0.00217251">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; notifies user when permission is denied" time="0.003233262">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; asks user to confirm permission prompt when subscription is unavailable" time="0.002042924">
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.notifications.test.tsx" name="usePushPreferences notifications flow &gt; informs user when subscription cannot be created despite granted permission" time="0.001936083">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Settings.sessions.test.tsx" timestamp="2025-11-04T23:51:01.332Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.947190353">
+        <testcase classname="src/pages/__tests__/Settings.sessions.test.tsx" name="Settings sessions panel &gt; lists sessions and revokes a secondary session" time="0.94487264">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/__tests__/Settings.totp.test.tsx" timestamp="2025-11-04T23:51:01.332Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="2.751161728">
+        <testcase classname="src/pages/__tests__/Settings.totp.test.tsx" name="Settings TOTP enrollment &gt; starts and completes a new TOTP enrollment" time="1.639190579">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/__tests__/Settings.totp.test.tsx" name="Settings TOTP enrollment &gt; surfaces server errors when confirmation fails" time="1.108389668">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/push/__tests__/notification-helpers.test.ts" timestamp="2025-11-04T23:51:01.333Z" hostname="cursor" tests="6" failures="0" errors="0" skipped="0" time="0.008778368">
+        <testcase classname="src/push/__tests__/notification-helpers.test.ts" name="parsePushEventData &gt; returns empty payload when data is missing" time="0.001378187">
+        </testcase>
+        <testcase classname="src/push/__tests__/notification-helpers.test.ts" name="parsePushEventData &gt; parses JSON payloads" time="0.000400821">
+        </testcase>
+        <testcase classname="src/push/__tests__/notification-helpers.test.ts" name="parsePushEventData &gt; falls back to text body when JSON parsing fails" time="0.000282738">
+        </testcase>
+        <testcase classname="src/push/__tests__/notification-helpers.test.ts" name="buildNotificationDetails &gt; applies defaults for title and icon" time="0.002294572">
+        </testcase>
+        <testcase classname="src/push/__tests__/notification-helpers.test.ts" name="buildNotificationDetails &gt; maps payload data and returns payload type" time="0.000941073">
+        </testcase>
+        <testcase classname="src/push/__tests__/notification-helpers.test.ts" name="buildNotificationDetails &gt; normalizes actions and collects action URLs" time="0.000664951">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/push/__tests__/topicsPersistence.test.ts" timestamp="2025-11-04T23:51:01.333Z" hostname="cursor" tests="8" failures="0" errors="0" skipped="0" time="0.006599625">
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; returns undefined when nothing is stored" time="0.000898125">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; reads legacy shared topics" time="0.000734982">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; stores and reads topics for the active user" time="0.000787184">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; keeps selections isolated between different users" time="0.000501511">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; removes only the active user&apos;s topics when cleared" time="0.00038253">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; reads stored topics for a specific user even when none is active" time="0.000269545">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; stores shared topics when user is unknown" time="0.000216724">
+        </testcase>
+        <testcase classname="src/push/__tests__/topicsPersistence.test.ts" name="push topic persistence &gt; migrates legacy shared topics when saving for a user" time="0.00037347">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/push/__tests__/unsubscribePush.test.ts" timestamp="2025-11-04T23:51:01.334Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.029973233">
+        <testcase classname="src/push/__tests__/unsubscribePush.test.ts" name="unsubscribePush &gt; resolves when the service worker never becomes ready" time="0.026020006">
+            <system-err>
+Service worker registration failed TypeError: navigator.serviceWorker.register is not a function
+    at registerServiceWorker (/workspace/root/frontend/src/push/register-sw.ts:35:56)
+    at resolveServiceWorkerRegistration (/workspace/root/frontend/src/push/subscribe.ts:424:30)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.unsubscribePush (/workspace/root/frontend/src/push/subscribe.ts:625:24)
+    at /workspace/root/frontend/src/push/__tests__/unsubscribePush.test.ts:46:20
+    at file:///workspace/root/frontend/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///workspace/root/frontend/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///workspace/root/frontend/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///workspace/root/frontend/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///workspace/root/frontend/node_modules/@vitest/runner/dist/index.js:1262:5)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/push/__tests__/unsubscribePush.test.ts" name="unsubscribePush &gt; keeps stored topics when preserveTopics is requested" time="0.001697632">
+            <system-err>
+Service worker registration failed TypeError: navigator.serviceWorker.register is not a function
+    at registerServiceWorker (/workspace/root/frontend/src/push/register-sw.ts:35:56)
+    at resolveServiceWorkerRegistration (/workspace/root/frontend/src/push/subscribe.ts:424:30)
+    at Module.unsubscribePush (/workspace/root/frontend/src/push/subscribe.ts:625:24)
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/components/EventDetail.helpers.test.ts" timestamp="2025-11-04T23:51:01.334Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.004670155">
+        <testcase classname="src/tests/components/EventDetail.helpers.test.ts" name="applyOptimisticFileAction &gt; appends new files during optimistic upload" time="0.001807928">
+        </testcase>
+        <testcase classname="src/tests/components/EventDetail.helpers.test.ts" name="applyOptimisticFileAction &gt; removes files when upload completes" time="0.000351249">
+        </testcase>
+        <testcase classname="src/tests/components/EventDetail.helpers.test.ts" name="isUploadErrorState &gt; narrows upload states to those with an error message" time="0.000291294">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/components/RouteGuards.test.tsx" timestamp="2025-11-04T23:51:01.334Z" hostname="cursor" tests="6" failures="0" errors="0" skipped="0" time="0.292680806">
+        <testcase classname="src/tests/components/RouteGuards.test.tsx" name="PrivateRoute &gt; shows an accessible loading fallback while authentication is resolving" time="0.189963862">
+        </testcase>
+        <testcase classname="src/tests/components/RouteGuards.test.tsx" name="PrivateRoute &gt; renders protected content when the user is authenticated" time="0.001835709">
+        </testcase>
+        <testcase classname="src/tests/components/RouteGuards.test.tsx" name="PrivateRoute &gt; redirects unauthenticated users to the login page" time="0.00583909">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/components/RouteGuards.test.tsx" name="AdminRoute &gt; shows the loading indicator while the admin state is resolving" time="0.088583865">
+        </testcase>
+        <testcase classname="src/tests/components/RouteGuards.test.tsx" name="AdminRoute &gt; redirects non-admin users to the dashboard" time="0.002740951">
+        </testcase>
+        <testcase classname="src/tests/components/RouteGuards.test.tsx" name="AdminRoute &gt; renders children for authenticated administrators" time="0.00126933">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/pages/AdminNotifications.test.tsx" timestamp="2025-11-04T23:51:01.335Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="1.012779203">
+        <testcase classname="src/tests/pages/AdminNotifications.test.tsx" name="AdminNotifications page &gt; lists dead-letter jobs and supports selection" time="0.421578689">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/pages/AdminNotifications.test.tsx" name="AdminNotifications page &gt; retries and purges selected jobs" time="0.552194589">
+        </testcase>
+        <testcase classname="src/tests/pages/AdminNotifications.test.tsx" name="AdminNotifications page &gt; shows an error when the queue cannot be loaded" time="0.036547742">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/pages/EventsCache.test.tsx" timestamp="2025-11-04T23:51:01.335Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.296227803">
+        <testcase classname="src/tests/pages/EventsCache.test.tsx" name="Events caching &gt; restores cached data when a 304 response is received after switching tabs" time="0.293942243">
+            <system-out>
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+            </system-out>
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/pages/EventsPagination.test.tsx" timestamp="2025-11-04T23:51:01.335Z" hostname="cursor" tests="1" failures="0" errors="0" skipped="0" time="0.266523505">
+        <testcase classname="src/tests/pages/EventsPagination.test.tsx" name="Events pagination UI &gt; loads additional pages when clicking load more" time="0.264251131">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/utils/__tests__/avatar.test.ts" timestamp="2025-11-04T23:51:01.336Z" hostname="cursor" tests="3" failures="0" errors="0" skipped="0" time="0.005132803">
+        <testcase classname="src/utils/__tests__/avatar.test.ts" name="buildAvatarUrl &gt; resolves relative avatar URLs against the dev origin" time="0.00181622">
+        </testcase>
+        <testcase classname="src/utils/__tests__/avatar.test.ts" name="buildAvatarUrl &gt; resolves relative avatar URLs against the production backend origin" time="0.000846017">
+        </testcase>
+        <testcase classname="src/utils/__tests__/avatar.test.ts" name="buildAvatarUrl &gt; returns absolute avatar URLs as-is" time="0.000151455">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/utils/__tests__/media.test.ts" timestamp="2025-11-04T23:51:01.336Z" hostname="cursor" tests="11" failures="0" errors="0" skipped="0" time="0.014992596">
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; returns empty string for empty input" time="0.001867218">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; keeps absolute URLs untouched" time="0.000867851">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; prefixes backend origin for media paths" time="0.000855748">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; downgrades to relative path in dev when origin is missing" time="0.000737377">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; throws in production when origin is missing" time="0.001225814">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; allows overriding origin explicitly" time="0.000739486">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="resolveMediaUrl &gt; keeps unrelated relative paths untouched" time="0.000797877">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="addVersionParam &gt; appends version parameter" time="0.001852646">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="addVersionParam &gt; updates existing parameter" time="0.001504568">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="addVersionParam &gt; handles relative URLs" time="0.001122593">
+        </testcase>
+        <testcase classname="src/utils/__tests__/media.test.ts" name="addVersionParam &gt; returns original URL when version is not provided" time="0.000703857">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/components/ui/progress-bar.test.tsx" timestamp="2025-11-04T23:51:01.337Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.101342822">
+        <testcase classname="src/tests/components/ui/progress-bar.test.tsx" name="ProgressBar &gt; announces numeric values with the provided aria-label" time="0.0720358">
+        </testcase>
+        <testcase classname="src/tests/components/ui/progress-bar.test.tsx" name="ProgressBar &gt; omits aria-valuenow when no numeric value is provided" time="0.026630025">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/components/ui/tooltip.test.tsx" timestamp="2025-11-04T23:51:01.337Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.126069221">
+        <testcase classname="src/tests/components/ui/tooltip.test.tsx" name="Tooltip &gt; applies title and describedby when given string content" time="0.107483328">
+        </testcase>
+        <testcase classname="src/tests/components/ui/tooltip.test.tsx" name="Tooltip &gt; renders sr-only tooltip content when React nodes are provided" time="0.015950472">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/pages/News/NewsFeed.test.tsx" timestamp="2025-11-04T23:51:01.337Z" hostname="cursor" tests="2" failures="0" errors="0" skipped="0" time="0.595841491">
+        <testcase classname="src/tests/pages/News/NewsFeed.test.tsx" name="News page feed integration &gt; persists API responses and revalidates using cached ETags" time="0.519803218">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/pages/News/NewsFeed.test.tsx" name="News page feed integration &gt; hydrates from service worker caches during network failures and clears legacy storage" time="0.073439707">
+        </testcase>
+    </testsuite>
+</testsuites>
