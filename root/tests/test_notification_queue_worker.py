@@ -162,6 +162,13 @@ async def test_notification_queue_records_processing_latency(
     await notification_queue.enqueue_event_notification(5)
 
     await notification_queue.wait_for_all_jobs(timeout=1.0)
+    # Give the worker a moment to record metrics in the finally block
+    # Retry a few times to account for any async timing issues
+    for _ in range(10):
+        count = _metric_value("notification_queue_processing_latency_seconds_count")
+        if count is not None and count >= 1.0:
+            break
+        await asyncio.sleep(0.01)
     await notification_queue.shutdown_notification_queue()
 
     count = _metric_value("notification_queue_processing_latency_seconds_count")
