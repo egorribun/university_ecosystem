@@ -330,7 +330,7 @@ const Events = () => {
           <div
             data-fade
             style={fadeDelayStyle("200ms")}
-            className="relative mb-4 min-h-[45px] rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(0,118,255,0.12),rgba(0,118,255,0))] px-3 py-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[16px] sm:px-4 sm:py-2.5"
+            className="relative mb-4 min-h-[45px] rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(0,118,255,0.12),rgba(0,118,255,0))] px-3 py-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[16px] sm:px-4 sm:py-2.5 lg:max-w-4xl"
             role="tablist"
           >
             <div className="flex flex-wrap items-center gap-2 sm:gap-4">
@@ -365,7 +365,7 @@ const Events = () => {
           <div
             data-fade
             style={fadeDelayStyle("240ms")}
-            className="mb-5 flex flex-wrap items-center gap-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(14,116,144,0.12),rgba(14,116,144,0))] px-4 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[14px] sm:px-5 sm:py-4"
+            className="mb-5 flex flex-wrap items-center gap-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(14,116,144,0.12),rgba(14,116,144,0))] px-4 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[14px] sm:px-5 sm:py-4 lg:max-w-4xl"
           >
             <div className="relative flex-1 min-w-[200px]">
               <SearchIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[color:var(--secondary-text)] pointer-events-none" />
