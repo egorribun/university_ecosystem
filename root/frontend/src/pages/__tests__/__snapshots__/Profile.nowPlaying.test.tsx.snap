@@ -3,66 +3,74 @@
 exports[`NowPlayingCard > matches snapshot when paused 1`] = `
 <a
   aria-label="Open in Spotify: Test Track"
-  class="block w-full no-underline"
+  class="MuiBox-root css-1wokdvp"
   href="https://open.spotify.com/track/play-1"
   rel="noopener noreferrer"
   target="_blank"
 >
   <div
-    class="nowplaying--spotify relative w-full grid grid-cols-[auto_1fr] items-center gap-x-8 gap-y-4 px-8 py-7 rounded-2xl overflow-hidden border border-white/14 dark:border-white/14 border-black/12 dark:border-white/14 backdrop-blur-md bg-glass/80 dark:bg-glass/80 text-page-foreground no-underline"
-    style="opacity: 1; transform: none;"
+    class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation0 nowplaying--spotify css-1wy2kwt-MuiPaper-root"
+    style="--Paper-shadow: none; opacity: 1; transform: none;"
     tabindex="0"
   >
     <div
-      class="relative w-14 h-14 rounded-lg overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.18)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
+      class="MuiBox-root css-spixek"
     >
-      <img
-        alt="Album"
-        class="w-full h-full rounded-lg object-cover scale-[1.012] transition-transform duration-[900ms] ease-[cubic-bezier(.22,.61,.36,1)] hover:scale-[1.02]"
-        decoding="async"
-        loading="lazy"
-        referrerpolicy="no-referrer"
-        src="https://example.com/cover.jpg"
-      />
+      <div
+        class="MuiAvatar-root MuiAvatar-rounded css-abauh4-MuiAvatar-root"
+      >
+        <img
+          alt="Album"
+          class="MuiAvatar-img css-1su80sj-MuiAvatar-img"
+          decoding="async"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          src="https://example.com/cover.jpg"
+        />
+      </div>
     </div>
     <div
       aria-live="polite"
-      class="min-w-0 flex flex-col gap-3"
+      class="MuiBox-root css-wr3v6d"
     >
-      <h3
-        class="np-title text-base font-extrabold leading-[1.2] tracking-[-0.01em] m-0"
+      <p
+        class="MuiTypography-root MuiTypography-body1 np-title css-7yakwh-MuiTypography-root"
       >
         Test Track
-      </h3>
+      </p>
       <p
-        class="np-art text-sm opacity-90 m-0"
+        class="MuiTypography-root MuiTypography-body2 np-art css-3ya38w-MuiTypography-root"
       >
         Tester
       </p>
-      <span
-        aria-hidden="true"
-        class="self-start px-3 py-1 text-xs font-bold uppercase rounded-full bg-glass border border-glass-border text-page-foreground/80 dark:text-page-foreground/80"
-      >
-        Paused
-      </span>
       <div
-        class="flex items-center gap-4 w-full"
+        aria-hidden="true"
+        class="MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-filledDefault css-k6o8te-MuiChip-root"
       >
-        <div
-          class="flex-1 h-1.5 rounded-full bg-white/10 dark:bg-white/10 overflow-hidden"
-        >
-          <div
-            aria-label="Track progress"
-            aria-valuemax="100"
-            aria-valuemin="0"
-            aria-valuenow="16.666666666666664"
-            class="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 transition-all duration-300 ease-out"
-            role="progressbar"
-            style="width: 16.666666666666664%;"
-          />
-        </div>
         <span
-          class="np-time text-xs whitespace-nowrap text-secondary dark:text-secondary"
+          class="MuiChip-label MuiChip-labelSmall css-eccknh-MuiChip-label"
+        >
+          Paused
+        </span>
+      </div>
+      <div
+        class="MuiBox-root css-1gj2vl9"
+      >
+        <span
+          aria-label="Track progress"
+          aria-valuemax="100"
+          aria-valuemin="0"
+          aria-valuenow="17"
+          class="MuiLinearProgress-root MuiLinearProgress-colorPrimary MuiLinearProgress-determinate progress css-3yrdhv-MuiLinearProgress-root"
+          role="progressbar"
+        >
+          <span
+            class="MuiLinearProgress-bar MuiLinearProgress-bar1 MuiLinearProgress-barColorPrimary MuiLinearProgress-bar1Determinate css-l16vtb-MuiLinearProgress-bar1"
+            style="transform: translateX(-83.33333333333334%);"
+          />
+        </span>
+        <span
+          class="MuiTypography-root MuiTypography-caption np-time css-1qfol84-MuiTypography-root"
         >
           0:30
            / 
@@ -77,60 +85,64 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
 exports[`NowPlayingCard > matches snapshot when playing 1`] = `
 <a
   aria-label="Open in Spotify: Test Track"
-  class="block w-full no-underline"
+  class="MuiBox-root css-1wokdvp"
   href="https://open.spotify.com/track/play-1"
   rel="noopener noreferrer"
   target="_blank"
 >
   <div
-    class="nowplaying--spotify relative w-full grid grid-cols-[auto_1fr] items-center gap-x-8 gap-y-4 px-8 py-7 rounded-2xl overflow-hidden border border-white/14 dark:border-white/14 border-black/12 dark:border-white/14 backdrop-blur-md bg-glass/80 dark:bg-glass/80 text-page-foreground no-underline"
-    style="opacity: 1; transform: none;"
+    class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation0 nowplaying--spotify css-1wy2kwt-MuiPaper-root"
+    style="--Paper-shadow: none; opacity: 1; transform: none;"
     tabindex="0"
   >
     <div
-      class="relative w-14 h-14 rounded-lg overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.18)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
+      class="MuiBox-root css-spixek"
     >
-      <img
-        alt="Album"
-        class="w-full h-full rounded-lg object-cover scale-[1.012] transition-transform duration-[900ms] ease-[cubic-bezier(.22,.61,.36,1)] hover:scale-[1.02]"
-        decoding="async"
-        loading="lazy"
-        referrerpolicy="no-referrer"
-        src="https://example.com/cover.jpg"
-      />
+      <div
+        class="MuiAvatar-root MuiAvatar-rounded css-abauh4-MuiAvatar-root"
+      >
+        <img
+          alt="Album"
+          class="MuiAvatar-img css-1su80sj-MuiAvatar-img"
+          decoding="async"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          src="https://example.com/cover.jpg"
+        />
+      </div>
     </div>
     <div
       aria-live="polite"
-      class="min-w-0 flex flex-col gap-3"
+      class="MuiBox-root css-wr3v6d"
     >
-      <h3
-        class="np-title text-base font-extrabold leading-[1.2] tracking-[-0.01em] m-0"
+      <p
+        class="MuiTypography-root MuiTypography-body1 np-title css-7yakwh-MuiTypography-root"
       >
         Test Track
-      </h3>
+      </p>
       <p
-        class="np-art text-sm opacity-90 m-0"
+        class="MuiTypography-root MuiTypography-body2 np-art css-3ya38w-MuiTypography-root"
       >
         Tester
       </p>
       <div
-        class="flex items-center gap-4 w-full"
+        class="MuiBox-root css-1gj2vl9"
       >
-        <div
-          class="flex-1 h-1.5 rounded-full bg-white/10 dark:bg-white/10 overflow-hidden"
-        >
-          <div
-            aria-label="Track progress"
-            aria-valuemax="100"
-            aria-valuemin="0"
-            aria-valuenow="16.666666666666664"
-            class="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 transition-all duration-300 ease-out"
-            role="progressbar"
-            style="width: 16.666666666666664%;"
-          />
-        </div>
         <span
-          class="np-time text-xs whitespace-nowrap text-secondary dark:text-secondary"
+          aria-label="Track progress"
+          aria-valuemax="100"
+          aria-valuemin="0"
+          aria-valuenow="17"
+          class="MuiLinearProgress-root MuiLinearProgress-colorPrimary MuiLinearProgress-determinate progress css-3yrdhv-MuiLinearProgress-root"
+          role="progressbar"
+        >
+          <span
+            class="MuiLinearProgress-bar MuiLinearProgress-bar1 MuiLinearProgress-barColorPrimary MuiLinearProgress-bar1Determinate css-l16vtb-MuiLinearProgress-bar1"
+            style="transform: translateX(-83.33333333333334%);"
+          />
+        </span>
+        <span
+          class="MuiTypography-root MuiTypography-caption np-time css-1qfol84-MuiTypography-root"
         >
           0:30
            / 
