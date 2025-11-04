@@ -309,15 +309,11 @@ const EventDetail = () => {
   const BackButton = (
     <Button
       onClick={handleBack}
-      leadingIcon={<ArrowBackIcon />}
+      leadingIcon={<ArrowBackIcon className="text-[0.95rem]" />}
+      variant="outline"
+      size="sm"
       className={cn(
-        "mb-6 w-full font-bold sm:w-auto",
-        "bg-gradient-to-r from-[#1d5fff] via-[#65b2ff] to-[#1d5fff] text-white",
-        "shadow-[0_2px_18px_rgba(25,118,210,0.22),0_1.5px_8px_rgba(0,0,0,0.01)]",
-        "transition-all duration-200",
-        "hover:from-[#1976d2] hover:via-[#449aff] hover:to-[#1976d2] hover:scale-105 hover:shadow-[0_6px_28px_rgba(29,95,255,0.25),0_2.5px_10px_rgba(0,0,0,0.02)]",
-        "active:scale-[0.98]",
-        "md:sticky md:top-3 md:z-[99]"
+        "mb-6 w-fit justify-start border-white/20 text-[0.9rem] px-3 py-1.5 h-9 hover:bg-white/10 transition-all duration-200"
       )}
     >
       {t("common:buttons.back")}
@@ -327,7 +323,7 @@ const EventDetail = () => {
   if (isMobile) {
     return (
       <Layout>
-        <div className="w-full min-h-[calc(100vh-56px)] bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+        <div className="w-full max-w-[1200px] mx-auto min-h-[calc(100vh-56px)] bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
           {BackButton}
           <div className="space-y-6">
             <h1 className="text-2xl font-extrabold text-[color:var(--page-text)] sm:text-3xl">
@@ -367,7 +363,7 @@ const EventDetail = () => {
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-ue-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface aspect-[16/9]">
+              <div className="relative w-full overflow-hidden rounded-ue-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface aspect-[16/9] max-h-[300px]">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -551,12 +547,12 @@ const EventDetail = () => {
 
   return (
     <Layout>
-      <div className="flex w-full min-h-[calc(100vh-56px)] flex-col bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+      <div className="flex w-full max-w-[1200px] mx-auto min-h-[calc(100vh-56px)] flex-col bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
         {BackButton}
         <div className="flex flex-row gap-8 items-start">
-          <div className="w-[45%] space-y-6">
+          <div className="w-[45%] max-w-[480px] space-y-6">
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-[2rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface-strong aspect-[21/9]">
+              <div className="relative w-full overflow-hidden rounded-[2rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface-strong aspect-[16/9] max-h-[400px] backdrop-blur-sm">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -566,13 +562,13 @@ const EventDetail = () => {
                 />
               </div>
             )}
-            <div className="h-px bg-[color:var(--glass-border)]" />
+            <div className="h-px bg-[color:var(--glass-border)] opacity-50" />
             <div>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-3 flex items-center gap-2">
                 <h2
                   ref={aboutSectionRef}
                   tabIndex={-1}
-                  className="text-2xl font-bold text-[color:var(--page-text)]"
+                  className="text-2xl font-bold text-[color:var(--page-text)] tracking-tight"
                 >
                   {t("events:detail.sections.about.title")}
                 </h2>
@@ -641,13 +637,13 @@ const EventDetail = () => {
             </div>
           </div>
 
-          <div className="flex-1 min-w-0 space-y-4">
-            <h1 className="text-4xl font-extrabold text-[color:var(--page-text)] sm:text-5xl">
+          <div className="flex-1 min-w-0 space-y-5">
+            <h1 className="text-4xl font-extrabold text-[color:var(--page-text)] sm:text-5xl leading-tight tracking-tight">
               {event.title}
             </h1>
             <div className="flex flex-wrap items-center gap-3">
               {event.event_type && (
-                <Badge size="md" className="bg-[color:var(--nav-link)] text-white">
+                <Badge size="md" className="bg-[color:var(--nav-link)] text-white shadow-sm">
                   {event.event_type}
                 </Badge>
               )}
@@ -659,11 +655,11 @@ const EventDetail = () => {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
-            <div className="h-px bg-[color:var(--glass-border)]" />
+            <div className="h-px bg-[color:var(--glass-border)] opacity-50" />
             <p className="whitespace-pre-line text-xl font-semibold leading-relaxed text-[color:var(--page-text)]">
               {event.description}
             </p>
-            <div className="h-px bg-[color:var(--glass-border)]" />
+            <div className="h-px bg-[color:var(--glass-border)] opacity-50" />
             <p className="text-base font-semibold text-[color:var(--page-text)]">
               {t("events:detail.fields.location")}: <strong>{event.location}</strong>
             </p>
@@ -716,8 +712,8 @@ const EventDetail = () => {
 
             {optimisticFiles.length > 0 ? (
               <div>
-                <div className="my-3 h-px bg-[color:var(--glass-border)]" />
-                <h3 className="mb-2 text-base font-semibold text-[color:var(--page-text)]">
+                <div className="my-4 h-px bg-[color:var(--glass-border)] opacity-50" />
+                <h3 className="mb-3 text-lg font-semibold text-[color:var(--page-text)] tracking-tight">
                   {t("events:detail.sections.files.title")}
                 </h3>
                 <div className="space-y-2">
