@@ -29,14 +29,14 @@ type SnackState = {
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const [prefersReduce, setPrefersReduce] = useState(() =>
-    typeof window !== "undefined"
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false
   )
   const reduced = useReducedMotion()
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
     const handler = (e: MediaQueryListEvent) => setPrefersReduce(e.matches)
     setPrefersReduce(mediaQuery.matches)
@@ -233,20 +233,24 @@ export default function Profile() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
   const [reduceMotion, setReduceMotion] = useState(() =>
-    typeof window !== "undefined"
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false
   )
   const [isTwoCol, setIsTwoCol] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(min-width:1400px)").matches : false
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(min-width:1400px)").matches
+      : false
   )
   const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(max-width:600px)").matches : false
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(max-width:600px)").matches
+      : false
   )
   const reduced = useReducedMotion()
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
     const mediaQueries = [
       { query: window.matchMedia("(prefers-reduced-motion: reduce)"), setter: setReduceMotion },
       { query: window.matchMedia("(min-width:1400px)"), setter: setIsTwoCol },
