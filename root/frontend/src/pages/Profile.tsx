@@ -1100,8 +1100,17 @@ export default function Profile() {
       {/* QR Code Modal */}
       {qrOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          role="button"
+          tabIndex={0}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer"
           onClick={closeQrModal}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              closeQrModal()
+            }
+          }}
+          aria-label="Close modal"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -1164,8 +1173,17 @@ export default function Profile() {
       {/* Achievement Modal */}
       {achOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          role="button"
+          tabIndex={0}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer"
           onClick={() => setAchOpen(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setAchOpen(null)
+            }
+          }}
+          aria-label="Close modal"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
