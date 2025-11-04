@@ -1455,10 +1455,27 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(140% 120% at -15% -25%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12) 45%, rgba(255, 255, 255, 0) 70%),
-    radial-gradient(160% 140% at 115% 125%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0) 75%),
+    radial-gradient(
+      140% 120% at -15% -25%,
+      rgba(255, 255, 255, 0.32),
+      rgba(255, 255, 255, 0.12) 45%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    radial-gradient(
+      160% 140% at 115% 125%,
+      rgba(255, 255, 255, 0.24),
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0) 75%
+    ),
     radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.14) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 75%, rgba(255, 255, 255, 0.02) 100%);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 255, 255, 0.14) 25%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.04) 75%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
   border: 1px solid rgba(255, 255, 255, 0.52);
   -webkit-backdrop-filter: saturate(200%) brightness(1.08);
   backdrop-filter: saturate(200%) brightness(1.08);
@@ -1478,10 +1495,27 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 body.dark .map-head {
   background:
-    radial-gradient(140% 120% at -15% -25%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1) 45%, rgba(255, 255, 255, 0) 70%),
-    radial-gradient(160% 140% at 115% 125%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0) 75%),
+    radial-gradient(
+      140% 120% at -15% -25%,
+      rgba(255, 255, 255, 0.24),
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    radial-gradient(
+      160% 140% at 115% 125%,
+      rgba(255, 255, 255, 0.18),
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0) 75%
+    ),
     radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.1) 25%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0.03) 75%, rgba(255, 255, 255, 0.015) 100%);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.1) 25%,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0.03) 75%,
+      rgba(255, 255, 255, 0.015) 100%
+    );
   border: 1px solid rgba(255, 255, 255, 0.42);
   -webkit-backdrop-filter: saturate(200%) brightness(1.12);
   backdrop-filter: saturate(200%) brightness(1.12);
@@ -1511,8 +1545,18 @@ body.dark .map-head {
       rgba(255, 255, 255, 0.02) 85%,
       transparent 100%
     ),
-    radial-gradient(90% 160% at -5% -20%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.15) 40%, transparent 70%),
-    radial-gradient(70% 120% at 105% 5%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.1) 45%, transparent 70%),
+    radial-gradient(
+      90% 160% at -5% -20%,
+      rgba(255, 255, 255, 0.35),
+      rgba(255, 255, 255, 0.15) 40%,
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 120% at 105% 5%,
+      rgba(255, 255, 255, 0.25),
+      rgba(255, 255, 255, 0.1) 45%,
+      transparent 70%
+    ),
     radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.2), transparent 50%);
   mix-blend-mode: overlay;
   opacity: 0.85;
@@ -1529,8 +1573,18 @@ body.dark .map-head::before {
       rgba(255, 255, 255, 0.015) 85%,
       transparent 100%
     ),
-    radial-gradient(90% 160% at -5% -20%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12) 40%, transparent 70%),
-    radial-gradient(70% 120% at 105% 5%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08) 45%, transparent 70%),
+    radial-gradient(
+      90% 160% at -5% -20%,
+      rgba(255, 255, 255, 0.28),
+      rgba(255, 255, 255, 0.12) 40%,
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 120% at 105% 5%,
+      rgba(255, 255, 255, 0.2),
+      rgba(255, 255, 255, 0.08) 45%,
+      transparent 70%
+    ),
     radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.16), transparent 50%);
   opacity: 0.75;
 }
