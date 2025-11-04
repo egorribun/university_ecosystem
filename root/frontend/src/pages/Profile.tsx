@@ -179,9 +179,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           <h3 className="np-title text-base font-extrabold leading-[1.2] tracking-[-0.01em] text-white">
             {data.track_name || "—"}
           </h3>
-          <p className="np-art text-sm opacity-90 text-[#b3b3b3]">
-            {data.artists.join(", ")}
-          </p>
+          <p className="np-art text-sm opacity-90 text-[#b3b3b3]">{data.artists.join(", ")}</p>
           {!data.is_playing && (
             <span
               className="self-start px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-white/10 text-white/80 border border-white/20"
@@ -286,7 +284,13 @@ const ProfileAccordion = ({
   isDark: boolean
   user: User
   t: any
-  achievementsList: Array<{ key: string; name: string; issuer?: string; date?: string; url?: string }>
+  achievementsList: Array<{
+    key: string
+    name: string
+    issuer?: string
+    date?: string
+    url?: string
+  }>
   setAchOpen: (ach: { name: string; issuer?: string; date?: string; url?: string } | null) => void
   isTest: boolean
   reduced: boolean
@@ -310,7 +314,9 @@ const ProfileAccordion = ({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-9 py-6 border-b border-black/8 dark:border-white/10 transition-colors duration-200 hover:bg-surface-accent/50"
       >
-        <h3 className="font-extrabold text-page-foreground">{t("profile:sections.profileDetails")}</h3>
+        <h3 className="font-extrabold text-page-foreground">
+          {t("profile:sections.profileDetails")}
+        </h3>
         <ExpandMoreIcon
           className={`text-page-foreground transition-transform duration-300 ${
             expanded ? "rotate-180" : ""
@@ -939,7 +945,10 @@ export default function Profile() {
                       <div className="flex flex-col gap-7 contact-links">
                         <div className="flex flex-row items-center justify-between flex-wrap gap-6">
                           <div className="flex flex-row items-center gap-4 min-w-0 flex-1">
-                            <EmailIcon className="text-[22px] text-nav-link dark:text-[#7fb6e6]" aria-hidden />
+                            <EmailIcon
+                              className="text-[22px] text-nav-link dark:text-[#7fb6e6]"
+                              aria-hidden
+                            />
                             <p className="font-extrabold break-words flex-1 text-page-foreground">
                               <a
                                 href={`mailto:${user!.email}`}
@@ -970,7 +979,10 @@ export default function Profile() {
                         {!!user!.telegram && (
                           <div className="flex flex-row items-center justify-between flex-wrap gap-6">
                             <div className="flex flex-row items-center gap-4 min-w-0 flex-1">
-                              <TelegramIcon className="text-[22px] text-nav-link dark:text-[#7fb6e6]" aria-hidden />
+                              <TelegramIcon
+                                className="text-[22px] text-nav-link dark:text-[#7fb6e6]"
+                                aria-hidden
+                              />
                               <p className="font-extrabold break-words flex-1 text-page-foreground">
                                 <a
                                   href={telegramHref}
