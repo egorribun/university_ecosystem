@@ -249,14 +249,14 @@ export default function MapContent() {
               src={mapSrc}
               title={t("map.iframeTitle")}
               width="100%"
-              height="calc(100% + 35px)"
+              height="calc(100% + 45px)"
               style={{
                 border: 0,
                 position: "absolute",
-                top: "-35px",
+                top: "-45px",
                 left: 0,
                 right: 0,
-                bottom: "-35px",
+                bottom: "-45px",
                 display: "block",
               }}
               allowFullScreen
