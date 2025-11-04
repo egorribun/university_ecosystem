@@ -2306,6 +2306,42 @@ body.dark .chip-gradient {
     box-shadow: 0 0 0 0 rgba(0, 94, 162, 0);
   }
 }
+@keyframes auraPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(255, 255, 255, 0.03);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.02);
+  }
+}
+@keyframes chipHighlight {
+  0% {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  50% {
+    border-color: rgba(255, 255, 255, 0.34);
+  }
+  100% {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+}
+@keyframes onlinePulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
 .cover-drop {
   display: grid;
   place-items: center;

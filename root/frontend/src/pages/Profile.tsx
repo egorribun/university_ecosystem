@@ -9,63 +9,14 @@ import guuLogo from "../assets/guu_logo.png"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
-import {
-  Avatar,
-  Typography,
-  Box,
-  Paper,
-  Stack,
-  CircularProgress,
-  IconButton,
-  Snackbar,
-  Chip,
-  Alert,
-  LinearProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Container,
-  Divider,
-  Fade,
-  Grow,
-} from "@mui/material"
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
-import EmailIcon from "@mui/icons-material/Email"
-import TelegramIcon from "@mui/icons-material/Telegram"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import useMediaQuery from "@mui/material/useMediaQuery"
-import { alpha, useTheme } from "@mui/material/styles"
-import { keyframes } from "@mui/system"
 import { QRCodeSVG } from "qrcode.react"
 import { motion, useReducedMotion } from "framer-motion"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import type { NowPlaying } from "@/types/spotify"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
 
-const auraPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
-  50% { box-shadow: 0 0 0 14px rgba(255,255,255,.03); }
-  100% { box-shadow: 0 0 0 0 rgba(255,255,255,.02); }
-`
-const chipHighlight = keyframes`
-  0% { border-color: rgba(255,255,255,.18); }
-  50% { border-color: rgba(255,255,255,.34); }
-  100% { border-color: rgba(255,255,255,.18); }
-`
-const onlinePulse = keyframes`
-  0% { transform: scale(1); opacity: .6; }
-  70% { transform: scale(1.8); opacity: 0; }
-  100% { transform: scale(1.8); opacity: 0; }
-`
-
-const MotionPaper = motion.create(Paper)
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
 type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
@@ -77,14 +28,19 @@ type SnackState = {
 }
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const theme = useTheme()
-  const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const [prefersReduce, setPrefersReduce] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false
+  )
   const reduced = useReducedMotion()
-  const isDark = theme.palette.mode === "dark"
-  const borderCol = isDark
-    ? alpha(theme.palette.common.white, 0.14)
-    : alpha(theme.palette.common.black, 0.12)
-  const textSecondary = theme.palette.text.secondary
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handler = (e: MediaQueryListEvent) => setPrefersReduce(e.matches)
+    setPrefersReduce(mediaQuery.matches)
+    mediaQuery.addEventListener("change", handler)
+    return () => mediaQuery.removeEventListener("change", handler)
+  }, [])
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
 
@@ -175,8 +131,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const href = data.track_url || "https://open.spotify.com"
 
   return (
-    <Box
-      component="a"
+    <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
@@ -185,11 +140,10 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
           : t("profile:nowPlaying.openSpotify")
       }
-      sx={{ display: "block", textDecoration: "none", width: "100%" }}
+      className="block w-full no-underline"
     >
-      <MotionPaper
-        elevation={0}
-        className="nowplaying--spotify"
+      <motion.div
+        className="nowplaying--spotify relative grid w-full grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 overflow-hidden rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[#121212] px-4 py-3.5 text-white dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
@@ -197,143 +151,117 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         transition={
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
-        sx={{
-          width: "100%",
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          alignItems: "center",
-          columnGap: 2,
-          rowGap: 1,
-          px: 2,
-          py: 1.8,
-          borderRadius: 3,
-          position: "relative",
-          overflow: "hidden",
-          border: `1px solid ${borderCol}`,
-          textDecoration: "none",
-          ["--glass-alpha" as any]: ".018",
-          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-        }}
       >
-        <Box
-          sx={{
-            position: "relative",
-            width: 56,
-            height: 56,
-            borderRadius: 2,
-            overflow: "hidden",
-            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`,
-          }}
-        >
-          <Avatar
+        <div className="relative h-14 w-14 overflow-hidden rounded-lg shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
+          <img
             src={data.album_image_url ?? ""}
-            variant="rounded"
             alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
-            imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
-            sx={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 2,
-              transform: prefersReduce || reduced ? "none" : "scale(1.012)",
-              transition:
-                prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-              "&:hover": prefersReduce || reduced ? undefined : { transform: "scale(1.02)" },
-            }}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={cn(
+              "h-full w-full rounded-lg object-cover",
+              !prefersReduce && !reduced && "transition-transform duration-[900ms] ease-[cubic-bezier(.22,.61,.36,1)] hover:scale-[1.02]",
+              !prefersReduce && !reduced && "scale-[1.012]"
+            )}
           />
-        </Box>
-        <Box
-          sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}
-          aria-live="polite"
-        >
-          <Typography
-            className="np-title"
-            variant="body1"
-            sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}
-          >
+        </div>
+        <div className="flex min-w-0 flex-col gap-1.5" aria-live="polite">
+          <h3 className="np-title text-base font-extrabold leading-tight tracking-[-0.01em] text-white">
             {data.track_name || "—"}
-          </Typography>
-          <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
+          </h3>
+          <p className="np-art text-sm opacity-90 text-[#b3b3b3]">
             {data.artists.join(", ")}
-          </Typography>
+          </p>
           {!data.is_playing && (
-            <Chip
-              size="small"
-              label={t("profile:nowPlaying.paused")}
-              color="default"
-              sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
+            <span
+              className="w-fit rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-[color:var(--secondary-text)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]"
               aria-hidden
-            />
-          )}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-            <LinearProgress
-              className="progress"
-              variant="determinate"
-              value={pct}
-              aria-label={t("profile:nowPlaying.progress")}
-              sx={{ flex: 1, height: 6, borderRadius: 999 }}
-            />
-            <Typography
-              className="np-time"
-              variant="caption"
-              sx={{ color: textSecondary, whiteSpace: "nowrap" }}
             >
+              {t("profile:nowPlaying.paused")}
+            </span>
+          )}
+          <div className="flex w-full items-center gap-2">
+            <div className="flex-1 overflow-hidden rounded-full bg-[#2a2a2a] dark:bg-[#2a2a2a]">
+              <div
+                className="progress h-1.5 rounded-full bg-[#1db954] transition-[width] duration-600 dark:bg-[#1db954]"
+                style={{ width: `${pct}%` }}
+                aria-label={t("profile:nowPlaying.progress")}
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              />
+            </div>
+            <span className="np-time whitespace-nowrap text-xs text-[#b3b3b3]">
               {fmt(progress)} / {fmt(duration)}
-            </Typography>
-          </Box>
-        </Box>
-      </MotionPaper>
-    </Box>
+            </span>
+          </div>
+        </div>
+      </motion.div>
+    </a>
   )
 })
 
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
-  const theme = useTheme()
-  const isDark = theme.palette.mode === "dark"
   if (value == null || value === "") return null
   return (
-    <Box
-      className="glass"
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "14px 1fr",
-        alignItems: "center",
-        gap: 1.2,
-        px: 1.2,
-        py: 1.1,
-        minHeight: 44,
-        borderRadius: 2,
-        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.1)}`,
-        ["--glass-alpha" as any]: ".016",
-        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-      }}
-    >
-      <Box
-        sx={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          bgcolor: theme.palette.info.main,
-          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.22)}`,
-          justifySelf: "center",
-        }}
-      />
-      <Typography sx={{ lineHeight: 1.25 }}>
-        <b>{label}:</b> {value}
-      </Typography>
-    </Box>
+    <div className="glass grid min-h-[44px] grid-cols-[14px_1fr] items-center gap-3 rounded-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-3 py-2.5 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]">
+      <div className="h-2 w-2 justify-self-center rounded-full bg-[color:var(--nav-link)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_22%,transparent)]" />
+      <p className="leading-tight">
+        <strong>{label}:</strong> {value}
+      </p>
+    </div>
   )
+}
+
+const AutoHideSnackbar = ({
+  snack,
+  onClose,
+}: {
+  snack: SnackState
+  onClose: () => void
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose()
+    }, 2600)
+    return () => clearTimeout(timer)
+  }, [snack, onClose])
+  return null
 }
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth()
-  const theme = useTheme()
   const [snack, setSnack] = useState<SnackState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const isTwoCol = useMediaQuery("(min-width:1400px)")
-  const isMobile = useMediaQuery("(max-width:600px)")
+  const [reduceMotion, setReduceMotion] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false
+  )
+  const [isTwoCol, setIsTwoCol] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width:1400px)").matches : false
+  )
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width:600px)").matches : false
+  )
   const reduced = useReducedMotion()
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mediaQueries = [
+      { query: window.matchMedia("(prefers-reduced-motion: reduce)"), setter: setReduceMotion },
+      { query: window.matchMedia("(min-width:1400px)"), setter: setIsTwoCol },
+      { query: window.matchMedia("(max-width:600px)"), setter: setIsMobile },
+    ]
+    const handlers = mediaQueries.map(({ query, setter }) => {
+      const handler = (e: MediaQueryListEvent) => setter(e.matches)
+      setter(query.matches)
+      query.addEventListener("change", handler)
+      return () => query.removeEventListener("change", handler)
+    })
+    return () => handlers.forEach((cleanup) => cleanup())
+  }, [])
   const { t } = useTranslation(["profile", "common"])
   const [scrollY, setScrollY] = useState(0)
   const [qrOpen, setQrOpen] = useState(false)
@@ -376,6 +304,7 @@ export default function Profile() {
   const [department, setDepartment] = useState(user?.department || "")
   const [position, setPosition] = useState(user?.position || "")
   const [saving, setSaving] = useState(false)
+  const [accordionOpen, setAccordionOpen] = useState(true)
 
   const initEditFields = useCallback(() => {
     setFullName(user?.full_name || "")
@@ -405,6 +334,7 @@ export default function Profile() {
   }, [location.pathname, location.search, edit, initEditFields])
 
   useEffect(() => {
+    if (typeof window === "undefined") return
     const onScroll = () => setScrollY(window.scrollY || 0)
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
@@ -413,6 +343,7 @@ export default function Profile() {
   const coverScale = reduceMotion ? 1 : Math.min(1 + scrollY * 0.00014, 1.04)
 
   useEffect(() => {
+    if (typeof window === "undefined") return
     const sp = new URLSearchParams(window.location.search)
     const s = sp.get("spotify")
     if (s !== null) {
@@ -436,6 +367,21 @@ export default function Profile() {
     }
     prevSpotifyConnectedRef.current = spotifyConnected
   }, [spotifyConnected, refetchNowPlaying])
+
+  // Close modals on Escape key
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (qrOpen) closeQrModal()
+        if (achOpen) setAchOpen(null)
+      }
+    }
+    if (qrOpen || achOpen) {
+      window.addEventListener("keydown", handleEscape)
+      return () => window.removeEventListener("keydown", handleEscape)
+    }
+  }, [qrOpen, achOpen, closeQrModal])
 
   useEffect(() => {
     if (!user) return
@@ -473,9 +419,9 @@ export default function Profile() {
 
   if (loading)
     return (
-      <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
-        <CircularProgress />
-      </Box>
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-[color:var(--nav-link)] border-t-transparent" />
+      </div>
     )
 
   const avatarImageUrl = useMemo(() => {
@@ -626,8 +572,6 @@ export default function Profile() {
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
   const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`
-  const isDark = theme.palette.mode === "dark"
-  const textSecondary = theme.palette.text.secondary
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
   const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
@@ -684,31 +628,16 @@ export default function Profile() {
 
   return (
     <>
-      <Box
-        sx={{
-          position: "fixed",
-          inset: 0,
-          zIndex: -2,
+      {/* Background */}
+      <div
+        className="fixed inset-0 -z-[2] bg-cover bg-center bg-fixed"
+        style={{
           backgroundImage: `url(${profileBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "fixed",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.66)}, ${alpha(theme.palette.secondary.dark, 0.6)})`,
-            mixBlendMode: "multiply",
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `radial-gradient(1600px 800px at 50% 0%, ${alpha(theme.palette.primary.light, 0.08)} 0%, transparent 60%)`,
-            opacity: 0.6,
-          },
         }}
-      />
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-[color:color-mix(in_srgb,var(--nav-link)_66%,transparent)] via-[color:color-mix(in_srgb,var(--nav-link-hover)_60%,transparent)] to-transparent mix-blend-multiply dark:from-[color:color-mix(in_srgb,var(--nav-link)_66%,transparent)] dark:via-[color:color-mix(in_srgb,var(--nav-link-hover)_60%,transparent)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(1600px_800px_at_50%_0%,color-mix(in_srgb,var(--nav-link)_8%,transparent)_0%,transparent_60%)] opacity-60" />
+      </div>
 
       <PageFadeIn>
         <motion.div
@@ -716,25 +645,16 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
-          <Box
-            component="main"
+          <main
             id="main"
-            className="profile-page"
+            className="profile-page relative z-0 flex min-h-screen flex-col px-3 py-16 sm:px-4 sm:py-20 md:px-6 md:py-24"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
-            sx={{
-              position: "relative",
-              minHeight: "100svh",
-              display: "flex",
-              flexDirection: "column",
-              py: { xs: 8, sm: 9, md: 10 },
-              px: { xs: 1.5, sm: 2, md: 3 },
-            }}
           >
-            <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
-              <MotionPaper
+            <div className="relative z-0 mx-auto w-full max-w-7xl">
+              <motion.div
                 ref={containerRef}
-                className="glass profile-card"
+                className="glass profile-card relative overflow-hidden rounded-ue-xl px-6 py-10 sm:px-9 sm:py-12 md:px-12 md:py-16 lg:px-14"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -744,49 +664,20 @@ export default function Profile() {
                     ? { duration: 0 }
                     : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
                 }
-                sx={{
-                  px: { xs: 2.6, sm: 3.6, md: 4.6, lg: 5.6 },
-                  py: { xs: 3.6, sm: 4.2, md: 5 },
-                  borderRadius: { xs: 3, md: 4 },
-                  position: "relative",
-                  overflow: "hidden",
-                  ["--glass-alpha" as any]: ".02",
-                  ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                }}
               >
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "1fr", md: "minmax(360px, 420px) minmax(0, 1fr)" },
-                    columnGap: { xs: 3, sm: 4, md: 6 },
-                    rowGap: { xs: 4, md: 0 },
-                    alignItems: "start",
-                  }}
-                >
-                  <Stack spacing={{ xs: 3.2, md: 4 }} alignItems="stretch">
-                    <Box
-                      className="glass"
-                      sx={{
-                        position: "relative",
-                        borderRadius: { xs: 3, md: 4 },
-                        overflow: "hidden",
-                        minHeight: { xs: 300, sm: 340, md: 360, lg: 400 },
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        pb: heroPaddingBottom,
-                        boxShadow: `0 28px 70px -44px ${alpha(theme.palette.common.black, isDark ? 0.58 : 0.2)}`,
-                        ["--glass-alpha" as any]: ".018",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
+                <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] md:gap-8">
+                  {/* Left Column */}
+                  <div className="flex flex-col gap-8 md:gap-10">
+                    {/* Hero Card */}
+                    <div
+                      className="glass relative flex min-h-[300px] items-end justify-center overflow-hidden rounded-ue-xl shadow-[0_28px_70px_-44px_rgba(0,0,0,0.2)] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)] sm:min-h-[340px] md:min-h-[360px] lg:min-h-[400px]"
+                      style={{ paddingBottom: heroPaddingBottom }}
                     >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
+                      {/* Cover Image */}
+                      <div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{
                           backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
-                          backgroundPosition: "center",
-                          backgroundSize: "cover",
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                           transition: reduceMotion
                             ? "none"
@@ -794,128 +685,81 @@ export default function Profile() {
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
                       />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
-                          background:
-                            "linear-gradient(185deg, rgba(6,9,20,0) 40%, rgba(6,9,20,0.9) 100%)",
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          left: "50%",
-                          top: { xs: theme.spacing(6), sm: theme.spacing(7) },
-                          transform: "translateX(-50%)",
+                      {/* Gradient Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.9)]" />
+                      {/* Avatar */}
+                      <div
+                        className="absolute left-1/2 top-12 flex -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-14 md:top-16"
+                        style={{
                           width: avatarSize,
                           height: avatarSize,
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          p: "4px",
                           animation: reduceMotion
                             ? "none"
-                            : `${auraPulse} 14s ease-in-out infinite`,
+                            : "auraPulse 14s ease-in-out infinite",
                         }}
                       >
-                        <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
-                          <Avatar
+                        <div className="avatar-ring h-full w-full">
+                          <img
                             src={avatarImageUrl}
                             alt={user?.full_name ?? undefined}
-                            imgProps={{
-                              onError: handleAvatarImgError,
-                              loading: "lazy",
-                              decoding: "async",
-                              referrerPolicy: "no-referrer",
+                            onError={handleAvatarImgError}
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full rounded-full object-cover text-[clamp(28px,6vw,64px)]"
+                            style={{
+                              backgroundColor: "rgba(255,255,255,0.12)",
+                              color: "rgba(255,255,255,0.92)",
                             }}
-                            sx={{
-                              width: "100%",
-                              height: "100%",
-                              borderRadius: "50%",
-                              fontSize: "clamp(28px, 6vw, 64px)",
-                              backgroundColor: alpha(theme.palette.common.white, 0.12),
-                              color: alpha(theme.palette.common.white, 0.92),
-                            }}
-                          >
-                            {user?.full_name?.[0]}
-                          </Avatar>
-                        </Box>
-
+                          />
+                          {!user?.avatar_url && (
+                            <div className="flex h-full w-full items-center justify-center rounded-full bg-[rgba(255,255,255,0.12)] text-[clamp(28px,6vw,64px)] text-[rgba(255,255,255,0.92)]">
+                              {user?.full_name?.[0]}
+                            </div>
+                          )}
+                        </div>
+                        {/* Online Status */}
                         {isOnline && (
-                          <Box
-                            sx={{
-                              position: "absolute",
+                          <div
+                            className="absolute rounded-full bg-[#22c55e] shadow-[0_0_0_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(34,197,94,0.45)]"
+                            style={{
                               right: `${statusOffset}px`,
                               bottom: `${statusOffset}px`,
                               width: `${statusSize}px`,
                               height: `${statusSize}px`,
-                              borderRadius: "50%",
-                              backgroundColor: "#22c55e",
-                              boxShadow: `0 0 0 2px rgba(0,0,0,.18), 0 4px 10px rgba(34,197,94,.45)`,
                               zIndex: 3,
-                              pointerEvents: "none",
                             }}
                           >
                             {!reduced && (
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  inset: "-6px",
-                                  borderRadius: "50%",
-                                  border: `2px solid ${alpha("#22c55e", 0.45)}`,
-                                  animation: `${onlinePulse} 1.8s ease-in-out infinite`,
+                              <div
+                                className="absolute inset-[-6px] rounded-full border-2 border-[rgba(34,197,94,0.45)]"
+                                style={{
+                                  animation: "onlinePulse 1.8s ease-in-out infinite",
                                 }}
                               />
                             )}
-                          </Box>
+                          </div>
                         )}
-                      </Box>
-                      <Box
-                        sx={{
-                          position: "relative",
-                          zIndex: 2,
-                          width: "100%",
-                          textAlign: { xs: "center", md: "left" },
-                          px: { xs: 2.4, sm: 3, md: 3.4 },
-                          pt: heroTextPaddingTop,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2.4,
-                        }}
+                      </div>
+                      {/* Text Content */}
+                      <div
+                        className="relative z-[2] flex w-full flex-col gap-6 px-6 sm:px-8 md:px-9"
+                        style={{ paddingTop: heroTextPaddingTop }}
                       >
-                        <Box>
-                          <Typography
-                            className="profile-name"
-                            variant="h3"
-                            component="h1"
+                        <div className="text-center md:text-left">
+                          <h1
+                            className="profile-name text-[clamp(1.7rem,3.2vw,2.9rem)] font-black leading-[1.08]"
                             data-testid="profile-name"
-                            sx={{
-                              fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)",
-                              fontWeight: 900,
-                              lineHeight: 1.08,
-                            }}
                           >
                             {user!.full_name}
-                          </Typography>
+                          </h1>
                           {!!user?.position && user?.role === "teacher" && (
-                            <Typography
-                              className="profile-subtitle"
-                              variant="subtitle1"
-                              sx={{ mt: 0.9, fontWeight: 600 }}
-                            >
+                            <p className="profile-subtitle mt-2 font-semibold text-[color:var(--secondary-text)] dark:text-[#c9d2df]">
                               {user.position}
-                            </Typography>
+                            </p>
                           )}
-                        </Box>
-                        <Stack
-                          direction="row"
-                          spacing={1.2}
-                          useFlexGap
-                          flexWrap="wrap"
-                          sx={{ justifyContent: { xs: "center", md: "flex-start" } }}
-                        >
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-3 md:justify-start">
                           {[
                             user!.role === "teacher"
                               ? t("profile:chips.teacher")
@@ -927,380 +771,372 @@ export default function Profile() {
                               : []),
                             ...(user!.institute ? [user!.institute] : []),
                           ].map((chip, idx) => (
-                            <Grow
-                              in
+                            <motion.span
                               key={`${chip}-${idx}`}
-                              timeout={isTest || reduced ? 0 : 560}
-                              style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
+                              initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{
+                                duration: isTest || reduced ? 0 : 0.56,
+                                delay: reduced ? 0 : idx * 0.09,
+                              }}
+                              className="glass--chip rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-[color:var(--nav-text)] backdrop-blur-xl dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]"
+                              style={{
+                                animation: reduced
+                                  ? "none"
+                                  : "chipHighlight 12s ease-in-out infinite",
+                                animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
+                              }}
                             >
-                              <Chip
-                                size="small"
-                                label={chip}
-                                className="glass--chip"
-                                sx={{
-                                  borderRadius: 999,
-                                  "& .MuiChip-label": {
-                                    px: 1.6,
-                                    py: 0.62,
-                                    lineHeight: 1.28,
-                                    fontWeight: 700,
-                                    letterSpacing: ".01em",
-                                  },
-                                  animation: reduced
-                                    ? "none"
-                                    : `${chipHighlight} 12s ease-in-out infinite`,
-                                  animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
-                                }}
-                              />
-                            </Grow>
+                              {chip}
+                            </motion.span>
                           ))}
-                        </Stack>
-                      </Box>
-                    </Box>
+                        </div>
+                      </div>
+                    </div>
 
-                    <Paper
-                      elevation={0}
-                      className="glass profile-card"
-                      sx={{
-                        p: { xs: 2.6, sm: 3 },
-                        borderRadius: 3,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: { xs: 2.6, md: 3 },
-                        ["--glass-alpha" as any]: ".02",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
-                    >
-                      <Stack spacing={1.3} alignItems="stretch">
-                        <Button
-                          size="large"
-                          variant="contained"
-                          color="secondary"
-                          className="glass--btn"
+                    {/* Contact Card */}
+                    <div className="glass profile-card flex flex-col gap-6 rounded-ue-lg p-6 sm:p-8">
+                      <div className="flex flex-col gap-3">
+                        <button
                           onClick={openQrModal}
                           data-testid="open-qr"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 2,
-                            py: 1.05,
-                            fontWeight: 800,
-                            letterSpacing: 0.24,
-                          }}
+                          className="glass--btn w-full rounded-lg bg-[color:var(--nav-link)] py-3 text-base font-extrabold tracking-wider text-white transition-all duration-200 hover:bg-[color:var(--nav-link-hover)] hover:shadow-lg active:scale-[0.98] dark:bg-[color:var(--nav-link)] dark:hover:bg-[color:var(--nav-link-hover)]"
                         >
                           {t("profile:buttons.showQr")}
-                        </Button>
-                      </Stack>
-                      <Divider />
-                      <Stack spacing={1.8} className="contact-links">
-                        <Stack
-                          direction="row"
-                          spacing={1.4}
-                          alignItems="center"
-                          sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                        >
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                            sx={{ minWidth: 0, flex: 1 }}
-                          >
-                            <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
-                            <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                              <a
-                                href={`mailto:${user!.email}`}
-                                style={{ color: "inherit", textDecoration: "none" }}
-                                data-testid="profile-email-link"
-                                title={t("profile:aria.openEmail")}
-                              >
-                                {user!.email}
-                              </a>
-                            </Typography>
-                          </Stack>
-                          <IconButton
-                            size="small"
-                            className="glass--btn"
+                        </button>
+                      </div>
+                      <div className="h-px bg-gradient-to-r from-[color:var(--nav-link)] to-transparent opacity-90" />
+                      <div className="contact-links flex flex-col gap-4">
+                        {/* Email */}
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <svg
+                              className="h-5 w-5 shrink-0 text-[color:var(--nav-link)]"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                              aria-hidden
+                            >
+                              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+                            </svg>
+                            <a
+                              href={`mailto:${user!.email}`}
+                              className="min-w-0 flex-1 break-words font-extrabold text-[color:inherit] no-underline hover:text-[color:var(--nav-link-hover)]"
+                              data-testid="profile-email-link"
+                              title={t("profile:aria.openEmail")}
+                            >
+                              {user!.email}
+                            </a>
+                          </div>
+                          <button
                             onClick={(e) => copy(user!.email, e)}
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            sx={{
-                              transition: reduced
-                                ? "color 140ms ease"
-                                : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": {
-                                transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                              },
-                            }}
+                            className={cn(
+                              "glass--btn flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+                              !reduced && "hover:-translate-y-0.5 hover:scale-105"
+                            )}
                           >
-                            <ContentCopyIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
-
-                        {!!user!.telegram && (
-                          <Stack
-                            direction="row"
-                            spacing={1.4}
-                            alignItems="center"
-                            sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                          >
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{ minWidth: 0, flex: 1 }}
+                            <svg
+                              className="h-4 w-4"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
                             >
-                              <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
-                              <Typography
-                                sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}
+                              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Telegram */}
+                        {!!user!.telegram && (
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <svg
+                                className="h-5 w-5 shrink-0 text-[color:var(--nav-link)]"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden
                               >
-                                <a
-                                  href={telegramHref}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ color: "inherit", textDecoration: "none" }}
-                                  data-testid="profile-telegram-link"
-                                  title={t("profile:aria.openTelegram")}
-                                >
-                                  {user!.telegram}
-                                </a>
-                              </Typography>
-                            </Stack>
-                            <IconButton
-                              size="small"
-                              className="glass--btn"
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" />
+                              </svg>
+                              <a
+                                href={telegramHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="min-w-0 flex-1 break-words font-extrabold text-[color:inherit] no-underline hover:text-[color:var(--nav-link-hover)]"
+                                data-testid="profile-telegram-link"
+                                title={t("profile:aria.openTelegram")}
+                              >
+                                {user!.telegram}
+                              </a>
+                            </div>
+                            <button
                               onClick={(e) => copy(user!.telegram!, e)}
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              sx={{
-                                transition: reduced
-                                  ? "color 140ms ease"
-                                  : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                                "&:hover": {
-                                  transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                                },
-                              }}
+                              className={cn(
+                                "glass--btn flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+                                !reduced && "hover:-translate-y-0.5 hover:scale-105"
+                              )}
                             >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
+                              <svg
+                                className="h-4 w-4"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                              </svg>
+                            </button>
+                          </div>
                         )}
-                      </Stack>
-                    </Paper>
+                      </div>
+                    </div>
 
+                    {/* Now Playing */}
                     {showNowPlaying && nowPlaying && (
-                      <Fade in timeout={isTest || reduced ? 0 : 720}>
-                        <Stack spacing={1.4}>
-                          <Typography
-                            variant="overline"
-                            sx={{ letterSpacing: 2.2, color: textSecondary }}
-                          >
-                            {t("profile:sections.nowPlaying")}
-                          </Typography>
-                          <NowPlayingCard data={nowPlaying} />
-                        </Stack>
-                      </Fade>
+                      <motion.div
+                        initial={isTest || reduced ? false : { opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: isTest || reduced ? 0 : 0.72 }}
+                        className="flex flex-col gap-3"
+                      >
+                        <p className="text-[0.65rem] font-semibold uppercase tracking-[2.2px] text-[color:var(--secondary-text)]">
+                          {t("profile:sections.nowPlaying")}
+                        </p>
+                        <NowPlayingCard data={nowPlaying} />
+                      </motion.div>
                     )}
-                  </Stack>
+                  </div>
 
-                  <Box
-                    sx={{
-                      width: "100%",
-                      position: "relative",
-                      mt: { xs: `${Math.round(avatarPx * 0.55) + 36}px`, md: 0 },
+                  {/* Right Column */}
+                  <div
+                    className="relative w-full"
+                    style={{
+                      marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : 0,
                     }}
                   >
                     {edit ? (
-                      <Paper
-                        elevation={0}
-                        className="glass profile-card profile-edit"
-                        sx={{
-                          width: "100%",
-                          borderRadius: 3,
-                          p: { xs: 2.6, sm: 3, md: 3.4 },
-                          ["--glass-alpha" as any]: ".02",
-                          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                        }}
-                      >
-                        <Stack spacing={2.2}>
-                          <TextField
-                            label={t("profile:form.name")}
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            fullWidth
-                            inputProps={{ maxLength: 120 }}
-                          />
-                          <TextField
-                            label={t("profile:form.email")}
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            fullWidth
-                            type="email"
-                          />
-                          <TextField
-                            label={t("profile:form.telegram")}
-                            value={telegram}
-                            onChange={(e) => setTelegram(e.target.value)}
-                            fullWidth
-                            helperText={t("profile:form.telegramHint")}
-                          />
+                      <div className="glass profile-card profile-edit w-full rounded-ue-lg p-6 sm:p-8 md:p-10">
+                        <div className="flex flex-col gap-5">
+                          {/* Name */}
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                              {t("profile:form.name")}
+                            </label>
+                            <input
+                              type="text"
+                              value={fullName}
+                              onChange={(e) => setFullName(e.target.value)}
+                              maxLength={120}
+                              className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                            />
+                          </div>
+                          {/* Email */}
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                              {t("profile:form.email")}
+                            </label>
+                            <input
+                              type="email"
+                              value={email}
+                              onChange={(e) => setEmail(e.target.value)}
+                              className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                            />
+                          </div>
+                          {/* Telegram */}
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                              {t("profile:form.telegram")}
+                            </label>
+                            <input
+                              type="text"
+                              value={telegram}
+                              onChange={(e) => setTelegram(e.target.value)}
+                              className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                            />
+                            <p className="text-xs text-[color:var(--secondary-text)]">
+                              {t("profile:form.telegramHint")}
+                            </p>
+                          </div>
+                          {/* Teacher Fields */}
                           {user!.role === "teacher" && (
                             <>
-                              <TextField
-                                label={t("profile:form.department")}
-                                value={department}
-                                onChange={(e) => setDepartment(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.position")}
-                                value={position}
-                                onChange={(e) => setPosition(e.target.value)}
-                                fullWidth
-                              />
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.department")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={department}
+                                  onChange={(e) => setDepartment(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.position")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={position}
+                                  onChange={(e) => setPosition(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
                             </>
                           )}
+                          {/* Student Fields */}
                           {user!.role === "student" && (
                             <>
-                              <TextField
-                                label={t("profile:form.about")}
-                                value={about}
-                                onChange={(e) => setAbout(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={3}
-                              />
-                              <TextField
-                                label={t("profile:form.recordBookNumber")}
-                                value={recordBookNumber}
-                                onChange={(e) => setRecordBookNumber(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.status")}
-                                value={status}
-                                onChange={(e) => setStatus(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.institute")}
-                                value={institute}
-                                onChange={(e) => setInstitute(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.course")}
-                                value={course}
-                                onChange={(e) => setCourse(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.educationLevel")}
-                                value={educationLevel}
-                                onChange={(e) => setEducationLevel(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.track")}
-                                value={track}
-                                onChange={(e) => setTrack(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.program")}
-                                value={program}
-                                onChange={(e) => setProgram(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.achievements")}
-                                value={achievements}
-                                onChange={(e) => setAchievements(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={2}
-                              />
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.about")}
+                                </label>
+                                <textarea
+                                  value={about}
+                                  onChange={(e) => setAbout(e.target.value)}
+                                  rows={3}
+                                  className="glass--btn min-h-[80px] rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 py-3 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.recordBookNumber")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={recordBookNumber}
+                                  onChange={(e) => setRecordBookNumber(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.status")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={status}
+                                  onChange={(e) => setStatus(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.institute")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={institute}
+                                  onChange={(e) => setInstitute(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.course")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={course}
+                                  onChange={(e) => setCourse(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.educationLevel")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={educationLevel}
+                                  onChange={(e) => setEducationLevel(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.track")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={track}
+                                  onChange={(e) => setTrack(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.program")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={program}
+                                  onChange={(e) => setProgram(e.target.value)}
+                                  className="glass--btn h-12 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-[color:var(--page-text)]">
+                                  {t("profile:form.achievements")}
+                                </label>
+                                <textarea
+                                  value={achievements}
+                                  onChange={(e) => setAchievements(e.target.value)}
+                                  rows={2}
+                                  className="glass--btn min-h-[60px] rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:var(--card-bg)] px-4 py-3 text-[color:var(--page-text)] transition-all focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-2 focus:ring-[color:var(--nav-link)] focus:ring-opacity-30 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                                />
+                              </div>
                             </>
                           )}
-                          <Stack
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={2}
-                            sx={{ alignItems: { xs: "stretch", sm: "center" } }}
-                          >
-                            <Button
+                          {/* Action Buttons */}
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                            <button
                               onClick={handleSave}
-                              variant="contained"
                               disabled={saving}
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                              className="glass--btn flex-1 rounded-xl bg-[color:var(--nav-link)] px-6 py-3 text-base font-extrabold text-white transition-all hover:bg-[color:var(--nav-link-hover)] hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] sm:flex-none dark:bg-[color:var(--nav-link)] dark:hover:bg-[color:var(--nav-link-hover)]"
                             >
                               {saving ? t("profile:form.saving") : t("profile:form.save")}
-                            </Button>
-                            <Button
+                            </button>
+                            <button
                               onClick={handleCancel}
-                              variant="outlined"
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                              className="glass--btn flex-1 rounded-xl border-2 border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-transparent px-6 py-3 text-base font-extrabold text-[color:var(--page-text)] transition-all hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] active:scale-[0.98] sm:flex-none dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
                             >
                               {t("profile:form.cancel")}
-                            </Button>
-                          </Stack>
-                        </Stack>
-                      </Paper>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <Paper
-                          elevation={0}
-                          className="glass profile-card"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 3,
-                            p: { xs: 2.6, sm: 3, md: 3.4 },
-                            ["--glass-alpha" as any]: ".02",
-                            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                          }}
-                        >
-                          <Typography
-                            variant="h5"
-                            component="h2"
-                            sx={{
-                              fontWeight: 900,
-                              fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)",
-                              mb: 2.2,
-                              letterSpacing: "-.01em",
-                            }}
+                      <div className="glass profile-card w-full rounded-ue-lg p-6 sm:p-8 md:p-10">
+                        <h2 className="mb-6 text-[clamp(1.3rem,2.3vw,1.8rem)] font-black tracking-[-0.01em] text-[color:var(--page-text)]">
+                          {t("profile:sections.details")}
+                        </h2>
+                        {/* Accordion */}
+                        <div className="glass rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]">
+                          <button
+                            onClick={() => setAccordionOpen(!accordionOpen)}
+                            className="flex w-full items-center justify-between border-b border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] px-5 py-4 text-left dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
                           >
-                            {t("profile:sections.details")}
-                          </Typography>
-                          <Accordion
-                            disableGutters
-                            defaultExpanded
-                            className="glass"
-                            sx={{
-                              borderRadius: 3,
-                              boxShadow: "none",
-                              "&::before": { display: "none" },
-                              ["--glass-alpha" as any]: ".016",
-                              ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                            }}
-                          >
-                            <AccordionSummary
-                              expandIcon={<ExpandMoreIcon />}
-                              sx={{
-                                px: 2.2,
-                                py: 1.4,
-                                borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.08)}`,
-                              }}
+                            <h3 className="font-black text-[color:var(--page-text)]">
+                              {t("profile:sections.profileDetails")}
+                            </h3>
+                            <svg
+                              className={cn(
+                                "h-5 w-5 transition-transform duration-200",
+                                accordionOpen && "rotate-180"
+                              )}
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
                             >
-                              <Typography fontWeight={900}>
-                                {t("profile:sections.profileDetails")}
-                              </Typography>
-                            </AccordionSummary>
-                            <AccordionDetails
-                              sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}
-                            >
-                              {(() => {
-                                const rows = [
+                              <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+                            </svg>
+                          </button>
+                          {accordionOpen && (
+                            <div className="px-4 py-5 sm:px-5 sm:py-6">
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+                                {[
                                   { label: t("profile:form.about"), value: user!.about },
                                   { label: t("profile:form.status"), value: user!.status },
                                   {
@@ -1315,241 +1151,201 @@ export default function Profile() {
                                   { label: t("profile:form.program"), value: user!.program },
                                   { label: t("profile:form.department"), value: user!.department },
                                   { label: t("profile:form.position"), value: user!.position },
-                                ]
-                                return (
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                                      gap: { xs: 1.2, md: 1.6 },
-                                    }}
-                                  >
-                                    {rows.map((r) => (
-                                      <DetailRow key={r.label} label={r.label} value={r.value} />
-                                    ))}
-                                  </Box>
-                                )
-                              })()}
+                                ].map((r) => (
+                                  <DetailRow key={r.label} label={r.label} value={r.value} />
+                                ))}
+                              </div>
                               {achievementsList.length > 0 && (
-                                <Box sx={{ mt: 2.4 }}>
-                                  <Typography
-                                    variant="subtitle1"
-                                    component="h3"
-                                    sx={{ fontWeight: 800, mb: 1.4 }}
-                                  >
+                                <div className="mt-6">
+                                  <h3 className="mb-4 text-lg font-extrabold text-[color:var(--page-text)]">
                                     {t("profile:sections.achievements")}
-                                  </Typography>
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: {
-                                        xs: "repeat(auto-fit, minmax(140px, 1fr))",
-                                        sm: "repeat(auto-fit, minmax(160px, 1fr))",
-                                      },
-                                      gap: 1.2,
-                                    }}
-                                  >
+                                  </h3>
+                                  <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))]">
                                     {achievementsList.map((ach, idx) => (
-                                      <Grow
-                                        in
+                                      <motion.button
                                         key={ach.key}
-                                        timeout={isTest || reduced ? 0 : 500}
+                                        initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{
+                                          duration: isTest || reduced ? 0 : 0.5,
+                                          delay: reduced ? 0 : idx * 0.09,
+                                        }}
+                                        onClick={() =>
+                                          setAchOpen({
+                                            name: ach.name,
+                                            issuer: ach.issuer,
+                                            date: ach.date,
+                                            url: ach.url,
+                                          })
+                                        }
+                                        className="glass--chip block w-full rounded-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-left text-sm font-bold leading-tight text-[color:var(--page-text)] transition-all hover:scale-[1.02] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]"
                                         style={{
-                                          transitionDelay: reduced ? "0ms" : `${idx * 90}ms`,
+                                          animation: reduced
+                                            ? "none"
+                                            : "chipHighlight 14s ease-in-out infinite",
+                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
                                         }}
                                       >
-                                        <Chip
-                                          label={ach.name}
-                                          clickable
-                                          onClick={() =>
-                                            setAchOpen({
-                                              name: ach.name,
-                                              issuer: ach.issuer,
-                                              date: ach.date,
-                                              url: ach.url,
-                                            })
-                                          }
-                                          className="glass--chip"
-                                          sx={{
-                                            borderRadius: 2,
-                                            alignSelf: "stretch",
-                                            "& .MuiChip-label": {
-                                              display: "block",
-                                              whiteSpace: "normal",
-                                              lineHeight: 1.3,
-                                              px: 1.6,
-                                              py: 1.1,
-                                              fontWeight: 700,
-                                            },
-                                            animation: reduced
-                                              ? "none"
-                                              : `${chipHighlight} 14s ease-in-out infinite`,
-                                            animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
-                                          }}
-                                        />
-                                      </Grow>
+                                        {ach.name}
+                                      </motion.button>
                                     ))}
-                                  </Box>
-                                </Box>
+                                  </div>
+                                </div>
                               )}
-                            </AccordionDetails>
-                          </Accordion>
-                        </Paper>
-                      </>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </Box>
-                </Box>
-              </MotionPaper>
-            </Container>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
 
+            {/* Confetti Canvas */}
             <canvas
               ref={confettiRef}
-              style={{
-                position: "fixed",
-                left: 0,
-                top: 0,
-                width: "100vw",
-                height: "100vh",
-                pointerEvents: "none",
-                zIndex: 2147483000,
-              }}
+              className="pointer-events-none fixed left-0 top-0 z-[2147483000] h-screen w-screen"
             />
-          </Box>
+          </main>
         </motion.div>
       </PageFadeIn>
 
-      <Dialog
-        open={qrOpen}
-        onClose={closeQrModal}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>
-          {t("profile:dialog.qr.title")}
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1.2,
-            minHeight: 320,
-          }}
+      {/* QR Dialog */}
+      {qrOpen && (
+        <div
+          className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={closeQrModal}
         >
-          <Box
-            sx={{
-              background: "#fff",
-              p: 2,
-              borderRadius: 3,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`,
-            }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onClick={(e) => e.stopPropagation()}
+            className="glass w-full max-w-xs rounded-ue-xl p-6"
           >
-            <QRCodeSVG
-              value={buildVCard()}
-              size={300}
-              level="H"
-              includeMargin
-              bgColor="#ffffff"
-              fgColor={theme.palette.primary.dark}
-              imageSettings={{
-                src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
-                height: 56,
-                width: 56,
-                excavate: true,
-              }}
-            />
-          </Box>
-          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-            {t("profile:dialog.qr.hint")}
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
-          <Button
-            onClick={closeQrModal}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("common:buttons.done")}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <h2 className="mb-6 text-center text-xl font-black tracking-wide text-[color:var(--page-text)]">
+              {t("profile:dialog.qr.title")}
+            </h2>
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
+              <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] bg-white p-4 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)] dark:border-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)]">
+                <QRCodeSVG
+                  value={buildVCard()}
+                  size={300}
+                  level="H"
+                  includeMargin
+                  bgColor="#ffffff"
+                  fgColor="#0f4faa"
+                  imageSettings={{
+                    src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
+                    height: 56,
+                    width: 56,
+                    excavate: true,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-[color:var(--secondary-text)]">
+                {t("profile:dialog.qr.hint")}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={closeQrModal}
+                className="glass--btn rounded-xl bg-[color:var(--nav-link)] px-6 py-3 text-base font-extrabold text-white transition-all hover:bg-[color:var(--nav-link-hover)] hover:shadow-lg active:scale-[0.98] dark:bg-[color:var(--nav-link)] dark:hover:bg-[color:var(--nav-link-hover)]"
+              >
+                {t("common:buttons.done")}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
-      <Dialog
-        open={!!achOpen}
-        onClose={() => setAchOpen(null)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
-        <DialogContent sx={{ display: "grid", gap: 1.2 }}>
-          {achOpen?.issuer && (
-            <Typography>
-              {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
-            </Typography>
-          )}
-          {achOpen?.date && (
-            <Typography>{t("profile:dialog.achievement.date", { date: achOpen.date })}</Typography>
-          )}
-          {achOpen?.url && (
-            <Button
-              variant="outlined"
-              className="glass--btn"
-              href={achOpen.url}
-              target="_blank"
-              rel="noreferrer"
-              sx={{ fontWeight: 800 }}
+      {/* Achievement Dialog */}
+      {achOpen && (
+        <div
+          className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={() => setAchOpen(null)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onClick={(e) => e.stopPropagation()}
+            className="glass w-full max-w-xs rounded-ue-xl p-6"
+          >
+            <h2 className="mb-4 text-xl font-black text-[color:var(--page-text)]">
+              {achOpen.name}
+            </h2>
+            <div className="mb-6 flex flex-col gap-3">
+              {achOpen.issuer && (
+                <p className="text-[color:var(--page-text)]">
+                  {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
+                </p>
+              )}
+              {achOpen.date && (
+                <p className="text-[color:var(--page-text)]">
+                  {t("profile:dialog.achievement.date", { date: achOpen.date })}
+                </p>
+              )}
+              {achOpen.url && (
+                <a
+                  href={achOpen.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="glass--btn inline-block rounded-xl border-2 border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-transparent px-6 py-3 text-center text-base font-extrabold text-[color:var(--page-text)] transition-all hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] active:scale-[0.98] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]"
+                >
+                  {t("profile:dialog.achievement.openLink")}
+                </a>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setAchOpen(null)}
+                className="glass--btn rounded-xl bg-[color:var(--nav-link)] px-6 py-3 text-base font-extrabold text-white transition-all hover:bg-[color:var(--nav-link-hover)] hover:shadow-lg active:scale-[0.98] dark:bg-[color:var(--nav-link)] dark:hover:bg-[color:var(--nav-link-hover)]"
+              >
+                {t("profile:dialog.achievement.close")}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Snackbar */}
+      {snack && (
+        <>
+          <AutoHideSnackbar snack={snack} onClose={() => setSnack(null)} />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 z-[4000] -translate-x-1/2"
+            data-testid={snack.key === "copied" ? "snackbar-copied" : undefined}
+          >
+            <div
+              className={cn(
+                "flex items-center rounded-xl px-6 py-4 text-sm font-semibold shadow-lg",
+                snack.sev === "success" &&
+                  "bg-gradient-to-b from-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
+                snack.sev === "error" &&
+                  "bg-gradient-to-b from-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
+                snack.sev === "info" &&
+                  "bg-gradient-to-b from-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
+                snack.sev === "warning" &&
+                  "bg-gradient-to-b from-[#f59e0b] to-[#b45309] text-[#fff8e1]"
+              )}
             >
-              {t("profile:dialog.achievement.openLink")}
-            </Button>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setAchOpen(null)}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("profile:dialog.achievement.close")}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={2600}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
-      >
-        <Alert
-          onClose={() => setSnack(null)}
-          severity={snack?.sev || "info"}
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
-          {snackMessage}
-        </Alert>
-      </Snackbar>
+              <span>{snackMessage}</span>
+              <button
+                onClick={() => setSnack(null)}
+                className="ml-4 text-current opacity-80 hover:opacity-100"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
     </>
   )
 }
