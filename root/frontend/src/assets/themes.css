@@ -1455,15 +1455,16 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
-  border: 1px solid rgba(255, 255, 255, 0.15);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.02),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    0 20px 60px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.15);
   border-radius: 20px;
   transition:
     background var(--anim-med),
@@ -1472,15 +1473,16 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 body.dark .map-head {
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.008));
-  border: 1px solid rgba(255, 255, 255, 0.12);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.28);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.15),
-    0 8px 24px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+    0 20px 60px rgba(0, 0, 0, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 2px 4px rgba(255, 255, 255, 0.12);
 }
 .map-head::before {
   content: "";
@@ -1491,58 +1493,75 @@ body.dark .map-head {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.03) 0%,
-      rgba(255, 255, 255, 0.01) 35%,
-      rgba(255, 255, 255, 0.004) 65%,
+      rgba(255, 255, 255, 0.25) 0%,
+      rgba(255, 255, 255, 0.12) 25%,
+      rgba(255, 255, 255, 0.05) 50%,
+      rgba(255, 255, 255, 0.02) 75%,
       transparent 100%
     ),
-    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.025), transparent 70%);
+    radial-gradient(80% 140% at 0% -15%, rgba(255, 255, 255, 0.2), transparent 60%),
+    radial-gradient(60% 100% at 100% 0%, rgba(255, 255, 255, 0.1), transparent 50%);
   mix-blend-mode: overlay;
-  opacity: 0.3;
+  opacity: 0.6;
 }
 body.dark .map-head::before {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.025) 0%,
-      rgba(255, 255, 255, 0.01) 35%,
-      rgba(255, 255, 255, 0.003) 65%,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.1) 25%,
+      rgba(255, 255, 255, 0.04) 50%,
+      rgba(255, 255, 255, 0.015) 75%,
       transparent 100%
     ),
-    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.015), transparent 70%);
-  opacity: 0.25;
+    radial-gradient(80% 140% at 0% -15%, rgba(255, 255, 255, 0.15), transparent 60%),
+    radial-gradient(60% 100% at 100% 0%, rgba(255, 255, 255, 0.08), transparent 50%);
+  opacity: 0.5;
 }
 .map-head::after {
   content: "";
   position: absolute;
-  top: -60px;
-  left: -70px;
-  width: 320px;
-  height: 240px;
+  top: -40px;
+  left: -50px;
+  width: 280px;
+  height: 200px;
   border-radius: 50%;
   background:
-    radial-gradient(closest-side, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(
+      circle at 30% 25%,
+      rgba(255, 255, 255, 0.35) 0%,
+      rgba(255, 255, 255, 0.2) 25%,
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0) 70%
+    ),
     conic-gradient(
-      from 210deg at 26% 18%,
-      rgba(255, 255, 255, 0.05),
-      rgba(255, 255, 255, 0.025) 18%,
-      transparent 40%
+      from 210deg at 30% 20%,
+      rgba(255, 255, 255, 0.25) 0%,
+      rgba(255, 255, 255, 0.15) 15%,
+      rgba(255, 255, 255, 0.08) 30%,
+      transparent 50%
     );
-  filter: blur(2px);
-  opacity: 0.2;
+  opacity: 0.65;
   mix-blend-mode: screen;
   pointer-events: none;
 }
 body.dark .map-head::after {
   background:
-    radial-gradient(closest-side, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(
+      circle at 30% 25%,
+      rgba(255, 255, 255, 0.25) 0%,
+      rgba(255, 255, 255, 0.15) 25%,
+      rgba(255, 255, 255, 0.08) 45%,
+      rgba(255, 255, 255, 0) 70%
+    ),
     conic-gradient(
-      from 210deg at 26% 18%,
-      rgba(255, 255, 255, 0.03),
-      rgba(255, 255, 255, 0.015) 18%,
-      transparent 40%
+      from 210deg at 30% 20%,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.12) 15%,
+      rgba(255, 255, 255, 0.06) 30%,
+      transparent 50%
     );
-  opacity: 0.15;
+  opacity: 0.5;
 }
 .map-head > * {
   position: relative;
