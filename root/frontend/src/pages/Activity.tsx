@@ -1,30 +1,7 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import axios from "../api/client"
-import { useEffect, useState, useCallback, useMemo, useRef } from "react"
-import {
-  Box,
-  Typography,
-  Stack,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  List,
-  ListItem,
-  ListItemText,
-  Card,
-  CardContent,
-  CardActionArea,
-  LinearProgress,
-  ToggleButton,
-  ToggleButtonGroup,
-  Divider,
-  useMediaQuery,
-} from "@mui/material"
-import { alpha, useTheme } from "@mui/material/styles"
+import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from "react"
 import {
   motion,
   AnimatePresence,
@@ -41,7 +18,10 @@ import SchoolIcon from "@mui/icons-material/School"
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
-import { lightenColor } from "@/utils/color"
+import { Badge, Button, ProgressBar } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 const toNumber = (value: unknown, fallback = 0) => {
   const num = Number(value)
@@ -197,10 +177,6 @@ type ParticipationSummaryResponse = {
 
 type DetailSection = "" | "attendance" | "grades" | "participation"
 
-const MotionBox = motion(Box)
-const MotionCard = motion(Card)
-const MotionListItem = motion(ListItem)
-
 function useAnimatedNumber(target: number, duration = 0.9, fraction = 0) {
   const reduce = useReducedMotion()
   const mv = useMotionValue(reduce ? target : 0)
@@ -225,18 +201,12 @@ function AnimatedRing({
   size?: number
   tone: "success" | "info" | "warning"
 }) {
-  const theme = useTheme()
   const reduce = useReducedMotion()
-  const color =
-    tone === "success"
-      ? theme.palette.success.main
-      : tone === "info"
-        ? theme.palette.info.main
-        : theme.palette.warning.main
   const stroke = 8
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
   const mv = useMotionValue(reduce ? value : 0)
+
   useEffect(() => {
     const controls = animate(mv, value, {
       duration: reduce ? 0 : 1.1,
@@ -246,16 +216,30 @@ function AnimatedRing({
     })
     return () => controls.stop()
   }, [value, reduce, mv])
+
   const dash = useTransform(mv, (v) => c - (Math.max(0, Math.min(100, v)) / 100) * c)
+
+  const colorClasses = {
+    success: "stroke-[#10b981] dark:stroke-[#34d399]",
+    info: "stroke-[#3b82f6] dark:stroke-[#60a5fa]",
+    warning: "stroke-[#f59e0b] dark:stroke-[#fbbf24]",
+  }
+
+  const bgColorClasses = {
+    success: "stroke-[#10b981]/15 dark:stroke-[#34d399]/15",
+    info: "stroke-[#3b82f6]/15 dark:stroke-[#60a5fa]/15",
+    warning: "stroke-[#f59e0b]/15 dark:stroke-[#fbbf24]/15",
+  }
+
   return (
-    <Box sx={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
-          stroke={alpha(color, 0.15)}
+          className={bgColorClasses[tone]}
           strokeWidth={stroke}
         />
         <motion.circle
@@ -263,46 +247,32 @@ function AnimatedRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke={color}
+          className={colorClasses[tone]}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
           style={{ strokeDashoffset: dash }}
         />
       </svg>
-      <Box
-        sx={{
-          position: "absolute",
-          inset: 0,
-          display: "grid",
-          placeItems: "center",
-          fontWeight: 900,
-          letterSpacing: "-.02em",
-          fontVariantNumeric: "tabular-nums lining-nums",
-        }}
-      >
+      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
         {Math.round(value)}%
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }
 
+const fadeDelayStyle = (value: string): CSSProperties =>
+  ({ "--fade-delay": value }) as CSSProperties
+
 export default function Activity() {
-  const theme = useTheme()
   const { t } = useTranslation(["activity", "common"])
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
-  const isDark = theme.palette.mode === "dark"
   const reduce = useReducedMotion()
-  const isSm = useMediaQuery(theme.breakpoints.down("sm"))
-  const isMd = useMediaQuery(theme.breakpoints.down("md"))
-  const isXl = useMediaQuery(theme.breakpoints.up("xl"))
+  const isSm = useMediaQuery("(max-width: 640px)")
+  const isMd = useMediaQuery("(max-width: 768px)")
+  const isXl = useMediaQuery("(min-width: 1280px)")
   const ringSize = isSm ? 68 : isMd ? 84 : isXl ? 104 : 96
-
-  const darkToggleBase = alpha(theme.palette.common.white, 0.9)
-  const darkToggleHover = alpha(theme.palette.common.white, 0.96)
-  const darkToggleBorder = alpha(theme.palette.common.white, 0.24)
-  const darkToggleSelected = lightenColor(theme.palette.primary.main, 0.6)
 
   const [period, setPeriod] = useState<PeriodKey>("90d")
   const [attendance, setAttendance] = useState<AttendanceStats | null>(null)
@@ -503,53 +473,23 @@ export default function Activity() {
     }
   }, [])
 
-  const cardBorder = alpha(
-    theme.palette.mode === "dark" ? theme.palette.common.white : theme.palette.common.black,
-    0.08
-  )
-  const ringFocus = alpha(theme.palette.primary.main, 0.34)
-  const hoverShadow =
-    theme.palette.mode === "dark" ? "0 4px 24px rgba(0,0,0,.36)" : "0 10px 36px rgba(0,0,0,.12)"
-  const muted = alpha(theme.palette.text.primary, 0.65)
-  const subMuted = alpha(theme.palette.text.primary, 0.55)
-
-  const glass = (tone: "neutral" | "success" | "info" | "warning" = "neutral") => {
-    const base = theme.palette.background.default
-    const tonal =
-      tone === "success"
-        ? alpha(theme.palette.success.main, theme.palette.mode === "dark" ? 0.12 : 0.1)
-        : tone === "info"
-          ? alpha(theme.palette.info.main, theme.palette.mode === "dark" ? 0.12 : 0.1)
-          : tone === "warning"
-            ? alpha(theme.palette.warning.main, theme.palette.mode === "dark" ? 0.12 : 0.1)
-            : alpha(theme.palette.primary.main, 0)
-    return {
-      backgroundImage: `linear-gradient(180deg, ${alpha(
-        base,
-        theme.palette.mode === "dark" ? 0.2 : 0.5
-      )} 0%, ${alpha(base, theme.palette.mode === "dark" ? 0.12 : 0.38)} 100%), linear-gradient(${tonal}, ${tonal})`,
-      backdropFilter: "blur(12px)",
-      WebkitBackdropFilter: "blur(12px)",
-    }
-  }
-
-  const numberSx = {
-    fontWeight: 900,
-    letterSpacing: "-.02em",
-    fontVariantNumeric: "tabular-nums lining-nums",
-    fontSize: { xs: "1.75rem", md: "2rem", xl: "2.25rem" },
-  } as const
-
   const TrendChip = ({ value }: { value?: number }) =>
     typeof value === "number" ? (
-      <Chip
-        size="small"
-        icon={value >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
-        label={`${value > 0 ? "+" : ""}${value.toFixed(1)}%`}
-        color={value >= 0 ? "success" : "error"}
-        variant="outlined"
-        sx={{ fontWeight: 800, borderRadius: 2 }}
-      />
+      <Badge
+        size="xs"
+        variant="outline"
+        tone={value >= 0 ? "success" : "danger"}
+        leadingIcon={
+          value >= 0 ? (
+            <TrendingUpIcon className="!text-[0.7rem]" />
+          ) : (
+            <TrendingDownIcon className="!text-[0.7rem]" />
+          )
+        }
+        className="font-extrabold"
+      >
+        {`${value > 0 ? "+" : ""}${value.toFixed(1)}%`}
+      </Badge>
     ) : null
 
   const attendanceItemKey = useCallback(
@@ -579,55 +519,50 @@ export default function Activity() {
     tone?: "neutral" | "success" | "info" | "warning"
     onClick?: () => void
     children: React.ReactNode
-  }) => (
-    <MotionCard
-      elevation={0}
-      initial={{ y: reduce ? 0 : 14, opacity: reduce ? 1 : 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
-      sx={{
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        borderRadius: 4,
-        border: `1px solid ${cardBorder}`,
-        overflow: "hidden",
-        ...glass(tone),
-        willChange: reduce ? undefined : "transform, opacity",
-        transform: "translateZ(0)",
-        transition: theme.transitions.create(
-          ["box-shadow", "transform", "background-color", "border-color"],
-          { duration: 180 }
-        ),
-        "&:hover": reduce
-          ? undefined
-          : {
-              boxShadow: hoverShadow,
-              transform: "translateY(-2px) translateZ(0)",
-              borderColor: cardBorder,
-            },
-        "&:active": { transform: "translateY(0) translateZ(0)" },
-      }}
-    >
-      <CardActionArea
-        onClick={onClick}
-        sx={{
-          borderRadius: 4,
-          p: { xs: 2, md: 2.5, xl: 3 },
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          alignItems: "stretch",
-          "&:focus-visible": { boxShadow: `0 0 0 3px ${ringFocus}` },
-        }}
+  }) => {
+    const toneClasses = {
+      neutral:
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]",
+      success:
+        "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#10b981/10,#10b981/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#34d399/12,#34d399/12)]",
+      info: "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#3b82f6/10,#3b82f6/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#60a5fa/12,#60a5fa/12)]",
+      warning:
+        "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#f59e0b/10,#f59e0b/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#fbbf24/12,#fbbf24/12)]",
+    }
+
+    return (
+      <motion.div
+        initial={{ y: reduce ? 0 : 14, opacity: reduce ? 1 : 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
+        className={cn(
+          "relative flex h-full flex-col overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
+          toneClasses[tone],
+          "shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
+          "transition-all duration-180",
+          reduce
+            ? ""
+            : "hover:-translate-y-0.5 hover:shadow-[0_10px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_4px_24px_rgba(0,0,0,0.36)]",
+          "active:translate-y-0",
+          onClick &&
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
+        )}
+        style={
+          reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+        }
       >
-        <CardContent sx={{ p: 0, display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-          {children}
-        </CardContent>
-      </CardActionArea>
-    </MotionCard>
-  )
+        <button
+          onClick={onClick}
+          className={cn(
+            "flex h-full flex-col items-stretch rounded-2xl p-4 text-left md:p-6 xl:p-8",
+            onClick ? "" : "pointer-events-none"
+          )}
+        >
+          <div className="flex flex-1 flex-col gap-2">{children}</div>
+        </button>
+      </motion.div>
+    )
+  }
 
   const headerVariants = {
     hidden: { opacity: 0, y: reduce ? 0 : 10 },
@@ -675,59 +610,28 @@ export default function Activity() {
   return (
     <Layout>
       <PageFadeIn>
-        <MotionBox
+        <motion.div
           initial="hidden"
           animate="show"
           variants={headerVariants}
-          sx={{
-            width: "100%",
-            minHeight: "100vh",
-            px: { xs: 2, sm: 3, md: 4, xl: 6 },
-            py: { xs: 2.5, md: 4 },
-            pb: { xs: 9, md: 4 },
-            boxSizing: "border-box",
-            maxWidth: "100%",
-            mx: "auto",
-          }}
+          className="mx-auto w-full max-w-full px-4 py-6 pb-16 sm:px-6 md:px-8 md:py-8 xl:px-12 xl:pb-8"
           style={
             reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
           }
         >
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            mb={{ xs: 2, md: 3 }}
-            gap={2}
-            flexWrap="wrap"
+          <div
+            data-fade
+            style={fadeDelayStyle("80ms")}
+            className="mb-4 flex flex-wrap items-center justify-between gap-4 md:mb-6"
           >
-            <Stack direction="row" alignItems="center" gap={1.25}>
-              <Box
-                sx={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 3,
-                  display: "grid",
-                  placeItems: "center",
-                  border: `1px solid ${cardBorder}`,
-                  background: alpha(
-                    theme.palette.primary.main,
-                    theme.palette.mode === "dark" ? 0.1 : 0.06
-                  ),
-                }}
-              >
-                <TimelineIcon sx={{ fontSize: 20, color: theme.palette.primary.main }} />
-              </Box>
-              <Typography
-                sx={{
-                  fontWeight: 900,
-                  fontSize: "clamp(1.5rem, 2.6vw, 2.4rem)",
-                  letterSpacing: "-.01em",
-                }}
-              >
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-[color:var(--nav-link)] shadow-surface dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,var(--nav-link)_12%)]">
+                <TimelineIcon className="text-[20px]" />
+              </span>
+              <h1 className="text-[clamp(1.5rem,2.6vw,2.4rem)] font-black tracking-tight text-[color:var(--page-text)]">
                 {t("activity:title")}
-              </Typography>
-            </Stack>
+              </h1>
+            </div>
             <motion.div
               initial={{ opacity: 0, y: reduce ? 0 : 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -738,180 +642,99 @@ export default function Activity() {
                   : { willChange: "transform, opacity", transform: "translateZ(0)" }
               }
             >
-              <ToggleButtonGroup
-                size="small"
-                color="primary"
-                value={period}
-                exclusive
-                onChange={(_, v: PeriodKey | null) => v && setPeriod(v)}
-                sx={{
-                  borderRadius: 999,
-                  p: 0.5,
-                  gap: 0.5,
-                  background: isDark
-                    ? alpha(theme.palette.common.white, 0.08)
-                    : alpha(theme.palette.primary.main, 0.1),
-                  border: isDark
-                    ? `1px solid ${darkToggleBorder}`
-                    : `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
-                  boxShadow: isDark
-                    ? `0 12px 34px ${alpha(theme.palette.common.black, 0.46)}`
-                    : undefined,
-                  "& .MuiToggleButton-root": {
-                    textTransform: "none",
-                    px: 1.6,
-                    py: 0.5,
-                    borderRadius: 999,
-                    border: 0,
-                    fontWeight: 700,
-                    color: theme.palette.common.white,
-                    backgroundColor: isDark ? darkToggleBase : "transparent",
-                    transition: theme.transitions.create(
-                      ["background-color", "color", "box-shadow"],
-                      {
-                        duration: theme.transitions.duration.shortest,
-                      }
-                    ),
-                    boxShadow: isDark
-                      ? `0 2px 10px ${alpha(theme.palette.common.black, 0.32)}`
-                      : undefined,
-                    "&:hover": {
-                      background: isDark
-                        ? darkToggleHover
-                        : alpha(theme.palette.primary.main, 0.12),
-                    },
-                    "&:not(.Mui-selected)": {
-                      boxShadow: isDark
-                        ? `0 1px 5px ${alpha(theme.palette.common.black, 0.25)}`
-                        : undefined,
-                    },
-                  },
-                  "& .Mui-selected": {
-                    background: isDark
-                      ? darkToggleSelected
-                      : lightenColor(theme.palette.primary.main, 0.35),
-                    color: theme.palette.common.white,
-                    boxShadow: isDark
-                      ? `0 8px 24px ${alpha(theme.palette.primary.main, 0.45)}`
-                      : `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
-                  },
-                  "& .Mui-selected:hover": {
-                    background: isDark
-                      ? lightenColor(darkToggleSelected, 0.12)
-                      : lightenColor(theme.palette.primary.main, 0.3),
-                  },
-                }}
-              >
+              <div className="inline-flex items-center gap-1 rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_12px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]">
                 {periodOptions.map((option) => (
-                  <ToggleButton key={option.value} value={option.value}>
+                  <button
+                    key={option.value}
+                    onClick={() => setPeriod(option.value)}
+                    className={cn(
+                      "rounded-full border-0 px-4 py-1.5 text-sm font-bold text-white transition-all duration-150",
+                      period === option.value
+                        ? "bg-[color:var(--nav-link)] shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
+                        : "bg-transparent hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,white_8%,transparent)] dark:hover:bg-[color:color-mix(in_srgb,white_12%,transparent)]"
+                    )}
+                  >
                     {option.label}
-                  </ToggleButton>
+                  </button>
                 ))}
-              </ToggleButtonGroup>
+              </div>
             </motion.div>
-          </Stack>
+          </div>
 
-          <MotionBox
+          <motion.div
             variants={gridVariants}
             initial="hidden"
             animate="show"
-            sx={{
-              display: "grid",
-              gridAutoFlow: "row dense",
-              alignItems: "stretch",
-              gridTemplateColumns: {
-                xs: "1fr",
-                sm: "repeat(2, minmax(0,1fr))",
-                md: "repeat(3, minmax(0,1fr))",
-              },
-              rowGap: { xs: 2.5, sm: 3, md: 3 },
-              columnGap: { xs: 2.5, sm: 3, md: 3 },
-              mb: { xs: 2, md: 3 },
-            }}
+            className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:mb-6 md:grid-cols-3 md:gap-6"
             style={
               reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
             }
           >
             <CardShell tone="success" onClick={() => setDetail("attendance")}>
-              <Stack direction="row" alignItems="center" spacing={2}>
+              <div className="flex items-center gap-4">
                 <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
-                <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                     {t("activity:sections.attendance.title")}
-                  </Typography>
-                  <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
-                    <Typography sx={numberSx}>{attendancePctAnimated}%</Typography>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
+                      {attendancePctAnimated}%
+                    </span>
                     <TrendChip value={attendance?.trend} />
-                  </Stack>
-                  <LinearProgress
-                    variant="determinate"
+                  </div>
+                  <ProgressBar
                     value={progressAttendance}
-                    sx={{
-                      height: 8,
-                      borderRadius: 999,
-                      transition: "transform .6s ease",
-                      bgcolor: alpha(theme.palette.success.main, 0.18),
-                      "& .MuiLinearProgress-bar": {
-                        borderRadius: 999,
-                        backgroundColor: theme.palette.success.main,
-                      },
-                    }}
+                    className="h-2 rounded-full"
+                    barClassName="bg-[#10b981] dark:bg-[#34d399] rounded-full transition-[width] duration-600"
                   />
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: muted,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
+                  <p className="truncate text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                     {t("activity:sections.attendance.summary", {
                       present: attendance?.present ?? 0,
                       total: attendance?.total ?? 0,
                       period: attendance?.periodLabel || labelByPeriod(period),
                     })}
-                  </Typography>
-                </Stack>
-              </Stack>
+                  </p>
+                </div>
+              </div>
             </CardShell>
 
             <CardShell tone="info" onClick={() => setDetail("grades")}>
-              <Stack spacing={1}>
-                <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
+              <div className="flex flex-col gap-1">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                   {t("activity:sections.grades.title")}
-                </Typography>
-                <Stack direction="row" alignItems="center" spacing={1.2}>
-                  <Typography sx={numberSx}>
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
                     {grades?.scale === "gpa"
                       ? `GPA ${gradesAnimated}`
                       : grades?.scale === "100"
                         ? `${gradesAnimated}/100`
                         : `${gradesAnimated}/5`}
-                  </Typography>
+                  </span>
                   <TrendChip value={grades?.trend} />
-                </Stack>
-                <Typography variant="body2" sx={{ color: muted }}>
+                </div>
+                <p className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                   {t("activity:sections.grades.averageLabel")}
-                </Typography>
-              </Stack>
+                </p>
+              </div>
             </CardShell>
 
             <CardShell tone="warning" onClick={() => setDetail("participation")}>
-              <Stack spacing={1}>
-                <Typography variant="overline" sx={{ letterSpacing: ".06em", color: subMuted }}>
+              <div className="flex flex-col gap-1">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                   {t("activity:sections.participation.title")}
-                </Typography>
-                <Stack direction="row" alignItems="center" spacing={1.2}>
-                  <Typography sx={numberSx}>
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
                     {t("activity:sections.participation.eventsCount", {
                       value: partEventsAnimated,
                       count: participation?.events ?? 0,
                     })}
-                  </Typography>
+                  </span>
                   <TrendChip value={participation?.trend} />
-                </Stack>
-                <Typography variant="body2" sx={{ color: muted }}>
+                </div>
+                <p className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                   {[
                     participation?.hours != null
                       ? t("activity:sections.participation.summaryHours", {
@@ -926,47 +749,42 @@ export default function Activity() {
                   ]
                     .filter(Boolean)
                     .join(separator)}
-                </Typography>
-              </Stack>
+                </p>
+              </div>
             </CardShell>
-          </MotionBox>
+          </motion.div>
 
-          <Divider sx={{ my: { xs: 2, md: 3 }, borderColor: cardBorder }} />
+          <div className="my-4 border-t border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] md:my-6 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
 
-          <MotionBox
+          <motion.div
             variants={gridVariants}
             initial="hidden"
             animate="show"
-            sx={{
-              display: "grid",
-              gridAutoFlow: "row dense",
-              alignItems: "stretch",
-              gridTemplateColumns: {
-                xs: "1fr",
-                sm: "repeat(2, minmax(0,1fr))",
-                md: "repeat(3, minmax(0,1fr))",
-              },
-              rowGap: { xs: 2.5, sm: 3, md: 3 },
-              columnGap: { xs: 2.5, sm: 3, md: 3 },
-            }}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-6"
           >
             <CardShell onClick={() => setDetail("attendance_recent")}>
-              <Stack>
-                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                  <EventAvailableIcon fontSize="small" />
-                  <Typography fontWeight={900}>
+              <div className="flex flex-col">
+                <div className="mb-2 flex items-center gap-2">
+                  <EventAvailableIcon className="text-base text-[color:var(--nav-link)]" />
+                  <h3 className="font-black text-[color:var(--page-text)]">
                     {t("activity:sections.attendance.recent")}
-                  </Typography>
-                </Stack>
-                <List dense disablePadding>
+                  </h3>
+                </div>
+                <div className="space-y-1">
                   <AnimatePresence initial={true}>
                     {(attendance?.recent ?? []).slice(0, 6).map((r, i) => {
                       const color =
                         r.status === "present"
-                          ? theme.palette.success.main
+                          ? "#10b981"
                           : r.status === "late"
-                            ? theme.palette.warning.main
-                            : theme.palette.error.main
+                            ? "#f59e0b"
+                            : "#ef4444"
+                      const darkColor =
+                        r.status === "present"
+                          ? "#34d399"
+                          : r.status === "late"
+                            ? "#fbbf24"
+                            : "#f87171"
                       const attendanceRecord = r as Partial<{
                         id?: number | string
                         lesson_id?: number | string
@@ -976,346 +794,307 @@ export default function Activity() {
                         pickKeyCandidate(attendanceRecord.lesson_id) ??
                         attendanceItemKey(r, i)
                       return (
-                        <MotionListItem
+                        <motion.div
                           key={itemKey}
                           variants={listItemVariants}
                           initial="hidden"
                           animate="show"
                           exit={{ opacity: 0 }}
                           transition={{ delay: reduce ? 0 : i * 0.04 }}
-                          sx={{
-                            px: 0,
-                            py: 0.25,
-                            willChange: reduce ? undefined : "transform, opacity",
-                            transform: "translateZ(0)",
-                          }}
+                          className="py-1"
+                          style={
+                            reduce
+                              ? undefined
+                              : { willChange: "transform, opacity", transform: "translateZ(0)" }
+                          }
                         >
-                          <ListItemText
-                            primaryTypographyProps={{
-                              sx: { display: "flex", alignItems: "center", gap: 1 },
-                            }}
-                            primary={
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                                <Box
-                                  sx={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 999,
-                                    background: color,
-                                    boxShadow: `0 0 0 3px ${alpha(color, 0.18)}`,
-                                  }}
-                                />
-                                <Box
-                                  sx={{
-                                    display: "inline-flex",
-                                    gap: 0.75,
-                                    alignItems: "baseline",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <Typography component="span" sx={{ fontWeight: 700 }}>
-                                    {r.course || attendanceLessonFallback}
-                                  </Typography>
-                                  <Typography component="span" sx={{ color: subMuted }}>
-                                    {attendanceStatusLabel(r.status)}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            }
-                            secondary={formatDate(r.date)}
-                            secondaryTypographyProps={{ sx: { color: subMuted } }}
-                          />
-                        </MotionListItem>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2 w-2 rounded-full dark:hidden"
+                              style={{
+                                background: color,
+                                boxShadow: `0 0 0 3px ${color}18`,
+                              }}
+                            />
+                            <div
+                              className="hidden h-2 w-2 rounded-full dark:block"
+                              style={{
+                                background: darkColor,
+                                boxShadow: `0 0 0 3px ${darkColor}18`,
+                              }}
+                            />
+                            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
+                              <span className="font-bold text-[color:var(--page-text)]">
+                                {r.course || attendanceLessonFallback}
+                              </span>
+                              <span className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                                {attendanceStatusLabel(r.status)}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="ml-4 text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                            {formatDate(r.date)}
+                          </p>
+                        </motion.div>
                       )
                     })}
                   </AnimatePresence>
                   {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
-                    <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
+                    <p className="px-1 py-1 text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                       {noDataText}
-                    </Typography>
+                    </p>
                   )}
-                </List>
-              </Stack>
+                </div>
+              </div>
             </CardShell>
 
             <CardShell onClick={() => setDetail("grades_recent")}>
-              <Stack>
-                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                  <SchoolIcon fontSize="small" />
-                  <Typography fontWeight={900}>{t("activity:sections.grades.recent")}</Typography>
-                </Stack>
-                <List dense disablePadding>
+              <div className="flex flex-col">
+                <div className="mb-2 flex items-center gap-2">
+                  <SchoolIcon className="text-base text-[color:var(--nav-link)]" />
+                  <h3 className="font-black text-[color:var(--page-text)]">
+                    {t("activity:sections.grades.recent")}
+                  </h3>
+                </div>
+                <div className="space-y-1">
                   <AnimatePresence initial={true}>
                     {(grades?.recent ?? []).slice(0, 6).map((r, i) => {
                       const gradeRecord = r as Partial<{ id?: number | string }>
                       const itemKey = pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
                       return (
-                        <MotionListItem
+                        <motion.div
                           key={itemKey}
                           variants={listItemVariants}
                           initial="hidden"
                           animate="show"
                           exit={{ opacity: 0 }}
                           transition={{ delay: reduce ? 0 : i * 0.04 }}
-                          sx={{
-                            px: 0,
-                            py: 0.25,
-                            willChange: reduce ? undefined : "transform, opacity",
-                            transform: "translateZ(0)",
-                          }}
+                          className="py-1"
+                          style={
+                            reduce
+                              ? undefined
+                              : { willChange: "transform, opacity", transform: "translateZ(0)" }
+                          }
                         >
-                          <ListItemText
-                            primaryTypographyProps={{
-                              sx: { display: "flex", alignItems: "center", gap: 1 },
-                            }}
-                            primary={
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                                <Box
-                                  sx={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 999,
-                                    background: alpha(theme.palette.info.main, 0.9),
-                                    boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.18)}`,
-                                  }}
-                                />
-                                <Box
-                                  sx={{
-                                    display: "inline-flex",
-                                    gap: 0.75,
-                                    alignItems: "baseline",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <Typography component="span" sx={{ fontWeight: 700 }}>
-                                    {r.course}
-                                  </Typography>
-                                  <Typography component="span" sx={{ color: subMuted }}>
-                                    {r.score}
-                                    {r.max ? "/" + r.max : ""}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            }
-                            secondary={formatDate(r.date)}
-                            secondaryTypographyProps={{ sx: { color: subMuted } }}
-                          />
-                        </MotionListItem>
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-[#3b82f6]/90 shadow-[0_0_0_3px_#3b82f618] dark:bg-[#60a5fa]/90 dark:shadow-[0_0_0_3px_#60a5fa18]" />
+                            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
+                              <span className="font-bold text-[color:var(--page-text)]">
+                                {r.course}
+                              </span>
+                              <span className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                                {r.score}
+                                {r.max ? "/" + r.max : ""}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="ml-4 text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                            {formatDate(r.date)}
+                          </p>
+                        </motion.div>
                       )
                     })}
                   </AnimatePresence>
                   {!loading && (!grades?.recent || grades.recent.length === 0) && (
-                    <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
+                    <p className="px-1 py-1 text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                       {noDataText}
-                    </Typography>
+                    </p>
                   )}
-                </List>
-              </Stack>
+                </div>
+              </div>
             </CardShell>
 
             <CardShell onClick={() => setDetail("participation_recent")}>
-              <Stack>
-                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                  <EmojiEventsIcon fontSize="small" />
-                  <Typography fontWeight={900}>
+              <div className="flex flex-col">
+                <div className="mb-2 flex items-center gap-2">
+                  <EmojiEventsIcon className="text-base text-[color:var(--nav-link)]" />
+                  <h3 className="font-black text-[color:var(--page-text)]">
                     {t("activity:sections.participation.recent")}
-                  </Typography>
-                </Stack>
-                <List dense disablePadding>
+                  </h3>
+                </div>
+                <div className="space-y-1">
                   <AnimatePresence initial={true}>
                     {(participation?.recent ?? []).slice(0, 6).map((r, i) => {
                       const participationRecord = r as Partial<{ id?: number | string }>
                       const itemKey =
                         pickKeyCandidate(participationRecord.id) ?? participationItemKey(r, i)
                       return (
-                        <MotionListItem
+                        <motion.div
                           key={itemKey}
                           variants={listItemVariants}
                           initial="hidden"
                           animate="show"
                           exit={{ opacity: 0 }}
                           transition={{ delay: reduce ? 0 : i * 0.04 }}
-                          sx={{
-                            px: 0,
-                            py: 0.25,
-                            willChange: reduce ? undefined : "transform, opacity",
-                            transform: "translateZ(0)",
-                          }}
+                          className="py-1"
+                          style={
+                            reduce
+                              ? undefined
+                              : { willChange: "transform, opacity", transform: "translateZ(0)" }
+                          }
                         >
-                          <ListItemText
-                            primaryTypographyProps={{
-                              sx: { display: "flex", alignItems: "center", gap: 1 },
-                            }}
-                            primary={
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-                                <Box
-                                  sx={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 999,
-                                    background: alpha(theme.palette.warning.main, 0.9),
-                                    boxShadow: `0 0 0 3px ${alpha(theme.palette.warning.main, 0.18)}`,
-                                  }}
-                                />
-                                <Box
-                                  sx={{
-                                    display: "inline-flex",
-                                    gap: 0.75,
-                                    alignItems: "baseline",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <Typography component="span" sx={{ fontWeight: 700 }}>
-                                    {r.title}
-                                  </Typography>
-                                  <Typography component="span" sx={{ color: subMuted }}>
-                                    {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            }
-                          />
-                        </MotionListItem>
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-[#f59e0b]/90 shadow-[0_0_0_3px_#f59e0b18] dark:bg-[#fbbf24]/90 dark:shadow-[0_0_0_3px_#fbbf2418]" />
+                            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
+                              <span className="font-bold text-[color:var(--page-text)]">
+                                {r.title}
+                              </span>
+                              <span className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                                {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
+                              </span>
+                            </div>
+                          </div>
+                        </motion.div>
                       )
                     })}
                   </AnimatePresence>
                   {!loading && (!participation?.recent || participation.recent.length === 0) && (
-                    <Typography variant="body2" sx={{ color: subMuted, px: 0.5, py: 0.5 }}>
+                    <p className="px-1 py-1 text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                       {noDataText}
-                    </Typography>
+                    </p>
                   )}
-                </List>
-              </Stack>
+                </div>
+              </div>
             </CardShell>
-          </MotionBox>
-        </MotionBox>
+          </motion.div>
+        </motion.div>
 
-        <Dialog open={detail !== ""} onClose={() => setDetail("")} maxWidth="sm" fullWidth>
-          <DialogTitle>
-            {detailSection ? t(`activity:sections.${detailSection}.dialogTitle`) : ""}
-          </DialogTitle>
-          <DialogContent dividers>
-            {detail === "attendance" && (
-              <Stack spacing={2}>
-                <Typography>
-                  {t("activity:sections.attendance.dialogTotal", {
-                    present: attendance?.present ?? 0,
-                    total: attendance?.total ?? 0,
-                    period: attendance?.periodLabel || labelByPeriod(period),
-                  })}
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={Math.max(0, Math.min(100, attendance?.percent ?? 0))}
-                  sx={{ height: 10, borderRadius: 8 }}
-                />
-                <List dense>
-                  {(attendance?.recent ?? []).map((r, i) => (
-                    <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
-                      <ListItemText
-                        primary={`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
-                        secondary={formatDate(r.date)}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              </Stack>
-            )}
-            {detail === "grades" && (
-              <Stack spacing={2}>
-                <Typography>
-                  {grades?.scale === "gpa"
-                    ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
-                    : grades?.scale === "100"
-                      ? `${Math.round(grades?.average ?? 0)}/100`
-                      : `${(grades?.average ?? 0).toFixed(1)}/5`}
-                </Typography>
-                <List dense>
-                  {(grades?.recent ?? []).map((r, i) => (
-                    <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
-                      <ListItemText
-                        primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                        secondary={formatDate(r.date)}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              </Stack>
-            )}
-            {detail === "participation" && (
-              <Stack spacing={2}>
-                <Typography>
-                  {[
-                    t("activity:sections.participation.eventsCount", {
-                      value: String(participation?.events ?? 0),
-                      count: participation?.events ?? 0,
-                    }),
-                    participation?.hours != null
-                      ? t("activity:sections.participation.summaryHours", {
-                          count: participation.hours ?? 0,
-                        })
-                      : null,
-                    participation?.groups != null
-                      ? t("activity:sections.participation.summaryGroups", {
-                          count: participation.groups ?? 0,
-                        })
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(separator)}
-                </Typography>
-                <List dense>
-                  {(participation?.recent ?? []).map((r, i) => (
-                    <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
-                      <ListItemText
-                        primary={r.title}
-                        secondary={[formatDate(r.date), r.role].filter(Boolean).join(separator)}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              </Stack>
-            )}
-            {detail === "attendance_recent" && (
-              <List dense>
+        <Dialog
+          open={detail !== ""}
+          onClose={() => setDetail("")}
+          title={detailSection ? t(`activity:sections.${detailSection}.dialogTitle`) : ""}
+          size="md"
+        >
+          {detail === "attendance" && (
+            <div className="space-y-4">
+              <p className="text-base text-[color:var(--page-text)]">
+                {t("activity:sections.attendance.dialogTotal", {
+                  present: attendance?.present ?? 0,
+                  total: attendance?.total ?? 0,
+                  period: attendance?.periodLabel || labelByPeriod(period),
+                })}
+              </p>
+              <ProgressBar
+                value={Math.max(0, Math.min(100, attendance?.percent ?? 0))}
+                className="h-2.5 rounded-lg"
+                barClassName="bg-[#10b981] dark:bg-[#34d399] rounded-lg"
+              />
+              <div className="space-y-2">
                 {(attendance?.recent ?? []).map((r, i) => (
-                  <ListItem key={attendanceItemKey(r, i)} sx={{ px: 0 }}>
-                    <ListItemText
-                      primary={`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
-                      secondary={formatDate(r.date)}
-                    />
-                  </ListItem>
+                  <div key={attendanceItemKey(r, i)} className="space-y-0.5">
+                    <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                      {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
+                    </p>
+                    <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                      {formatDate(r.date)}
+                    </p>
+                  </div>
                 ))}
-              </List>
-            )}
-            {detail === "grades_recent" && (
-              <List dense>
+              </div>
+            </div>
+          )}
+          {detail === "grades" && (
+            <div className="space-y-4">
+              <p className="text-base font-semibold text-[color:var(--page-text)]">
+                {grades?.scale === "gpa"
+                  ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
+                  : grades?.scale === "100"
+                    ? `${Math.round(grades?.average ?? 0)}/100`
+                    : `${(grades?.average ?? 0).toFixed(1)}/5`}
+              </p>
+              <div className="space-y-2">
                 {(grades?.recent ?? []).map((r, i) => (
-                  <ListItem key={gradeItemKey(r, i)} sx={{ px: 0 }}>
-                    <ListItemText
-                      primary={`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                      secondary={formatDate(r.date)}
-                    />
-                  </ListItem>
+                  <div key={gradeItemKey(r, i)} className="space-y-0.5">
+                    <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                      {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
+                    </p>
+                    <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                      {formatDate(r.date)}
+                    </p>
+                  </div>
                 ))}
-              </List>
-            )}
-            {detail === "participation_recent" && (
-              <List dense>
+              </div>
+            </div>
+          )}
+          {detail === "participation" && (
+            <div className="space-y-4">
+              <p className="text-base text-[color:var(--page-text)]">
+                {[
+                  t("activity:sections.participation.eventsCount", {
+                    value: String(participation?.events ?? 0),
+                    count: participation?.events ?? 0,
+                  }),
+                  participation?.hours != null
+                    ? t("activity:sections.participation.summaryHours", {
+                        count: participation.hours ?? 0,
+                      })
+                    : null,
+                  participation?.groups != null
+                    ? t("activity:sections.participation.summaryGroups", {
+                        count: participation.groups ?? 0,
+                      })
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(separator)}
+              </p>
+              <div className="space-y-2">
                 {(participation?.recent ?? []).map((r, i) => (
-                  <ListItem key={participationItemKey(r, i)} sx={{ px: 0 }}>
-                    <ListItemText
-                      primary={r.title}
-                      secondary={[formatDate(r.date), r.role].filter(Boolean).join(separator)}
-                    />
-                  </ListItem>
+                  <div key={participationItemKey(r, i)} className="space-y-0.5">
+                    <p className="text-sm font-semibold text-[color:var(--page-text)]">{r.title}</p>
+                    <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                      {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
+                    </p>
+                  </div>
                 ))}
-              </List>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDetail("")}>{t("activity:dialog.close")}</Button>
-          </DialogActions>
+              </div>
+            </div>
+          )}
+          {detail === "attendance_recent" && (
+            <div className="space-y-2">
+              {(attendance?.recent ?? []).map((r, i) => (
+                <div key={attendanceItemKey(r, i)} className="space-y-0.5">
+                  <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                    {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
+                  </p>
+                  <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    {formatDate(r.date)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          {detail === "grades_recent" && (
+            <div className="space-y-2">
+              {(grades?.recent ?? []).map((r, i) => (
+                <div key={gradeItemKey(r, i)} className="space-y-0.5">
+                  <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                    {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
+                  </p>
+                  <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    {formatDate(r.date)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          {detail === "participation_recent" && (
+            <div className="space-y-2">
+              {(participation?.recent ?? []).map((r, i) => (
+                <div key={participationItemKey(r, i)} className="space-y-0.5">
+                  <p className="text-sm font-semibold text-[color:var(--page-text)]">{r.title}</p>
+                  <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-6 flex justify-end">
+            <Button variant="outline" onClick={() => setDetail("")}>
+              {t("activity:dialog.close")}
+            </Button>
+          </div>
         </Dialog>
       </PageFadeIn>
     </Layout>
