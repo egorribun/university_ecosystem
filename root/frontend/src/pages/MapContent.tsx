@@ -66,13 +66,12 @@ export default function MapContent() {
   const [privacyBlocksEmbeds, setPrivacyBlocksEmbeds] = useState(() => detectEmbedOptOut())
   // Используем цвета светлой темы для обеих тем (темный текст)
   const lightThemeTextPrimary = "#101621" // --page-text светлой темы
+  const lightThemePrimary = "#0f4faa" // --nav-link светлой темы
   const toggleBaseColor = alpha(lightThemeTextPrimary, 0.88)
   const toggleSelectedColor = theme.palette.common.white
-  const toggleSelectedBg =
-    theme.palette.mode === "dark"
-      ? alpha(theme.palette.primary.light, 0.45)
-      : alpha(theme.palette.primary.main, 0.24)
-  const toggleHoverColor = theme.palette.primary.main
+  // Используем одинаковый фон для обеих тем (как на светлой)
+  const toggleSelectedBg = alpha(lightThemePrimary, 0.24)
+  const toggleHoverColor = lightThemePrimary
   const inactiveIconColor = alpha(lightThemeTextPrimary, 0.88)
 
   useEffect(() => {
