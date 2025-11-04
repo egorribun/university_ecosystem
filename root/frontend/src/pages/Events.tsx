@@ -467,14 +467,14 @@ const Events = () => {
             id={`events-tabpanel-${tab}`}
             aria-labelledby={`events-tab-${tab}`}
             className={cn(
-              "grid gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
-              isMobile ? "grid-cols-1" : "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
+              "flex flex-wrap gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
+              isMobile ? "flex-col" : ""
             )}
           >
             {loading &&
               Array.from({ length: skeletonCount }).map((_, i) => (
-                <div key={`event-skel-${i}`} className="flex h-full w-full">
-                  <div className="w-full space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
+                <div key={`event-skel-${i}`} className="flex h-full">
+                  <div className="w-full max-w-[500px] space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
                     <Skeleton height={isMobile ? 160 : 200} className="rounded-ue-lg" />
                     <Skeleton height={isMobile ? 28 : 32} />
                     <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
@@ -485,13 +485,13 @@ const Events = () => {
 
             {!loading &&
               normalizedEvents.map((event) => (
-                <div key={event.id} className="flex h-full w-full">
-                  <EventCard {...event} onChange={handleRefresh} maxWidth="100%" />
+                <div key={event.id} className="flex h-full">
+                  <EventCard {...event} onChange={handleRefresh} maxWidth="500px" />
                 </div>
               ))}
 
             {!loading && normalizedEvents.length === 0 && (
-              <div className="col-span-full mt-16 flex justify-center">
+              <div className="mt-16 flex w-full justify-center">
                 <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                     <EventNoteIcon className="text-[2.2rem]" />

@@ -181,22 +181,28 @@ async def _worker_loop(state: _LoopState) -> None:
                     "Failed to process notification job", extra={"job": job}
                 )
             finally:
+                # Always record metrics first, even if cleanup operations are cancelled
                 if metrics is not None:
                     elapsed = max(time.perf_counter() - started, 0.0)
                     metrics.processing_latency_seconds.observe(elapsed)
                     if success:
                         metrics.processed_jobs_total.labels(kind=job.kind).inc()
-                if _use_persistent_backend():
-                    await _acknowledge_persistent_job(
-                        job,
-                        success=success,
-                        error=error,
-                        state=state,
-                        metrics=metrics,
-                    )
-                else:
-                    state.queue.task_done()
-                state.active_jobs = max(state.active_jobs - 1, 0)
+                try:
+                    if _use_persistent_backend():
+                        await _acknowledge_persistent_job(
+                            job,
+                            success=success,
+                            error=error,
+                            state=state,
+                            metrics=metrics,
+                        )
+                    else:
+                        state.queue.task_done()
+                    state.active_jobs = max(state.active_jobs - 1, 0)
+                except asyncio.CancelledError:
+                    # If cleanup is cancelled, still decrement active_jobs
+                    state.active_jobs = max(state.active_jobs - 1, 0)
+                    raise
     except asyncio.CancelledError:  # pragma: no cover - cooperative shutdown
         raise
 
