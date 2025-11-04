@@ -2,7 +2,7 @@ import { memo } from "react"
 
 const NewsCardSkeleton = () => {
   return (
-    <article className="relative flex h-full w-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface">
+    <article className="relative flex h-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface" style={{ maxWidth: "500px", width: "100%" }}>
       <div
         className="h-[180px] w-full animate-skeleton-wave bg-skeleton sm:h-[220px]"
         aria-hidden

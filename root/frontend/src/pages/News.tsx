@@ -214,17 +214,17 @@ const News = () => {
 
           <div
             data-fade
-            className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-5 [--fade-delay:200ms] sm:gap-6"
+            className="flex flex-wrap gap-5 [--fade-delay:200ms] sm:gap-6"
           >
             {isInitialLoading
               ? Array.from({ length: skeletonCount }).map((_, index) => (
-                  <div key={`news-skeleton-${index}`} className="flex h-full w-full">
+                  <div key={`news-skeleton-${index}`} className="flex h-full">
                     <NewsCardSkeleton />
                   </div>
                 ))
               : Array.isArray(visibleList) &&
                 visibleList.map((news) => (
-                  <div key={news.id} className="flex h-full w-full">
+                  <div key={news.id} className="flex h-full">
                     <NewsCard
                       {...news}
                       image_url={news.image_url ?? undefined}
@@ -236,7 +236,7 @@ const News = () => {
                 ))}
 
             {showEmptyState && (
-              <div className="col-span-full mt-16 flex justify-start">
+              <div className="mt-16 flex w-full justify-start">
                 <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                     <ArticleIcon className="text-[2.2rem]" />

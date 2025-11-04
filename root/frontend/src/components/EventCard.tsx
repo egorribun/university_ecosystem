@@ -510,7 +510,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   return (
     <div
       className={cn(
-        "event-card relative w-full min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
+        "event-card relative min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
         editOpen ? "cursor-default" : "cursor-pointer",
         qrOpen && "pointer-events-none grayscale-[0.12] opacity-90",
         !editOpen &&
@@ -518,7 +518,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           "hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-surface-strong active:scale-[0.997]",
         "focus-visible:outline-2 focus-visible:outline-[color:var(--nav-link)] focus-visible:outline-offset-2"
       )}
-      style={{ maxWidth: maxWidth ?? 700 }}
+      style={{ maxWidth: maxWidth ?? "500px", width: "100%" }}
       role="button"
       tabIndex={0}
       onClick={handleCardClick}
