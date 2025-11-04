@@ -651,7 +651,7 @@ export default function Activity() {
                       "rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-all duration-150",
                       period === option.value
                         ? "bg-[color:var(--nav-link)] text-white shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
-                        : "bg-transparent text-[color:color-mix(in_srgb,var(--page-text)_75%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] hover:text-[color:var(--nav-link)] dark:bg-[color:color-mix(in_srgb,white_8%,transparent)] dark:text-white dark:hover:bg-[color:color-mix(in_srgb,white_12%,transparent)]"
+                        : "bg-transparent text-black hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] hover:text-[color:var(--nav-link)] dark:bg-[color:color-mix(in_srgb,white_8%,transparent)] dark:text-white dark:hover:bg-[color:color-mix(in_srgb,white_12%,transparent)]"
                     )}
                   >
                     {option.label}
