@@ -20,29 +20,33 @@ import { useTranslation } from "react-i18next"
 // Utility function to check if dark mode is active
 const useIsDark = () => {
   const [isDark, setIsDark] = useState(false)
-  
+
   useEffect(() => {
     const checkTheme = () => {
       const root = document.documentElement
-      const hasDarkClass = root.classList.contains("dark") || root.getAttribute("data-mui-color-scheme") === "dark"
+      const hasDarkClass =
+        root.classList.contains("dark") || root.getAttribute("data-mui-color-scheme") === "dark"
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
       setIsDark(hasDarkClass || prefersDark)
     }
-    
+
     checkTheme()
     const observer = new MutationObserver(checkTheme)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-mui-color-scheme"] })
-    
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-mui-color-scheme"],
+    })
+
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
     const handleChange = () => checkTheme()
     mediaQuery.addEventListener("change", handleChange)
-    
+
     return () => {
       observer.disconnect()
       mediaQuery.removeEventListener("change", handleChange)
     }
   }, [])
-  
+
   return isDark
 }
 
@@ -189,9 +193,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           <h3 className="np-title text-base font-extrabold leading-[1.2] tracking-[-0.01em] m-0">
             {data.track_name || "—"}
           </h3>
-          <p className="np-art text-sm opacity-90 m-0">
-            {data.artists.join(", ")}
-          </p>
+          <p className="np-art text-sm opacity-90 m-0">{data.artists.join(", ")}</p>
           {!data.is_playing && (
             <span
               className="self-start px-3 py-1 text-xs font-bold uppercase rounded-full bg-glass border border-glass-border text-page-foreground/80 dark:text-page-foreground/80"
@@ -255,9 +257,7 @@ const ProfileAccordion = ({
       >
         <span className="font-black text-base">{title}</span>
         <svg
-          className={`w-6 h-6 transition-transform duration-200 ${
-            expanded ? "rotate-180" : ""
-          }`}
+          className={`w-6 h-6 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
           fill="currentColor"
           viewBox="0 0 24 24"
         >
@@ -708,9 +708,7 @@ export default function Profile() {
                         style={{
                           width: avatarSize,
                           height: avatarSize,
-                          animation: reduceMotion
-                            ? "none"
-                            : "aura-pulse 14s ease-in-out infinite",
+                          animation: reduceMotion ? "none" : "aura-pulse 14s ease-in-out infinite",
                         }}
                       >
                         <div className="avatar-ring w-full h-full">
@@ -863,11 +861,7 @@ export default function Profile() {
                               }
                             }}
                           >
-                            <svg
-                              className="w-5 h-5"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                             </svg>
                           </button>
@@ -919,11 +913,7 @@ export default function Profile() {
                                 }
                               }}
                             >
-                              <svg
-                                className="w-5 h-5"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                              >
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                               </svg>
                             </button>
@@ -936,9 +926,7 @@ export default function Profile() {
                       <motion.div
                         initial={isTest || reduced ? false : { opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        transition={
-                          isTest || reduced ? { duration: 0 } : { duration: 0.72 }
-                        }
+                        transition={isTest || reduced ? { duration: 0 } : { duration: 0.72 }}
                         className="flex flex-col gap-5"
                       >
                         <p className="text-xs uppercase tracking-[2.2px] text-secondary dark:text-secondary m-0">
@@ -952,9 +940,7 @@ export default function Profile() {
                   <div
                     className="w-full relative"
                     style={{
-                      marginTop: isMobile
-                        ? `${Math.round(avatarPx * 0.55) + 36}px`
-                        : "0",
+                      marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : "0",
                     }}
                   >
                     {edit ? (
@@ -1189,7 +1175,9 @@ export default function Profile() {
                                     {achievementsList.map((ach, idx) => (
                                       <motion.button
                                         key={ach.key}
-                                        initial={isTest || reduced ? false : { opacity: 0, scale: 0.8 }}
+                                        initial={
+                                          isTest || reduced ? false : { opacity: 0, scale: 0.8 }
+                                        }
                                         animate={{ opacity: 1, scale: 1 }}
                                         transition={
                                           isTest || reduced
@@ -1332,7 +1320,9 @@ export default function Profile() {
                 </p>
               )}
               {achOpen.date && (
-                <p className="m-0">{t("profile:dialog.achievement.date", { date: achOpen.date })}</p>
+                <p className="m-0">
+                  {t("profile:dialog.achievement.date", { date: achOpen.date })}
+                </p>
               )}
               {achOpen.url && (
                 <a
@@ -1391,11 +1381,7 @@ export default function Profile() {
               </div>
             </motion.div>
           </div>
-          <AutoCloseSnackbar
-            snack={snack}
-            onClose={() => setSnack(null)}
-            duration={2600}
-          />
+          <AutoCloseSnackbar snack={snack} onClose={() => setSnack(null)} duration={2600} />
         </>
       )}
     </>
