@@ -1591,6 +1591,23 @@ body.dark .map-controls-glass .glass--panel {
     0 20px 58px rgba(0, 0, 0, 0.14),
     inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
 }
+/* Кнопка пробок: одинаковые цвета на темной теме как на светлой */
+body.dark .map-controls-glass .glass--btn[aria-pressed="true"] {
+  color: #d32f2f !important;
+}
+body.dark .map-controls-glass .glass--btn[aria-pressed="true"]:hover {
+  color: #c62828 !important;
+}
+body.dark .map-controls-glass .glass--btn[aria-pressed="false"] {
+  color: rgba(16, 22, 33, 0.88) !important;
+}
+body.dark .map-controls-glass .glass--btn[aria-pressed="false"]:hover {
+  color: #0f4faa !important;
+}
+body.dark .map-controls-glass .glass--btn[aria-pressed="true"] .MuiSvgIcon-root,
+body.dark .map-controls-glass .glass--btn[aria-pressed="false"] .MuiSvgIcon-root {
+  color: inherit !important;
+}
 .safe-bottom {
   padding-bottom: max(env(safe-area-inset-bottom), 12px);
 }
