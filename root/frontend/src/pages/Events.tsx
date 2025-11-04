@@ -331,11 +331,16 @@ const Events = () => {
             data-fade
             style={fadeDelayStyle("200ms")}
             className="relative mb-4 min-h-[45px] rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(0,118,255,0.12),rgba(0,118,255,0))] px-3 py-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[16px] sm:px-4 sm:py-2.5"
+            role="tablist"
           >
             <div className="flex flex-wrap items-center gap-2 sm:gap-4">
               {tabs.map((tabItem) => (
                 <button
                   key={tabItem.key}
+                  role="tab"
+                  id={`events-tab-${tabItem.key}`}
+                  aria-selected={tab === tabItem.key}
+                  aria-controls={`events-tabpanel-${tabItem.key}`}
                   onClick={() => handleTabChange(tabItem.key)}
                   className={cn(
                     "relative px-4 py-2 text-base font-semibold transition-colors duration-200 rounded-ue-lg sm:px-6 sm:text-lg",
@@ -458,6 +463,9 @@ const Events = () => {
           <div
             data-fade
             style={fadeDelayStyle("260ms")}
+            role="tabpanel"
+            id={`events-tabpanel-${tab}`}
+            aria-labelledby={`events-tab-${tab}`}
             className={cn(
               "grid gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
               isMobile ? "grid-cols-1" : "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
