@@ -397,6 +397,16 @@ export default function MapContent() {
                     "&:hover": {
                       color: traffic ? trafficActiveHoverColor : toggleHoverColor,
                     },
+                    "& .MuiSvgIcon-root": {
+                      color: "inherit",
+                    },
+                    // Обеспечиваем одинаковые цвета на темной теме как на светлой
+                    ...(theme.palette.mode === "dark" && {
+                      color: traffic ? trafficActiveColor : inactiveIconColor,
+                      "&:hover": {
+                        color: traffic ? trafficActiveHoverColor : toggleHoverColor,
+                      },
+                    }),
                   }}
                 >
                   <TrafficIcon sx={{ color: "inherit" }} />
