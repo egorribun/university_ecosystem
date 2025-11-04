@@ -1455,17 +1455,17 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   z-index: 50;
   padding: 14px 18px;
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-  border: 1px solid rgba(255, 255, 255, 0.16);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.08),
-    0 8px 24px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
-  -webkit-backdrop-filter: blur(40px) saturate(200%) contrast(1.05) brightness(1.02);
-  backdrop-filter: blur(40px) saturate(200%) contrast(1.05) brightness(1.02);
+    0 20px 60px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: blur(48px) saturate(200%) contrast(1.02) brightness(1.01);
+  backdrop-filter: blur(48px) saturate(200%) contrast(1.02) brightness(1.01);
   border-radius: 20px;
   transition:
     background var(--anim-med),
@@ -1474,17 +1474,17 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 body.dark .map-head {
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
-  border: 1px solid rgba(255, 255, 255, 0.12);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.008));
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
-    0 24px 72px rgba(0, 0, 0, 0.24),
-    0 10px 32px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-  -webkit-backdrop-filter: blur(44px) saturate(200%) contrast(1.08) brightness(1.01);
-  backdrop-filter: blur(44px) saturate(200%) contrast(1.08) brightness(1.01);
+    0 20px 60px rgba(0, 0, 0, 0.2),
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(52px) saturate(200%) contrast(1.02) brightness(1.01);
+  backdrop-filter: blur(52px) saturate(200%) contrast(1.02) brightness(1.01);
 }
 .map-head::before {
   content: "";
@@ -1495,26 +1495,26 @@ body.dark .map-head {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.05) 35%,
-      rgba(255, 255, 255, 0.02) 65%,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.03) 35%,
+      rgba(255, 255, 255, 0.01) 65%,
       transparent 100%
     ),
-    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.1), transparent 70%);
+    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.06), transparent 70%);
   mix-blend-mode: overlay;
-  opacity: 0.6;
+  opacity: 0.5;
 }
 body.dark .map-head::before {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.04) 35%,
-      rgba(255, 255, 255, 0.01) 65%,
+      rgba(255, 255, 255, 0.06) 0%,
+      rgba(255, 255, 255, 0.025) 35%,
+      rgba(255, 255, 255, 0.008) 65%,
       transparent 100%
     ),
-    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.06), transparent 70%);
-  opacity: 0.5;
+    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.04), transparent 70%);
+  opacity: 0.4;
 }
 .map-head::after {
   content: "";
@@ -1525,28 +1525,28 @@ body.dark .map-head::before {
   height: 240px;
   border-radius: 50%;
   background:
-    radial-gradient(closest-side, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 70%),
     conic-gradient(
       from 210deg at 26% 18%,
-      rgba(255, 255, 255, 0.18),
-      rgba(255, 255, 255, 0.09) 18%,
+      rgba(255, 255, 255, 0.12),
+      rgba(255, 255, 255, 0.06) 18%,
       transparent 40%
     );
   filter: blur(2px);
-  opacity: 0.4;
+  opacity: 0.3;
   mix-blend-mode: screen;
   pointer-events: none;
 }
 body.dark .map-head::after {
   background:
-    radial-gradient(closest-side, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 70%),
     conic-gradient(
       from 210deg at 26% 18%,
-      rgba(255, 255, 255, 0.11),
-      rgba(255, 255, 255, 0.06) 18%,
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.04) 18%,
       transparent 40%
     );
-  opacity: 0.3;
+  opacity: 0.25;
 }
 .map-head > * {
   position: relative;
@@ -1567,6 +1567,29 @@ body.dark .map-head .MuiSvgIcon-root {
   z-index: 60;
   display: grid;
   gap: 10px;
+}
+/* Обеспечиваем одинаковый стиль панели с кнопками на обеих темах */
+.map-controls-glass .glass--panel {
+  background:
+    radial-gradient(120% 80% at -10% -20%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%),
+    radial-gradient(140% 100% at 110% 120%, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    rgba(255, 255, 255, 0.18) !important;
+  border: 1px solid rgba(201, 213, 233, 0.56) !important;
+  box-shadow:
+    0 20px 58px rgba(0, 0, 0, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+}
+body.dark .map-controls-glass .glass--panel {
+  background:
+    radial-gradient(120% 80% at -10% -20%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%),
+    radial-gradient(140% 100% at 110% 120%, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    rgba(255, 255, 255, 0.18) !important;
+  border: 1px solid rgba(201, 213, 233, 0.56) !important;
+  box-shadow:
+    0 20px 58px rgba(0, 0, 0, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
 }
 .safe-bottom {
   padding-bottom: max(env(safe-area-inset-bottom), 12px);
