@@ -1455,16 +1455,21 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.35);
+    radial-gradient(140% 120% at -15% -25%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12) 45%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(160% 140% at 115% 125%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0) 75%),
+    radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.14) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 75%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  -webkit-backdrop-filter: saturate(200%) brightness(1.08);
+  backdrop-filter: saturate(200%) brightness(1.08);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.08),
-    0 8px 24px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 2px 4px rgba(255, 255, 255, 0.15);
+    0 24px 72px rgba(0, 0, 0, 0.12),
+    0 12px 32px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 2px 6px rgba(255, 255, 255, 0.25),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.05);
   border-radius: 20px;
   transition:
     background var(--anim-med),
@@ -1473,16 +1478,21 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 body.dark .map-head {
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 65%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-  border: 1px solid rgba(255, 255, 255, 0.28);
+    radial-gradient(140% 120% at -15% -25%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1) 45%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(160% 140% at 115% 125%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0) 75%),
+    radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.1) 25%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0.03) 75%, rgba(255, 255, 255, 0.015) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: saturate(200%) brightness(1.12);
+  backdrop-filter: saturate(200%) brightness(1.12);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.25),
-    0 8px 24px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.15),
-    inset 0 2px 4px rgba(255, 255, 255, 0.12);
+    0 28px 80px rgba(0, 0, 0, 0.35),
+    0 14px 36px rgba(0, 0, 0, 0.2),
+    0 6px 16px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 2px 6px rgba(255, 255, 255, 0.2),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.15);
 }
 .map-head::before {
   content: "";
@@ -1493,75 +1503,103 @@ body.dark .map-head {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.25) 0%,
-      rgba(255, 255, 255, 0.12) 25%,
-      rgba(255, 255, 255, 0.05) 50%,
-      rgba(255, 255, 255, 0.02) 75%,
+      rgba(255, 255, 255, 0.45) 0%,
+      rgba(255, 255, 255, 0.28) 15%,
+      rgba(255, 255, 255, 0.18) 30%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.05) 70%,
+      rgba(255, 255, 255, 0.02) 85%,
       transparent 100%
     ),
-    radial-gradient(80% 140% at 0% -15%, rgba(255, 255, 255, 0.2), transparent 60%),
-    radial-gradient(60% 100% at 100% 0%, rgba(255, 255, 255, 0.1), transparent 50%);
+    radial-gradient(90% 160% at -5% -20%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.15) 40%, transparent 70%),
+    radial-gradient(70% 120% at 105% 5%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.1) 45%, transparent 70%),
+    radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.2), transparent 50%);
   mix-blend-mode: overlay;
-  opacity: 0.6;
+  opacity: 0.85;
 }
 body.dark .map-head::before {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.2) 0%,
-      rgba(255, 255, 255, 0.1) 25%,
-      rgba(255, 255, 255, 0.04) 50%,
-      rgba(255, 255, 255, 0.015) 75%,
+      rgba(255, 255, 255, 0.35) 0%,
+      rgba(255, 255, 255, 0.22) 15%,
+      rgba(255, 255, 255, 0.14) 30%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.04) 70%,
+      rgba(255, 255, 255, 0.015) 85%,
       transparent 100%
     ),
-    radial-gradient(80% 140% at 0% -15%, rgba(255, 255, 255, 0.15), transparent 60%),
-    radial-gradient(60% 100% at 100% 0%, rgba(255, 255, 255, 0.08), transparent 50%);
-  opacity: 0.5;
+    radial-gradient(90% 160% at -5% -20%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12) 40%, transparent 70%),
+    radial-gradient(70% 120% at 105% 5%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08) 45%, transparent 70%),
+    radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.16), transparent 50%);
+  opacity: 0.75;
 }
 .map-head::after {
   content: "";
   position: absolute;
-  top: -40px;
-  left: -50px;
-  width: 280px;
-  height: 200px;
+  top: -50px;
+  left: -60px;
+  width: 320px;
+  height: 240px;
   border-radius: 50%;
   background:
     radial-gradient(
-      circle at 30% 25%,
-      rgba(255, 255, 255, 0.35) 0%,
-      rgba(255, 255, 255, 0.2) 25%,
-      rgba(255, 255, 255, 0.1) 45%,
-      rgba(255, 255, 255, 0) 70%
+      circle at 28% 22%,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.45) 18%,
+      rgba(255, 255, 255, 0.3) 32%,
+      rgba(255, 255, 255, 0.18) 45%,
+      rgba(255, 255, 255, 0.1) 58%,
+      rgba(255, 255, 255, 0) 75%
     ),
     conic-gradient(
-      from 210deg at 30% 20%,
-      rgba(255, 255, 255, 0.25) 0%,
-      rgba(255, 255, 255, 0.15) 15%,
-      rgba(255, 255, 255, 0.08) 30%,
-      transparent 50%
+      from 205deg at 28% 18%,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.35) 12%,
+      rgba(255, 255, 255, 0.22) 25%,
+      rgba(255, 255, 255, 0.12) 38%,
+      rgba(255, 255, 255, 0.06) 50%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 120% 80% at 35% 15%,
+      rgba(255, 255, 255, 0.4) 0%,
+      rgba(255, 255, 255, 0.2) 30%,
+      transparent 60%
     );
-  opacity: 0.65;
+  opacity: 0.95;
   mix-blend-mode: screen;
   pointer-events: none;
+  filter: brightness(1.1);
 }
 body.dark .map-head::after {
   background:
     radial-gradient(
-      circle at 30% 25%,
-      rgba(255, 255, 255, 0.25) 0%,
-      rgba(255, 255, 255, 0.15) 25%,
-      rgba(255, 255, 255, 0.08) 45%,
-      rgba(255, 255, 255, 0) 70%
+      circle at 28% 22%,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.35) 18%,
+      rgba(255, 255, 255, 0.22) 32%,
+      rgba(255, 255, 255, 0.14) 45%,
+      rgba(255, 255, 255, 0.08) 58%,
+      rgba(255, 255, 255, 0) 75%
     ),
     conic-gradient(
-      from 210deg at 30% 20%,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.12) 15%,
-      rgba(255, 255, 255, 0.06) 30%,
-      transparent 50%
+      from 205deg at 28% 18%,
+      rgba(255, 255, 255, 0.4) 0%,
+      rgba(255, 255, 255, 0.28) 12%,
+      rgba(255, 255, 255, 0.18) 25%,
+      rgba(255, 255, 255, 0.1) 38%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 120% 80% at 35% 15%,
+      rgba(255, 255, 255, 0.3) 0%,
+      rgba(255, 255, 255, 0.15) 30%,
+      transparent 60%
     );
-  opacity: 0.5;
+  opacity: 0.8;
+  filter: brightness(1.15);
 }
 .map-head > * {
   position: relative;
