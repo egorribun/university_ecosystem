@@ -1265,7 +1265,11 @@ export default function Schedule() {
               {currentLesson ? (
                 <div className="relative z-[1]">
                   <div className="mb-4 flex flex-wrap items-center gap-2.5">
-                    <Badge size="sm" tone="primary" className="chip-clock font-semibold shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]">
+                    <Badge
+                      size="sm"
+                      tone="primary"
+                      className="chip-clock font-semibold shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+                    >
                       {t("schedule:chips.current")}
                     </Badge>
                     <Badge
@@ -1370,11 +1374,7 @@ export default function Schedule() {
             )}
           </div>
 
-          <div
-            data-fade
-            style={fadeDelayStyle("280ms")}
-            className="max-w-[1920px] px-2 md:px-4"
-          >
+          <div data-fade style={fadeDelayStyle("280ms")} className="max-w-[1920px] px-2 md:px-4">
             {isMobile ? renderMobileCards() : renderTable()}
           </div>
 
