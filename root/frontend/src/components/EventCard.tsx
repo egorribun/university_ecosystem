@@ -510,7 +510,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   return (
     <div
       className={cn(
-        "event-card relative w-full max-w-[420px] mx-auto min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
+        "event-card relative w-full min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
         editOpen ? "cursor-default" : "cursor-pointer",
         qrOpen && "pointer-events-none grayscale-[0.12] opacity-90",
         !editOpen &&
@@ -518,7 +518,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           "hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-surface-strong active:scale-[0.997]",
         "focus-visible:outline-2 focus-visible:outline-[color:var(--nav-link)] focus-visible:outline-offset-2"
       )}
-      style={{ maxWidth: maxWidth ?? 420 }}
+      style={{ maxWidth: maxWidth ?? 700 }}
       role="button"
       tabIndex={0}
       onClick={handleCardClick}
@@ -609,13 +609,13 @@ const EventCardComponent: FC<EventCardProps> = ({
             onError={handleCardImageReady}
           />
           {!cardImageReady && (
-            <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.28),rgba(255,255,255,0.05))] transition-opacity duration-300 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.28),rgba(255,255,255,0.05))] transition-opacity duration-300" />
           )}
         </div>
       </div>
 
       {/* Title */}
-      <h3 className="mb-2 text-xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-2xl tracking-tight">
+      <h3 className="mb-2 text-xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-2xl">
         {title}
       </h3>
 
@@ -655,9 +655,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       )}
 
       {/* Description */}
-      <p className="mb-4 line-clamp-5 text-base leading-relaxed text-[color:var(--page-text)]">
-        {description}
-      </p>
+      <p className="mb-4 line-clamp-5 text-base text-[color:var(--page-text)]">{description}</p>
 
       {/* Participants */}
       <div className="mb-4 flex items-center gap-2">
