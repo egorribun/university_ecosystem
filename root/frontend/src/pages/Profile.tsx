@@ -1232,7 +1232,7 @@ export default function Profile() {
                           achievementsList={achievementsList}
                           setAchOpen={setAchOpen}
                           isTest={isTest}
-                          reduced={reduced}
+                          reduced={Boolean(reduced)}
                         />
                       </div>
                     )}
