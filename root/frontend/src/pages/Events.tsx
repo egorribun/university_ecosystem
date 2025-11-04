@@ -6,30 +6,12 @@ import {
   useState,
   useCallback,
   useMemo,
-  type SyntheticEvent,
+  useRef,
   type CSSProperties,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent, uploadEventImage } from "@/api/events"
 import type { Event } from "@/types/Event"
-import {
-  Box,
-  Tabs,
-  Tab,
-  TextField,
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  Stack,
-  useMediaQuery,
-  Skeleton,
-  InputAdornment,
-  IconButton,
-  Popover,
-  Badge,
-} from "@mui/material"
 import EventNoteIcon from "@mui/icons-material/EventNote"
 import SearchIcon from "@mui/icons-material/Search"
 import FilterListIcon from "@mui/icons-material/FilterList"
@@ -39,6 +21,10 @@ import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
+import { Button, Badge, Skeleton } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -92,6 +78,12 @@ function useDebounced<T>(value: T, delay = 350) {
   return v
 }
 
+const fadeDelayStyle = (value: string): CSSProperties =>
+  ({ "--fade-delay": value }) as CSSProperties
+
+const inputClass =
+  "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)]"
+
 const Events = () => {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -114,6 +106,23 @@ const Events = () => {
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null)
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
+  const filterPopoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!filtersOpen) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        filterPopoverRef.current &&
+        !filterPopoverRef.current.contains(event.target as Node) &&
+        filterAnchor &&
+        !filterAnchor.contains(event.target as Node)
+      ) {
+        setFilterAnchor(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [filtersOpen, filterAnchor])
 
   useEffect(() => {
     const t = (searchParams.get("tab") as typeof tab) || "active"
@@ -204,7 +213,7 @@ const Events = () => {
     }
   }, [fetchNextEventsPage, listHasNextPage, tab])
 
-  const handleTabChange = (_event: SyntheticEvent, newValue: EventTabKey) => setTab(newValue)
+  const handleTabChange = (newValue: EventTabKey) => setTab(newValue)
 
   const handleImageUpload = async (file: File) => {
     setImageUploading(true)
@@ -282,473 +291,359 @@ const Events = () => {
     }
   }, [createPreview])
 
-  const layoutConfig = useMemo(() => {
-    if (isMobile) {
-      return {
-        gridTemplateColumns: "minmax(0, 1fr)",
-        gap: { xs: 2, sm: 2 },
-        cardMaxWidth: "100%",
-      }
-    }
-
-    return {
-      gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-      gap: { xs: 2, sm: 2.5, md: 3 },
-      cardMaxWidth: "100%",
-    }
-  }, [isMobile])
-
-  const { gridTemplateColumns, gap, cardMaxWidth } = layoutConfig
-
-  const eventsContent = useMemo(() => {
-    const skeletonCount = isMobile ? 3 : 6
-    return (
-      <Box
-        data-fade
-        style={{ "--fade-delay": "260ms" } as CSSProperties}
-        sx={{
-          display: "grid",
-          gridTemplateColumns,
-          gap,
-          minHeight: "180px",
-          transition: "grid-template-columns 0.28s ease, gap 0.28s ease",
-          position: "relative",
-          pb: { xs: 2, sm: 3 },
-          "& .event-card": {
-            border: "1px solid var(--glass-border)",
-            backdropFilter: "blur(8px)",
-            boxShadow: {
-              xs: "0 18px 40px rgba(15, 23, 42, 0.24) !important",
-              md: "0 26px 55px rgba(15, 23, 42, 0.22) !important",
-            },
-            backgroundImage:
-              "linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(0, 118, 255, 0.08))",
-            transition:
-              "box-shadow 0.28s ease, border-color 0.28s ease, background 0.28s ease !important",
-          },
-          "& .event-card:hover": {
-            transform: "none !important",
-            boxShadow: {
-              xs: "0 24px 52px rgba(15, 23, 42, 0.28) !important",
-              md: "0 32px 60px rgba(15, 23, 42, 0.3) !important",
-            },
-            borderColor: "rgba(0, 118, 255, 0.45)",
-            backgroundImage:
-              "linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(0, 118, 255, 0.12))",
-          },
-          "& .event-card:active": {
-            transform: "none !important",
-          },
-        }}
-      >
-        {loading &&
-          Array.from({ length: skeletonCount }).map((_, i) => (
-            <Box key={`event-skel-${i}`}>
-              <Skeleton
-                variant="rectangular"
-                height={isMobile ? 160 : 200}
-                sx={{ borderRadius: 2 }}
-              />
-              <Skeleton height={isMobile ? 28 : 32} sx={{ mt: 1 }} />
-              <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
-              {!isMobile && <Skeleton height={20} width="60%" />}
-            </Box>
-          ))}
-
-        {!loading &&
-          normalizedEvents.map((event) => (
-            <Box
-              key={event.id}
-              sx={{
-                display: "flex",
-                width: "100%",
-                height: "100%",
-                transition: "max-width 0.28s ease",
-              }}
-            >
-              <EventCard {...event} onChange={handleRefresh} maxWidth={cardMaxWidth} />
-            </Box>
-          ))}
-
-        {!loading && normalizedEvents.length === 0 && (
-          <Box sx={{ width: "100%", textAlign: "center", mt: 7, mb: 7 }}>
-            <Typography fontSize={24} className="events-empty-text">
-              {t("events:states.empty")}
-            </Typography>
-          </Box>
-        )}
-      </Box>
-    )
-  }, [cardMaxWidth, gap, gridTemplateColumns, handleRefresh, isMobile, loading, normalizedEvents])
+  const skeletonCount = isMobile ? 3 : 6
 
   return (
     <Layout>
       <PageFadeIn>
-        <Box
-          sx={{
-            position: "relative",
-            width: "100vw",
-            minHeight: "100vh",
-            bgcolor: "var(--page-bg)",
-            color: "var(--page-text)",
-            pl: { xs: 2.5, sm: 4, md: 5.5, lg: 8 },
-            pr: { xs: 3.5, sm: 5.5, md: 6.5, lg: 9 },
-            py: { xs: 1.5, sm: 2, md: 2.5, lg: 3 },
-            overflow: "hidden",
-            "&::before": {
-              content: '""',
-              position: "absolute",
-              inset: "-40% -20% 10% -20%",
-              background:
-                "radial-gradient(60% 60% at 80% 10%, rgba(0, 118, 255, 0.22), transparent), radial-gradient(45% 45% at 10% 80%, rgba(46, 213, 166, 0.18), transparent)",
-              opacity: { xs: 0.55, sm: 0.6 },
-              pointerEvents: "none",
-              zIndex: -2,
-            },
-            "&::after": {
-              content: '""',
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(180deg, rgba(7, 18, 39, 0.22) 0%, rgba(7, 18, 39, 0) 45%), linear-gradient(140deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 55%)",
-              pointerEvents: "none",
-              zIndex: -1,
-            },
-          }}
-        >
-          <Box
-            data-fade
-            style={{ "--fade-delay": "80ms" } as CSSProperties}
-            display="flex"
-            alignItems="center"
-            gap={2}
-            mb={isMobile ? 1.5 : 3}
-            mt={isMobile ? 1.5 : 3}
+        <div className="relative w-full min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] px-4 py-6 sm:px-6 md:px-8 lg:px-12 overflow-hidden">
+          {/* Background gradients */}
+          <div
+            className="pointer-events-none absolute inset-0 -z-10 opacity-60"
+            aria-hidden="true"
           >
-            <EventNoteIcon color="primary" sx={{ fontSize: 34 }} />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              color="primary.main"
-              sx={{ fontSize: "clamp(0.8rem, 5vw, 2.7rem)" }}
-            >
-              {t("events:pageTitle")}
-            </Typography>
-          </Box>
+            <div className="absolute -inset-[40%_-20%_10%_-20%] bg-[radial-gradient(60%_60%_at_80%_10%,rgba(0,118,255,0.22),transparent),radial-gradient(45%_45%_at_10%_80%,rgba(46,213,166,0.18),transparent)]" />
+          </div>
+          <div
+            className="pointer-events-none absolute inset-0 -z-[1]"
+            aria-hidden="true"
+          >
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,18,39,0.22)_0%,rgba(7,18,39,0)_45%),linear-gradient(140deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0)_55%)]" />
+          </div>
 
+          {/* Header */}
+          <div
+            data-fade
+            style={fadeDelayStyle("80ms")}
+            className="mb-4 mt-4 flex flex-wrap items-center gap-3 text-[color:var(--nav-link)] sm:mb-6 sm:mt-6"
+          >
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
+              <EventNoteIcon className="text-[1.85rem]" />
+            </span>
+            <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
+              {t("events:pageTitle")}
+            </h1>
+          </div>
+
+          {/* Create button */}
           {(user?.role === "admin" || user?.role === "teacher") && (
-            <Box
-              data-fade
-              style={{ "--fade-delay": "140ms" } as CSSProperties}
-              sx={{ display: "flex", justifyContent: "flex-start", mb: isMobile ? 1.3 : 2 }}
-            >
+            <div data-fade className="mb-5 flex justify-start" style={fadeDelayStyle("140ms")}>
               <Button
-                variant="contained"
-                sx={{ fontWeight: 600, fontSize: 16, px: 2.5, borderRadius: 2 }}
+                size="lg"
                 onClick={() => setCreateOpen(true)}
                 disabled={imageUploading || loading}
+                className="px-6 text-[clamp(1rem,2.2vw,1.1rem)]"
               >
                 {t("events:actions.openCreate")}
               </Button>
-            </Box>
+            </div>
           )}
 
-          <Tabs
+          {/* Tabs */}
+          <div
             data-fade
-            style={{ "--fade-delay": "200ms" } as CSSProperties}
-            value={tab}
-            onChange={handleTabChange}
-            variant={isMobile ? "scrollable" : "standard"}
-            scrollButtons={isMobile ? "auto" : false}
-            sx={{
-              position: "relative",
-              minHeight: 45,
-              px: { xs: 1, md: 1.5 },
-              py: { xs: 0.75, md: 1 },
-              borderRadius: 3,
-              background: "linear-gradient(135deg, rgba(0, 118, 255, 0.12), rgba(0, 118, 255, 0))",
-              boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
-              border: "1px solid var(--glass-border)",
-              backdropFilter: "blur(16px)",
-              "& .MuiTab-root": {
-                color: "var(--page-text)",
-                fontWeight: 600,
-                fontSize: isMobile ? 16 : 20,
-                opacity: 1,
-                minWidth: isMobile ? 85 : 130,
-                textTransform: "none",
-                mr: isMobile ? 0.3 : 1.5,
-                transition: "color 0.2s",
-              },
-              "& .Mui-selected": { color: "var(--nav-link)", fontWeight: 700 },
-              "& .MuiTabs-indicator": {
-                background: "var(--nav-link)",
-                height: 3,
-                borderRadius: 2,
-              },
-            }}
-            TabIndicatorProps={{ style: { height: 3 } }}
+            style={fadeDelayStyle("200ms")}
+            className="relative mb-4 min-h-[45px] rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(0,118,255,0.12),rgba(0,118,255,0))] px-3 py-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[16px] sm:px-4 sm:py-2.5"
           >
-            {tabs.map((tabItem) => (
-              <Tab
-                key={tabItem.key}
-                value={tabItem.key}
-                label={t(`events:tabs.${tabItem.key}`)}
-                sx={{
-                  minHeight: 45,
-                  fontWeight: 600,
-                  fontSize: isMobile ? 16 : 20,
-                  textTransform: "none",
-                }}
-              />
-            ))}
-          </Tabs>
-
-          <Stack
-            data-fade
-            style={{ "--fade-delay": "240ms" } as CSSProperties}
-            direction="row"
-            spacing={1.5}
-            alignItems="center"
-            mb={isMobile ? 2 : 5}
-            mt={isMobile ? 2 : 3}
-            sx={{
-              flexWrap: "wrap",
-              width: "100%",
-              px: { xs: 1.5, sm: 2, md: 2.5 },
-              py: { xs: 1.25, sm: 1.5, md: 1.75 },
-              borderRadius: 3,
-              background:
-                "linear-gradient(135deg, rgba(14, 116, 144, 0.12), rgba(14, 116, 144, 0))",
-              border: "1px solid var(--glass-border)",
-              boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
-              backdropFilter: "blur(14px)",
-            }}
-          >
-            <TextField
-              label={t("events:filters.search")}
-              variant="outlined"
-              size="small"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              sx={{
-                width: { xs: "100%", md: "min(640px, 48vw)" },
-                "& .MuiOutlinedInput-root": {
-                  backgroundColor: "var(--card-bg)",
-                  borderRadius: 2,
-                  "& fieldset": { borderColor: "var(--btn-border)" },
-                  "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                  "&.Mui-focused fieldset": {
-                    borderColor: "var(--nav-link)",
-                    boxShadow: "0 0 0 3px rgba(0,94,162,.18)",
-                  },
-                },
-              }}
-              InputLabelProps={{
-                sx: {
-                  color: "var(--secondary-text)",
-                  "&.Mui-focused": { color: "var(--nav-link)" },
-                },
-              }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: "var(--secondary-text)" }} fontSize="small" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end" sx={{ gap: 0.5 }}>
-                    {search ? (
-                      <IconButton
-                        aria-label={t("events:aria.clearSearch")}
-                        edge="end"
-                        onClick={() => setSearch("")}
-                        size="small"
-                        sx={{
-                          color: "var(--secondary-text)",
-                          "&:hover": { color: "var(--nav-link)" },
-                        }}
-                      >
-                        <ClearIcon fontSize="small" />
-                      </IconButton>
-                    ) : null}
-                    <IconButton
-                      aria-label={t("events:aria.openFilters")}
-                      edge="end"
-                      onClick={(e) => setFilterAnchor(e.currentTarget)}
-                      size="small"
-                      sx={{
-                        color: "var(--secondary-text)",
-                        "&:hover": { color: "var(--nav-link)" },
-                      }}
-                    >
-                      <Badge
-                        color="primary"
-                        variant={filtersActive ? "dot" : "standard"}
-                        overlap="circular"
-                        sx={{
-                          "& .MuiBadge-badge": {
-                            bgcolor: "var(--nav-link)",
-                          },
-                        }}
-                      >
-                        <FilterListIcon fontSize="small" />
-                      </Badge>
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Stack>
-
-          <Popover
-            open={filtersOpen}
-            anchorEl={filterAnchor}
-            onClose={() => setFilterAnchor(null)}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-            PaperProps={{
-              sx: {
-                p: 2,
-                borderRadius: 2,
-                minWidth: 260,
-                bgcolor: "var(--card-bg)",
-                border: "1px solid var(--glass-border)",
-              },
-            }}
-          >
-            <Stack spacing={1.5}>
-              <TextField
-                label={t("events:filters.type")}
-                variant="outlined"
-                size="small"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    backgroundColor: "var(--card-bg)",
-                    "& fieldset": { borderColor: "var(--btn-border)" },
-                    "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                    "&.Mui-focused fieldset": { borderColor: "var(--nav-link)" },
-                  },
-                }}
-              />
-              <TextField
-                label={t("events:filters.location")}
-                variant="outlined"
-                size="small"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    backgroundColor: "var(--card-bg)",
-                    "& fieldset": { borderColor: "var(--btn-border)" },
-                    "&:hover fieldset": { borderColor: "var(--nav-link)" },
-                    "&.Mui-focused fieldset": { borderColor: "var(--nav-link)" },
-                  },
-                }}
-              />
-              <Stack direction="row" spacing={1} justifyContent="flex-end">
-                <Button
-                  variant="text"
-                  onClick={() => {
-                    setType("")
-                    setLocation("")
-                  }}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              {tabs.map((tabItem) => (
+                <button
+                  key={tabItem.key}
+                  onClick={() => handleTabChange(tabItem.key)}
+                  className={cn(
+                    "relative px-4 py-2 text-base font-semibold transition-colors duration-200 rounded-ue-lg sm:px-6 sm:text-lg",
+                    tab === tabItem.key
+                      ? "text-[color:var(--nav-link)] font-bold"
+                      : "text-[color:var(--page-text)] opacity-80 hover:opacity-100"
+                  )}
                 >
-                  {t("common:buttons.reset")}
-                </Button>
-                <Button variant="contained" onClick={() => setFilterAnchor(null)}>
-                  {t("common:buttons.done")}
-                </Button>
-              </Stack>
-            </Stack>
-          </Popover>
+                  {tab === tabItem.key && (
+                    <span
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-[color:var(--nav-link)] rounded-full"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {t(`events:tabs.${tabItem.key}`)}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {eventsContent}
+          {/* Search and filters */}
+          <div
+            data-fade
+            style={fadeDelayStyle("240ms")}
+            className="mb-5 flex flex-wrap items-center gap-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(14,116,144,0.12),rgba(14,116,144,0))] px-4 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[14px] sm:px-5 sm:py-4"
+          >
+            <div className="relative flex-1 min-w-[200px]">
+              <SearchIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[color:var(--secondary-text)] pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("events:filters.search")}
+                className={cn(
+                  inputClass,
+                  "pl-10 pr-10",
+                  "w-full"
+                )}
+              />
+              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="rounded-full p-1.5 text-[color:var(--secondary-text)] transition-colors hover:text-[color:var(--nav-link)]"
+                    aria-label={t("events:aria.clearSearch")}
+                  >
+                    <ClearIcon className="h-4 w-4" />
+                  </button>
+                )}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => setFilterAnchor(e.currentTarget)}
+                    className="rounded-full p-1.5 text-[color:var(--secondary-text)] transition-colors hover:text-[color:var(--nav-link)]"
+                    aria-label={t("events:aria.openFilters")}
+                  >
+                    {filtersActive && (
+                      <span
+                        className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--nav-link)]"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <FilterListIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
-          {hasMore ? (
-            <Box display="flex" justifyContent="center" mt={4} mb={6}>
+          {/* Filter popover */}
+          {filtersOpen && filterAnchor && (
+            <div
+              ref={filterPopoverRef}
+              className="fixed z-50 mt-2 min-w-[260px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface-strong"
+              style={{
+                top: filterAnchor.getBoundingClientRect().bottom + 8,
+                left: Math.min(
+                  filterAnchor.getBoundingClientRect().left,
+                  window.innerWidth - 280
+                ),
+              }}
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                    {t("events:filters.type")}
+                  </label>
+                  <input
+                    type="text"
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[color:var(--secondary-text)]">
+                    {t("events:filters.location")}
+                  </label>
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setType("")
+                      setLocation("")
+                    }}
+                  >
+                    {t("common:buttons.reset")}
+                  </Button>
+                  <Button variant="solid" size="sm" onClick={() => setFilterAnchor(null)}>
+                    {t("common:buttons.done")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Events grid */}
+          <div
+            data-fade
+            style={fadeDelayStyle("260ms")}
+            className={cn(
+              "grid gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
+              isMobile
+                ? "grid-cols-1"
+                : "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
+            )}
+          >
+            {loading &&
+              Array.from({ length: skeletonCount }).map((_, i) => (
+                <div key={`event-skel-${i}`} className="flex h-full w-full">
+                  <div className="w-full space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
+                    <Skeleton height={isMobile ? 160 : 200} className="rounded-ue-lg" />
+                    <Skeleton height={isMobile ? 28 : 32} />
+                    <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
+                    {!isMobile && <Skeleton height={20} width="60%" />}
+                  </div>
+                </div>
+              ))}
+
+            {!loading &&
+              normalizedEvents.map((event) => (
+                <div key={event.id} className="flex h-full w-full">
+                  <EventCard {...event} onChange={handleRefresh} maxWidth="100%" />
+                </div>
+              ))}
+
+            {!loading && normalizedEvents.length === 0 && (
+              <div className="col-span-full mt-16 flex justify-center">
+                <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
+                    <EventNoteIcon className="text-[2.2rem]" />
+                  </span>
+                  <p className="text-lg font-semibold text-[color:var(--page-text)] sm:text-xl">
+                    {t("events:states.empty")}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Load more */}
+          {hasMore && (
+            <div className="mb-8 flex justify-center">
               <Button
-                variant="outlined"
-                size="large"
+                variant="outline"
+                size="lg"
                 onClick={loadMore}
                 disabled={loadingMore}
-                sx={{
-                  px: 3.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                }}
+                className="px-6"
               >
                 {loadingMore
                   ? t("common:statuses.loading")
                   : t("common:buttons.loadMore", { defaultValue: "Load more" })}
               </Button>
-            </Box>
-          ) : null}
+            </div>
+          )}
 
-          <Dialog open={createOpen} onClose={closeCreate}>
-            <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} mt={1} minWidth={isMobile ? "auto" : 340} mb={2}>
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.title_en", {
-                          defaultValue: `${t("events:form.title")}${" (English)"}`,
-                        })
-                      : t("events:form.title")
+          {/* Create dialog */}
+          <Dialog
+            open={createOpen}
+            onClose={closeCreate}
+            title={t("events:dialogs.create.title")}
+            size="lg"
+            fullScreenOnMobile
+            footer={
+              <>
+                <Button variant="outline" onClick={closeCreate} className="w-full sm:w-auto">
+                  {t("common:buttons.cancel")}
+                </Button>
+                <Button
+                  onClick={handleCreateEvent}
+                  disabled={
+                    !normalizedTitle ||
+                    !eventData.starts_at ||
+                    !eventData.ends_at ||
+                    !normalizedLocation ||
+                    imageUploading ||
+                    dateError
                   }
+                  className="w-full sm:w-auto"
+                >
+                  {t("common:buttons.create")}
+                </Button>
+              </>
+            }
+            footerClassName="flex-col-reverse gap-3 sm:flex-row"
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {language === "en"
+                    ? t("events:form.title_en", {
+                        defaultValue: `${t("events:form.title")} (English)`,
+                      })
+                    : t("events:form.title")}
+                </label>
+                <input
+                  type="text"
                   value={getLocalizedDraftValue("title")}
                   onChange={(e) => updateLocalizedDraftValue("title", e.target.value)}
-                  fullWidth
+                  className={inputClass}
                 />
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.description_en", {
-                          defaultValue: `${t("events:form.description")}${" (English)"}`,
-                        })
-                      : t("events:form.description")
-                  }
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {language === "en"
+                    ? t("events:form.description_en", {
+                        defaultValue: `${t("events:form.description")} (English)`,
+                      })
+                    : t("events:form.description")}
+                </label>
+                <textarea
                   value={getLocalizedDraftValue("description")}
                   onChange={(e) => updateLocalizedDraftValue("description", e.target.value)}
-                  multiline
                   rows={3}
-                  fullWidth
+                  className={cn(inputClass, "min-h-[120px] resize-y")}
                 />
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.type_en", {
-                          defaultValue: `${t("events:form.type")}${" (English)"}`,
-                        })
-                      : t("events:form.type")
-                  }
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {language === "en"
+                    ? t("events:form.type_en", {
+                        defaultValue: `${t("events:form.type")} (English)`,
+                      })
+                    : t("events:form.type")}
+                </label>
+                <input
+                  type="text"
                   value={getLocalizedDraftValue("event_type")}
                   onChange={(e) => updateLocalizedDraftValue("event_type", e.target.value)}
-                  fullWidth
+                  className={inputClass}
                 />
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:form.location_en", {
-                          defaultValue: `${t("events:form.location")}${" (English)"}`,
-                        })
-                      : t("events:form.location")
-                  }
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {language === "en"
+                    ? t("events:form.location_en", {
+                        defaultValue: `${t("events:form.location")} (English)`,
+                      })
+                    : t("events:form.location")}
+                </label>
+                <input
+                  type="text"
                   value={getLocalizedDraftValue("location")}
                   onChange={(e) => updateLocalizedDraftValue("location", e.target.value)}
-                  fullWidth
+                  className={inputClass}
                 />
-                <TextField
-                  label={t("events:form.speaker")}
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {t("events:form.speaker")}
+                </label>
+                <input
+                  type="text"
                   value={eventData.speaker}
                   onChange={(e) => setEventData({ ...eventData, speaker: e.target.value })}
-                  fullWidth
+                  className={inputClass}
                 />
-
-                <Button component="label" variant="outlined" disabled={imageUploading}>
+              </div>
+              <div>
+                <Button
+                  as="label"
+                  variant="outline"
+                  disabled={imageUploading}
+                  className="w-full sm:w-auto"
+                >
                   {imageUploading
                     ? t("common:statuses.uploading")
                     : eventData.image_url
@@ -764,78 +659,46 @@ const Events = () => {
                     }}
                   />
                 </Button>
-
-                {createPreview && (
-                  <Box mt={1}>
+                {(createPreview || eventData.image_url) && (
+                  <div className="mt-3">
                     <SmartImage
-                      srcRaw={createPreview}
+                      srcRaw={createPreview || eventData.image_url || ""}
                       alt={t("events:alt.preview")}
-                      style={{
-                        maxHeight: 140,
-                        borderRadius: 8,
-                        border: "1px solid #eee",
-                        display: "block",
-                      }}
+                      className="max-h-[140px] rounded-ue-lg border border-[color:var(--glass-border)] object-cover shadow-surface"
                     />
-                  </Box>
+                  </div>
                 )}
-                {!createPreview && eventData.image_url && (
-                  <Box mt={1}>
-                    <SmartImage
-                      srcRaw={eventData.image_url}
-                      alt={t("events:alt.image")}
-                      style={{
-                        maxHeight: 140,
-                        borderRadius: 8,
-                        border: "1px solid #eee",
-                        display: "block",
-                      }}
-                    />
-                  </Box>
-                )}
-
-                <TextField
-                  label={t("events:form.start")}
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {t("events:form.start")}
+                </label>
+                <input
                   type="datetime-local"
                   value={eventData.starts_at}
                   onChange={(e) => setEventData({ ...eventData, starts_at: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
+                  className={inputClass}
                 />
-                <TextField
-                  label={t("events:form.end")}
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                  {t("events:form.end")}
+                </label>
+                <input
                   type="datetime-local"
                   value={eventData.ends_at}
                   onChange={(e) => setEventData({ ...eventData, ends_at: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                  error={dateError}
-                  helperText={dateError ? t("events:form.errors.endsBeforeStarts") : " "}
-                  fullWidth
+                  className={cn(inputClass, dateError && "border-red-500")}
                 />
-
-                <Box display="flex" gap={2} mt={2}>
-                  <Button
-                    variant="contained"
-                    onClick={handleCreateEvent}
-                    disabled={
-                      !normalizedTitle ||
-                      !eventData.starts_at ||
-                      !eventData.ends_at ||
-                      !normalizedLocation ||
-                      imageUploading ||
-                      dateError
-                    }
-                  >
-                    {t("common:buttons.create")}
-                  </Button>
-                  <Button variant="outlined" color="secondary" onClick={closeCreate}>
-                    {t("common:buttons.cancel")}
-                  </Button>
-                </Box>
-              </Stack>
-            </DialogContent>
+                {dateError && (
+                  <p className="mt-1 text-sm text-red-500">
+                    {t("events:form.errors.endsBeforeStarts")}
+                  </p>
+                )}
+              </div>
+            </div>
           </Dialog>
-        </Box>
+        </div>
       </PageFadeIn>
     </Layout>
   )
