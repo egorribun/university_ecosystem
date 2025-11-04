@@ -655,7 +655,9 @@ const EventCardComponent: FC<EventCardProps> = ({
       )}
 
       {/* Description */}
-      <p className="mb-4 line-clamp-5 text-base leading-relaxed text-[color:var(--page-text)]">{description}</p>
+      <p className="mb-4 line-clamp-5 text-base leading-relaxed text-[color:var(--page-text)]">
+        {description}
+      </p>
 
       {/* Participants */}
       <div className="mb-4 flex items-center gap-2">
