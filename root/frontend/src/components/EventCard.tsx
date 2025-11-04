@@ -592,7 +592,9 @@ const EventCardComponent: FC<EventCardProps> = ({
           className={cn(
             "relative w-full overflow-hidden rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[linear-gradient(135deg,rgba(30,136,229,0.18),rgba(21,101,192,0.1))] transition-transform duration-300",
             "h-[200px] sm:h-[220px] md:h-[260px] max-h-[280px]",
-            !isMobile && "hover:scale-[1.01]"
+            !isMobile && "hover:scale-[1.01]",
+            "max-w-full",
+            "md:max-w-[420px] lg:max-w-[450px]"
           )}
         >
           <SmartImage
