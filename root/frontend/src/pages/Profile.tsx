@@ -366,6 +366,9 @@ export default function Profile() {
     prevSpotifyConnectedRef.current = spotifyConnected
   }, [spotifyConnected, refetchNowPlaying])
 
+  const openQrModal = useCallback(() => setQrOpen(true), [])
+  const closeQrModal = useCallback(() => setQrOpen(false), [])
+
   // Close modals on Escape key
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -536,9 +539,6 @@ export default function Profile() {
     lines.push("END:VCARD")
     return lines.join("\r\n")
   }, [user])
-
-  const openQrModal = useCallback(() => setQrOpen(true), [])
-  const closeQrModal = useCallback(() => setQrOpen(false), [])
 
   const telegramHref = useMemo(() => {
     const t = user?.telegram || ""
