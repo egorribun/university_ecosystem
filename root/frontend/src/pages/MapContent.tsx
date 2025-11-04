@@ -16,7 +16,6 @@ import { alpha, useTheme } from "@mui/material/styles"
 import OpenInNewIcon from "@mui/icons-material/OpenInNew"
 import MapIcon from "@mui/icons-material/Map"
 import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt"
-import TrafficIcon from "@mui/icons-material/Traffic"
 import RestartAltIcon from "@mui/icons-material/RestartAlt"
 import "../assets/themes.css"
 import { useTranslation } from "react-i18next"
@@ -54,7 +53,6 @@ export default function MapContent() {
   const isMobile = useMediaQuery("(max-width:900px)")
   const { t } = useTranslation("system")
   const [layer, setLayer] = useState<LayerMode>("map")
-  const [traffic, setTraffic] = useState(false)
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [frameKey, setFrameKey] = useState(0)
@@ -72,41 +70,33 @@ export default function MapContent() {
   // Используем одинаковый фон для обеих тем (как на светлой)
   const toggleSelectedBg = alpha(lightThemePrimary, 0.24)
   const toggleHoverColor = lightThemePrimary
-  const inactiveIconColor = alpha(lightThemeTextPrimary, 0.88)
-  // Цвета для кнопки пробок (используем цвета светлой темы для обеих тем)
-  const trafficActiveColor = "#d32f2f" // error.main светлой темы
-  const trafficActiveHoverColor = "#c62828" // error.dark светлой темы
 
   useEffect(() => {
     const qs = new URLSearchParams(location.search)
     const l = (qs.get("layer") as LayerMode) || "map"
-    const t = qs.get("traffic") === "1"
     if (l) setLayer(l)
-    setTraffic(t)
   }, [])
 
   useEffect(() => {
     const qs = new URLSearchParams()
     qs.set("layer", layer)
-    qs.set("traffic", traffic ? "1" : "0")
     const url = `${location.pathname}?${qs.toString()}`
     window.history.replaceState(null, "", url)
-  }, [layer, traffic])
+  }, [layer])
 
   const lParam = useMemo(() => {
-    const base = layer === "map" ? "map" : "sat,skl"
-    return traffic ? `${base},trf` : base
-  }, [layer, traffic])
+    return layer === "map" ? "map" : "sat,skl"
+  }, [layer])
 
   const mapSrc = useMemo(() => {
-    if (layer === "map" && !traffic) {
+    if (layer === "map") {
       return `https://yandex.ru/map-widget/v1/?um=constructor%3A${MAP_ID}&source=constructor`
     }
     const ll = encodeURIComponent(
       `${CAMPUS_COORDINATES.lon.toFixed(6)},${CAMPUS_COORDINATES.lat.toFixed(6)}`
     )
     return `https://yandex.ru/map-widget/v1/?ll=${ll}&z=${Z_DEFAULT}&l=${encodeURIComponent(lParam)}`
-  }, [layer, traffic, lParam])
+  }, [layer, lParam])
 
   const disableEmbeds = prefersReducedMotion || privacyBlocksEmbeds
   const showFallback = loadError || disableEmbeds
@@ -173,7 +163,7 @@ export default function MapContent() {
   }, [])
 
   const openInYandex = () => {
-    if (layer === "map" && !traffic) {
+    if (layer === "map") {
       window.open(
         `https://yandex.ru/maps/?um=constructor:${MAP_ID}&source=constructor`,
         "_blank",
@@ -190,7 +180,6 @@ export default function MapContent() {
   }
 
   const reset = () => {
-    setTraffic(false)
     if (disableEmbeds) return
     forceReload()
   }
@@ -381,37 +370,6 @@ export default function MapContent() {
                   </ToggleButton>
                 </ToggleButtonGroup>
               </Box>
-              <Tooltip
-                title={(traffic ? t("map.traffic.hide") : t("map.traffic.show")) ?? undefined}
-                {...tooltipCfg}
-              >
-                <IconButton
-                  aria-pressed={traffic}
-                  aria-label={t("map.traffic.label")}
-                  onClick={() => setTraffic((v) => !v)}
-                  className="glass glass--btn"
-                  sx={{
-                    touchAction: "manipulation",
-                    color: traffic ? trafficActiveColor : inactiveIconColor,
-                    transition: "color 160ms ease",
-                    "&:hover": {
-                      color: traffic ? trafficActiveHoverColor : toggleHoverColor,
-                    },
-                    "& .MuiSvgIcon-root": {
-                      color: "inherit",
-                    },
-                    // Обеспечиваем одинаковые цвета на темной теме как на светлой
-                    ...(theme.palette.mode === "dark" && {
-                      color: traffic ? trafficActiveColor : inactiveIconColor,
-                      "&:hover": {
-                        color: traffic ? trafficActiveHoverColor : toggleHoverColor,
-                      },
-                    }),
-                  }}
-                >
-                  <TrafficIcon sx={{ color: "inherit" }} />
-                </IconButton>
-              </Tooltip>
             </Stack>
           </Stack>
         </Box>
