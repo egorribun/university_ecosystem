@@ -2,20 +2,6 @@ import { useParams, useNavigate } from "react-router-dom"
 import type React from "react"
 import { useEffect, useState, useRef, useCallback, useActionState, useOptimistic } from "react"
 import api from "../api/client"
-import {
-  Box,
-  Typography,
-  Paper,
-  CircularProgress,
-  Stack,
-  Chip,
-  Button,
-  Divider,
-  IconButton,
-  TextField,
-  useMediaQuery,
-  Snackbar,
-} from "@mui/material"
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -38,6 +24,9 @@ import {
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
+import { Button, Badge } from "@/components/ui"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { cn } from "@/utils/cn"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -63,6 +52,37 @@ const isCanceledRequestError = (err: unknown): boolean => {
   return (
     (typeof name === "string" && name === "CanceledError") ||
     (typeof code === "string" && code === "ERR_CANCELED")
+  )
+}
+
+const inputClass =
+  "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)]"
+
+function Snackbar({
+  open,
+  message,
+  onClose,
+}: {
+  open: boolean
+  message: string
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!open || !message) return
+    const timer = setTimeout(() => {
+      onClose()
+    }, 2500)
+    return () => clearTimeout(timer)
+  }, [open, message, onClose])
+
+  if (!open || !message) return null
+
+  return (
+    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
+      <div className="rounded-[1.25rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
+        {message}
+      </div>
+    </div>
   )
 }
 
@@ -184,7 +204,7 @@ const EventDetail = () => {
         }
       }
     },
-    [fetchEvent]
+    [fetchEvent, t]
   )
 
   useEffect(() => {
@@ -269,9 +289,9 @@ const EventDetail = () => {
   if (loading) {
     return (
       <Layout>
-        <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
-          <CircularProgress />
-        </Box>
+        <div className="flex min-h-[80vh] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[color:var(--nav-link)] border-t-transparent" />
+        </div>
       </Layout>
     )
   }
@@ -279,9 +299,9 @@ const EventDetail = () => {
   if (!event) {
     return (
       <Layout>
-        <Box minHeight="80vh" display="flex" alignItems="center" justifyContent="center">
-          <Typography>{t("events:detail.messages.notFound")}</Typography>
-        </Box>
+        <div className="flex min-h-[80vh] items-center justify-center">
+          <p className="text-[color:var(--page-text)]">{t("events:detail.messages.notFound")}</p>
+        </div>
       </Layout>
     )
   }
@@ -289,33 +309,16 @@ const EventDetail = () => {
   const BackButton = (
     <Button
       onClick={handleBack}
-      startIcon={<ArrowBackIcon />}
-      sx={{
-        mb: 3,
-        alignSelf: "flex-start",
-        fontWeight: 700,
-        borderRadius: 2.5,
-        background: "linear-gradient(100deg, #1d5fff 20%, #65b2ff 100%)",
-        color: "#fff",
-        fontSize: "clamp(0.98rem, 2.1vw, 1.17rem)",
-        letterSpacing: "0.02em",
-        px: { xs: 1.6, sm: 2.3, md: 2.9, lg: 3.5 },
-        py: { xs: 0.9, sm: 1.12, md: 1.2, lg: 1.28 },
-        width: { xs: "100%", sm: "auto" },
-        minWidth: { xs: 0, sm: 0 },
-        boxShadow: "0 2px 18px #1976d238, 0 1.5px 8px #0001",
-        transition: "transform 0.16s, box-shadow 0.16s, background 0.19s, color 0.16s",
-        "&:hover": {
-          background: "linear-gradient(100deg, #1976d2 20%, #449aff 100%)",
-          color: "#eaf6ff",
-          transform: "scale(1.06)",
-          boxShadow: "0 6px 28px #1d5fff40, 0 2.5px 10px #0002",
-        },
-        "&:active": { transform: "scale(0.98)" },
-        position: { xs: "static", md: "sticky" },
-        top: { md: 12 },
-        zIndex: 99,
-      }}
+      leadingIcon={<ArrowBackIcon />}
+      className={cn(
+        "mb-6 w-full font-bold sm:w-auto",
+        "bg-gradient-to-r from-[#1d5fff] via-[#65b2ff] to-[#1d5fff] text-white",
+        "shadow-[0_2px_18px_rgba(25,118,210,0.22),0_1.5px_8px_rgba(0,0,0,0.01)]",
+        "transition-all duration-200",
+        "hover:from-[#1976d2] hover:via-[#449aff] hover:to-[#1976d2] hover:scale-105 hover:shadow-[0_6px_28px_rgba(29,95,255,0.25),0_2.5px_10px_rgba(0,0,0,0.02)]",
+        "active:scale-[0.98]",
+        "md:sticky md:top-3 md:z-[99]"
+      )}
     >
       {t("common:buttons.back")}
     </Button>
@@ -324,122 +327,97 @@ const EventDetail = () => {
   if (isMobile) {
     return (
       <Layout>
-        <Paper
-          elevation={0}
-          sx={{
-            width: "100vw",
-            minHeight: "calc(100vh - 56px)",
-            bgcolor: "background.paper",
-            borderRadius: 0,
-            boxShadow: "none",
-            pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-            pr: { xs: 4, sm: 6, md: 7, lg: 10 },
-            py: { xs: 2, md: 2 },
-            position: "relative",
-          }}
-        >
+        <div className="w-full min-h-[calc(100vh-56px)] bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
           {BackButton}
-          <Stack spacing={3} mt={0}>
-            <Typography variant="h5" fontWeight={900}>
+          <div className="space-y-6">
+            <h1 className="text-2xl font-extrabold text-[color:var(--page-text)] sm:text-3xl">
               {event.title}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
               {event.event_type && (
-                <Chip
-                  label={event.event_type}
-                  color="primary"
-                  sx={{ fontWeight: 600, fontSize: 15 }}
-                />
+                <Badge size="sm" className="bg-[color:var(--nav-link)] text-white">
+                  {event.event_type}
+                </Badge>
               )}
-              <Chip
-                icon={<PeopleAltIcon sx={{ color: "#1976d2" }} />}
-                label={t("events:card.participants", { count: event.participant_count || 0 })}
-                sx={{ fontWeight: 500, fontSize: 14 }}
-              />
-            </Stack>
-            <Typography variant="body1" fontWeight={600}>
+              <Badge
+                size="sm"
+                leadingIcon={<PeopleAltIcon className="h-4 w-4 text-[#1976d2]" />}
+                className="border-[color:var(--glass-border)]"
+              >
+                {t("events:card.participants", { count: event.participant_count || 0 })}
+              </Badge>
+            </div>
+            <p className="text-base font-semibold text-[color:var(--page-text)]">
               {event.description}
-            </Typography>
-            <Box>
-              <Typography variant="subtitle1" fontWeight={600}>
-                {t("events:detail.fields.location")}: <b>{event.location}</b>
-              </Typography>
-              <Typography variant="subtitle1">
+            </p>
+            <div className="space-y-2">
+              <p className="text-base font-semibold text-[color:var(--page-text)]">
+                {t("events:detail.fields.location")}: <strong>{event.location}</strong>
+              </p>
+              <p className="text-base text-[color:var(--page-text)]">
                 {t("events:detail.fields.date")}:{" "}
-                <b>
+                <strong>
                   {formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}
-                </b>
-              </Typography>
+                </strong>
+              </p>
               {event.speaker && (
-                <Typography variant="subtitle1">
-                  {t("events:detail.fields.speaker")}: <b>{event.speaker}</b>
-                </Typography>
+                <p className="text-base text-[color:var(--page-text)]">
+                  {t("events:detail.fields.speaker")}: <strong>{event.speaker}</strong>
+                </p>
               )}
-            </Box>
-            <Box
-              sx={{
-                width: "100%",
-                aspectRatio: { xs: "16 / 9", md: "21 / 9" },
-                position: "relative",
-                borderRadius: 3,
-                border: "1px solid #282c34",
-                boxShadow: 2,
-                overflow: "hidden",
-                bgcolor: "rgba(0,0,0,0.04)",
-              }}
-            >
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={t("events:alt.image")}
-                onLoad={handleHeroLoad}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  display: "block",
-                  objectFit: "cover",
-                  objectPosition: heroPos,
-                }}
-              />
-            </Box>
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                <Typography ref={aboutSectionRef} tabIndex={-1} variant="h6" fontWeight={700}>
+            </div>
+            {imageUrl && (
+              <div className="relative w-full overflow-hidden rounded-ue-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface aspect-[16/9]">
+                <SmartImage
+                  srcRaw={imageUrl}
+                  alt={t("events:alt.image")}
+                  onLoad={handleHeroLoad}
+                  className="absolute inset-0 block h-full w-full object-cover"
+                  style={{ objectPosition: heroPos }}
+                />
+              </div>
+            )}
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <h2
+                  ref={aboutSectionRef}
+                  tabIndex={-1}
+                  className="text-xl font-bold text-[color:var(--page-text)]"
+                >
                   {t("events:detail.sections.about.title")}
-                </Typography>
+                </h2>
                 {(user?.role === "admin" || user?.role === "teacher") && !editingAbout && (
-                  <IconButton
+                  <button
+                    type="button"
                     aria-label={t("events:detail.sections.about.editAria")}
-                    size="small"
+                    className="rounded-full p-1 text-[color:var(--secondary-text)] transition-colors hover:text-[color:var(--nav-link)]"
                     onClick={handleEditAbout}
                   >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
+                    <EditIcon className="h-4 w-4" />
+                  </button>
                 )}
-              </Stack>
+              </div>
               {editingAbout ? (
-                <Stack spacing={1}>
-                  <TextField
-                    label={
+                <div className="space-y-3">
+                  <textarea
+                    value={aboutDraft}
+                    onChange={(e) => setAboutDraft(e.target.value)}
+                    disabled={savingAbout}
+                    rows={3}
+                    className={cn(inputClass, "min-h-[100px] resize-y")}
+                    placeholder={
                       language === "en"
                         ? t("events:detail.sections.about.fieldLabel_en", {
                             defaultValue: `${t("events:detail.sections.about.fieldLabel")} (English)`,
                           })
                         : t("events:detail.sections.about.fieldLabel")
                     }
-                    multiline
-                    minRows={3}
-                    value={aboutDraft}
-                    onChange={(e) => setAboutDraft(e.target.value)}
-                    fullWidth
-                    disabled={savingAbout}
                   />
-                  <Stack direction="row" spacing={1}>
+                  <div className="flex flex-wrap gap-2">
                     <Button
-                      variant="contained"
-                      size="small"
-                      startIcon={<SaveIcon />}
+                      variant="solid"
+                      size="sm"
+                      leadingIcon={<SaveIcon />}
                       onClick={handleSaveAbout}
                       disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
                     >
@@ -448,93 +426,81 @@ const EventDetail = () => {
                         : t("common:buttons.save")}
                     </Button>
                     <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<CloseIcon />}
+                      variant="outline"
+                      size="sm"
+                      leadingIcon={<CloseIcon />}
                       onClick={handleCancelAbout}
                       disabled={savingAbout}
                     >
                       {t("common:buttons.cancel")}
                     </Button>
-                  </Stack>
-                </Stack>
+                  </div>
+                </div>
               ) : (
-                <Typography
-                  variant="body2"
-                  fontSize={16}
-                  sx={{ whiteSpace: "pre-line", color: event?.about ? "inherit" : "text.disabled" }}
+                <p
+                  className={cn(
+                    "whitespace-pre-line text-base leading-relaxed",
+                    event?.about
+                      ? "text-[color:var(--page-text)]"
+                      : "text-[color:var(--secondary-text)]"
+                  )}
                 >
                   {event?.about || t("events:detail.sections.about.empty")}
-                </Typography>
+                </p>
               )}
-            </Box>
+            </div>
 
             {user && (user.role === "admin" || user.role === "teacher") && (
-              <Box>
-                <form action={uploadAction}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Button variant="contained" component="label" disabled={uploadPending}>
-                      {t("events:detail.sections.files.pickFile")}
-                      <input
-                        type="file"
-                        name="file"
-                        hidden
-                        required
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        disabled={uploadPending}
-                      />
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      type="submit"
-                      disabled={!selectedFile || uploadPending}
+              <div>
+                <form action={uploadAction} className="flex flex-wrap items-center gap-2">
+                  <Button variant="solid" as="label" disabled={uploadPending}>
+                    {t("events:detail.sections.files.pickFile")}
+                    <input
+                      type="file"
+                      name="file"
+                      hidden
+                      required
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      disabled={uploadPending}
+                    />
+                  </Button>
+                  <Button variant="outline" type="submit" disabled={!selectedFile || uploadPending}>
+                    {uploadPending
+                      ? t("events:detail.upload.submit.pending")
+                      : t("events:detail.upload.submit.label")}
+                  </Button>
+                  {selectedFile && (
+                    <span
+                      className="ml-2 max-w-[110px] truncate text-xs text-[color:var(--secondary-text)]"
+                      title={selectedFile.name}
                     >
-                      {uploadPending
-                        ? t("events:detail.upload.submit.pending")
-                        : t("events:detail.upload.submit.label")}
-                    </Button>
-                    {selectedFile && (
-                      <Typography
-                        fontSize={12}
-                        sx={{
-                          ml: 1,
-                          maxWidth: 110,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={selectedFile.name}
-                      >
-                        {selectedFile.name}
-                      </Typography>
-                    )}
-                  </Stack>
-                  {isUploadErrorState(uploadState) && (
-                    <Typography color="error" fontSize={12} sx={{ mt: 0.5 }}>
-                      {uploadState.error}
-                    </Typography>
+                      {selectedFile.name}
+                    </span>
                   )}
                 </form>
-              </Box>
+                {isUploadErrorState(uploadState) && (
+                  <p className="mt-2 text-xs text-red-500">{uploadState.error}</p>
+                )}
+              </div>
             )}
 
             {optimisticFiles.length > 0 ? (
-              <Box>
-                <Typography variant="subtitle1" fontWeight={600}>
+              <div>
+                <h3 className="mb-2 text-base font-semibold text-[color:var(--page-text)]">
                   {t("events:detail.sections.files.title")}
-                </Typography>
-                <Stack spacing={1}>
+                </h3>
+                <div className="space-y-2">
                   {optimisticFiles.map((f) => {
                     const isPendingFile = f.pending === true || typeof f.id !== "number"
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
-                      <Box key={f.id} display="flex" alignItems="center">
+                      <div key={f.id} className="flex items-center gap-2">
                         {isPendingFile ? (
-                          <Typography color="text.secondary" sx={{ flex: 1 }}>
+                          <span className="flex-1 text-sm text-[color:var(--secondary-text)]">
                             {f.description || t("events:detail.sections.files.pending")}
-                          </Typography>
+                          </span>
                         ) : (
                           <a
                             href={resolveMediaUrl(f.file_url) || "#"}
@@ -545,280 +511,226 @@ const EventDetail = () => {
                             aria-label={t("events:detail.sections.files.downloadAria", {
                               label: fileLabel,
                             })}
-                            style={{
-                              color: "#1976d2",
-                              fontWeight: 500,
-                              textDecoration: "underline",
-                              flex: 1,
-                            }}
+                            className="flex-1 text-sm font-medium text-[#1976d2] underline transition-colors hover:text-[#1565c0]"
                           >
                             {fileLabel}
                           </a>
                         )}
                         {(user?.role === "admin" || user?.role === "teacher") && (
-                          <IconButton
+                          <button
+                            type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
-                            color="error"
                             disabled={isPendingFile}
+                            className="rounded-full p-1 text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
                             onClick={async () => {
                               if (typeof f.id === "number") {
                                 await handleDeleteFile(f.id)
                               }
                             }}
-                            size="small"
-                            sx={{ ml: 1 }}
                           >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                            <DeleteIcon className="h-4 w-4" />
+                          </button>
                         )}
-                      </Box>
+                      </div>
                     )
                   })}
-                </Stack>
-              </Box>
+                </div>
+              </div>
             ) : (
-              <Typography variant="body2" color="text.secondary">
+              <p className="text-sm text-[color:var(--secondary-text)]">
                 {t("events:detail.sections.files.empty")}
-              </Typography>
+              </p>
             )}
-          </Stack>
+          </div>
 
-          <Snackbar
-            open={!!snack}
-            autoHideDuration={2500}
-            onClose={() => setSnack("")}
-            message={snack}
-          />
-        </Paper>
+          <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+        </div>
       </Layout>
     )
   }
 
   return (
     <Layout>
-      <Paper
-        elevation={0}
-        sx={{
-          width: "100vw",
-          minHeight: "calc(100vh - 56px)",
-          bgcolor: "background.paper",
-          borderRadius: 0,
-          boxShadow: "none",
-          pl: { xs: 2, sm: 4, md: 5, lg: 8 },
-          pr: { xs: 8, sm: 6, md: 7, lg: 10 },
-          py: { xs: 2, sm: 2, md: 2, lg: 2 },
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+      <div className="flex w-full min-h-[calc(100vh-56px)] flex-col bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
         {BackButton}
-        <Stack direction="row" spacing={5} alignItems="flex-start" width="100%">
-          <Stack spacing={3} width="45%">
+        <div className="flex flex-row gap-8 items-start">
+          <div className="w-[45%] space-y-6">
             {imageUrl && (
-              <Box
-                sx={{
-                  width: "100%",
-                  aspectRatio: { xs: "16 / 9", md: "21 / 9" },
-                  position: "relative",
-                  borderRadius: 5,
-                  border: "1px solid #282c34",
-                  boxShadow: 3,
-                  overflow: "hidden",
-                  bgcolor: "rgba(0,0,0,0.04)",
-                }}
-              >
+              <div className="relative w-full overflow-hidden rounded-[2rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface-strong aspect-[21/9]">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
                   onLoad={handleHeroLoad}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    display: "block",
-                    objectFit: "cover",
-                    objectPosition: heroPos,
-                  }}
+                  className="absolute inset-0 block h-full w-full object-cover"
+                  style={{ objectPosition: heroPos }}
                 />
-              </Box>
+              </div>
             )}
-            <Divider />
-            <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-              <Typography ref={aboutSectionRef} tabIndex={-1} variant="h5" fontWeight={700}>
-                {t("events:detail.sections.about.title")}
-              </Typography>
-              {(user?.role === "admin" || user?.role === "teacher") && !editingAbout && (
-                <IconButton
-                  aria-label={t("events:detail.sections.about.editAria")}
-                  size="small"
-                  onClick={handleEditAbout}
+            <div className="h-px bg-[color:var(--glass-border)]" />
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <h2
+                  ref={aboutSectionRef}
+                  tabIndex={-1}
+                  className="text-2xl font-bold text-[color:var(--page-text)]"
                 >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              )}
-            </Stack>
-            {editingAbout ? (
-              <Stack spacing={1}>
-                <TextField
-                  label={
-                    language === "en"
-                      ? t("events:detail.sections.about.fieldLabel_en", {
-                          defaultValue: `${t("events:detail.sections.about.fieldLabel")} (English)`,
-                        })
-                      : t("events:detail.sections.about.fieldLabel")
-                  }
-                  multiline
-                  minRows={3}
-                  value={aboutDraft}
-                  onChange={(e) => setAboutDraft(e.target.value)}
-                  fullWidth
-                  disabled={savingAbout}
-                />
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={<SaveIcon />}
-                    onClick={handleSaveAbout}
-                    disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
+                  {t("events:detail.sections.about.title")}
+                </h2>
+                {(user?.role === "admin" || user?.role === "teacher") && !editingAbout && (
+                  <button
+                    type="button"
+                    aria-label={t("events:detail.sections.about.editAria")}
+                    className="rounded-full p-1 text-[color:var(--secondary-text)] transition-colors hover:text-[color:var(--nav-link)]"
+                    onClick={handleEditAbout}
                   >
-                    {savingAbout
-                      ? t("events:detail.sections.about.savePending")
-                      : t("common:buttons.save")}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<CloseIcon />}
-                    onClick={handleCancelAbout}
+                    <EditIcon className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+              {editingAbout ? (
+                <div className="space-y-3">
+                  <textarea
+                    value={aboutDraft}
+                    onChange={(e) => setAboutDraft(e.target.value)}
                     disabled={savingAbout}
-                  >
-                    {t("common:buttons.cancel")}
-                  </Button>
-                </Stack>
-              </Stack>
-            ) : (
-              <Typography
-                variant="body1"
-                fontSize={18}
-                sx={{ whiteSpace: "pre-line", color: event?.about ? "inherit" : "text.disabled" }}
-              >
-                {event?.about || t("events:detail.sections.about.empty")}
-              </Typography>
-            )}
-          </Stack>
-
-          <Stack spacing={2} flex={1} minWidth={0}>
-            <Typography variant="h3" fontWeight={900}>
-              {event.title}
-            </Typography>
-            <Stack direction="row" spacing={2} alignItems="center">
-              {event.event_type && (
-                <Chip
-                  label={event.event_type}
-                  color="primary"
-                  sx={{ fontWeight: 600, fontSize: 17 }}
-                />
+                    rows={3}
+                    className={cn(inputClass, "min-h-[100px] resize-y")}
+                    placeholder={
+                      language === "en"
+                        ? t("events:detail.sections.about.fieldLabel_en", {
+                            defaultValue: `${t("events:detail.sections.about.fieldLabel")} (English)`,
+                          })
+                        : t("events:detail.sections.about.fieldLabel")
+                    }
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="solid"
+                      size="sm"
+                      leadingIcon={<SaveIcon />}
+                      onClick={handleSaveAbout}
+                      disabled={savingAbout || aboutDraft.trim() === aboutBaseline.trim()}
+                    >
+                      {savingAbout
+                        ? t("events:detail.sections.about.savePending")
+                        : t("common:buttons.save")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      leadingIcon={<CloseIcon />}
+                      onClick={handleCancelAbout}
+                      disabled={savingAbout}
+                    >
+                      {t("common:buttons.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p
+                  className={cn(
+                    "whitespace-pre-line text-lg leading-relaxed",
+                    event?.about
+                      ? "text-[color:var(--page-text)]"
+                      : "text-[color:var(--secondary-text)]"
+                  )}
+                >
+                  {event?.about || t("events:detail.sections.about.empty")}
+                </p>
               )}
-              <Chip
-                icon={<PeopleAltIcon sx={{ color: "#1976d2" }} />}
-                label={t("events:card.participants", { count: event.participant_count || 0 })}
-                sx={{ fontWeight: 500, fontSize: 16 }}
-              />
-            </Stack>
-            <Divider />
-            <Typography
-              variant="body1"
-              fontSize={20}
-              fontWeight={600}
-              sx={{ whiteSpace: "pre-line" }}
-            >
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0 space-y-4">
+            <h1 className="text-4xl font-extrabold text-[color:var(--page-text)] sm:text-5xl">
+              {event.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              {event.event_type && (
+                <Badge size="md" className="bg-[color:var(--nav-link)] text-white">
+                  {event.event_type}
+                </Badge>
+              )}
+              <Badge
+                size="md"
+                leadingIcon={<PeopleAltIcon className="h-4 w-4 text-[#1976d2]" />}
+                className="border-[color:var(--glass-border)]"
+              >
+                {t("events:card.participants", { count: event.participant_count || 0 })}
+              </Badge>
+            </div>
+            <div className="h-px bg-[color:var(--glass-border)]" />
+            <p className="whitespace-pre-line text-xl font-semibold leading-relaxed text-[color:var(--page-text)]">
               {event.description}
-            </Typography>
-            <Divider />
-            <Typography variant="subtitle1" fontWeight={600}>
-              {t("events:detail.fields.location")}: <b>{event.location}</b>
-            </Typography>
-            <Typography variant="subtitle1">
+            </p>
+            <div className="h-px bg-[color:var(--glass-border)]" />
+            <p className="text-base font-semibold text-[color:var(--page-text)]">
+              {t("events:detail.fields.location")}: <strong>{event.location}</strong>
+            </p>
+            <p className="text-base text-[color:var(--page-text)]">
               {t("events:detail.fields.date")}:{" "}
-              <b>
+              <strong>
                 {formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}
-              </b>
-            </Typography>
+              </strong>
+            </p>
             {event.speaker && (
-              <Typography variant="subtitle1">
-                {t("events:detail.fields.speaker")}: <b>{event.speaker}</b>
-              </Typography>
+              <p className="text-base text-[color:var(--page-text)]">
+                {t("events:detail.fields.speaker")}: <strong>{event.speaker}</strong>
+              </p>
             )}
 
             {user && (user.role === "admin" || user.role === "teacher") && (
-              <Box mt={2}>
-                <form action={uploadAction}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Button variant="contained" component="label" disabled={uploadPending}>
-                      {t("events:detail.sections.files.pickFile")}
-                      <input
-                        type="file"
-                        name="file"
-                        hidden
-                        required
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        disabled={uploadPending}
-                      />
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      type="submit"
-                      disabled={!selectedFile || uploadPending}
+              <div className="mt-4">
+                <form action={uploadAction} className="flex flex-wrap items-center gap-3">
+                  <Button variant="solid" as="label" disabled={uploadPending}>
+                    {t("events:detail.sections.files.pickFile")}
+                    <input
+                      type="file"
+                      name="file"
+                      hidden
+                      required
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      disabled={uploadPending}
+                    />
+                  </Button>
+                  <Button variant="outline" type="submit" disabled={!selectedFile || uploadPending}>
+                    {uploadPending
+                      ? t("events:detail.upload.submit.pending")
+                      : t("events:detail.upload.submit.label")}
+                  </Button>
+                  {selectedFile && (
+                    <span
+                      className="ml-2 max-w-[150px] truncate text-sm text-[color:var(--secondary-text)]"
+                      title={selectedFile.name}
                     >
-                      {uploadPending
-                        ? t("events:detail.upload.submit.pending")
-                        : t("events:detail.upload.submit.label")}
-                    </Button>
-                    {selectedFile && (
-                      <Typography
-                        fontSize={14}
-                        sx={{
-                          ml: 2,
-                          maxWidth: 150,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={selectedFile.name}
-                      >
-                        {selectedFile.name}
-                      </Typography>
-                    )}
-                  </Stack>
-                  {isUploadErrorState(uploadState) && (
-                    <Typography color="error" fontSize={13} sx={{ mt: 0.75 }}>
-                      {uploadState.error}
-                    </Typography>
+                      {selectedFile.name}
+                    </span>
                   )}
                 </form>
-              </Box>
+                {isUploadErrorState(uploadState) && (
+                  <p className="mt-2 text-sm text-red-500">{uploadState.error}</p>
+                )}
+              </div>
             )}
 
             {optimisticFiles.length > 0 ? (
-              <Box>
-                <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle1" fontWeight={600}>
+              <div>
+                <div className="my-3 h-px bg-[color:var(--glass-border)]" />
+                <h3 className="mb-2 text-base font-semibold text-[color:var(--page-text)]">
                   {t("events:detail.sections.files.title")}
-                </Typography>
-                <Stack spacing={1}>
+                </h3>
+                <div className="space-y-2">
                   {optimisticFiles.map((f) => {
                     const isPendingFile = f.pending === true || typeof f.id !== "number"
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
-                      <Box key={f.id} display="flex" alignItems="center">
+                      <div key={f.id} className="flex items-center gap-2">
                         {isPendingFile ? (
-                          <Typography color="text.secondary" sx={{ flex: 1 }}>
+                          <span className="flex-1 text-sm text-[color:var(--secondary-text)]">
                             {f.description || t("events:detail.sections.files.pending")}
-                          </Typography>
+                          </span>
                         ) : (
                           <a
                             href={resolveMediaUrl(f.file_url) || "#"}
@@ -829,52 +741,41 @@ const EventDetail = () => {
                             aria-label={t("events:detail.sections.files.downloadAria", {
                               label: fileLabel,
                             })}
-                            style={{
-                              color: "#1976d2",
-                              fontWeight: 500,
-                              textDecoration: "underline",
-                              flex: 1,
-                            }}
+                            className="flex-1 text-sm font-medium text-[#1976d2] underline transition-colors hover:text-[#1565c0]"
                           >
                             {fileLabel}
                           </a>
                         )}
                         {(user?.role === "admin" || user?.role === "teacher") && (
-                          <IconButton
+                          <button
+                            type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
-                            color="error"
                             disabled={isPendingFile}
+                            className="ml-2 rounded-full p-1 text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
                             onClick={async () => {
                               if (typeof f.id === "number") {
                                 await handleDeleteFile(f.id)
                               }
                             }}
-                            size="small"
-                            sx={{ ml: 1 }}
                           >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                            <DeleteIcon className="h-4 w-4" />
+                          </button>
                         )}
-                      </Box>
+                      </div>
                     )
                   })}
-                </Stack>
-              </Box>
+                </div>
+              </div>
             ) : (
-              <Typography variant="body2" color="text.secondary">
+              <p className="text-sm text-[color:var(--secondary-text)]">
                 {t("events:detail.sections.files.empty")}
-              </Typography>
+              </p>
             )}
-          </Stack>
-        </Stack>
+          </div>
+        </div>
 
-        <Snackbar
-          open={!!snack}
-          autoHideDuration={2500}
-          onClose={() => setSnack("")}
-          message={snack}
-        />
-      </Paper>
+        <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+      </div>
     </Layout>
   )
 }

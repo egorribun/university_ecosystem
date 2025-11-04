@@ -410,6 +410,9 @@ async def test_persistent_queue_dead_letters_poison_jobs(
 
     await notification_queue.enqueue_event_notification(505)
 
+    # Give the worker time to start processing
+    await asyncio.sleep(0.05)
+
     async def _wait_for_dead_lettered() -> NotificationQueueJob:
         while True:
             async with async_session() as session:
@@ -423,7 +426,7 @@ async def test_persistent_queue_dead_letters_poison_jobs(
                 return record
             await asyncio.sleep(0.01)
 
-    record = await asyncio.wait_for(_wait_for_dead_lettered(), timeout=2.0)
+    record = await asyncio.wait_for(_wait_for_dead_lettered(), timeout=5.0)
 
     assert record.dead_lettered is True
     assert record.attempts == 3

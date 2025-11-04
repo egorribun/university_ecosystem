@@ -13,24 +13,6 @@ import { useNavigate } from "react-router-dom"
 import { isAxiosError } from "axios"
 import api from "../api/client"
 import type { Event } from "@/types/Event"
-import {
-  Typography,
-  Button,
-  Box,
-  Stack,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  Menu,
-  MenuItem,
-  useMediaQuery,
-  Tooltip,
-  Snackbar,
-} from "@mui/material"
-import type { DialogProps } from "@mui/material/Dialog"
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
 import PlaceIcon from "@mui/icons-material/Place"
 import EventIcon from "@mui/icons-material/Event"
@@ -42,6 +24,9 @@ import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
+import { Button, Badge, Tooltip } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -103,6 +88,37 @@ const formatLocalDateTime = (s?: string) => {
 const qrKey = (eventId: number, user: any) => `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
 const qrOpenKey = (eventId: number) => `qr:open:${eventId}`
 
+const inputClass =
+  "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)]"
+
+function Snackbar({
+  open,
+  message,
+  onClose,
+}: {
+  open: boolean
+  message: string
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!open || !message) return
+    const timer = setTimeout(() => {
+      onClose()
+    }, 2400)
+    return () => clearTimeout(timer)
+  }, [open, message, onClose])
+
+  if (!open || !message) return null
+
+  return (
+    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
+      <div className="rounded-[1.25rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
+        {message}
+      </div>
+    </div>
+  )
+}
+
 const EventCardComponent: FC<EventCardProps> = ({
   id,
   title,
@@ -144,6 +160,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const menuId = useMemo(() => `event-card-menu-${id}`, [id])
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const [editData, setEditData] = useState<EventEditDraft>({
     title: title ?? "",
@@ -165,6 +182,22 @@ const EventCardComponent: FC<EventCardProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const [snack, setSnack] = useState<string>("")
+
+  useEffect(() => {
+    if (!menuAnchor) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        menuAnchor &&
+        !menuAnchor.contains(event.target as Node)
+      ) {
+        setMenuAnchor(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [menuAnchor])
 
   const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
     const key = (language === "en" ? `${field}_en` : field) as keyof EventEditDraft
@@ -304,8 +337,8 @@ const EventCardComponent: FC<EventCardProps> = ({
   }
 
   const cardImageUrl = useMemo(
-    () => (previewUrl ? previewUrl : editData.image_url || undefined),
-    [editData.image_url, previewUrl]
+    () => (previewUrl ? previewUrl : image_url || undefined),
+    [image_url, previewUrl]
   )
   const [cardImageReady, setCardImageReady] = useState(() => !cardImageUrl)
 
@@ -462,7 +495,6 @@ const EventCardComponent: FC<EventCardProps> = ({
       target.closest("button") ||
       target.closest("a") ||
       target.closest("input") ||
-      target.closest(".MuiInputBase-root") ||
       target.closest('[role="menu"]')
     ) {
       return
@@ -475,45 +507,18 @@ const EventCardComponent: FC<EventCardProps> = ({
     if (file) setNewImage(file)
   }
 
-  const interactiveSx = useMemo(() => {
-    if (editOpen || qrOpen) {
-      return {}
-    }
-    return {
-      "&:hover": {
-        transform: "translateY(-2px) scale(1.02)",
-        boxShadow: "var(--shadow-2)",
-      },
-      "&:active": {
-        transform: "scale(0.997)",
-      },
-    }
-  }, [editOpen, qrOpen])
-
   return (
-    <Box
-      className={cn("event-card")}
-      sx={{
-        width: "100%",
-        maxWidth: maxWidth ?? 700,
-        minHeight: 320,
-        borderRadius: { xs: "1.1rem", sm: "1.2rem" },
-        background: "var(--card-bg)",
-        color: "var(--page-text)",
-        position: "relative",
-        cursor: editOpen ? "default" : "pointer",
-        boxShadow: 5,
-        p: { xs: 2, sm: 3 },
-        overflow: "hidden",
-        "&:focus-visible": {
-          outline: "2px solid var(--nav-link)",
-          outlineOffset: "2px",
-        },
-        pointerEvents: qrOpen ? "none" : "auto",
-        filter: qrOpen ? "grayscale(0.12) opacity(0.92)" : "none",
-        transition: "transform 0.25s ease, box-shadow 0.25s ease, max-width 0.25s ease",
-        ...interactiveSx,
-      }}
+    <div
+      className={cn(
+        "event-card relative w-full min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
+        editOpen ? "cursor-default" : "cursor-pointer",
+        qrOpen && "pointer-events-none grayscale-[0.12] opacity-90",
+        !editOpen &&
+          !qrOpen &&
+          "hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-surface-strong active:scale-[0.997]",
+        "focus-visible:outline-2 focus-visible:outline-[color:var(--nav-link)] focus-visible:outline-offset-2"
+      )}
+      style={{ maxWidth: maxWidth ?? 700 }}
       role="button"
       tabIndex={0}
       onClick={handleCardClick}
@@ -524,109 +529,77 @@ const EventCardComponent: FC<EventCardProps> = ({
         }
       }}
     >
+      {/* Admin menu */}
       {user && (user.role === "admin" || user.role === "teacher") && (
         <>
-          <IconButton
+          <button
+            type="button"
             aria-label={t("events:card.aria.actions")}
             aria-controls={menuAnchor ? menuId : undefined}
             aria-haspopup="true"
             aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-            sx={{
-              position: "absolute",
-              top: 10,
-              right: 10,
-              zIndex: 2,
-              bgcolor: "rgba(255,255,255,0.82)",
-              "&:hover": { bgcolor: "#fff" },
-            }}
+            className="absolute top-2.5 right-2.5 z-[2] rounded-full bg-white/82 p-1.5 text-[color:var(--page-text)] shadow-surface transition-colors hover:bg-white"
             onClick={(e) => {
               e.stopPropagation()
               setMenuAnchor(e.currentTarget)
             }}
-            size="small"
           >
-            <MoreVertIcon />
-          </IconButton>
-          <Menu
-            id={menuId}
-            anchorEl={menuAnchor}
-            open={Boolean(menuAnchor)}
-            onClose={(e) => {
-              if (e) (e as any).stopPropagation?.()
-              setMenuAnchor(null)
-            }}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-            MenuListProps={{ "aria-labelledby": menuId }}
-          >
-            <MenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                setMenuAnchor(null)
-                openEditDialog()
+            <MoreVertIcon className="h-5 w-5" />
+          </button>
+          {menuAnchor && (
+            <div
+              ref={menuRef}
+              className="fixed z-50 mt-2 min-w-[160px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] shadow-surface-strong"
+              style={{
+                top: menuAnchor.getBoundingClientRect().bottom + 8,
+                left: Math.min(menuAnchor.getBoundingClientRect().left, window.innerWidth - 180),
               }}
             >
-              <EditIcon fontSize="small" sx={{ mr: 1 }} />
-              {t("common:buttons.edit")}
-            </MenuItem>
-            <MenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                setMenuAnchor(null)
-                setConfirmDeleteOpen(true)
-              }}
-            >
-              <DeleteIcon fontSize="small" sx={{ mr: 1 }} color="error" />
-              <span style={{ color: "#d32f2f" }}>{t("common:buttons.delete")}</span>
-            </MenuItem>
-          </Menu>
+              <div className="py-1">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[color:var(--page-text)] transition-colors hover:bg-[color:var(--option-bg)]"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuAnchor(null)
+                    openEditDialog()
+                  }}
+                >
+                  <EditIcon className="h-4 w-4" />
+                  {t("common:buttons.edit")}
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-500 transition-colors hover:bg-[color:var(--option-bg)]"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuAnchor(null)
+                    setConfirmDeleteOpen(true)
+                  }}
+                >
+                  <DeleteIcon className="h-4 w-4" />
+                  {t("common:buttons.delete")}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      <Box mb={2} display="flex" justifyContent="center">
-        <Box
-          sx={{
-            width: "100%",
-            height: { xs: 200, sm: 220, md: 260 },
-            maxHeight: 280,
-            borderRadius: 2,
-            border: "1px solid #e0e0e0",
-            overflow: "hidden",
-            position: "relative",
-            background: "linear-gradient(135deg, rgba(30,136,229,0.18), rgba(21,101,192,0.1))",
-            transition: "transform 0.25s ease",
-            "&:hover": { transform: isMobile ? "none" : "scale(1.01)" },
-            display: "flex",
-            alignItems: "stretch",
-            "& img": {
-              display: "block",
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "center",
-            },
-            "&::after": {
-              content: '""',
-              position: "absolute",
-              inset: 0,
-              background: "linear-gradient(120deg, rgba(255,255,255,0.28), rgba(255,255,255,0.05))",
-              opacity: cardImageReady ? 0 : 1,
-              transition: "opacity 280ms ease",
-              pointerEvents: "none",
-            },
-          }}
+      {/* Image */}
+      <div className="mb-4 flex justify-center">
+        <div
+          className={cn(
+            "relative w-full overflow-hidden rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[linear-gradient(135deg,rgba(30,136,229,0.18),rgba(21,101,192,0.1))] transition-transform duration-300",
+            "h-[200px] sm:h-[220px] md:h-[260px] max-h-[280px]",
+            !isMobile && "hover:scale-[1.01]"
+          )}
         >
           <SmartImage
             srcRaw={cardImageUrl}
             alt={t("events:alt.image")}
             sizes="(min-width: 1200px) 560px, (min-width: 900px) 480px, 100vw"
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "block",
-              objectFit: "cover",
-              objectPosition: "center",
-            }}
+            className="block h-full w-full object-cover object-center"
             draggable={false}
             onClick={(e) => {
               e.stopPropagation()
@@ -635,354 +608,330 @@ const EventCardComponent: FC<EventCardProps> = ({
             onLoad={handleCardImageReady}
             onError={handleCardImageReady}
           />
-        </Box>
-      </Box>
+          {!cardImageReady && (
+            <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.28),rgba(255,255,255,0.05))] transition-opacity duration-300" />
+          )}
+        </div>
+      </div>
 
-      <Typography variant="h5" fontWeight={800} sx={{ mb: 1, lineHeight: 1.15 }}>
+      {/* Title */}
+      <h3 className="mb-2 text-xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-2xl">
         {title}
-      </Typography>
+      </h3>
 
+      {/* Speaker */}
       {speaker && (
-        <Typography color="secondary" fontSize={15} fontWeight={600} sx={{ mb: 1 }}>
+        <p className="mb-2 text-[15px] font-semibold text-[color:var(--secondary-text)]">
           {t("events:form.speaker")}: {speaker}
-        </Typography>
+        </p>
       )}
 
-      <Box display="flex" gap={1} alignItems="center" sx={{ mb: 1 }}>
-        <EventIcon sx={{ fontSize: 20, color: "var(--nav-link)" }} />
-        <Typography color="text.secondary" fontSize={16}>
+      {/* Date */}
+      <div className="mb-2 flex items-center gap-2">
+        <EventIcon className="h-5 w-5 text-[color:var(--nav-link)]" />
+        <span className="text-base text-[color:var(--secondary-text)]">
           {formatLocalDateTime(starts_at)} — {formatLocalDateTime(ends_at)}
-        </Typography>
-      </Box>
+        </span>
+      </div>
 
+      {/* Ended status */}
       {eventEnded && (
-        <Typography color="error.main" fontWeight={700} sx={{ mb: 1 }}>
+        <Badge size="sm" className="mb-2 bg-red-500 text-white">
           {t("events:card.statuses.ended")}
-        </Typography>
+        </Badge>
       )}
 
-      <Box display="flex" gap={1} alignItems="center" sx={{ mb: 1 }}>
-        <PlaceIcon sx={{ fontSize: 20, color: "var(--nav-link)" }} />
-        <Typography color="text.secondary" fontSize={16}>
-          {location}
-        </Typography>
-      </Box>
+      {/* Location */}
+      <div className="mb-2 flex items-center gap-2">
+        <PlaceIcon className="h-5 w-5 text-[color:var(--nav-link)]" />
+        <span className="text-base text-[color:var(--secondary-text)]">{location}</span>
+      </div>
 
+      {/* Event type */}
       {event_type && (
-        <Typography color="primary" fontSize={15} fontWeight={700} sx={{ mb: 1 }}>
+        <Badge size="sm" className="mb-2 bg-[color:var(--nav-link)] text-white">
           {event_type}
-        </Typography>
+        </Badge>
       )}
 
-      <Typography
-        fontSize={16}
-        sx={{
-          mb: 2,
-          display: "-webkit-box",
-          WebkitLineClamp: 5,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {description}
-      </Typography>
+      {/* Description */}
+      <p className="mb-4 line-clamp-5 text-base text-[color:var(--page-text)]">{description}</p>
 
-      <Box display="flex" gap={1} alignItems="center" sx={{ mb: 2 }}>
-        <PeopleAltIcon sx={{ fontSize: 19, color: "var(--nav-link)" }} />
-        <Typography fontSize={15}>{t("events:card.participants", { count })}</Typography>
-      </Box>
+      {/* Participants */}
+      <div className="mb-4 flex items-center gap-2">
+        <PeopleAltIcon className="h-[19px] w-[19px] text-[color:var(--nav-link)]" />
+        <span className="text-[15px] text-[color:var(--page-text)]">
+          {t("events:card.participants", { count })}
+        </span>
+      </div>
 
+      {/* Register button */}
       {is_active &&
         !eventEnded &&
         !registered &&
         user?.role !== "admin" &&
         user?.role !== "teacher" && (
           <Button
-            variant="contained"
-            color="primary"
-            sx={{ fontWeight: 700, borderRadius: 2.2, mt: 1 }}
+            variant="solid"
             onClick={(e) => handleRegister(e)}
             disabled={loading}
+            className="mt-2 font-bold"
           >
             {t("events:card.actions.register")}
           </Button>
         )}
 
+      {/* Unregister and QR */}
       {is_active && !eventEnded && registered && (
-        <Box display="flex" alignItems="center" gap={2} mt={2}>
-          <Button
-            variant="outlined"
-            color="error"
-            sx={{ fontWeight: 700, borderRadius: 2.2 }}
-            onClick={(e) => handleUnregister(e)}
-            disabled={loading}
-          >
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={(e) => handleUnregister(e)} disabled={loading}>
             {t("events:card.actions.unregister")}
           </Button>
 
           {qr && (
             <>
-              <Tooltip title={t("events:card.actions.openQr")} arrow>
-                <SmartImage
-                  srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                  alt={t("events:card.alt.qr")}
-                  style={{
-                    width: "clamp(52px, 8vw, 76px)",
-                    height: "clamp(52px, 8vw, 76px)",
-                    borderRadius: 8,
-                    background: "#fff",
-                    cursor: "pointer",
-                    display: "block",
-                  }}
+              <Tooltip content={t("events:card.actions.openQr")}>
+                <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     setQrOpen(true)
                   }}
-                />
+                  className="block"
+                >
+                  <SmartImage
+                    srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
+                    alt={t("events:card.alt.qr")}
+                    className="h-[clamp(52px,8vw,76px)] w-[clamp(52px,8vw,76px)] rounded-lg bg-white object-cover shadow-surface cursor-pointer"
+                  />
+                </button>
               </Tooltip>
 
               <Dialog
                 open={qrOpen}
-                keepMounted
-                disableScrollLock
-                transitionDuration={{ enter: 0, exit: 0 }}
-                onClose={
-                  ((event, reason) => {
-                    if (reason === "backdropClick") {
-                      if (
-                        event &&
-                        typeof event === "object" &&
-                        "stopPropagation" in event &&
-                        typeof (event as { stopPropagation?: () => void }).stopPropagation ===
-                          "function"
-                      ) {
-                        ;(event as { stopPropagation?: () => void }).stopPropagation?.()
-                      }
-                      setSkipNextClick(true)
-                    }
-                    setQrOpen(false)
-                  }) as DialogProps["onClose"]
-                }
-                PaperProps={{
-                  onClick: (event: ReactMouseEvent<HTMLDivElement>) => event.stopPropagation(),
-                  sx: {
-                    borderRadius: 2,
-                    p: { xs: 2, sm: 3 },
-                    maxWidth: "min(92vw, 92vh)",
-                    width: "fit-content",
-                    mx: { xs: 2, sm: "auto" },
-                  },
+                onClose={() => {
+                  setSkipNextClick(true)
+                  setQrOpen(false)
                 }}
-                BackdropProps={{ sx: { backdropFilter: "blur(2px)" } }}
+                title=""
+                size="sm"
               >
-                <Box display="flex" flexDirection="column" alignItems="center">
-                  <Box
-                    sx={{
-                      p: { xs: 1.5, sm: 2.5 },
-                      borderRadius: 2,
-                      bgcolor: "#fff",
-                      boxShadow: 1,
-                      width: "100%",
-                      maxWidth: "min(76vw, 76vh, 520px)",
-                    }}
-                  >
-                    <Box
-                      component="img"
+                <div className="space-y-4">
+                  <div className="mx-auto w-full max-w-[min(76vw,76vh,520px)] rounded-ue-lg border border-[color:var(--glass-border)] bg-white p-4 sm:p-6 shadow-surface">
+                    <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
                       alt={t("events:card.alt.qr")}
-                      sx={{
-                        width: "min(70vw, 70vh, 460px)",
-                        maxWidth: "100%",
-                        aspectRatio: "1 / 1",
-                        display: "block",
-                        userSelect: "none",
-                      }}
+                      className="block h-auto w-full max-w-[min(70vw,70vh,460px)] aspect-square select-none"
                       loading="eager"
-                      decoding="async"
                     />
-                  </Box>
-                  <Button sx={{ mt: 2 }} variant="outlined" onClick={() => setQrOpen(false)}>
+                  </div>
+                  <Button variant="outline" onClick={() => setQrOpen(false)} className="w-full">
                     {t("events:card.actions.closeQr")}
                   </Button>
-                </Box>
+                </div>
               </Dialog>
             </>
           )}
-        </Box>
+        </div>
       )}
 
+      {/* Edit dialog */}
       <Dialog
         open={editOpen}
         onClose={closeEditDialog}
-        PaperProps={{ sx: { minWidth: 340, bgcolor: "var(--card-bg)", color: "var(--page-text)" } }}
-      >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <EditIcon fontSize="small" /> {t("events:card.dialogs.edit.title")}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} mt={1}>
-            <TextField
-              label={
-                language === "en"
-                  ? t("events:form.title_en", {
-                      defaultValue: `${t("events:form.title")}${" (English)"}`,
-                    })
-                  : t("events:form.title")
+        title={
+          <div className="flex items-center gap-2">
+            <EditIcon className="h-5 w-5" />
+            {t("events:card.dialogs.edit.title")}
+          </div>
+        }
+        size="lg"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={closeEditDialog}
+              leadingIcon={<CloseIcon />}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              variant="solid"
+              onClick={handleEdit}
+              disabled={
+                loading ||
+                imageLoading ||
+                dateError ||
+                !normalizedEditTitle ||
+                !normalizedEditLocation
               }
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.save")}
+            </Button>
+          </>
+        }
+        footerClassName="flex-col-reverse gap-3 sm:flex-row"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {language === "en"
+                ? t("events:form.title_en", {
+                    defaultValue: `${t("events:form.title")} (English)`,
+                  })
+                : t("events:form.title")}
+            </label>
+            <input
+              type="text"
               value={getLocalizedEditValue("title")}
               onChange={(e) => updateLocalizedEditValue("title", e.target.value)}
-              fullWidth
+              className={inputClass}
             />
-            <TextField
-              label={
-                language === "en"
-                  ? t("events:form.description_en", {
-                      defaultValue: `${t("events:form.description")}${" (English)"}`,
-                    })
-                  : t("events:form.description")
-              }
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {language === "en"
+                ? t("events:form.description_en", {
+                    defaultValue: `${t("events:form.description")} (English)`,
+                  })
+                : t("events:form.description")}
+            </label>
+            <textarea
               value={getLocalizedEditValue("description")}
               onChange={(e) => updateLocalizedEditValue("description", e.target.value)}
-              multiline
               rows={2}
-              fullWidth
+              className={cn(inputClass, "min-h-[100px] resize-y")}
             />
-            <TextField
-              label={
-                language === "en"
-                  ? t("events:form.type_en", {
-                      defaultValue: `${t("events:form.type")}${" (English)"}`,
-                    })
-                  : t("events:form.type")
-              }
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {language === "en"
+                ? t("events:form.type_en", {
+                    defaultValue: `${t("events:form.type")} (English)`,
+                  })
+                : t("events:form.type")}
+            </label>
+            <input
+              type="text"
               value={getLocalizedEditValue("event_type")}
               onChange={(e) => updateLocalizedEditValue("event_type", e.target.value)}
-              fullWidth
+              className={inputClass}
             />
-            <TextField
-              label={
-                language === "en"
-                  ? t("events:form.location_en", {
-                      defaultValue: `${t("events:form.location")}${" (English)"}`,
-                    })
-                  : t("events:form.location")
-              }
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {language === "en"
+                ? t("events:form.location_en", {
+                    defaultValue: `${t("events:form.location")} (English)`,
+                  })
+                : t("events:form.location")}
+            </label>
+            <input
+              type="text"
               value={getLocalizedEditValue("location")}
               onChange={(e) => updateLocalizedEditValue("location", e.target.value)}
-              fullWidth
+              className={inputClass}
             />
-            <TextField
-              label={t("events:form.start")}
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {t("events:form.start")}
+            </label>
+            <input
               type="datetime-local"
               value={editData.starts_at.slice(0, 16)}
               onChange={(e) => setEditData({ ...editData, starts_at: e.target.value })}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              className={inputClass}
             />
-            <TextField
-              label={t("events:form.end")}
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {t("events:form.end")}
+            </label>
+            <input
               type="datetime-local"
               value={editData.ends_at.slice(0, 16)}
               onChange={(e) => setEditData({ ...editData, ends_at: e.target.value })}
-              InputLabelProps={{ shrink: true }}
-              error={dateError}
-              helperText={dateError ? t("events:form.errors.endsBeforeStarts") : " "}
-              fullWidth
+              className={cn(inputClass, dateError && "border-red-500")}
             />
-            <TextField
-              label={t("events:form.speaker")}
+            {dateError && (
+              <p className="mt-1 text-sm text-red-500">
+                {t("events:form.errors.endsBeforeStarts")}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+              {t("events:form.speaker")}
+            </label>
+            <input
+              type="text"
               value={editData.speaker}
               onChange={(e) => setEditData({ ...editData, speaker: e.target.value })}
-              fullWidth
+              className={inputClass}
             />
-
-            <Box>
-              <Button
-                component="label"
-                variant="contained"
-                disabled={imageLoading}
+          </div>
+          <div>
+            <Button as="label" variant="solid" disabled={imageLoading} className="w-full sm:w-auto">
+              {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                ref={imageInputRef}
+                onChange={handleImageChange}
                 onClick={(e) => e.stopPropagation()}
-              >
-                {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  ref={imageInputRef}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) setNewImage(file)
-                  }}
-                  onClick={(e) => e.stopPropagation()}
+              />
+            </Button>
+            {cardImageUrl && (
+              <div className="mt-3">
+                <SmartImage
+                  srcRaw={cardImageUrl}
+                  alt={t("events:alt.preview")}
+                  className="h-[140px] w-[220px] rounded-ue-lg border border-[color:var(--glass-border)] object-cover shadow-surface"
                 />
-              </Button>
-              {cardImageUrl && (
-                <Box mt={1}>
-                  <SmartImage
-                    srcRaw={cardImageUrl}
-                    alt={t("events:alt.preview")}
-                    style={{
-                      width: 220,
-                      maxHeight: 140,
-                      objectFit: "cover",
-                      borderRadius: 10,
-                      border: "1px solid #ddd",
-                      display: "block",
-                    }}
-                  />
-                </Box>
-              )}
-            </Box>
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={closeEditDialog}
-            startIcon={<CloseIcon />}
-          >
-            {t("common:buttons.cancel")}
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleEdit}
-            disabled={
-              loading ||
-              imageLoading ||
-              dateError ||
-              !normalizedEditTitle ||
-              !normalizedEditLocation
-            }
-          >
-            {t("common:buttons.save")}
-          </Button>
-        </DialogActions>
+              </div>
+            )}
+          </div>
+        </div>
       </Dialog>
 
-      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
-        <DialogTitle>{t("events:card.dialogs.delete.title")}</DialogTitle>
-        <DialogContent>
-          <Typography>{t("events:card.dialogs.delete.description")}</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button variant="outlined" color="secondary" onClick={() => setConfirmDeleteOpen(false)}>
-            {t("common:buttons.cancel")}
-          </Button>
-          <Button variant="contained" color="error" onClick={handleDelete} disabled={loading}>
-            <DeleteIcon sx={{ mr: 1 }} /> {t("common:buttons.delete")}
-          </Button>
-        </DialogActions>
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        title={t("events:card.dialogs.delete.title")}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              variant="solid"
+              onClick={handleDelete}
+              disabled={loading}
+              leadingIcon={<DeleteIcon />}
+              className="w-full bg-red-500 hover:bg-red-600 sm:w-auto"
+            >
+              {t("common:buttons.delete")}
+            </Button>
+          </>
+        }
+        footerClassName="flex-col-reverse gap-3 sm:flex-row"
+      >
+        <p className="text-[color:var(--page-text)]">
+          {t("events:card.dialogs.delete.description")}
+        </p>
       </Dialog>
 
-      <Snackbar
-        open={!!snack}
-        message={snack}
-        autoHideDuration={2400}
-        onClose={() => setSnack("")}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      />
-    </Box>
+      <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+    </div>
   )
 }
 
