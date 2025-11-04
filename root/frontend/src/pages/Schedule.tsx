@@ -734,7 +734,7 @@ export default function Schedule() {
   }, [filteredSchedule])
 
   const headerActions = (
-    <div className="mb-7 flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-4">
       <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
         {t("schedule:week.label")}
       </span>
@@ -742,7 +742,7 @@ export default function Schedule() {
         variant={currentParity === "odd" ? "solid" : "outline"}
         onClick={() => setCurrentParity("odd")}
         size="sm"
-        className="font-semibold transition-transform duration-200 hover:-translate-y-[1px]"
+        className="font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
       >
         {t("schedule:week.odd")}
       </Button>
@@ -750,7 +750,7 @@ export default function Schedule() {
         variant={currentParity === "even" ? "solid" : "outline"}
         onClick={() => setCurrentParity("even")}
         size="sm"
-        className="font-semibold transition-transform duration-200 hover:-translate-y-[1px]"
+        className="font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
       >
         {t("schedule:week.even")}
       </Button>
@@ -1219,13 +1219,13 @@ export default function Schedule() {
         }
       `}</style>
         <div className="w-screen min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] py-8 sm:py-10">
-          <div className="mx-auto mb-4 mt-0 max-w-[980px] px-4 sm:px-6 md:px-8 lg:px-12">
+          <div className="mb-6 mt-0 px-2 md:px-4">
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
-              className="mb-8 mt-1 flex flex-wrap items-center gap-3 sm:gap-4"
+              className="mb-8 flex flex-wrap items-center gap-3 sm:gap-4"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_4px_16px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_4px_16px_color-mix(in_srgb,var(--nav-link)_20%,transparent)] transition-transform duration-200 hover:scale-105">
                 <CalendarMonthIcon className="text-[2rem]" />
               </div>
               <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
@@ -1235,14 +1235,14 @@ export default function Schedule() {
               </h1>
               <Badge
                 variant="outline"
-                className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)]"
               >
                 {todayLabel}
               </Badge>
               {activeGroupName && (
                 <Badge
                   variant="outline"
-                  className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                  className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)]"
                 >
                   {t("schedule:header.groupName", { name: activeGroupName })}
                 </Badge>
@@ -1256,7 +1256,7 @@ export default function Schedule() {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="no-print group relative isolate mb-6 overflow-hidden rounded-[1.75rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)]"
+              className="no-print group relative isolate mb-6 overflow-hidden rounded-[1.75rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)] backdrop-blur-sm"
             >
               <span
                 aria-hidden="true"
@@ -1265,13 +1265,17 @@ export default function Schedule() {
               {currentLesson ? (
                 <div className="relative z-[1]">
                   <div className="mb-4 flex flex-wrap items-center gap-2.5">
-                    <Badge size="sm" tone="primary" className="chip-clock font-semibold">
+                    <Badge
+                      size="sm"
+                      tone="primary"
+                      className="chip-clock font-semibold shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+                    >
                       {t("schedule:chips.current")}
                     </Badge>
                     <Badge
                       size="sm"
                       variant="outline"
-                      className="chip-time font-medium"
+                      className="chip-time font-medium border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
                       leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                     >
                       {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
@@ -1282,7 +1286,7 @@ export default function Schedule() {
                     {!!timeLeftText && (
                       <Badge
                         size="sm"
-                        className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)]"
+                        className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
                       >
                         {timeLeftText}
                       </Badge>
@@ -1319,14 +1323,14 @@ export default function Schedule() {
                     size="sm"
                     variant="outline"
                     tone="primary"
-                    className="chip-clock font-semibold border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                    className="chip-clock font-semibold border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)]"
                   >
                     {t("schedule:chips.next")}
                   </Badge>
                   <Badge
                     size="sm"
                     variant="outline"
-                    className="chip-time font-medium"
+                    className="chip-time font-medium border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
                     leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                   >
                     {`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
@@ -1337,7 +1341,7 @@ export default function Schedule() {
                   {!!timeLeftText && (
                     <Badge
                       size="sm"
-                      className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)]"
+                      className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
                     >
                       {timeLeftText}
                     </Badge>
@@ -1351,7 +1355,7 @@ export default function Schedule() {
             </div>
 
             {(user?.role === "teacher" || user?.role === "admin") && (
-              <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 max-w-[360px]">
+              <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 max-w-[380px]">
                 <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                   {t("schedule:form.groupLabel")}
                 </label>
@@ -1370,11 +1374,7 @@ export default function Schedule() {
             )}
           </div>
 
-          <div
-            data-fade
-            style={fadeDelayStyle("280ms")}
-            className="mx-auto max-w-[1920px] px-2 md:px-4"
-          >
+          <div data-fade style={fadeDelayStyle("280ms")} className="max-w-[1920px] px-2 md:px-4">
             {isMobile ? renderMobileCards() : renderTable()}
           </div>
 
