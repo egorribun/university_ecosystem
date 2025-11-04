@@ -1786,17 +1786,23 @@ body.dark .glass:not(.map-head) {
 }
 .map-title {
   color: rgba(0, 0, 0, 0.92) !important;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8), 0 0 8px rgba(255, 255, 255, 0.4);
+  text-shadow:
+    0 1px 2px rgba(255, 255, 255, 0.8),
+    0 0 8px rgba(255, 255, 255, 0.4);
   position: relative;
   z-index: 1;
 }
 [data-mui-color-scheme="dark"] .map-title {
   color: rgba(255, 255, 255, 0.95) !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 12px rgba(0, 0, 0, 0.3);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(0, 0, 0, 0.3);
 }
 body.dark .map-title {
   color: rgba(255, 255, 255, 0.95) !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 12px rgba(0, 0, 0, 0.3);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(0, 0, 0, 0.3);
 }
 .map-controls-glass {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
