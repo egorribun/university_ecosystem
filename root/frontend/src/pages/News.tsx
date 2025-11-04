@@ -212,10 +212,7 @@ const News = () => {
             </div>
           )}
 
-          <div
-            data-fade
-            className="flex flex-wrap gap-5 [--fade-delay:200ms] sm:gap-6"
-          >
+          <div data-fade className="flex flex-wrap gap-5 [--fade-delay:200ms] sm:gap-6">
             {isInitialLoading
               ? Array.from({ length: skeletonCount }).map((_, index) => (
                   <div key={`news-skeleton-${index}`} className="flex h-full">
