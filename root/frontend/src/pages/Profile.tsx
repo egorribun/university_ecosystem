@@ -29,7 +29,9 @@ type SnackState = {
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const [prefersReduce, setPrefersReduce] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
   )
   const reduced = useReducedMotion()
 
@@ -161,7 +163,9 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             referrerPolicy="no-referrer"
             className={cn(
               "h-full w-full rounded-lg object-cover",
-              !prefersReduce && !reduced && "transition-transform duration-[900ms] ease-[cubic-bezier(.22,.61,.36,1)] hover:scale-[1.02]",
+              !prefersReduce &&
+                !reduced &&
+                "transition-transform duration-[900ms] ease-[cubic-bezier(.22,.61,.36,1)] hover:scale-[1.02]",
               !prefersReduce && !reduced && "scale-[1.012]"
             )}
           />
@@ -170,9 +174,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           <h3 className="np-title text-base font-extrabold leading-tight tracking-[-0.01em] text-white">
             {data.track_name || "—"}
           </h3>
-          <p className="np-art text-sm opacity-90 text-[#b3b3b3]">
-            {data.artists.join(", ")}
-          </p>
+          <p className="np-art text-sm opacity-90 text-[#b3b3b3]">{data.artists.join(", ")}</p>
           {!data.is_playing && (
             <span
               className="w-fit rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-[color:var(--secondary-text)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]"
@@ -215,13 +217,7 @@ const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode })
   )
 }
 
-const AutoHideSnackbar = ({
-  snack,
-  onClose,
-}: {
-  snack: SnackState
-  onClose: () => void
-}) => {
+const AutoHideSnackbar = ({ snack, onClose }: { snack: SnackState; onClose: () => void }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose()
@@ -237,7 +233,9 @@ export default function Profile() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
   const [reduceMotion, setReduceMotion] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
   )
   const [isTwoCol, setIsTwoCol] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(min-width:1400px)").matches : false
@@ -693,9 +691,7 @@ export default function Profile() {
                         style={{
                           width: avatarSize,
                           height: avatarSize,
-                          animation: reduceMotion
-                            ? "none"
-                            : "auraPulse 14s ease-in-out infinite",
+                          animation: reduceMotion ? "none" : "auraPulse 14s ease-in-out infinite",
                         }}
                       >
                         <div className="avatar-ring h-full w-full">
@@ -837,11 +833,7 @@ export default function Profile() {
                               !reduced && "hover:-translate-y-0.5 hover:scale-105"
                             )}
                           >
-                            <svg
-                              className="h-4 w-4"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
+                            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                             </svg>
                           </button>
@@ -880,11 +872,7 @@ export default function Profile() {
                                 !reduced && "hover:-translate-y-0.5 hover:scale-105"
                               )}
                             >
-                              <svg
-                                className="h-4 w-4"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                              >
+                              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                               </svg>
                             </button>
@@ -1164,7 +1152,9 @@ export default function Profile() {
                                     {achievementsList.map((ach, idx) => (
                                       <motion.button
                                         key={ach.key}
-                                        initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
+                                        initial={
+                                          isTest || reduced ? false : { opacity: 0, scale: 0.9 }
+                                        }
                                         animate={{ opacity: 1, scale: 1 }}
                                         transition={{
                                           duration: isTest || reduced ? 0 : 0.5,
