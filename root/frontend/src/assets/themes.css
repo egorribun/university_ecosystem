@@ -1455,19 +1455,15 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(100% 150% at 50% -30%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 50%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.08),
-    0 8px 24px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.15),
-    inset 0 0 40px rgba(255, 255, 255, 0.03);
+    0 20px 60px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   transition:
     background var(--anim-med),
@@ -1476,19 +1472,15 @@ body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal
 }
 body.dark .map-head {
   background:
-    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 65%),
-    radial-gradient(100% 150% at 50% -30%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 50%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+    radial-gradient(120% 100% at -10% -20%, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 65%),
+    radial-gradient(140% 120% at 110% 120%, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.008));
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.25),
-    0 8px 24px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 0 40px rgba(255, 255, 255, 0.02);
+    0 20px 60px rgba(0, 0, 0, 0.15),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 .map-head::before {
   content: "";
@@ -1499,89 +1491,58 @@ body.dark .map-head {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.04) 25%,
-      rgba(255, 255, 255, 0.02) 50%,
-      rgba(255, 255, 255, 0.01) 75%,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.01) 35%,
+      rgba(255, 255, 255, 0.004) 65%,
       transparent 100%
     ),
-    radial-gradient(80% 140% at 0% -20%, rgba(255, 255, 255, 0.06), transparent 65%),
-    radial-gradient(60% 100% at 100% 0%, rgba(255, 255, 255, 0.04), transparent 60%);
+    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.025), transparent 70%);
   mix-blend-mode: overlay;
-  opacity: 0.6;
+  opacity: 0.3;
 }
 body.dark .map-head::before {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.06) 0%,
-      rgba(255, 255, 255, 0.03) 25%,
-      rgba(255, 255, 255, 0.015) 50%,
-      rgba(255, 255, 255, 0.008) 75%,
+      rgba(255, 255, 255, 0.025) 0%,
+      rgba(255, 255, 255, 0.01) 35%,
+      rgba(255, 255, 255, 0.003) 65%,
       transparent 100%
     ),
-    radial-gradient(80% 140% at 0% -20%, rgba(255, 255, 255, 0.04), transparent 65%),
-    radial-gradient(60% 100% at 100% 0%, rgba(255, 255, 255, 0.03), transparent 60%);
-  opacity: 0.5;
+    radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.015), transparent 70%);
+  opacity: 0.25;
 }
 .map-head::after {
   content: "";
   position: absolute;
-  top: -80px;
-  left: -90px;
-  width: 400px;
-  height: 300px;
+  top: -60px;
+  left: -70px;
+  width: 320px;
+  height: 240px;
   border-radius: 50%;
   background:
-    radial-gradient(
-      closest-side,
-      rgba(255, 255, 255, 0.25) 0%,
-      rgba(255, 255, 255, 0.15) 30%,
-      rgba(255, 255, 255, 0) 70%
-    ),
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 70%),
     conic-gradient(
       from 210deg at 26% 18%,
-      rgba(255, 255, 255, 0.18),
-      rgba(255, 255, 255, 0.12) 15%,
-      rgba(255, 255, 255, 0.06) 30%,
-      transparent 50%
-    ),
-    radial-gradient(ellipse 60% 40% at 50% 30%, rgba(255, 255, 255, 0.2), transparent 70%);
-  filter: blur(4px);
-  opacity: 0.5;
+      rgba(255, 255, 255, 0.05),
+      rgba(255, 255, 255, 0.025) 18%,
+      transparent 40%
+    );
+  filter: blur(2px);
+  opacity: 0.2;
   mix-blend-mode: screen;
   pointer-events: none;
-  transform: translateZ(0);
-  will-change: opacity;
 }
 body.dark .map-head::after {
   background:
-    radial-gradient(
-      closest-side,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.1) 30%,
-      rgba(255, 255, 255, 0) 70%
-    ),
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 70%),
     conic-gradient(
       from 210deg at 26% 18%,
-      rgba(255, 255, 255, 0.12),
-      rgba(255, 255, 255, 0.08) 15%,
-      rgba(255, 255, 255, 0.04) 30%,
-      transparent 50%
-    ),
-    radial-gradient(ellipse 60% 40% at 50% 30%, rgba(255, 255, 255, 0.15), transparent 70%);
-  opacity: 0.4;
-}
-/* Эффект блеска для верхней панели */
-.map-head.glass--sheen {
-  position: relative;
-  overflow: hidden;
-}
-.map-head.glass--sheen::before {
-  z-index: 1;
-}
-.map-head.glass--sheen::after {
-  z-index: 1;
+      rgba(255, 255, 255, 0.03),
+      rgba(255, 255, 255, 0.015) 18%,
+      transparent 40%
+    );
+  opacity: 0.15;
 }
 .map-head > * {
   position: relative;
