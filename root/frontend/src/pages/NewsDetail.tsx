@@ -455,26 +455,27 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-8 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+      <div className="flex w-full max-w-[1200px] mx-auto flex-col gap-8 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
         <Button
           variant="outline"
           onClick={handleBack}
-          leadingIcon={<ArrowBackIcon className="text-[1.1rem]" />}
-          className="w-fit justify-start border-white/20 text-[clamp(0.95rem,2vw,1.1rem)]"
+          leadingIcon={<ArrowBackIcon className="text-[0.95rem]" />}
+          size="sm"
+          className="w-fit justify-start border-white/20 text-[0.9rem] px-3 py-1.5 h-9 hover:bg-white/10 transition-all duration-200"
         >
           {t("common:buttons.back")}
         </Button>
 
         <article className="flex w-full flex-col items-start gap-8">
           <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
+            <h1 className="w-full max-w-4xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)] leading-tight">
               {displayTitle}
             </h1>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-2 text-[0.9rem] text-[color:var(--secondary-text)]">
+              <div className="flex flex-wrap items-center gap-2.5 text-[0.9rem] text-[color:var(--secondary-text)]">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)] backdrop-blur-sm">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
                     <time dateTime={createdAtIso} className="text-[color:var(--page-text)]">
@@ -484,7 +485,7 @@ export default function NewsDetail() {
                 ) : null}
 
                 {readingTimeMinutes !== null ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.78rem] font-medium tracking-wide text-[color:var(--page-text)]">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.78rem] font-medium tracking-wide text-[color:var(--page-text)] backdrop-blur-sm">
                     {t("news:meta.readingTime", { count: readingTimeMinutes })}
                   </span>
                 ) : null}
@@ -496,7 +497,7 @@ export default function NewsDetail() {
                     void handleShare()
                   }}
                   leadingIcon={<IosShareIcon fontSize="small" />}
-                  className="w-full basis-full sm:w-auto sm:basis-auto"
+                  className="w-full basis-full sm:w-auto sm:basis-auto border-white/20 hover:bg-white/10"
                   loading={sharing}
                   aria-label={t("news:aria.shareNews") ?? ""}
                 >
@@ -529,7 +530,7 @@ export default function NewsDetail() {
             ) : null}
           </header>
 
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+          <figure className="w-full max-w-4xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface-strong backdrop-blur-sm">
             <div
               className={cn(
                 "flex w-full items-center justify-center overflow-hidden",
@@ -549,13 +550,13 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
+              <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)] backdrop-blur-sm">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
+          <section className="w-full max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
             {content?.split(/\n{2,}/).map((chunk, index) => {
               const text = chunk.trim()
 

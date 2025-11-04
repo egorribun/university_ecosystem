@@ -283,7 +283,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   return (
     <article
       className={cn(
-        "group relative flex h-full w-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
+        "group relative flex h-full w-full max-w-[420px] mx-auto flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
@@ -388,7 +388,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           {createdAtIso ? (
             <time
               dateTime={createdAtIso}
-              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
+              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 backdrop-blur-sm px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
             >
               {createdAtLabel}
             </time>
@@ -396,11 +396,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         </div>
 
         <div className="flex flex-1 flex-col gap-3 px-4 py-5 transition duration-300 ease-out group-hover:translate-y-[-1px] group-focus-visible/button:translate-y-[-1px] sm:px-5 sm:py-6">
-          <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold">
+          <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold leading-tight">
             {localizedTitle}
           </h3>
 
-          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3">
+          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3 leading-relaxed">
             {sanitizedPreview}
           </p>
 
