@@ -821,13 +821,9 @@ export default function Schedule() {
         "dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.24),0_6px_16px_rgba(0,0,0,0.12)] dark:hover:border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--card-bg)]"
       )}
-      style={{ minHeight: lessonCardHeight, padding: "12px 12px 12px 16px" }}
+      style={{ minHeight: lessonCardHeight, padding: "12px" }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
-      <div
-        className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl transition-all duration-300 group-hover:w-[4px]"
-        style={{ background: getLessonTypeColor(lesson.lesson_type) }}
-      />
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <Badge
@@ -1150,11 +1146,7 @@ export default function Schedule() {
                           isConflict && "ring-2 ring-red-500/25 dark:ring-red-400/35"
                         )}
                       >
-                        <div
-                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl transition-all duration-300 group-hover:w-[4px]"
-                          style={{ background: getLessonTypeColor(lesson.lesson_type) }}
-                        />
-                        <div className="flex flex-wrap items-center gap-2 pl-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Badge
                             size="xs"
                             className="chip-type font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.24)]"
@@ -1179,10 +1171,10 @@ export default function Schedule() {
                             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
                           </Badge>
                         </div>
-                        <h4 className="mt-2 line-clamp-2 pl-1 text-base font-bold leading-snug text-[color:var(--page-text)] tracking-tight">
+                        <h4 className="mt-2 line-clamp-2 text-base font-bold leading-snug text-[color:var(--page-text)] tracking-tight">
                           {lesson.subject}
                         </h4>
-                        <div className="mt-2 flex flex-wrap gap-2 pl-1">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <Badge
                             size="xs"
                             variant="outline"
