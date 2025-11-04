@@ -121,21 +121,6 @@ const config: Config = {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(100%)" },
         },
-        "aura-pulse": {
-          "0%": { boxShadow: "0 0 0 0 rgba(255,255,255,.18)" },
-          "50%": { boxShadow: "0 0 0 14px rgba(255,255,255,.03)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(255,255,255,.02)" },
-        },
-        "chip-highlight": {
-          "0%": { borderColor: "rgba(255,255,255,.18)" },
-          "50%": { borderColor: "rgba(255,255,255,.34)" },
-          "100%": { borderColor: "rgba(255,255,255,.18)" },
-        },
-        "online-pulse": {
-          "0%": { transform: "scale(1)", opacity: ".6" },
-          "70%": { transform: "scale(1.8)", opacity: "0" },
-          "100%": { transform: "scale(1.8)", opacity: "0" },
-        },
       },
       animation: {
         "fade-in":
@@ -143,9 +128,6 @@ const config: Config = {
         "card-hover":
           "card-hover var(--anim-card, 0.42s cubic-bezier(0.22, 0.61, 0.36, 1)) both",
         "skeleton-wave": "skeleton-wave 1.6s ease-in-out infinite",
-        "aura-pulse": "aura-pulse 14s ease-in-out infinite",
-        "chip-highlight": "chip-highlight 12s ease-in-out infinite",
-        "online-pulse": "online-pulse 1.8s ease-in-out infinite",
       },
     },
   },
