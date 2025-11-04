@@ -26,7 +26,14 @@ const useIsDark = () => {
       const root = document.documentElement
       const hasDarkClass =
         root.classList.contains("dark") || root.getAttribute("data-mui-color-scheme") === "dark"
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+      let prefersDark = false
+      if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+        try {
+          prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+        } catch {
+          // Ignore errors in test environments
+        }
+      }
       setIsDark(hasDarkClass || prefersDark)
     }
 
@@ -37,13 +44,30 @@ const useIsDark = () => {
       attributeFilter: ["class", "data-mui-color-scheme"],
     })
 
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    const handleChange = () => checkTheme()
-    mediaQuery.addEventListener("change", handleChange)
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+      try {
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+        const handleChange = () => checkTheme()
+        if (typeof mediaQuery.addEventListener === "function") {
+          mediaQuery.addEventListener("change", handleChange)
+          return () => {
+            observer.disconnect()
+            mediaQuery.removeEventListener("change", handleChange)
+          }
+        } else if (typeof mediaQuery.addListener === "function") {
+          mediaQuery.addListener(handleChange)
+          return () => {
+            observer.disconnect()
+            mediaQuery.removeListener(handleChange)
+          }
+        }
+      } catch {
+        // Ignore errors in test environments
+      }
+    }
 
     return () => {
       observer.disconnect()
-      mediaQuery.removeEventListener("change", handleChange)
     }
   }, [])
 
