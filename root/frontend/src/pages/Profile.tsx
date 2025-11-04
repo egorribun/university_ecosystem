@@ -1214,21 +1214,21 @@ export default function Profile() {
       {/* QR Dialog */}
       {qrOpen && (
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("profile:dialog.qr.title")}
           className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={closeQrModal}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") closeQrModal()
-          }}
-          tabIndex={0}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("profile:dialog.qr.title")}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeQrModal()
+            }}
+            tabIndex={0}
             className="glass w-full max-w-xs rounded-ue-xl p-6"
           >
             <h2 className="mb-6 text-center text-xl font-black tracking-wide text-[color:var(--page-text)]">
@@ -1270,21 +1270,21 @@ export default function Profile() {
       {/* Achievement Dialog */}
       {achOpen && (
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={achOpen.name}
           className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={() => setAchOpen(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setAchOpen(null)
-          }}
-          tabIndex={0}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={achOpen.name}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setAchOpen(null)
+            }}
+            tabIndex={0}
             className="glass w-full max-w-xs rounded-ue-xl p-6"
           >
             <h2 className="mb-4 text-xl font-black text-[color:var(--page-text)]">
