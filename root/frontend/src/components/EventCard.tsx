@@ -513,7 +513,9 @@ const EventCardComponent: FC<EventCardProps> = ({
         "event-card relative w-full min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
         editOpen ? "cursor-default" : "cursor-pointer",
         qrOpen && "pointer-events-none grayscale-[0.12] opacity-90",
-        !editOpen && !qrOpen && "hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-surface-strong active:scale-[0.997]",
+        !editOpen &&
+          !qrOpen &&
+          "hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-surface-strong active:scale-[0.997]",
         "focus-visible:outline-2 focus-visible:outline-[color:var(--nav-link)] focus-visible:outline-offset-2"
       )}
       style={{ maxWidth: maxWidth ?? 700 }}
@@ -550,10 +552,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               className="fixed z-50 mt-2 min-w-[160px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] shadow-surface-strong"
               style={{
                 top: menuAnchor.getBoundingClientRect().bottom + 8,
-                left: Math.min(
-                  menuAnchor.getBoundingClientRect().left,
-                  window.innerWidth - 180
-                ),
+                left: Math.min(menuAnchor.getBoundingClientRect().left, window.innerWidth - 180),
               }}
             >
               <div className="py-1">
@@ -656,9 +655,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       )}
 
       {/* Description */}
-      <p className="mb-4 line-clamp-5 text-base text-[color:var(--page-text)]">
-        {description}
-      </p>
+      <p className="mb-4 line-clamp-5 text-base text-[color:var(--page-text)]">{description}</p>
 
       {/* Participants */}
       <div className="mb-4 flex items-center gap-2">
@@ -877,12 +874,7 @@ const EventCardComponent: FC<EventCardProps> = ({
             />
           </div>
           <div>
-            <Button
-              as="label"
-              variant="solid"
-              disabled={imageLoading}
-              className="w-full sm:w-auto"
-            >
+            <Button as="label" variant="solid" disabled={imageLoading} className="w-full sm:w-auto">
               {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
               <input
                 type="file"
@@ -933,7 +925,9 @@ const EventCardComponent: FC<EventCardProps> = ({
         }
         footerClassName="flex-col-reverse gap-3 sm:flex-row"
       >
-        <p className="text-[color:var(--page-text)]">{t("events:card.dialogs.delete.description")}</p>
+        <p className="text-[color:var(--page-text)]">
+          {t("events:card.dialogs.delete.description")}
+        </p>
       </Dialog>
 
       <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />

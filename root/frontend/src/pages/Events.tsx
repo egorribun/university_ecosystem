@@ -1,14 +1,7 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  type CSSProperties,
-} from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent, uploadEventImage } from "@/api/events"
 import type { Event } from "@/types/Event"
@@ -298,16 +291,10 @@ const Events = () => {
       <PageFadeIn>
         <div className="relative w-full min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] px-4 py-6 sm:px-6 md:px-8 lg:px-12 overflow-hidden">
           {/* Background gradients */}
-          <div
-            className="pointer-events-none absolute inset-0 -z-10 opacity-60"
-            aria-hidden="true"
-          >
+          <div className="pointer-events-none absolute inset-0 -z-10 opacity-60" aria-hidden="true">
             <div className="absolute -inset-[40%_-20%_10%_-20%] bg-[radial-gradient(60%_60%_at_80%_10%,rgba(0,118,255,0.22),transparent),radial-gradient(45%_45%_at_10%_80%,rgba(46,213,166,0.18),transparent)]" />
           </div>
-          <div
-            className="pointer-events-none absolute inset-0 -z-[1]"
-            aria-hidden="true"
-          >
+          <div className="pointer-events-none absolute inset-0 -z-[1]" aria-hidden="true">
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,18,39,0.22)_0%,rgba(7,18,39,0)_45%),linear-gradient(140deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0)_55%)]" />
           </div>
 
@@ -382,11 +369,7 @@ const Events = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("events:filters.search")}
-                className={cn(
-                  inputClass,
-                  "pl-10 pr-10",
-                  "w-full"
-                )}
+                className={cn(inputClass, "pl-10 pr-10", "w-full")}
               />
               <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
                 {search && (
@@ -426,10 +409,7 @@ const Events = () => {
               className="fixed z-50 mt-2 min-w-[260px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface-strong"
               style={{
                 top: filterAnchor.getBoundingClientRect().bottom + 8,
-                left: Math.min(
-                  filterAnchor.getBoundingClientRect().left,
-                  window.innerWidth - 280
-                ),
+                left: Math.min(filterAnchor.getBoundingClientRect().left, window.innerWidth - 280),
               }}
             >
               <div className="space-y-4">
@@ -480,9 +460,7 @@ const Events = () => {
             style={fadeDelayStyle("260ms")}
             className={cn(
               "grid gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
-              isMobile
-                ? "grid-cols-1"
-                : "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
+              isMobile ? "grid-cols-1" : "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
             )}
           >
             {loading &&
