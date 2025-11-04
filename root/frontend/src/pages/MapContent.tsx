@@ -250,7 +250,15 @@ export default function MapContent() {
               title={t("map.iframeTitle")}
               width="100%"
               height="calc(100% + 35px)"
-              style={{ border: 0, position: "absolute", top: "-35px", left: 0, right: 0, bottom: "-35px", display: "block" }}
+              style={{
+                border: 0,
+                position: "absolute",
+                top: "-35px",
+                left: 0,
+                right: 0,
+                bottom: "-35px",
+                display: "block",
+              }}
               allowFullScreen
               loading="lazy"
               onLoad={() => {
