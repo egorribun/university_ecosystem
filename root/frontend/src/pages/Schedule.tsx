@@ -211,7 +211,7 @@ function Snackbar({
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-[1.25rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
+      <div className="rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-6 py-4 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_12px_32px_rgba(0,0,0,0.14),0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-xl [-webkit-backdrop-filter:blur(24px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.28),0_6px_16px_rgba(0,0,0,0.16)]">
         {message}
       </div>
     </div>
@@ -734,26 +734,38 @@ export default function Schedule() {
   }, [filteredSchedule])
 
   const headerActions = (
-    <div className="flex flex-wrap items-center gap-4">
-      <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+    <div className="flex flex-wrap items-center gap-5">
+      <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_78%,var(--nav-link)_22%)] dark:text-[color:color-mix(in_srgb,var(--secondary-text)_88%,var(--nav-link)_12%)]">
         {t("schedule:week.label")}
       </span>
-      <Button
-        variant={currentParity === "odd" ? "solid" : "outline"}
-        onClick={() => setCurrentParity("odd")}
-        size="sm"
-        className="font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
-      >
-        {t("schedule:week.odd")}
-      </Button>
-      <Button
-        variant={currentParity === "even" ? "solid" : "outline"}
-        onClick={() => setCurrentParity("even")}
-        size="sm"
-        className="font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
-      >
-        {t("schedule:week.even")}
-      </Button>
+      <div className="inline-flex items-center gap-2 rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.16)]">
+        <Button
+          variant={currentParity === "odd" ? "solid" : "ghost"}
+          onClick={() => setCurrentParity("odd")}
+          size="sm"
+          className={cn(
+            "min-w-[72px] font-semibold transition-all duration-200",
+            currentParity === "odd"
+              ? "shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.2)]"
+              : "text-[color:color-mix(in_srgb,var(--secondary-text)_75%,var(--nav-link)_25%)] hover:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,white_12%)] dark:text-[color:color-mix(in_srgb,var(--secondary-text)_85%,var(--nav-link)_15%)] dark:hover:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
+          )}
+        >
+          {t("schedule:week.odd")}
+        </Button>
+        <Button
+          variant={currentParity === "even" ? "solid" : "ghost"}
+          onClick={() => setCurrentParity("even")}
+          size="sm"
+          className={cn(
+            "min-w-[72px] font-semibold transition-all duration-200",
+            currentParity === "even"
+              ? "shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.2)]"
+              : "text-[color:color-mix(in_srgb,var(--secondary-text)_75%,var(--nav-link)_25%)] hover:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,white_12%)] dark:text-[color:color-mix(in_srgb,var(--secondary-text)_85%,var(--nav-link)_15%)] dark:hover:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
+          )}
+        >
+          {t("schedule:week.even")}
+        </Button>
+      </div>
     </div>
   )
 
@@ -765,10 +777,10 @@ export default function Schedule() {
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-      <div className="absolute left-1/2 top-[-12px] z-[3] -translate-x-1/2 pointer-events-none">
+      <div className="absolute left-1/2 top-[-14px] z-[3] -translate-x-1/2 pointer-events-none">
         <Badge
           size="xs"
-          className="chip-break font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_94%,yellow_6%)] border-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] text-[color:var(--page-text)] shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
+          className="chip-break font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_92%,yellow_8%)] border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)] text-[color:color-mix(in_srgb,var(--page-text)_88%,yellow_12%)] shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,yellow_12%)] dark:border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,yellow_8%)] dark:shadow-[0_6px_16px_rgba(0,0,0,0.24)]"
         >
           {t("schedule:break", { minutes: gap })}
         </Badge>
@@ -802,27 +814,31 @@ export default function Schedule() {
       role="button"
       tabIndex={0}
       className={cn(
-        "relative cursor-pointer rounded-ue-md border border-white/12 bg-[color:var(--option-bg)] shadow-surface transition-[transform,box-shadow] duration-200",
+        "group relative cursor-pointer rounded-xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] transition-all duration-300",
         hasBreakBefore ? "mt-6" : "",
-        "hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(0,0,0,0.12),0_2px_10px_rgba(0,0,0,0.19)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
+        "hover:-translate-y-1 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] hover:border-[color:color-mix(in_srgb,white_16%,var(--nav-link)_84%)]",
+        "dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
+        "dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.24),0_6px_16px_rgba(0,0,0,0.12)] dark:hover:border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--card-bg)]"
       )}
-      style={{ minHeight: lessonCardHeight, padding: "10px 11px 10px 14px" }}
+      style={{ minHeight: lessonCardHeight, padding: "12px 12px 12px 16px" }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
       <div
-        className="absolute left-[-1px] top-[-1px] bottom-[-1px] w-1.5 rounded-l-[8px]"
+        className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl transition-all duration-300 group-hover:w-[4px]"
         style={{ background: getLessonTypeColor(lesson.lesson_type) }}
       />
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
           <Badge
             size="xs"
-            className="chip-type"
+            className="chip-type font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.24)]"
             style={{
               background: getLessonTypeColor(lesson.lesson_type),
               color: "#fff",
-              height: "22px",
+              height: "24px",
+              paddingLeft: "10px",
+              paddingRight: "10px",
             }}
           >
             {lessonTypeLabels.get(lesson.lesson_type ?? "") ?? lesson.lesson_type ?? ""}
@@ -830,14 +846,14 @@ export default function Schedule() {
           <Badge
             size="xs"
             variant="outline"
-            className="chip-time"
-            leadingIcon={<AccessTimeIcon className="text-[16px]" />}
+            className="chip-time font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
+            leadingIcon={<AccessTimeIcon className="text-[15px]" />}
           >
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
           </Badge>
         </div>
         <h3
-          className="text-base font-extrabold text-[color:var(--page-text)] line-clamp-2"
+          className="text-base font-extrabold text-[color:var(--page-text)] line-clamp-2 leading-tight tracking-tight"
           style={{ fontSize: "1rem" }}
         >
           {lesson.subject}
@@ -846,38 +862,38 @@ export default function Schedule() {
           <Badge
             size="xs"
             variant="outline"
-            leadingIcon={<SchoolIcon className="text-[16px] text-[color:var(--nav-link)]" />}
-            className="text-[color:var(--page-text)] border-white/12"
+            leadingIcon={<SchoolIcon className="text-[15px] text-[color:var(--nav-link)]" />}
+            className="font-medium text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
           >
             {lesson.teacher}
           </Badge>
           <Badge
             size="xs"
             variant="outline"
-            leadingIcon={<RoomIcon className="text-[16px] text-[color:var(--nav-link)]" />}
-            className="text-[color:var(--page-text)] border-white/12"
+            leadingIcon={<RoomIcon className="text-[15px] text-[color:var(--nav-link)]" />}
+            className="font-medium text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
           >
             {lesson.room}
           </Badge>
         </div>
       </div>
       <Tooltip content={t("schedule:lesson.details")}>
-        <InfoOutlinedIcon className="absolute bottom-2 right-2 text-[18px] text-[color:var(--secondary-text)]" />
+        <InfoOutlinedIcon className="absolute bottom-3 right-3 text-[18px] text-[color:color-mix(in_srgb,var(--secondary-text)_60%,transparent)] opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:text-[color:color-mix(in_srgb,var(--secondary-text)_70%,transparent)]" />
       </Tooltip>
       {(user?.role === "admin" || user?.role === "teacher") && (
         <button
           aria-label={t("schedule:aria.deleteLesson")}
-          className="absolute top-1.5 right-1.5 z-[2] rounded-md bg-[color:var(--card-bg)] p-1 transition-colors hover:bg-[color:var(--option-bg)]"
+          className="absolute top-2 right-2 z-[2] rounded-lg bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1.5 transition-all duration-200 hover:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,red_12%)] hover:scale-110 dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)] dark:hover:bg-[color:color-mix(in_srgb,var(--card-bg)_84%,red_16%)] shadow-[0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.16)]"
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
           }}
         >
-          <DeleteIcon className="text-red-500 text-[16px]" />
+          <DeleteIcon className="text-red-500 text-[16px] dark:text-red-400" />
         </button>
       )}
       {isConflict && (
-        <div className="pointer-events-none absolute inset-0 rounded-ue-md shadow-[inset_0_0_0_3px_rgba(239,83,80,0.2)]" />
+        <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-red-500/30 ring-inset dark:ring-red-400/40" />
       )}
     </div>
   )
@@ -887,14 +903,14 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-[2rem] border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_99%,white_1%)] text-[color:var(--page-text)] shadow-[0_8px_32px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:600px] [scroll-behavior:smooth]"
+        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] text-[color:var(--page-text)] shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:600px] [scroll-behavior:smooth] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.16),0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]"
         style={{ minHeight: 360 }}
       >
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-[5]">
             <tr>
               <th
-                className="sticky left-0 z-[10] w-[50px] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-4 py-4 text-center font-extrabold text-[color:var(--page-text)] shadow-[2px_0_4px_rgba(0,0,0,0.02)] backdrop-blur-sm"
+                className="sticky left-0 z-[10] w-[50px] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-4 text-center font-extrabold text-[color:var(--page-text)] shadow-[2px_0_6px_rgba(0,0,0,0.04)] backdrop-blur-md dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)] dark:shadow-[2px_0_8px_rgba(0,0,0,0.12)]"
                 style={{ fontSize: "clamp(0.95rem,1.8vw,1.15rem)" }}
               >
                 №
@@ -909,26 +925,27 @@ export default function Schedule() {
                       headRefs.current[idx] = el
                     }}
                     className={cn(
-                      "relative px-4 py-4 text-center font-extrabold text-[color:var(--page-text)] transition-colors duration-200",
+                      "relative px-4 py-4 text-center font-extrabold text-[color:var(--page-text)] transition-all duration-300",
                       isTodayCol
-                        ? "border-l-[3px] border-r-[3px] border-solid bg-[color:color-mix(in_srgb,var(--nav-link)_4%,var(--card-bg)_96%)] border-[color:color-mix(in_srgb,var(--nav-link)_35%,transparent)]"
-                        : "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,white_3%)]",
-                      "z-[5] backdrop-blur-sm"
+                        ? "border-l-[3px] border-r-[3px] border-solid bg-[color:color-mix(in_srgb,var(--nav-link)_6%,var(--card-bg)_94%)] border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--nav-link)_8%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,var(--card-bg)_92%)] dark:border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent)] dark:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--nav-link)_12%,transparent)]"
+                        : "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]",
+                      "z-[5] backdrop-blur-md [-webkit-backdrop-filter:blur(12px)]"
                     )}
                     style={{ fontSize: "clamp(0.94rem, 1.5vw, 1.12rem)" }}
                   >
                     <div className="flex items-center justify-center gap-2">
                       <span
                         className={cn(
-                          "tracking-tight",
-                          isTodayCol && "text-[color:var(--nav-link)]"
+                          "tracking-tight transition-colors duration-200",
+                          isTodayCol &&
+                            "text-[color:var(--nav-link)] font-extrabold dark:text-[color:color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
                         )}
                       >
                         {label}
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
                         <button
-                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,white_15%,var(--nav-link)_85%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-[color:var(--nav-link)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:bg-[color:var(--nav-link)] hover:text-white hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_25%,transparent)]"
+                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-[color:var(--nav-link)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:bg-[color:var(--nav-link)] hover:text-white hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_25%,transparent)] hover:scale-110 dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,var(--nav-link)_12%)] dark:hover:shadow-[0_6px_16px_color-mix(in_srgb,var(--nav-link)_32%,transparent)]"
                           onClick={(e) => {
                             e.stopPropagation()
                             setAddDay(day)
@@ -950,7 +967,7 @@ export default function Schedule() {
               <tr>
                 <td
                   colSpan={weekdayBackend.length + 1}
-                  className="py-12 text-center text-[color:color-mix(in_srgb,var(--secondary-text)_70%,transparent)] text-base"
+                  className="py-16 text-center text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)] text-base font-medium dark:text-[color:color-mix(in_srgb,var(--secondary-text)_75%,transparent)]"
                 >
                   {t("schedule:table.noLessons")}
                 </td>
@@ -959,10 +976,10 @@ export default function Schedule() {
               visibleRows.map((row, rowIdx) => (
                 <tr
                   key={rowIdx}
-                  className="transition-colors duration-150 hover:bg-[color:color-mix(in_srgb,var(--nav-link)_1%,var(--card-bg)_99%)]"
+                  className="transition-colors duration-200 hover:bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)] dark:hover:bg-[color:color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)]"
                 >
                   <td
-                    className="sticky left-0 z-[10] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-4 py-3 text-center font-bold text-[color:var(--page-text)] shadow-[2px_0_4px_rgba(0,0,0,0.02)] backdrop-blur-sm"
+                    className="sticky left-0 z-[10] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-center font-bold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] shadow-[2px_0_6px_rgba(0,0,0,0.04)] backdrop-blur-md dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)] dark:shadow-[2px_0_8px_rgba(0,0,0,0.12)]"
                     style={{ fontSize: "clamp(0.95rem,1.8vw,1.15rem)" }}
                   >
                     {rowIdx + 1}
@@ -974,13 +991,13 @@ export default function Schedule() {
                         <td
                           key={`empty-${rowIdx}-${colIdx}`}
                           className={cn(
-                            "p-3",
+                            "p-3 transition-colors duration-200",
                             colIsToday
-                              ? "bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)]"
+                              ? "bg-[color:color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_4%,var(--card-bg)_96%)]"
                               : ""
                           )}
                         >
-                          <div className="min-h-[148px] rounded-ue-lg border border-dashed border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)]" />
+                          <div className="min-h-[148px] rounded-xl border border-dashed border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:border-[color:color-mix(in_srgb,white_6%,var(--nav-link)_94%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)]" />
                         </td>
                       )
                     }
@@ -997,9 +1014,9 @@ export default function Schedule() {
                       <td
                         key={lesson.id ?? `${rowIdx}-${colIdx}`}
                         className={cn(
-                          "relative overflow-visible p-3 text-[color:var(--page-text)] transition-colors duration-150",
+                          "relative overflow-visible p-3 text-[color:var(--page-text)] transition-colors duration-200",
                           colIsToday
-                            ? "bg-[color:color-mix(in_srgb,var(--nav-link)_2%,var(--card-bg)_98%)]"
+                            ? "bg-[color:color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_4%,var(--card-bg)_96%)]"
                             : ""
                         )}
                       >
@@ -1034,7 +1051,7 @@ export default function Schedule() {
           as="button"
           variant={hasToday && i === todayIdx ? "solid" : "outline"}
           tone={hasToday && i === todayIdx ? "primary" : "default"}
-          className="chip-day flex-shrink-0 font-semibold transition-all duration-200 hover:scale-105"
+          className="chip-day flex-shrink-0 font-semibold transition-all duration-200 hover:scale-105 shadow-[0_2px_6px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.12)]"
           onClick={() =>
             dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
           }
@@ -1046,7 +1063,7 @@ export default function Schedule() {
   )
 
   const renderMobileCards = () => (
-    <div className="mt-2 flex w-full flex-col gap-5">
+    <div className="mt-2 flex w-full flex-col gap-6">
       {renderMobileDayAnchors()}
       {weekdayBackend.map((day, dayIdx) => {
         const label = weekdayLabels[dayIdx] ?? day
@@ -1061,24 +1078,26 @@ export default function Schedule() {
               dayCardRefs.current[dayIdx] = el
             }}
             className={cn(
-              "group relative isolate mb-2 rounded-[1.75rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] p-5 shadow-[0_6px_20px_rgba(0,0,0,0.06),0_2px_6px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
+              "group relative isolate mb-2 rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] p-6 shadow-[0_8px_24px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
               isToday
-                ? "bg-[color:color-mix(in_srgb,var(--nav-link)_4%,var(--card-bg)_96%)] ring-2 ring-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)]"
-                : "bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)]"
+                ? "bg-[color:color-mix(in_srgb,var(--nav-link)_5%,var(--card-bg)_95%)] ring-2 ring-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_7%,var(--card-bg)_93%)] dark:ring-[color:color-mix(in_srgb,var(--nav-link)_24%,transparent)]"
+                : "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]",
+              "backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]"
             )}
           >
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-4 flex items-center gap-2">
               <h3
                 className={cn(
-                  "text-lg font-extrabold tracking-tight text-[color:var(--page-text)]",
-                  isToday && "text-[color:var(--nav-link)]"
+                  "text-lg font-extrabold tracking-tight text-[color:var(--page-text)] transition-colors duration-200",
+                  isToday &&
+                    "text-[color:var(--nav-link)] dark:text-[color:color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
                 )}
               >
                 {label}
               </h3>
               {(user?.role === "admin" || user?.role === "teacher") && (
                 <button
-                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,white_15%,var(--nav-link)_85%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-[color:var(--nav-link)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:bg-[color:var(--nav-link)] hover:text-white hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_25%,transparent)]"
+                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-[color:var(--nav-link)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:bg-[color:var(--nav-link)] hover:text-white hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_25%,transparent)] hover:scale-110 dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,var(--nav-link)_12%)] dark:hover:shadow-[0_6px_16px_color-mix(in_srgb,var(--nav-link)_32%,transparent)]"
                   onClick={(e) => {
                     e.stopPropagation()
                     setAddDay(day)
@@ -1091,7 +1110,7 @@ export default function Schedule() {
               )}
             </div>
             {lessons.length === 0 ? (
-              <p className="text-[color:color-mix(in_srgb,var(--secondary-text)_70%,transparent)] text-sm">
+              <p className="text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)] text-sm font-medium dark:text-[color:color-mix(in_srgb,var(--secondary-text)_75%,transparent)]">
                 {t("schedule:mobile.noLessons")}
               </p>
             ) : (
@@ -1105,7 +1124,7 @@ export default function Schedule() {
                       {idx > 0 && gap > 0 && (
                         <Badge
                           size="xs"
-                          className="chip-break mb-2 font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_94%,yellow_6%)] border-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] text-[color:var(--page-text)] shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
+                          className="chip-break mb-2 font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_92%,yellow_8%)] border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)] text-[color:color-mix(in_srgb,var(--page-text)_88%,yellow_12%)] shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,yellow_12%)] dark:border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,yellow_8%)] dark:shadow-[0_6px_16px_rgba(0,0,0,0.24)]"
                         >
                           {t("schedule:break", { minutes: gap })}
                         </Badge>
@@ -1125,18 +1144,20 @@ export default function Schedule() {
                         role="button"
                         tabIndex={0}
                         className={cn(
-                          "relative isolate cursor-pointer rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.06)] transition-all duration-300 hover:-translate-y-[2px] hover:border-[color:color-mix(in_srgb,white_20%,var(--nav-link)_80%)] hover:bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08),0_4px_8px_rgba(0,0,0,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2",
-                          isConflict && "ring-2 ring-red-500/20"
+                          "relative isolate cursor-pointer rounded-xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-4 shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-[2px] hover:border-[color:color-mix(in_srgb,white_16%,var(--nav-link)_84%)] hover:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--card-bg)]",
+                          "dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
+                          "dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.24),0_6px_16px_rgba(0,0,0,0.12)] dark:hover:border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] dark:hover:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]",
+                          isConflict && "ring-2 ring-red-500/25 dark:ring-red-400/35"
                         )}
                       >
                         <div
-                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-[10px]"
+                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl transition-all duration-300 group-hover:w-[4px]"
                           style={{ background: getLessonTypeColor(lesson.lesson_type) }}
                         />
                         <div className="flex flex-wrap items-center gap-2 pl-1">
                           <Badge
                             size="xs"
-                            className="chip-type font-semibold"
+                            className="chip-type font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.24)]"
                             style={{
                               background: getLessonTypeColor(lesson.lesson_type),
                               color: "#fff",
@@ -1152,13 +1173,13 @@ export default function Schedule() {
                           <Badge
                             size="xs"
                             variant="outline"
-                            className="chip-time font-medium"
+                            className="chip-time font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
                             leadingIcon={<AccessTimeIcon className="text-[15px]" />}
                           >
                             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
                           </Badge>
                         </div>
-                        <h4 className="mt-2 line-clamp-2 pl-1 text-base font-bold leading-snug text-[color:var(--page-text)]">
+                        <h4 className="mt-2 line-clamp-2 pl-1 text-base font-bold leading-snug text-[color:var(--page-text)] tracking-tight">
                           {lesson.subject}
                         </h4>
                         <div className="mt-2 flex flex-wrap gap-2 pl-1">
@@ -1166,7 +1187,7 @@ export default function Schedule() {
                             size="xs"
                             variant="outline"
                             leadingIcon={<SchoolIcon className="text-[15px]" />}
-                            className="font-medium text-[color:var(--page-text)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                            className="font-medium text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
                           >
                             {lesson.teacher}
                           </Badge>
@@ -1174,13 +1195,13 @@ export default function Schedule() {
                             size="xs"
                             variant="outline"
                             leadingIcon={<RoomIcon className="text-[15px]" />}
-                            className="font-medium text-[color:var(--page-text)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                            className="font-medium text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
                           >
                             {lesson.room}
                           </Badge>
                         </div>
                         {isConflict && (
-                          <div className="pointer-events-none absolute inset-0 rounded-ue-lg ring-2 ring-red-500/25 ring-inset" />
+                          <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-red-500/30 ring-inset dark:ring-red-400/40" />
                         )}
                       </div>
                     </div>
@@ -1204,7 +1225,7 @@ export default function Schedule() {
     )
 
   const inputClass =
-    "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)]"
+    "w-full rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)] dark:focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_20%,transparent)] dark:placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_75%,transparent)]"
 
   return (
     <Layout>
@@ -1223,9 +1244,9 @@ export default function Schedule() {
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
-              className="mb-8 flex flex-wrap items-center gap-3 sm:gap-4"
+              className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_4px_16px_color-mix(in_srgb,var(--nav-link)_20%,transparent)] transition-transform duration-200 hover:scale-105">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color:color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
                 <CalendarMonthIcon className="text-[2rem]" />
               </div>
               <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
@@ -1235,14 +1256,14 @@ export default function Schedule() {
               </h1>
               <Badge
                 variant="outline"
-                className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)]"
+                className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)] dark:hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
               >
                 {todayLabel}
               </Badge>
               {activeGroupName && (
                 <Badge
                   variant="outline"
-                  className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)]"
+                  className="translate-y-0.5 font-medium text-[clamp(0.8rem,0.75rem+0.35vw,0.98rem)] border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] transition-all duration-200 hover:border-[color:var(--nav-link)] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)] dark:hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
                 >
                   {t("schedule:header.groupName", { name: activeGroupName })}
                 </Badge>
@@ -1256,26 +1277,26 @@ export default function Schedule() {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="no-print group relative isolate mb-6 overflow-hidden rounded-[1.75rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)] backdrop-blur-sm"
+              className="no-print group relative isolate mb-6 overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-6 shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_16px_48px_rgba(0,0,0,0.12),0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.16),0_6px_20px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_20px_56px_rgba(0,0,0,0.24),0_8px_24px_rgba(0,0,0,0.12)]"
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_srgb,var(--nav-link)_12%,transparent),transparent)] blur-3xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_srgb,var(--nav-link)_14%,transparent),transparent)] blur-3xl opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle,color-mix(in_srgb,var(--nav-link)_18%,transparent),transparent)]"
               />
               {currentLesson ? (
                 <div className="relative z-[1]">
-                  <div className="mb-4 flex flex-wrap items-center gap-2.5">
+                  <div className="mb-4 flex flex-wrap items-center gap-3">
                     <Badge
                       size="sm"
                       tone="primary"
-                      className="chip-clock font-semibold shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+                      className="chip-clock font-semibold shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_22%,transparent)] dark:shadow-[0_6px_16px_color-mix(in_srgb,var(--nav-link)_28%,transparent)]"
                     >
                       {t("schedule:chips.current")}
                     </Badge>
                     <Badge
                       size="sm"
                       variant="outline"
-                      className="chip-time font-medium border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                      className="chip-time font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
                       leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                     >
                       {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
@@ -1286,7 +1307,7 @@ export default function Schedule() {
                     {!!timeLeftText && (
                       <Badge
                         size="sm"
-                        className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
+                        className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.16)]"
                       >
                         {timeLeftText}
                       </Badge>
@@ -1297,7 +1318,7 @@ export default function Schedule() {
                       size="sm"
                       variant="outline"
                       leadingIcon={<SchoolIcon className="text-[16px]" />}
-                      className="font-medium border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                      className="font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
                     >
                       {currentLesson.teacher}
                     </Badge>
@@ -1305,7 +1326,7 @@ export default function Schedule() {
                       size="sm"
                       variant="outline"
                       leadingIcon={<RoomIcon className="text-[16px]" />}
-                      className="font-medium border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                      className="font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
                     >
                       {currentLesson.room}
                     </Badge>
@@ -1313,24 +1334,24 @@ export default function Schedule() {
                   <ProgressBar
                     value={currentProgress}
                     className="mt-5 h-2.5 rounded-full"
-                    barClassName="bg-[color:var(--progress-bar)] transition-[width] duration-300 rounded-full"
+                    barClassName="bg-[color:var(--progress-bar)] transition-[width] duration-300 rounded-full shadow-[0_2px_6px_color-mix(in_srgb,var(--nav-link)_25%,transparent)] dark:shadow-[0_4px_10px_color-mix(in_srgb,var(--nav-link)_32%,transparent)]"
                     ariaLabel={t("schedule:aria.currentProgress")}
                   />
                 </div>
               ) : nextLesson ? (
-                <div className="relative z-[1] flex flex-wrap items-center gap-2.5">
+                <div className="relative z-[1] flex flex-wrap items-center gap-3">
                   <Badge
                     size="sm"
                     variant="outline"
                     tone="primary"
-                    className="chip-clock font-semibold border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] shadow-[0_2px_8px_color-mix(in_srgb,var(--nav-link)_15%,transparent)]"
+                    className="chip-clock font-semibold border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_18%,transparent)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:shadow-[0_6px_16px_color-mix(in_srgb,var(--nav-link)_24%,transparent)]"
                   >
                     {t("schedule:chips.next")}
                   </Badge>
                   <Badge
                     size="sm"
                     variant="outline"
-                    className="chip-time font-medium border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)]"
+                    className="chip-time font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
                     leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                   >
                     {`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
@@ -1341,14 +1362,14 @@ export default function Schedule() {
                   {!!timeLeftText && (
                     <Badge
                       size="sm"
-                      className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
+                      className="chip-left font-semibold bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,var(--nav-link)_12%)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.16)]"
                     >
                       {timeLeftText}
                     </Badge>
                   )}
                 </div>
               ) : (
-                <p className="text-[color:color-mix(in_srgb,var(--secondary-text)_70%,transparent)] text-base">
+                <p className="text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)] text-base font-medium dark:text-[color:color-mix(in_srgb,var(--secondary-text)_75%,transparent)]">
                   {t("schedule:summary.noMoreToday")}
                 </p>
               )}
@@ -1356,7 +1377,7 @@ export default function Schedule() {
 
             {(user?.role === "teacher" || user?.role === "admin") && (
               <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 max-w-[380px]">
-                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_78%,var(--nav-link)_22%)] dark:text-[color:color-mix(in_srgb,var(--secondary-text)_88%,var(--nav-link)_12%)]">
                   {t("schedule:form.groupLabel")}
                 </label>
                 <select
