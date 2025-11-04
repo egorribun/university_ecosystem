@@ -642,16 +642,16 @@ export default function Activity() {
                   : { willChange: "transform, opacity", transform: "translateZ(0)" }
               }
             >
-              <div className="inline-flex items-center gap-1 rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_12px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]">
+              <div className="inline-flex items-center gap-1 rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_4px_12px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.04)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]">
                 {periodOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => setPeriod(option.value)}
                     className={cn(
-                      "rounded-full border-0 px-4 py-1.5 text-sm font-bold text-white transition-all duration-150",
+                      "rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-all duration-150",
                       period === option.value
-                        ? "bg-[color:var(--nav-link)] shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
-                        : "bg-transparent hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,white_8%,transparent)] dark:hover:bg-[color:color-mix(in_srgb,white_12%,transparent)]"
+                        ? "bg-[color:var(--nav-link)] text-white shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
+                        : "bg-transparent text-[color:color-mix(in_srgb,var(--page-text)_75%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] hover:text-[color:var(--nav-link)] dark:bg-[color:color-mix(in_srgb,white_8%,transparent)] dark:text-white dark:hover:bg-[color:color-mix(in_srgb,white_12%,transparent)]"
                     )}
                   >
                     {option.label}
