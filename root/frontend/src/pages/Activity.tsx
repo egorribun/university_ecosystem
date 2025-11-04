@@ -206,7 +206,7 @@ function AnimatedRing({
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
   const mv = useMotionValue(reduce ? value : 0)
-  
+
   useEffect(() => {
     const controls = animate(mv, value, {
       duration: reduce ? 0 : 1.1,
@@ -216,21 +216,21 @@ function AnimatedRing({
     })
     return () => controls.stop()
   }, [value, reduce, mv])
-  
+
   const dash = useTransform(mv, (v) => c - (Math.max(0, Math.min(100, v)) / 100) * c)
-  
+
   const colorClasses = {
     success: "stroke-[#10b981] dark:stroke-[#34d399]",
     info: "stroke-[#3b82f6] dark:stroke-[#60a5fa]",
     warning: "stroke-[#f59e0b] dark:stroke-[#fbbf24]",
   }
-  
+
   const bgColorClasses = {
     success: "stroke-[#10b981]/15 dark:stroke-[#34d399]/15",
     info: "stroke-[#3b82f6]/15 dark:stroke-[#60a5fa]/15",
     warning: "stroke-[#f59e0b]/15 dark:stroke-[#fbbf24]/15",
   }
-  
+
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
@@ -479,7 +479,13 @@ export default function Activity() {
         size="xs"
         variant="outline"
         tone={value >= 0 ? "success" : "danger"}
-        leadingIcon={value >= 0 ? <TrendingUpIcon className="!text-[0.7rem]" /> : <TrendingDownIcon className="!text-[0.7rem]" />}
+        leadingIcon={
+          value >= 0 ? (
+            <TrendingUpIcon className="!text-[0.7rem]" />
+          ) : (
+            <TrendingDownIcon className="!text-[0.7rem]" />
+          )
+        }
         className="font-extrabold"
       >
         {`${value > 0 ? "+" : ""}${value.toFixed(1)}%`}
@@ -515,12 +521,15 @@ export default function Activity() {
     children: React.ReactNode
   }) => {
     const toneClasses = {
-      neutral: "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]",
-      success: "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#10b981/10,#10b981/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#34d399/12,#34d399/12)]",
+      neutral:
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]",
+      success:
+        "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#10b981/10,#10b981/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#34d399/12,#34d399/12)]",
       info: "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#3b82f6/10,#3b82f6/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#60a5fa/12,#60a5fa/12)]",
-      warning: "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#f59e0b/10,#f59e0b/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#fbbf24/12,#fbbf24/12)]",
+      warning:
+        "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#f59e0b/10,#f59e0b/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#fbbf24/12,#fbbf24/12)]",
     }
-    
+
     return (
       <motion.div
         initial={{ y: reduce ? 0 : 14, opacity: reduce ? 1 : 0 }}
@@ -531,11 +540,16 @@ export default function Activity() {
           toneClasses[tone],
           "shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
           "transition-all duration-180",
-          reduce ? "" : "hover:-translate-y-0.5 hover:shadow-[0_10px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_4px_24px_rgba(0,0,0,0.36)]",
+          reduce
+            ? ""
+            : "hover:-translate-y-0.5 hover:shadow-[0_10px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_4px_24px_rgba(0,0,0,0.36)]",
           "active:translate-y-0",
-          onClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
+          onClick &&
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
         )}
-        style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+        style={
+          reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+        }
       >
         <button
           onClick={onClick}
@@ -601,7 +615,9 @@ export default function Activity() {
           animate="show"
           variants={headerVariants}
           className="mx-auto w-full max-w-full px-4 py-6 pb-16 sm:px-6 md:px-8 md:py-8 xl:px-12 xl:pb-8"
-          style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+          style={
+            reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+          }
         >
           <div
             data-fade
@@ -620,7 +636,11 @@ export default function Activity() {
               initial={{ opacity: 0, y: reduce ? 0 : 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduce ? 0 : 0.35 }}
-              style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+              style={
+                reduce
+                  ? undefined
+                  : { willChange: "transform, opacity", transform: "translateZ(0)" }
+              }
             >
               <div className="inline-flex items-center gap-1 rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_12px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]">
                 {periodOptions.map((option) => (
@@ -646,7 +666,9 @@ export default function Activity() {
             initial="hidden"
             animate="show"
             className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:mb-6 md:grid-cols-3 md:gap-6"
-            style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+            style={
+              reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
+            }
           >
             <CardShell tone="success" onClick={() => setDetail("attendance")}>
               <div className="flex items-center gap-4">
@@ -780,7 +802,11 @@ export default function Activity() {
                           exit={{ opacity: 0 }}
                           transition={{ delay: reduce ? 0 : i * 0.04 }}
                           className="py-1"
-                          style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+                          style={
+                            reduce
+                              ? undefined
+                              : { willChange: "transform, opacity", transform: "translateZ(0)" }
+                          }
                         >
                           <div className="flex items-center gap-2">
                             <div
@@ -844,7 +870,11 @@ export default function Activity() {
                           exit={{ opacity: 0 }}
                           transition={{ delay: reduce ? 0 : i * 0.04 }}
                           className="py-1"
-                          style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+                          style={
+                            reduce
+                              ? undefined
+                              : { willChange: "transform, opacity", transform: "translateZ(0)" }
+                          }
                         >
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-[#3b82f6]/90 shadow-[0_0_0_3px_#3b82f618] dark:bg-[#60a5fa]/90 dark:shadow-[0_0_0_3px_#60a5fa18]" />
@@ -897,7 +927,11 @@ export default function Activity() {
                           exit={{ opacity: 0 }}
                           transition={{ delay: reduce ? 0 : i * 0.04 }}
                           className="py-1"
-                          style={reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }}
+                          style={
+                            reduce
+                              ? undefined
+                              : { willChange: "transform, opacity", transform: "translateZ(0)" }
+                          }
                         >
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-[#f59e0b]/90 shadow-[0_0_0_3px_#f59e0b18] dark:bg-[#fbbf24]/90 dark:shadow-[0_0_0_3px_#fbbf2418]" />
@@ -1007,9 +1041,7 @@ export default function Activity() {
               <div className="space-y-2">
                 {(participation?.recent ?? []).map((r, i) => (
                   <div key={participationItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-[color:var(--page-text)]">
-                      {r.title}
-                    </p>
+                    <p className="text-sm font-semibold text-[color:var(--page-text)]">{r.title}</p>
                     <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                       {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                     </p>
@@ -1050,9 +1082,7 @@ export default function Activity() {
             <div className="space-y-2">
               {(participation?.recent ?? []).map((r, i) => (
                 <div key={participationItemKey(r, i)} className="space-y-0.5">
-                  <p className="text-sm font-semibold text-[color:var(--page-text)]">
-                    {r.title}
-                  </p>
+                  <p className="text-sm font-semibold text-[color:var(--page-text)]">{r.title}</p>
                   <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                     {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                   </p>
