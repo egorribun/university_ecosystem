@@ -9,39 +9,7 @@ import guuLogo from "../assets/guu_logo.png"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
-import {
-  Avatar,
-  Typography,
-  Box,
-  Paper,
-  Stack,
-  CircularProgress,
-  IconButton,
-  Snackbar,
-  Chip,
-  Alert,
-  LinearProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Container,
-  Divider,
-  Fade,
-  Grow,
-} from "@mui/material"
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
-import EmailIcon from "@mui/icons-material/Email"
-import TelegramIcon from "@mui/icons-material/Telegram"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import useMediaQuery from "@mui/material/useMediaQuery"
-import { alpha, useTheme } from "@mui/material/styles"
-import { keyframes } from "@mui/system"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { QRCodeSVG } from "qrcode.react"
 import { motion, useReducedMotion } from "framer-motion"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
@@ -49,23 +17,63 @@ import type { NowPlaying } from "@/types/spotify"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
 
-const auraPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
-  50% { box-shadow: 0 0 0 14px rgba(255,255,255,.03); }
-  100% { box-shadow: 0 0 0 0 rgba(255,255,255,.02); }
-`
-const chipHighlight = keyframes`
-  0% { border-color: rgba(255,255,255,.18); }
-  50% { border-color: rgba(255,255,255,.34); }
-  100% { border-color: rgba(255,255,255,.18); }
-`
-const onlinePulse = keyframes`
-  0% { transform: scale(1); opacity: .6; }
-  70% { transform: scale(1.8); opacity: 0; }
-  100% { transform: scale(1.8); opacity: 0; }
-`
+// Utility function to check if dark mode is active
+const useIsDark = () => {
+  const [isDark, setIsDark] = useState(false)
 
-const MotionPaper = motion.create(Paper)
+  useEffect(() => {
+    const checkTheme = () => {
+      const root = document.documentElement
+      const hasDarkClass =
+        root.classList.contains("dark") || root.getAttribute("data-mui-color-scheme") === "dark"
+      let prefersDark = false
+      if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+        try {
+          prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+        } catch {
+          // Ignore errors in test environments
+        }
+      }
+      setIsDark(hasDarkClass || prefersDark)
+    }
+
+    checkTheme()
+    const observer = new MutationObserver(checkTheme)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-mui-color-scheme"],
+    })
+
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+      try {
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+        const handleChange = () => checkTheme()
+        if (typeof mediaQuery.addEventListener === "function") {
+          mediaQuery.addEventListener("change", handleChange)
+          return () => {
+            observer.disconnect()
+            mediaQuery.removeEventListener("change", handleChange)
+          }
+        } else if (typeof mediaQuery.addListener === "function") {
+          mediaQuery.addListener(handleChange)
+          return () => {
+            observer.disconnect()
+            mediaQuery.removeListener(handleChange)
+          }
+        }
+      } catch {
+        // Ignore errors in test environments
+      }
+    }
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
+  return isDark
+}
+
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
 type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
@@ -77,14 +85,9 @@ type SnackState = {
 }
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const theme = useTheme()
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const reduced = useReducedMotion()
-  const isDark = theme.palette.mode === "dark"
-  const borderCol = isDark
-    ? alpha(theme.palette.common.white, 0.14)
-    : alpha(theme.palette.common.black, 0.12)
-  const textSecondary = theme.palette.text.secondary
+  const isDark = useIsDark()
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
 
@@ -175,8 +178,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const href = data.track_url || "https://open.spotify.com"
 
   return (
-    <Box
-      component="a"
+    <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
@@ -185,11 +187,10 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
           : t("profile:nowPlaying.openSpotify")
       }
-      sx={{ display: "block", textDecoration: "none", width: "100%" }}
+      className="block w-full no-underline"
     >
-      <MotionPaper
-        elevation={0}
-        className="nowplaying--spotify"
+      <motion.div
+        className="nowplaying--spotify relative w-full grid grid-cols-[auto_1fr] items-center gap-x-8 gap-y-4 px-8 py-7 rounded-2xl overflow-hidden border border-white/14 dark:border-white/14 border-black/12 dark:border-white/14 backdrop-blur-md bg-glass/80 dark:bg-glass/80 text-page-foreground no-underline"
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
@@ -197,136 +198,128 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         transition={
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
-        sx={{
-          width: "100%",
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          alignItems: "center",
-          columnGap: 2,
-          rowGap: 1,
-          px: 2,
-          py: 1.8,
-          borderRadius: 3,
-          position: "relative",
-          overflow: "hidden",
-          border: `1px solid ${borderCol}`,
-          textDecoration: "none",
-          ["--glass-alpha" as any]: ".018",
-          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-        }}
       >
-        <Box
-          sx={{
-            position: "relative",
-            width: 56,
-            height: 56,
-            borderRadius: 2,
-            overflow: "hidden",
-            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`,
-          }}
-        >
-          <Avatar
+        <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.18)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
+          <img
             src={data.album_image_url ?? ""}
-            variant="rounded"
             alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
-            imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
-            sx={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 2,
-              transform: prefersReduce || reduced ? "none" : "scale(1.012)",
-              transition:
-                prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-              "&:hover": prefersReduce || reduced ? undefined : { transform: "scale(1.02)" },
-            }}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={`w-full h-full rounded-lg object-cover ${
+              prefersReduce || reduced
+                ? ""
+                : "scale-[1.012] transition-transform duration-[900ms] ease-[cubic-bezier(.22,.61,.36,1)] hover:scale-[1.02]"
+            }`}
           />
-        </Box>
-        <Box
-          sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}
-          aria-live="polite"
-        >
-          <Typography
-            className="np-title"
-            variant="body1"
-            sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}
-          >
+        </div>
+        <div className="min-w-0 flex flex-col gap-3" aria-live="polite">
+          <h3 className="np-title text-base font-extrabold leading-[1.2] tracking-[-0.01em] m-0">
             {data.track_name || "—"}
-          </Typography>
-          <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
-            {data.artists.join(", ")}
-          </Typography>
+          </h3>
+          <p className="np-art text-sm opacity-90 m-0">{data.artists.join(", ")}</p>
           {!data.is_playing && (
-            <Chip
-              size="small"
-              label={t("profile:nowPlaying.paused")}
-              color="default"
-              sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
+            <span
+              className="self-start px-3 py-1 text-xs font-bold uppercase rounded-full bg-glass border border-glass-border text-page-foreground/80 dark:text-page-foreground/80"
               aria-hidden
-            />
-          )}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-            <LinearProgress
-              className="progress"
-              variant="determinate"
-              value={pct}
-              aria-label={t("profile:nowPlaying.progress")}
-              sx={{ flex: 1, height: 6, borderRadius: 999 }}
-            />
-            <Typography
-              className="np-time"
-              variant="caption"
-              sx={{ color: textSecondary, whiteSpace: "nowrap" }}
             >
+              {t("profile:nowPlaying.paused")}
+            </span>
+          )}
+          <div className="flex items-center gap-4 w-full">
+            <div className="flex-1 h-1.5 rounded-full bg-white/10 dark:bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 transition-all duration-300 ease-out"
+                style={{ width: `${pct}%` }}
+                aria-label={t("profile:nowPlaying.progress")}
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              />
+            </div>
+            <span className="np-time text-xs whitespace-nowrap text-secondary dark:text-secondary">
               {fmt(progress)} / {fmt(duration)}
-            </Typography>
-          </Box>
-        </Box>
-      </MotionPaper>
-    </Box>
+            </span>
+          </div>
+        </div>
+      </motion.div>
+    </a>
   )
 })
 
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
-  const theme = useTheme()
-  const isDark = theme.palette.mode === "dark"
   if (value == null || value === "") return null
   return (
-    <Box
-      className="glass"
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "14px 1fr",
-        alignItems: "center",
-        gap: 1.2,
-        px: 1.2,
-        py: 1.1,
-        minHeight: 44,
-        borderRadius: 2,
-        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.1)}`,
-        ["--glass-alpha" as any]: ".016",
-        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-      }}
-    >
-      <Box
-        sx={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          bgcolor: theme.palette.info.main,
-          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.22)}`,
-          justifySelf: "center",
-        }}
-      />
-      <Typography sx={{ lineHeight: 1.25 }}>
-        <b>{label}:</b> {value}
-      </Typography>
-    </Box>
+    <div className="glass grid grid-cols-[14px_1fr] items-center gap-5 px-5 py-4 min-h-[44px] rounded-lg border border-black/10 dark:border-white/12 backdrop-blur-md bg-glass/80 dark:bg-glass/80">
+      <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 shadow-[0_0_0_3px_rgba(31,104,199,0.22)] dark:shadow-[0_0_0_3px_rgba(138,191,239,0.22)] justify-self-center" />
+      <p className="leading-[1.25] m-0">
+        <strong>{label}:</strong> {value}
+      </p>
+    </div>
   )
+}
+
+const ProfileAccordion = ({
+  title,
+  children,
+  defaultExpanded = false,
+  isDark,
+}: {
+  title: string
+  children: React.ReactNode
+  defaultExpanded?: boolean
+  isDark: boolean
+}) => {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-9 py-5 border-b border-black/8 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset rounded-t-2xl"
+      >
+        <span className="font-black text-base">{title}</span>
+        <svg
+          className={`w-6 h-6 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z" />
+        </svg>
+      </button>
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          expanded ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="px-6 sm:px-9 py-7 sm:py-8">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+const AutoCloseSnackbar = ({
+  snack,
+  onClose,
+  duration,
+}: {
+  snack: SnackState
+  onClose: () => void
+  duration: number
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose()
+    }, duration)
+    return () => clearTimeout(timer)
+  }, [snack, duration, onClose])
+  return null
 }
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth()
-  const theme = useTheme()
+  const isDark = useIsDark()
   const [snack, setSnack] = useState<SnackState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
@@ -473,9 +466,9 @@ export default function Profile() {
 
   if (loading)
     return (
-      <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
-        <CircularProgress />
-      </Box>
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-600/20 dark:border-blue-400/20 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" />
+      </div>
     )
 
   const avatarImageUrl = useMemo(() => {
@@ -626,8 +619,6 @@ export default function Profile() {
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
   const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`
-  const isDark = theme.palette.mode === "dark"
-  const textSecondary = theme.palette.text.secondary
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
   const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
@@ -684,31 +675,13 @@ export default function Profile() {
 
   return (
     <>
-      <Box
-        sx={{
-          position: "fixed",
-          inset: 0,
-          zIndex: -2,
-          backgroundImage: `url(${profileBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "fixed",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.66)}, ${alpha(theme.palette.secondary.dark, 0.6)})`,
-            mixBlendMode: "multiply",
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `radial-gradient(1600px 800px at 50% 0%, ${alpha(theme.palette.primary.light, 0.08)} 0%, transparent 60%)`,
-            opacity: 0.6,
-          },
-        }}
-      />
+      <div
+        className="fixed inset-0 -z-[2] bg-cover bg-center bg-fixed"
+        style={{ backgroundImage: `url(${profileBg})` }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/66 dark:from-blue-900/66 to-slate-700/60 dark:to-slate-700/60 mix-blend-multiply" />
+        <div className="absolute inset-0 bg-[radial-gradient(1600px_800px_at_50%_0%,rgba(63,123,223,0.08)_0%,transparent_60%)] opacity-60" />
+      </div>
 
       <PageFadeIn>
         <motion.div
@@ -716,25 +689,16 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
-          <Box
-            component="main"
+          <main
             id="main"
-            className="profile-page"
+            className="profile-page relative min-h-screen flex flex-col py-16 sm:py-20 md:py-24 px-6 sm:px-8 md:px-12"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
-            sx={{
-              position: "relative",
-              minHeight: "100svh",
-              display: "flex",
-              flexDirection: "column",
-              py: { xs: 8, sm: 9, md: 10 },
-              px: { xs: 1.5, sm: 2, md: 3 },
-            }}
           >
-            <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
-              <MotionPaper
+            <div className="max-w-7xl mx-auto relative z-0">
+              <motion.div
                 ref={containerRef}
-                className="glass profile-card"
+                className="glass profile-card relative overflow-hidden rounded-2xl md:rounded-3xl px-10 sm:px-14 md:px-18 lg:px-22 py-14 sm:py-16 md:py-20 backdrop-blur-md bg-glass/80 dark:bg-glass/80"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -744,49 +708,17 @@ export default function Profile() {
                     ? { duration: 0 }
                     : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
                 }
-                sx={{
-                  px: { xs: 2.6, sm: 3.6, md: 4.6, lg: 5.6 },
-                  py: { xs: 3.6, sm: 4.2, md: 5 },
-                  borderRadius: { xs: 3, md: 4 },
-                  position: "relative",
-                  overflow: "hidden",
-                  ["--glass-alpha" as any]: ".02",
-                  ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                }}
               >
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "1fr", md: "minmax(360px, 420px) minmax(0, 1fr)" },
-                    columnGap: { xs: 3, sm: 4, md: 6 },
-                    rowGap: { xs: 4, md: 0 },
-                    alignItems: "start",
-                  }}
-                >
-                  <Stack spacing={{ xs: 3.2, md: 4 }} alignItems="stretch">
-                    <Box
-                      className="glass"
-                      sx={{
-                        position: "relative",
-                        borderRadius: { xs: 3, md: 4 },
-                        overflow: "hidden",
-                        minHeight: { xs: 300, sm: 340, md: 360, lg: 400 },
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        pb: heroPaddingBottom,
-                        boxShadow: `0 28px 70px -44px ${alpha(theme.palette.common.black, isDark ? 0.58 : 0.2)}`,
-                        ["--glass-alpha" as any]: ".018",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
+                <div className="grid grid-cols-1 md:grid-cols-[minmax(360px,420px)_1fr] gap-12 md:gap-16 md:gap-y-0 items-start">
+                  <div className="flex flex-col gap-12 md:gap-16">
+                    <div
+                      className="glass relative rounded-2xl md:rounded-3xl overflow-hidden min-h-[300px] sm:min-h-[340px] md:min-h-[360px] lg:min-h-[400px] flex items-end justify-center backdrop-blur-md bg-glass/80 dark:bg-glass/80 shadow-[0_28px_70px_-44px_rgba(0,0,0,0.2)] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)]"
+                      style={{ paddingBottom: heroPaddingBottom }}
                     >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
+                      <div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{
                           backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
-                          backgroundPosition: "center",
-                          backgroundSize: "cover",
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                           transition: reduceMotion
                             ? "none"
@@ -794,128 +726,72 @@ export default function Profile() {
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
                       />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
-                          background:
-                            "linear-gradient(185deg, rgba(6,9,20,0) 40%, rgba(6,9,20,0.9) 100%)",
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          left: "50%",
-                          top: { xs: theme.spacing(6), sm: theme.spacing(7) },
-                          transform: "translateX(-50%)",
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.9)]" />
+                      <div
+                        className="absolute left-1/2 top-24 sm:top-28 -translate-x-1/2 flex items-center justify-center p-1 rounded-full"
+                        style={{
                           width: avatarSize,
                           height: avatarSize,
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          p: "4px",
-                          animation: reduceMotion
-                            ? "none"
-                            : `${auraPulse} 14s ease-in-out infinite`,
+                          animation: reduceMotion ? "none" : "aura-pulse 14s ease-in-out infinite",
                         }}
                       >
-                        <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
-                          <Avatar
-                            src={avatarImageUrl}
-                            alt={user?.full_name ?? undefined}
-                            imgProps={{
-                              onError: handleAvatarImgError,
-                              loading: "lazy",
-                              decoding: "async",
-                              referrerPolicy: "no-referrer",
-                            }}
-                            sx={{
-                              width: "100%",
-                              height: "100%",
-                              borderRadius: "50%",
-                              fontSize: "clamp(28px, 6vw, 64px)",
-                              backgroundColor: alpha(theme.palette.common.white, 0.12),
-                              color: alpha(theme.palette.common.white, 0.92),
-                            }}
-                          >
-                            {user?.full_name?.[0]}
-                          </Avatar>
-                        </Box>
+                        <div className="avatar-ring w-full h-full">
+                          <div className="w-full h-full rounded-full overflow-hidden bg-white/12 text-white/92 flex items-center justify-center text-[clamp(28px,6vw,64px)] font-display">
+                            {avatarImageUrl && avatarImageUrl !== DEFAULT_AVATAR ? (
+                              <img
+                                src={avatarImageUrl}
+                                alt={user?.full_name ?? undefined}
+                                onError={handleAvatarImgError}
+                                loading="lazy"
+                                decoding="async"
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              user?.full_name?.[0]
+                            )}
+                          </div>
+                        </div>
 
                         {isOnline && (
-                          <Box
-                            sx={{
-                              position: "absolute",
+                          <div
+                            className="absolute rounded-full bg-green-500 shadow-[0_0_0_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(34,197,94,0.45)] pointer-events-none z-[3]"
+                            style={{
                               right: `${statusOffset}px`,
                               bottom: `${statusOffset}px`,
                               width: `${statusSize}px`,
                               height: `${statusSize}px`,
-                              borderRadius: "50%",
-                              backgroundColor: "#22c55e",
-                              boxShadow: `0 0 0 2px rgba(0,0,0,.18), 0 4px 10px rgba(34,197,94,.45)`,
-                              zIndex: 3,
-                              pointerEvents: "none",
                             }}
                           >
                             {!reduced && (
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  inset: "-6px",
-                                  borderRadius: "50%",
-                                  border: `2px solid ${alpha("#22c55e", 0.45)}`,
-                                  animation: `${onlinePulse} 1.8s ease-in-out infinite`,
+                              <div
+                                className="absolute -inset-1.5 rounded-full border-2 border-green-500/45"
+                                style={{
+                                  animation: "online-pulse 1.8s ease-in-out infinite",
                                 }}
                               />
                             )}
-                          </Box>
+                          </div>
                         )}
-                      </Box>
-                      <Box
-                        sx={{
-                          position: "relative",
-                          zIndex: 2,
-                          width: "100%",
-                          textAlign: { xs: "center", md: "left" },
-                          px: { xs: 2.4, sm: 3, md: 3.4 },
-                          pt: heroTextPaddingTop,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2.4,
-                        }}
+                      </div>
+                      <div
+                        className="relative z-[2] w-full text-center md:text-left px-9 sm:px-12 md:px-13 flex flex-col gap-9"
+                        style={{ paddingTop: heroTextPaddingTop }}
                       >
-                        <Box>
-                          <Typography
-                            className="profile-name"
-                            variant="h3"
-                            component="h1"
+                        <div>
+                          <h1
+                            className="profile-name text-[clamp(1.7rem,3.2vw,2.9rem)] font-black leading-[1.08] m-0 font-display"
                             data-testid="profile-name"
-                            sx={{
-                              fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)",
-                              fontWeight: 900,
-                              lineHeight: 1.08,
-                            }}
                           >
                             {user!.full_name}
-                          </Typography>
+                          </h1>
                           {!!user?.position && user?.role === "teacher" && (
-                            <Typography
-                              className="profile-subtitle"
-                              variant="subtitle1"
-                              sx={{ mt: 0.9, fontWeight: 600 }}
-                            >
+                            <p className="profile-subtitle mt-2 font-semibold m-0">
                               {user.position}
-                            </Typography>
+                            </p>
                           )}
-                        </Box>
-                        <Stack
-                          direction="row"
-                          spacing={1.2}
-                          useFlexGap
-                          flexWrap="wrap"
-                          sx={{ justifyContent: { xs: "center", md: "flex-start" } }}
-                        >
+                        </div>
+                        <div className="flex flex-row flex-wrap gap-5 justify-center md:justify-start">
                           {[
                             user!.role === "teacher"
                               ? t("profile:chips.teacher")
@@ -927,377 +803,367 @@ export default function Profile() {
                               : []),
                             ...(user!.institute ? [user!.institute] : []),
                           ].map((chip, idx) => (
-                            <Grow
-                              in
+                            <motion.span
                               key={`${chip}-${idx}`}
-                              timeout={isTest || reduced ? 0 : 560}
-                              style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
+                              initial={isTest || reduced ? false : { opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={
+                                isTest || reduced
+                                  ? { duration: 0 }
+                                  : {
+                                      duration: 0.56,
+                                      delay: reduced ? 0 : idx * 0.09,
+                                    }
+                              }
+                              className="px-6 py-1.5 text-xs font-bold tracking-wide leading-[1.28] rounded-full bg-glass border border-glass-border text-page-foreground/90 dark:text-page-foreground/90 backdrop-blur-sm"
+                              style={{
+                                animation: reduced
+                                  ? "none"
+                                  : "chip-highlight 12s ease-in-out infinite",
+                                animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
+                              }}
                             >
-                              <Chip
-                                size="small"
-                                label={chip}
-                                className="glass--chip"
-                                sx={{
-                                  borderRadius: 999,
-                                  "& .MuiChip-label": {
-                                    px: 1.6,
-                                    py: 0.62,
-                                    lineHeight: 1.28,
-                                    fontWeight: 700,
-                                    letterSpacing: ".01em",
-                                  },
-                                  animation: reduced
-                                    ? "none"
-                                    : `${chipHighlight} 12s ease-in-out infinite`,
-                                  animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
-                                }}
-                              />
-                            </Grow>
+                              {chip}
+                            </motion.span>
                           ))}
-                        </Stack>
-                      </Box>
-                    </Box>
+                        </div>
+                      </div>
+                    </div>
 
-                    <Paper
-                      elevation={0}
-                      className="glass profile-card"
-                      sx={{
-                        p: { xs: 2.6, sm: 3 },
-                        borderRadius: 3,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: { xs: 2.6, md: 3 },
-                        ["--glass-alpha" as any]: ".02",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
-                    >
-                      <Stack spacing={1.3} alignItems="stretch">
-                        <Button
-                          size="large"
-                          variant="contained"
-                          color="secondary"
-                          className="glass--btn"
+                    <div className="glass profile-card p-10 sm:p-12 rounded-2xl flex flex-col gap-10 md:gap-12 backdrop-blur-md bg-glass/80 dark:bg-glass/80">
+                      <div className="flex flex-col gap-5">
+                        <button
                           onClick={openQrModal}
                           data-testid="open-qr"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 2,
-                            py: 1.05,
-                            fontWeight: 800,
-                            letterSpacing: 0.24,
-                          }}
+                          className="w-full py-4 rounded-lg font-black tracking-wider bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                         >
                           {t("profile:buttons.showQr")}
-                        </Button>
-                      </Stack>
-                      <Divider />
-                      <Stack spacing={1.8} className="contact-links">
-                        <Stack
-                          direction="row"
-                          spacing={1.4}
-                          alignItems="center"
-                          sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                        >
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                            sx={{ minWidth: 0, flex: 1 }}
-                          >
-                            <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
-                            <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
+                        </button>
+                      </div>
+                      <div className="h-px bg-black/10 dark:bg-white/10" />
+                      <div className="flex flex-col gap-7 contact-links">
+                        <div className="flex flex-row items-center justify-between flex-wrap gap-5">
+                          <div className="flex flex-row items-center gap-4 min-w-0 flex-1">
+                            <svg
+                              aria-hidden
+                              className="w-5.5 h-5.5 flex-shrink-0"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+                            </svg>
+                            <p className="font-black break-words flex-1 m-0">
                               <a
                                 href={`mailto:${user!.email}`}
-                                style={{ color: "inherit", textDecoration: "none" }}
+                                className="text-inherit no-underline hover:underline"
                                 data-testid="profile-email-link"
                                 title={t("profile:aria.openEmail")}
                               >
                                 {user!.email}
                               </a>
-                            </Typography>
-                          </Stack>
-                          <IconButton
-                            size="small"
-                            className="glass--btn"
+                            </p>
+                          </div>
+                          <button
+                            className="glass--btn min-w-[44px] min-h-[44px] rounded-full p-2 flex items-center justify-center border border-glass-border bg-glass/50 dark:bg-glass/50 hover:bg-glass/80 dark:hover:bg-glass/80 transition-all duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                             onClick={(e) => copy(user!.email, e)}
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            sx={{
+                            style={{
                               transition: reduced
                                 ? "color 140ms ease"
                                 : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": {
-                                transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                              },
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!reduced) {
+                                e.currentTarget.style.transform = "translateY(-1px) scale(1.05)"
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!reduced) {
+                                e.currentTarget.style.transform = ""
+                              }
                             }}
                           >
-                            <ContentCopyIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                            </svg>
+                          </button>
+                        </div>
 
                         {!!user!.telegram && (
-                          <Stack
-                            direction="row"
-                            spacing={1.4}
-                            alignItems="center"
-                            sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                          >
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{ minWidth: 0, flex: 1 }}
-                            >
-                              <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
-                              <Typography
-                                sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}
+                          <div className="flex flex-row items-center justify-between flex-wrap gap-5">
+                            <div className="flex flex-row items-center gap-4 min-w-0 flex-1">
+                              <svg
+                                aria-hidden
+                                className="w-5.5 h-5.5 flex-shrink-0"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
                               >
+                                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.292l-1.77 8.341c-.129.58-.459.72-.93.447l-2.57-1.893-1.24.771c-.14.14-.257.257-.527.257l.184-2.6 4.765-4.304c.208-.185-.045-.287-.32-.106l-5.885 3.706-2.536-.79c-.54-.168-.553-.54.11-.81l9.863-3.8c.447-.167.837.106.693.634z" />
+                              </svg>
+                              <p className="font-black break-words flex-1 m-0">
                                 <a
                                   href={telegramHref}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  style={{ color: "inherit", textDecoration: "none" }}
+                                  className="text-inherit no-underline hover:underline"
                                   data-testid="profile-telegram-link"
                                   title={t("profile:aria.openTelegram")}
                                 >
                                   {user!.telegram}
                                 </a>
-                              </Typography>
-                            </Stack>
-                            <IconButton
-                              size="small"
-                              className="glass--btn"
+                              </p>
+                            </div>
+                            <button
+                              className="glass--btn min-w-[44px] min-h-[44px] rounded-full p-2 flex items-center justify-center border border-glass-border bg-glass/50 dark:bg-glass/50 hover:bg-glass/80 dark:hover:bg-glass/80 transition-all duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                               onClick={(e) => copy(user!.telegram!, e)}
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              sx={{
+                              style={{
                                 transition: reduced
                                   ? "color 140ms ease"
                                   : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                                "&:hover": {
-                                  transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                                },
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!reduced) {
+                                  e.currentTarget.style.transform = "translateY(-1px) scale(1.05)"
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!reduced) {
+                                  e.currentTarget.style.transform = ""
+                                }
                               }}
                             >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                              </svg>
+                            </button>
+                          </div>
                         )}
-                      </Stack>
-                    </Paper>
+                      </div>
+                    </div>
 
                     {showNowPlaying && nowPlaying && (
-                      <Fade in timeout={isTest || reduced ? 0 : 720}>
-                        <Stack spacing={1.4}>
-                          <Typography
-                            variant="overline"
-                            sx={{ letterSpacing: 2.2, color: textSecondary }}
-                          >
-                            {t("profile:sections.nowPlaying")}
-                          </Typography>
-                          <NowPlayingCard data={nowPlaying} />
-                        </Stack>
-                      </Fade>
+                      <motion.div
+                        initial={isTest || reduced ? false : { opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={isTest || reduced ? { duration: 0 } : { duration: 0.72 }}
+                        className="flex flex-col gap-5"
+                      >
+                        <p className="text-xs uppercase tracking-[2.2px] text-secondary dark:text-secondary m-0">
+                          {t("profile:sections.nowPlaying")}
+                        </p>
+                        <NowPlayingCard data={nowPlaying} />
+                      </motion.div>
                     )}
-                  </Stack>
+                  </div>
 
-                  <Box
-                    sx={{
-                      width: "100%",
-                      position: "relative",
-                      mt: { xs: `${Math.round(avatarPx * 0.55) + 36}px`, md: 0 },
+                  <div
+                    className="w-full relative"
+                    style={{
+                      marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : "0",
                     }}
                   >
                     {edit ? (
-                      <Paper
-                        elevation={0}
-                        className="glass profile-card profile-edit"
-                        sx={{
-                          width: "100%",
-                          borderRadius: 3,
-                          p: { xs: 2.6, sm: 3, md: 3.4 },
-                          ["--glass-alpha" as any]: ".02",
-                          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                        }}
-                      >
-                        <Stack spacing={2.2}>
-                          <TextField
-                            label={t("profile:form.name")}
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            fullWidth
-                            inputProps={{ maxLength: 120 }}
-                          />
-                          <TextField
-                            label={t("profile:form.email")}
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            fullWidth
-                            type="email"
-                          />
-                          <TextField
-                            label={t("profile:form.telegram")}
-                            value={telegram}
-                            onChange={(e) => setTelegram(e.target.value)}
-                            fullWidth
-                            helperText={t("profile:form.telegramHint")}
-                          />
+                      <div className="glass profile-card profile-edit w-full rounded-2xl p-10 sm:p-12 md:p-13 backdrop-blur-md bg-glass/80 dark:bg-glass/80">
+                        <div className="flex flex-col gap-9">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                              {t("profile:form.name")}
+                            </label>
+                            <input
+                              type="text"
+                              value={fullName}
+                              onChange={(e) => setFullName(e.target.value)}
+                              maxLength={120}
+                              className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                              {t("profile:form.email")}
+                            </label>
+                            <input
+                              type="email"
+                              value={email}
+                              onChange={(e) => setEmail(e.target.value)}
+                              className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                              {t("profile:form.telegram")}
+                            </label>
+                            <input
+                              type="text"
+                              value={telegram}
+                              onChange={(e) => setTelegram(e.target.value)}
+                              className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                            />
+                            <p className="text-xs text-secondary dark:text-secondary m-0">
+                              {t("profile:form.telegramHint")}
+                            </p>
+                          </div>
                           {user!.role === "teacher" && (
                             <>
-                              <TextField
-                                label={t("profile:form.department")}
-                                value={department}
-                                onChange={(e) => setDepartment(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.position")}
-                                value={position}
-                                onChange={(e) => setPosition(e.target.value)}
-                                fullWidth
-                              />
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.department")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={department}
+                                  onChange={(e) => setDepartment(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.position")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={position}
+                                  onChange={(e) => setPosition(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
                             </>
                           )}
                           {user!.role === "student" && (
                             <>
-                              <TextField
-                                label={t("profile:form.about")}
-                                value={about}
-                                onChange={(e) => setAbout(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={3}
-                              />
-                              <TextField
-                                label={t("profile:form.recordBookNumber")}
-                                value={recordBookNumber}
-                                onChange={(e) => setRecordBookNumber(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.status")}
-                                value={status}
-                                onChange={(e) => setStatus(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.institute")}
-                                value={institute}
-                                onChange={(e) => setInstitute(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.course")}
-                                value={course}
-                                onChange={(e) => setCourse(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.educationLevel")}
-                                value={educationLevel}
-                                onChange={(e) => setEducationLevel(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.track")}
-                                value={track}
-                                onChange={(e) => setTrack(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.program")}
-                                value={program}
-                                onChange={(e) => setProgram(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.achievements")}
-                                value={achievements}
-                                onChange={(e) => setAchievements(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={2}
-                              />
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.about")}
+                                </label>
+                                <textarea
+                                  value={about}
+                                  onChange={(e) => setAbout(e.target.value)}
+                                  rows={3}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-y"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.recordBookNumber")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={recordBookNumber}
+                                  onChange={(e) => setRecordBookNumber(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.status")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={status}
+                                  onChange={(e) => setStatus(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.institute")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={institute}
+                                  onChange={(e) => setInstitute(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.course")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={course}
+                                  onChange={(e) => setCourse(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.educationLevel")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={educationLevel}
+                                  onChange={(e) => setEducationLevel(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.track")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={track}
+                                  onChange={(e) => setTrack(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.program")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={program}
+                                  onChange={(e) => setProgram(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-page-foreground/80 dark:text-page-foreground/80">
+                                  {t("profile:form.achievements")}
+                                </label>
+                                <textarea
+                                  value={achievements}
+                                  onChange={(e) => setAchievements(e.target.value)}
+                                  rows={2}
+                                  className="w-full px-4 py-3 rounded-lg border border-glass-border bg-glass/50 dark:bg-glass/50 text-page-foreground dark:text-page-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-y"
+                                />
+                              </div>
                             </>
                           )}
-                          <Stack
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={2}
-                            sx={{ alignItems: { xs: "stretch", sm: "center" } }}
-                          >
-                            <Button
+                          <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+                            <button
                               onClick={handleSave}
-                              variant="contained"
                               disabled={saving}
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                              className="glass--btn px-6 py-3 rounded-lg font-black bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 w-full sm:w-auto"
                             >
                               {saving ? t("profile:form.saving") : t("profile:form.save")}
-                            </Button>
-                            <Button
+                            </button>
+                            <button
                               onClick={handleCancel}
-                              variant="outlined"
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                              className="glass--btn px-6 py-3 rounded-lg font-black border-2 border-glass-border bg-transparent hover:bg-glass/50 dark:hover:bg-glass/50 transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 w-full sm:w-auto"
                             >
                               {t("profile:form.cancel")}
-                            </Button>
-                          </Stack>
-                        </Stack>
-                      </Paper>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       <>
-                        <Paper
-                          elevation={0}
-                          className="glass profile-card"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 3,
-                            p: { xs: 2.6, sm: 3, md: 3.4 },
-                            ["--glass-alpha" as any]: ".02",
-                            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                          }}
-                        >
-                          <Typography
-                            variant="h5"
-                            component="h2"
-                            sx={{
-                              fontWeight: 900,
-                              fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)",
-                              mb: 2.2,
-                              letterSpacing: "-.01em",
-                            }}
-                          >
+                        <div className="glass profile-card w-full rounded-2xl p-10 sm:p-12 md:p-13 backdrop-blur-md bg-glass/80 dark:bg-glass/80">
+                          <h2 className="text-[clamp(1.3rem,2.3vw,1.8rem)] font-black mb-9 tracking-[-0.01em] m-0 font-display">
                             {t("profile:sections.details")}
-                          </Typography>
-                          <Accordion
-                            disableGutters
-                            defaultExpanded
-                            className="glass"
-                            sx={{
-                              borderRadius: 3,
-                              boxShadow: "none",
-                              "&::before": { display: "none" },
-                              ["--glass-alpha" as any]: ".016",
-                              ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                            }}
-                          >
-                            <AccordionSummary
-                              expandIcon={<ExpandMoreIcon />}
-                              sx={{
-                                px: 2.2,
-                                py: 1.4,
-                                borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.08)}`,
-                              }}
-                            >
-                              <Typography fontWeight={900}>
-                                {t("profile:sections.profileDetails")}
-                              </Typography>
-                            </AccordionSummary>
-                            <AccordionDetails
-                              sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}
+                          </h2>
+                          <div className="glass rounded-2xl backdrop-blur-md bg-glass/50 dark:bg-glass/50">
+                            <ProfileAccordion
+                              title={t("profile:sections.profileDetails")}
+                              defaultExpanded
+                              isDark={isDark}
                             >
                               {(() => {
                                 const rows = [
@@ -1317,239 +1183,231 @@ export default function Profile() {
                                   { label: t("profile:form.position"), value: user!.position },
                                 ]
                                 return (
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                                      gap: { xs: 1.2, md: 1.6 },
-                                    }}
-                                  >
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
                                     {rows.map((r) => (
                                       <DetailRow key={r.label} label={r.label} value={r.value} />
                                     ))}
-                                  </Box>
+                                  </div>
                                 )
                               })()}
                               {achievementsList.length > 0 && (
-                                <Box sx={{ mt: 2.4 }}>
-                                  <Typography
-                                    variant="subtitle1"
-                                    component="h3"
-                                    sx={{ fontWeight: 800, mb: 1.4 }}
-                                  >
+                                <div className="mt-9">
+                                  <h3 className="text-base font-extrabold mb-5 m-0">
                                     {t("profile:sections.achievements")}
-                                  </Typography>
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: {
-                                        xs: "repeat(auto-fit, minmax(140px, 1fr))",
-                                        sm: "repeat(auto-fit, minmax(160px, 1fr))",
-                                      },
-                                      gap: 1.2,
-                                    }}
-                                  >
+                                  </h3>
+                                  <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-5">
                                     {achievementsList.map((ach, idx) => (
-                                      <Grow
-                                        in
+                                      <motion.button
                                         key={ach.key}
-                                        timeout={isTest || reduced ? 0 : 500}
+                                        initial={
+                                          isTest || reduced ? false : { opacity: 0, scale: 0.8 }
+                                        }
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={
+                                          isTest || reduced
+                                            ? { duration: 0 }
+                                            : {
+                                                duration: 0.5,
+                                                delay: reduced ? 0 : idx * 0.09,
+                                              }
+                                        }
+                                        onClick={() =>
+                                          setAchOpen({
+                                            name: ach.name,
+                                            issuer: ach.issuer,
+                                            date: ach.date,
+                                            url: ach.url,
+                                          })
+                                        }
+                                        className="glass--chip rounded-lg self-stretch px-6 py-4 font-bold text-sm leading-[1.3] whitespace-normal block bg-glass border border-glass-border text-page-foreground/90 dark:text-page-foreground/90 backdrop-blur-sm hover:bg-glass/80 dark:hover:bg-glass/80 transition-colors cursor-pointer text-left"
                                         style={{
-                                          transitionDelay: reduced ? "0ms" : `${idx * 90}ms`,
+                                          animation: reduced
+                                            ? "none"
+                                            : "chip-highlight 14s ease-in-out infinite",
+                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
                                         }}
                                       >
-                                        <Chip
-                                          label={ach.name}
-                                          clickable
-                                          onClick={() =>
-                                            setAchOpen({
-                                              name: ach.name,
-                                              issuer: ach.issuer,
-                                              date: ach.date,
-                                              url: ach.url,
-                                            })
-                                          }
-                                          className="glass--chip"
-                                          sx={{
-                                            borderRadius: 2,
-                                            alignSelf: "stretch",
-                                            "& .MuiChip-label": {
-                                              display: "block",
-                                              whiteSpace: "normal",
-                                              lineHeight: 1.3,
-                                              px: 1.6,
-                                              py: 1.1,
-                                              fontWeight: 700,
-                                            },
-                                            animation: reduced
-                                              ? "none"
-                                              : `${chipHighlight} 14s ease-in-out infinite`,
-                                            animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
-                                          }}
-                                        />
-                                      </Grow>
+                                        {ach.name}
+                                      </motion.button>
                                     ))}
-                                  </Box>
-                                </Box>
+                                  </div>
+                                </div>
                               )}
-                            </AccordionDetails>
-                          </Accordion>
-                        </Paper>
+                            </ProfileAccordion>
+                          </div>
+                        </div>
                       </>
                     )}
-                  </Box>
-                </Box>
-              </MotionPaper>
-            </Container>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
 
             <canvas
               ref={confettiRef}
-              style={{
-                position: "fixed",
-                left: 0,
-                top: 0,
-                width: "100vw",
-                height: "100vh",
-                pointerEvents: "none",
-                zIndex: 2147483000,
-              }}
+              className="fixed left-0 top-0 w-screen h-screen pointer-events-none"
+              style={{ zIndex: 2147483000 }}
             />
-          </Box>
+          </main>
         </motion.div>
       </PageFadeIn>
 
-      <Dialog
-        open={qrOpen}
-        onClose={closeQrModal}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>
-          {t("profile:dialog.qr.title")}
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1.2,
-            minHeight: 320,
+      {qrOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-dialog-title"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
+          onClick={closeQrModal}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              closeQrModal()
+            }
           }}
         >
-          <Box
-            sx={{
-              background: "#fff",
-              p: 2,
-              borderRadius: 3,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`,
+          <div
+            role="document"
+            className="glass max-w-xs w-full rounded-2xl backdrop-blur-md bg-glass/90 dark:bg-glass/90 p-6"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                closeQrModal()
+              }
             }}
           >
-            <QRCodeSVG
-              value={buildVCard()}
-              size={300}
-              level="H"
-              includeMargin
-              bgColor="#ffffff"
-              fgColor={theme.palette.primary.dark}
-              imageSettings={{
-                src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
-                height: 56,
-                width: 56,
-                excavate: true,
-              }}
-            />
-          </Box>
-          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-            {t("profile:dialog.qr.hint")}
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
-          <Button
-            onClick={closeQrModal}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("common:buttons.done")}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <h2 id="qr-dialog-title" className="text-center font-black tracking-wide mb-4 text-xl">
+              {t("profile:dialog.qr.title")}
+            </h2>
+            <div className="flex flex-col items-center justify-center gap-5 min-h-[320px]">
+              <div className="bg-white p-8 rounded-2xl border border-blue-600/15 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
+                <QRCodeSVG
+                  value={buildVCard()}
+                  size={300}
+                  level="H"
+                  includeMargin
+                  bgColor="#ffffff"
+                  fgColor={isDark ? "#2F4F75" : "#123F84"}
+                  imageSettings={{
+                    src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
+                    height: 56,
+                    width: 56,
+                    excavate: true,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-secondary dark:text-secondary m-0">
+                {t("profile:dialog.qr.hint")}
+              </p>
+            </div>
+            <div className="flex justify-center pb-4 pt-2">
+              <button
+                onClick={closeQrModal}
+                className="glass--btn px-6 py-3 rounded-lg font-black bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+              >
+                {t("common:buttons.done")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <Dialog
-        open={!!achOpen}
-        onClose={() => setAchOpen(null)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
-        <DialogContent sx={{ display: "grid", gap: 1.2 }}>
-          {achOpen?.issuer && (
-            <Typography>
-              {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
-            </Typography>
-          )}
-          {achOpen?.date && (
-            <Typography>{t("profile:dialog.achievement.date", { date: achOpen.date })}</Typography>
-          )}
-          {achOpen?.url && (
-            <Button
-              variant="outlined"
-              className="glass--btn"
-              href={achOpen.url}
-              target="_blank"
-              rel="noreferrer"
-              sx={{ fontWeight: 800 }}
-            >
-              {t("profile:dialog.achievement.openLink")}
-            </Button>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setAchOpen(null)}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("profile:dialog.achievement.close")}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={2600}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
-      >
-        <Alert
-          onClose={() => setSnack(null)}
-          severity={snack?.sev || "info"}
-          variant="filled"
-          sx={{ width: "100%" }}
+      {achOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ach-dialog-title"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
+          onClick={() => setAchOpen(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setAchOpen(null)
+            }
+          }}
         >
-          {snackMessage}
-        </Alert>
-      </Snackbar>
+          <div
+            role="document"
+            className="glass max-w-xs w-full rounded-2xl backdrop-blur-md bg-glass/90 dark:bg-glass/90 p-6"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setAchOpen(null)
+              }
+            }}
+          >
+            <h2 id="ach-dialog-title" className="font-black text-xl mb-4">
+              {achOpen.name}
+            </h2>
+            <div className="flex flex-col gap-5 mb-4">
+              {achOpen.issuer && (
+                <p className="m-0">
+                  {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
+                </p>
+              )}
+              {achOpen.date && (
+                <p className="m-0">
+                  {t("profile:dialog.achievement.date", { date: achOpen.date })}
+                </p>
+              )}
+              {achOpen.url && (
+                <a
+                  href={achOpen.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="glass--btn px-6 py-3 rounded-lg font-black border-2 border-glass-border bg-transparent hover:bg-glass/50 dark:hover:bg-glass/50 transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 text-center no-underline"
+                >
+                  {t("profile:dialog.achievement.openLink")}
+                </a>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setAchOpen(null)}
+                className="glass--btn px-6 py-3 rounded-lg font-black bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+              >
+                {t("profile:dialog.achievement.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {snack && (
+        <>
+          <div
+            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[10000] max-w-md w-full mx-4"
+            data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className={`p-4 rounded-lg shadow-lg ${
+                snack.sev === "success"
+                  ? "bg-green-600 dark:bg-green-500 text-white"
+                  : snack.sev === "error"
+                    ? "bg-red-600 dark:bg-red-500 text-white"
+                    : snack.sev === "warning"
+                      ? "bg-yellow-600 dark:bg-yellow-500 text-white"
+                      : "bg-blue-600 dark:bg-blue-500 text-white"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="m-0 font-medium">{snackMessage}</p>
+                <button
+                  onClick={() => setSnack(null)}
+                  className="ml-4 text-white/80 hover:text-white focus:outline-none"
+                  aria-label="Close"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                  </svg>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+          <AutoCloseSnackbar snack={snack} onClose={() => setSnack(null)} duration={2600} />
+        </>
+      )}
     </>
   )
 }
