@@ -45,7 +45,10 @@ type SnackState = {
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce = useMemo(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () =>
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        : false,
     []
   )
   const reduced = useReducedMotion()
@@ -390,6 +393,10 @@ export default function Profile() {
   const [scrollY, setScrollY] = useState(0)
 
   useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return
+    }
+
     const checkReduceMotion = () =>
       setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     const checkTwoCol = () => setIsTwoCol(window.matchMedia("(min-width:1400px)").matches)
