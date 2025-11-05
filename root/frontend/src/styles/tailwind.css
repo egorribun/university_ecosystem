@@ -311,4 +311,76 @@
       animation: none !important;
     }
   }
+
+  /* Profile Page Styles */
+  .avatar-ring {
+    @apply relative h-full w-full overflow-hidden rounded-full bg-surface shadow-[0_10px_28px_rgba(0,0,0,0.18),0_0_0_2px_rgba(255,255,255,0.55)];
+  }
+
+  .avatar-ring::before {
+    content: "";
+    @apply absolute -inset-[2px] rounded-full opacity-90;
+    background: conic-gradient(
+      from 210deg at 50% 50%,
+      #b3d8ff,
+      var(--fed-blue-60v),
+      #b3d8ff
+    );
+    -webkit-mask: radial-gradient(
+      farthest-side,
+      rgba(0, 0, 0, 0) calc(100% - 6px),
+      rgba(0, 0, 0, 1) calc(100% - 6px)
+    );
+    mask: radial-gradient(
+      farthest-side,
+      rgba(0, 0, 0, 0) calc(100% - 6px),
+      rgba(0, 0, 0, 1) calc(100% - 6px)
+    );
+  }
+
+  .avatar-ring::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 rounded-full;
+    box-shadow: 
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  }
+
+  .profile-name {
+    background: linear-gradient(
+      92deg,
+      #0e1116 0%,
+      #005ea2 22%,
+      #69a9dc 50%,
+      #1a4480 78%,
+      #0e1116 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: 0.01em;
+  }
+
+  body.dark .profile-name {
+    background: linear-gradient(
+      92deg,
+      #eaf4ff 0%,
+      #69a9dc 22%,
+      #ffffff 50%,
+      #69a9dc 78%,
+      #eaf4ff 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .profile-subtitle {
+    @apply font-semibold opacity-96;
+    color: var(--secondary-text);
+  }
+
+  body.dark .profile-subtitle {
+    color: #c9d2df;
+    @apply opacity-96;
+  }
 }
