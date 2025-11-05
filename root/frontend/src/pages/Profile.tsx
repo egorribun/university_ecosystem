@@ -164,11 +164,17 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             </span>
           )}
           <div className="flex w-full items-center gap-2">
-            <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[#2a2a2a]">
+            <div
+              className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[#2a2a2a]"
+              role="progressbar"
+              aria-label={t("profile:nowPlaying.progress")}
+              aria-valuenow={Math.round(pct)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
               <div
                 className="h-full rounded-full bg-[#1db954] transition-all"
                 style={{ width: `${pct}%` }}
-                aria-label={t("profile:nowPlaying.progress")}
               />
             </div>
             <span className="whitespace-nowrap text-xs text-[#b3b3b3]">
