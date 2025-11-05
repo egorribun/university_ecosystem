@@ -248,6 +248,7 @@ export default function Profile() {
     url?: string
   } | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const confettiRef = useRef<HTMLCanvasElement | null>(null)
   const ldJsonRef = useRef<HTMLScriptElement | null>(null)
   const queryClient = useQueryClient()
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
@@ -397,11 +398,87 @@ export default function Profile() {
     img.src = DEFAULT_AVATAR
   }, [])
 
+  const ensureConfettiSize = useCallback(() => {
+    const canvas = confettiRef.current
+    if (!canvas) return { dpr: 1, w: window.innerWidth, h: window.innerHeight }
+    const dpr = Math.max(1, window.devicePixelRatio || 1)
+    const w = Math.max(1, window.innerWidth)
+    const h = Math.max(1, window.innerHeight)
+    canvas.style.width = `${w}px`
+    canvas.style.height = `${h}px`
+    canvas.width = Math.floor(w * dpr)
+    canvas.height = Math.floor(h * dpr)
+    return { dpr, w, h }
+  }, [])
+
+  useEffect(() => {
+    const onResize = () => ensureConfettiSize()
+    ensureConfettiSize()
+    window.addEventListener("resize", onResize)
+    window.addEventListener("orientationchange", onResize)
+    return () => {
+      window.removeEventListener("resize", onResize)
+      window.removeEventListener("orientationchange", onResize)
+    }
+  }, [ensureConfettiSize])
+
+  const burstConfetti = useCallback(
+    (x?: number, y?: number) => {
+      const canvas = confettiRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      const { dpr, w, h } = ensureConfettiSize()
+      const cx = x != null ? x * dpr : (w * dpr) / 2
+      const cy = y != null ? y * dpr : (h * dpr) / 5
+      const count = 120
+      const parts = Array.from({ length: count }).map((_, i) => {
+        const angle = Math.random() * Math.PI - Math.PI / 2
+        const speed = 3 + Math.random() * 6
+        const hue = Math.floor((i / count) * 360)
+        return {
+          x: cx,
+          y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 2,
+          life: 56 + Math.random() * 36,
+          size: 2 + Math.random() * 3,
+          color: `hsl(${hue} 90% 55%)`,
+        }
+      })
+      let raf = 0
+      const step = () => {
+        const context = ctx
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        parts.forEach((p) => {
+          p.vy += 0.12 * dpr
+          p.x += p.vx * dpr
+          p.y += p.vy * dpr
+          p.life -= 1
+          context.fillStyle = p.color
+          context.beginPath()
+          context.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2)
+          context.fill()
+        })
+        for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1)
+        if (parts.length > 0) raf = requestAnimationFrame(step)
+        else cancelAnimationFrame(raf)
+      }
+      step()
+    },
+    [ensureConfettiSize]
+  )
+
+  useEffect(() => {
+    if (snack && snack.sev === "success" && snack.key !== "copied") burstConfetti()
+  }, [snack, burstConfetti])
+
   const copy = async (text: string, evt?: { clientX: number; clientY: number }) => {
     try {
       await navigator.clipboard?.writeText(text)
     } finally {
       setSnack({ key: "copied", sev: "success" })
+      if (evt) burstConfetti(evt.clientX, evt.clientY)
     }
   }
 
@@ -665,36 +742,6 @@ export default function Profile() {
                             </motion.div>
                           ))}
                         </div>
-
-                        {/* Glass Panels for Status, Course, Institute */}
-                        {(user!.status || user!.course || user!.institute) && (
-                          <div className="relative z-[2] w-full px-6 sm:px-8 md:px-10 flex flex-col gap-2.5 mt-4">
-                            {user!.status && (
-                              <div className="glass rounded-xl px-4 py-2.5 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
-                                <p className="text-sm leading-tight text-page-foreground">
-                                  <span className="font-bold">{t("profile:form.status")}:</span>{" "}
-                                  {user!.status}
-                                </p>
-                              </div>
-                            )}
-                            {user!.course && (
-                              <div className="glass rounded-xl px-4 py-2.5 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
-                                <p className="text-sm leading-tight text-page-foreground">
-                                  <span className="font-bold">{t("profile:form.course")}:</span>{" "}
-                                  {user!.course}
-                                </p>
-                              </div>
-                            )}
-                            {user!.institute && (
-                              <div className="glass rounded-xl px-4 py-2.5 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
-                                <p className="text-sm leading-tight text-page-foreground">
-                                  <span className="font-bold">{t("profile:form.institute")}:</span>{" "}
-                                  {user!.institute}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </div>
 
@@ -1111,6 +1158,13 @@ export default function Profile() {
                 </div>
               </motion.div>
             </div>
+
+            {/* Confetti Canvas */}
+            <canvas
+              ref={confettiRef}
+              className="fixed left-0 top-0 w-screen h-screen pointer-events-none"
+              style={{ zIndex: 2147483000 }}
+            />
           </main>
         </motion.div>
       </PageFadeIn>
