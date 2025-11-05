@@ -1,71 +1,29 @@
-import { useAuth, currentUserQueryKey } from "../contexts/AuthContext"
-import React, { useEffect, useMemo, useState, useRef, useCallback, memo } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useEffect, useMemo, useState, useRef, useCallback, memo, type ReactNode } from "react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { motion, useReducedMotion } from "framer-motion"
 import { useQueryClient } from "@tanstack/react-query"
-import api from "../api/client"
+import { QRCodeSVG } from "qrcode.react"
+import { useTranslation } from "react-i18next"
+
+import { useAuth, currentUserQueryKey } from "../contexts/AuthContext"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
+import type { NowPlaying } from "@/types/spotify"
 import type { User } from "@/types/User"
+import api from "../api/client"
 import profileBg from "../assets/background.jpg"
 import guuLogo from "../assets/guu_logo.png"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
-import {
-  Avatar,
-  Typography,
-  Box,
-  Paper,
-  Stack,
-  CircularProgress,
-  IconButton,
-  Snackbar,
-  Chip,
-  Alert,
-  LinearProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Container,
-  Divider,
-  Fade,
-  Grow,
-} from "@mui/material"
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
-import EmailIcon from "@mui/icons-material/Email"
-import TelegramIcon from "@mui/icons-material/Telegram"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import useMediaQuery from "@mui/material/useMediaQuery"
-import { alpha, useTheme } from "@mui/material/styles"
-import { keyframes } from "@mui/system"
-import { QRCodeSVG } from "qrcode.react"
-import { motion, useReducedMotion } from "framer-motion"
-import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
-import type { NowPlaying } from "@/types/spotify"
+import Dialog from "@/components/Dialog"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { ProgressBar } from "@/components/ui/progress-bar"
+import { Chip } from "@/components/ui/badge"
+import { cn } from "@/utils/cn"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
-import { useTranslation } from "react-i18next"
 
-const auraPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
-  50% { box-shadow: 0 0 0 14px rgba(255,255,255,.03); }
-  100% { box-shadow: 0 0 0 0 rgba(255,255,255,.02); }
-`
-const chipHighlight = keyframes`
-  0% { border-color: rgba(255,255,255,.18); }
-  50% { border-color: rgba(255,255,255,.34); }
-  100% { border-color: rgba(255,255,255,.18); }
-`
-const onlinePulse = keyframes`
-  0% { transform: scale(1); opacity: .6; }
-  70% { transform: scale(1.8); opacity: 0; }
-  100% { transform: scale(1.8); opacity: 0; }
-`
-
-const MotionPaper = motion.create(Paper)
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
 type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
@@ -76,17 +34,87 @@ type SnackState = {
   sev?: "success" | "info" | "warning" | "error"
 }
 
+const MailIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+    className={cn("h-5 w-5 text-nav-link", className)}
+  >
+    <rect x={3} y={5} width={18} height={14} rx={2.2} ry={2.2} />
+    <polyline points="3 7 12 13 21 7" />
+  </svg>
+)
+
+const TelegramIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.6}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+    className={cn("h-5 w-5 text-nav-link", className)}
+  >
+    <path d="M21 4.5 3.7 11.8c-.9.36-.88 1.57.03 1.9l4.76 1.72 1.88 5.54c.29.86 1.48.92 1.89.1l2.07-4.18 4.53-9.65c.36-.77-.45-1.56-1.23-1.34Z" />
+    <path d="m9.27 14.33 8.28-6.77" />
+  </svg>
+)
+
+const CopyIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.6}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+    className={cn("h-5 w-5", className)}
+  >
+    <rect x={9} y={9} width={12} height={12} rx={2} />
+    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+  </svg>
+)
+
+const ArrowUpRightIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.7}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+    className={cn("h-4 w-4", className)}
+  >
+    <path d="M6 6h8v8" />
+    <path d="m6 14 8-8" />
+  </svg>
+)
+
+const severityTone: Record<NonNullable<SnackState["sev"]>, string> = {
+  success:
+    "border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] text-[color:color-mix(in_srgb,#22c55e_82%,white_18%)]",
+  info: "border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)]",
+  warning:
+    "border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] text-[color:color-mix(in_srgb,#f59e0b_84%,white_16%)]",
+  error:
+    "border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] text-[color:color-mix(in_srgb,#f97316_88%,white_12%)]",
+}
+
+const prefersReducedMotionQuery = "(prefers-reduced-motion: reduce)"
+
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const theme = useTheme()
-  const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const prefersReduce = useMediaQuery(prefersReducedMotionQuery)
   const reduced = useReducedMotion()
-  const isDark = theme.palette.mode === "dark"
-  const borderCol = isDark
-    ? alpha(theme.palette.common.white, 0.14)
-    : alpha(theme.palette.common.black, 0.12)
-  const textSecondary = theme.palette.text.secondary
-  const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
+  const duration = data.duration_ms ?? 0
 
   const clampProgress = useCallback(
     (value: number | null | undefined) => {
@@ -149,12 +177,12 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       }
       return
     }
-    const loop = () => {
+    const tick = () => {
       const elapsed = Date.now() - startRef.current
       setProgress(clampProgress(elapsed))
-      rafRef.current = requestAnimationFrame(loop)
+      rafRef.current = requestAnimationFrame(tick)
     }
-    rafRef.current = requestAnimationFrame(loop)
+    rafRef.current = requestAnimationFrame(tick)
     return () => {
       if (rafRef.current != null) {
         cancelAnimationFrame(rafRef.current)
@@ -175,164 +203,125 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const href = data.track_url || "https://open.spotify.com"
 
   return (
-    <Box
-      component="a"
+    <motion.a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
+      className="group block overflow-hidden rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] p-4 text-page-foreground shadow-surface backdrop-blur-xl transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-[2px] hover:border-[color:color-mix(in_srgb,var(--page-text)_26%,transparent)] hover:shadow-surface-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
       aria-label={
         data.track_name
           ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
           : t("profile:nowPlaying.openSpotify")
       }
-      sx={{ display: "block", textDecoration: "none", width: "100%" }}
+      initial={isTest || prefersReduce || reduced ? undefined : { opacity: 0.94, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={prefersReduce || reduced ? undefined : { scale: 1.006 }}
+      whileTap={prefersReduce || reduced ? undefined : { scale: 0.995 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.9 }}
     >
-      <MotionPaper
-        elevation={0}
-        className="nowplaying--spotify"
-        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
-        whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
-        transition={
-          isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
-        }
-        sx={{
-          width: "100%",
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          alignItems: "center",
-          columnGap: 2,
-          rowGap: 1,
-          px: 2,
-          py: 1.8,
-          borderRadius: 3,
-          position: "relative",
-          overflow: "hidden",
-          border: `1px solid ${borderCol}`,
-          textDecoration: "none",
-          ["--glass-alpha" as any]: ".018",
-          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-        }}
-      >
-        <Box
-          sx={{
-            position: "relative",
-            width: 56,
-            height: 56,
-            borderRadius: 2,
-            overflow: "hidden",
-            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`,
-          }}
-        >
-          <Avatar
+      <div className="grid grid-cols-[auto,1fr] items-center gap-4">
+        <div className="relative h-16 w-16 overflow-hidden rounded-ue-lg shadow-surface-strong">
+          <img
             src={data.album_image_url ?? ""}
-            variant="rounded"
             alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
-            imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
-            sx={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 2,
-              transform: prefersReduce || reduced ? "none" : "scale(1.012)",
-              transition:
-                prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-              "&:hover": prefersReduce || reduced ? undefined : { transform: "scale(1.02)" },
-            }}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={cn(
+              "h-full w-full object-cover transition-transform duration-[1200ms] ease-[cubic-bezier(.22,.61,.36,1)]",
+              prefersReduce || reduced ? "" : "group-hover:scale-[1.03]"
+            )}
           />
-        </Box>
-        <Box
-          sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}
-          aria-live="polite"
-        >
-          <Typography
-            className="np-title"
-            variant="body1"
-            sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}
-          >
+        </div>
+        <div className="min-w-0 space-y-2" aria-live="polite">
+          <p className="truncate font-display text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold tracking-tight">
             {data.track_name || "—"}
-          </Typography>
-          <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
+          </p>
+          <p className="truncate text-sm text-[color:var(--secondary-text)]">
             {data.artists.join(", ")}
-          </Typography>
-          {!data.is_playing && (
+          </p>
+          {!data.is_playing ? (
             <Chip
-              size="small"
+              size="xs"
+              tone="info"
+              variant="outline"
               label={t("profile:nowPlaying.paused")}
-              color="default"
-              sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
+              className="uppercase tracking-[0.18em]"
               aria-hidden
             />
-          )}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-            <LinearProgress
-              className="progress"
-              variant="determinate"
+          ) : null}
+          <div className="flex items-center gap-3">
+            <ProgressBar
               value={pct}
-              aria-label={t("profile:nowPlaying.progress")}
-              sx={{ flex: 1, height: 6, borderRadius: 999 }}
+              max={100}
+              animated={!prefersReduce && !reduced}
+              ariaLabel={t("profile:nowPlaying.progress")}
             />
-            <Typography
-              className="np-time"
-              variant="caption"
-              sx={{ color: textSecondary, whiteSpace: "nowrap" }}
-            >
+            <p className="shrink-0 text-xs font-semibold text-[color:var(--secondary-text)]">
               {fmt(progress)} / {fmt(duration)}
-            </Typography>
-          </Box>
-        </Box>
-      </MotionPaper>
-    </Box>
+            </p>
+          </div>
+        </div>
+      </div>
+    </motion.a>
   )
 })
 
-const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
-  const theme = useTheme()
-  const isDark = theme.palette.mode === "dark"
+const DetailRow = ({ label, value }: { label: string; value?: ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <Box
-      className="glass"
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "14px 1fr",
-        alignItems: "center",
-        gap: 1.2,
-        px: 1.2,
-        py: 1.1,
-        minHeight: 44,
-        borderRadius: 2,
-        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.1)}`,
-        ["--glass-alpha" as any]: ".016",
-        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-      }}
-    >
-      <Box
-        sx={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          bgcolor: theme.palette.info.main,
-          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.22)}`,
-          justifySelf: "center",
-        }}
-      />
-      <Typography sx={{ lineHeight: 1.25 }}>
-        <b>{label}:</b> {value}
-      </Typography>
-    </Box>
+    <div className="group relative grid grid-cols-[12px,1fr] items-center gap-3 rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-sm shadow-surface transition-all duration-300 ease-out hover:border-[color:color-mix(in_srgb,var(--page-text)_22%,transparent)] hover:shadow-surface-strong">
+      <span className="block h-2 w-2 rounded-full bg-[color:var(--nav-link)] shadow-[0_0_0_6px_color-mix(in_srgb,var(--nav-link)_35%,transparent)]" />
+      <p className="min-w-0 text-[0.98rem] leading-relaxed">
+        <span className="font-semibold text-page-foreground">{label}:</span> {value}
+      </p>
+    </div>
+  )
+}
+
+function Snackbar({
+  snack,
+  message,
+  onClose,
+}: {
+  snack: SnackState | null
+  message: string
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!snack) return
+    const timer = setTimeout(() => onClose(), 2600)
+    return () => clearTimeout(timer)
+  }, [snack, onClose])
+
+  if (!snack) return null
+
+  const toneClass = snack.sev ? severityTone[snack.sev] : severityTone.info
+
+  return (
+    <div className="fixed inset-x-0 bottom-6 z-[var(--ue-z-index-overlay)] flex justify-center px-4">
+      <div
+        className={cn(
+          "animate-in slide-in-from-bottom-4 fade-in rounded-ue-xl border bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)] px-5 py-4 text-sm font-semibold text-page-foreground shadow-[0_18px_46px_rgba(6,11,25,0.32)] backdrop-blur-xl",
+          toneClass
+        )}
+        role="status"
+        data-testid={snack.key === "copied" ? "snackbar-copied" : undefined}
+      >
+        {message}
+      </div>
+    </div>
   )
 }
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth()
-  const theme = useTheme()
   const [snack, setSnack] = useState<SnackState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const isTwoCol = useMediaQuery("(min-width:1400px)")
-  const isMobile = useMediaQuery("(max-width:600px)")
+  const reduceMotion = useMediaQuery(prefersReducedMotionQuery)
+  const isTwoCol = useMediaQuery("(min-width: 1200px)")
+  const isMobile = useMediaQuery("(max-width: 640px)")
   const reduced = useReducedMotion()
   const { t } = useTranslation(["profile", "common"])
   const [scrollY, setScrollY] = useState(0)
@@ -343,7 +332,6 @@ export default function Profile() {
     date?: string
     url?: string
   } | null>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const confettiRef = useRef<HTMLCanvasElement | null>(null)
   const ldJsonRef = useRef<HTMLScriptElement | null>(null)
   const queryClient = useQueryClient()
@@ -425,7 +413,7 @@ export default function Profile() {
         setSnack({ key: "spotifyError", sev: "error" })
       }
       sp.delete("spotify")
-      const next = window.location.pathname + (sp.toString() ? "?" + sp : "")
+      const next = window.location.pathname + (sp.toString() ? `?${sp}` : "")
       window.history.replaceState({}, "", next)
     }
   }, [queryClient, refetchNowPlaying])
@@ -470,29 +458,6 @@ export default function Profile() {
       ldJsonRef.current = null
     }
   }, [user, avatarVersion])
-
-  if (loading)
-    return (
-      <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
-        <CircularProgress />
-      </Box>
-    )
-
-  const avatarImageUrl = useMemo(() => {
-    const media = resolveMediaUrl(user?.avatar_url ?? undefined)
-    return media ? addVersionParam(media, avatarVersion) : DEFAULT_AVATAR
-  }, [user?.avatar_url, avatarVersion])
-
-  const coverImageUrl = useMemo(() => {
-    const media = resolveMediaUrl(user?.cover_url ?? undefined)
-    return media ? addVersionParam(media, coverVersion) : profileBg
-  }, [user?.cover_url, coverVersion])
-
-  const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = event.currentTarget
-    img.onerror = null
-    img.src = DEFAULT_AVATAR
-  }, [])
 
   const ensureConfettiSize = useCallback(() => {
     const canvas = confettiRef.current
@@ -544,19 +509,18 @@ export default function Profile() {
       })
       let raf = 0
       const step = () => {
-        const context = ctx
-        context.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
         parts.forEach((p) => {
           p.vy += 0.12 * dpr
           p.x += p.vx * dpr
           p.y += p.vy * dpr
           p.life -= 1
-          context.fillStyle = p.color
-          context.beginPath()
-          context.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2)
-          context.fill()
+          ctx.fillStyle = p.color
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2)
+          ctx.fill()
         })
-        for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1)
+        for (let i = parts.length - 1; i >= 0; i -= 1) if (parts[i].life <= 0) parts.splice(i, 1)
         if (parts.length > 0) raf = requestAnimationFrame(step)
         else cancelAnimationFrame(raf)
       }
@@ -597,12 +561,12 @@ export default function Profile() {
   const closeQrModal = useCallback(() => setQrOpen(false), [])
 
   const telegramHref = useMemo(() => {
-    const t = user?.telegram || ""
-    if (!t) return ""
-    let v = String(t).trim()
-    if (v.startsWith("http")) return v
-    if (v.startsWith("@")) v = v.slice(1)
-    return `https://t.me/${v}`
+    const value = user?.telegram || ""
+    if (!value) return ""
+    let next = value.trim()
+    if (next.startsWith("http")) return next
+    if (next.startsWith("@")) next = next.slice(1)
+    return `https://t.me/${next}`
   }, [user?.telegram])
 
   const achievementsList = useMemo(
@@ -619,18 +583,32 @@ export default function Profile() {
   )
 
   const avatarPx = useMemo(() => {
-    if (isMobile) return 132
+    if (isMobile) return 124
     return isTwoCol ? 188 : 168
   }, [isMobile, isTwoCol])
   const avatarSize = `${avatarPx}px`
   const avatarFloat = Math.round(avatarPx * 0.55)
-  const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
-  const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`
-  const isDark = theme.palette.mode === "dark"
-  const textSecondary = theme.palette.text.secondary
+  const heroPaddingBottom = `${Math.max(avatarFloat - 20, 32)}px`
+  const heroTextPaddingTop = `${Math.round(avatarPx * 0.62)}px`
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
   const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
+
+  const avatarImageUrl = useMemo(() => {
+    const media = resolveMediaUrl(user?.avatar_url ?? undefined)
+    return media ? addVersionParam(media, avatarVersion) : DEFAULT_AVATAR
+  }, [user?.avatar_url, avatarVersion])
+
+  const coverImageUrl = useMemo(() => {
+    const media = resolveMediaUrl(user?.cover_url ?? undefined)
+    return media ? addVersionParam(media, coverVersion) : profileBg
+  }, [user?.cover_url, coverVersion])
+
+  const handleAvatarImgError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget
+    img.onerror = null
+    img.src = DEFAULT_AVATAR
+  }, [])
 
   const handleSave = async () => {
     setSaving(true)
@@ -682,874 +660,681 @@ export default function Profile() {
 
   const snackMessage = snack?.key ? t(`profile:snackbar.${snack.key}`) : snack?.message || ""
 
+  if (loading) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <span className="h-9 w-9 animate-spin rounded-full border-2 border-[color:color-mix(in_srgb,var(--page-text)_32%,transparent)] border-t-[color:var(--nav-link)]" />
+      </div>
+    )
+  }
+
   return (
     <>
-      <Box
-        sx={{
-          position: "fixed",
-          inset: 0,
-          zIndex: -2,
-          backgroundImage: `url(${profileBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "fixed",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.66)}, ${alpha(theme.palette.secondary.dark, 0.6)})`,
-            mixBlendMode: "multiply",
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `radial-gradient(1600px 800px at 50% 0%, ${alpha(theme.palette.primary.light, 0.08)} 0%, transparent 60%)`,
-            opacity: 0.6,
-          },
-        }}
-      />
+      <div className="fixed inset-0 -z-20">
+        <img src={profileBg} alt="" aria-hidden className="h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-[linear-gradient(118deg,color-mix(in_srgb,var(--nav-link)_64%,transparent),color-mix(in_srgb,var(--btn-bg,_#1f3b84)_38%,transparent))] mix-blend-multiply" />
+        <div className="absolute inset-0 bg-[radial-gradient(1200px_760px_at_50%_-10%,color-mix(in_srgb,var(--nav-link)_24%,transparent)_0%,transparent_76%)]" />
+      </div>
 
       <PageFadeIn>
         <motion.div
-          initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+          initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
+          transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 32 }}
         >
-          <Box
-            component="main"
+          <main
             id="main"
-            className="profile-page"
+            className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[1100px] flex-col gap-10 px-4 py-16 sm:px-6 lg:px-8"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
-            sx={{
-              position: "relative",
-              minHeight: "100svh",
-              display: "flex",
-              flexDirection: "column",
-              py: { xs: 8, sm: 9, md: 10 },
-              px: { xs: 1.5, sm: 2, md: 3 },
-            }}
           >
-            <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
-              <MotionPaper
-                ref={containerRef}
-                className="glass profile-card"
-                initial={
-                  isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
-                }
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={
-                  isTest
-                    ? { duration: 0 }
-                    : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
-                }
-                sx={{
-                  px: { xs: 2.6, sm: 3.6, md: 4.6, lg: 5.6 },
-                  py: { xs: 3.6, sm: 4.2, md: 5 },
-                  borderRadius: { xs: 3, md: 4 },
-                  position: "relative",
-                  overflow: "hidden",
-                  ["--glass-alpha" as any]: ".02",
-                  ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "1fr", md: "minmax(360px, 420px) minmax(0, 1fr)" },
-                    columnGap: { xs: 3, sm: 4, md: 6 },
-                    rowGap: { xs: 4, md: 0 },
-                    alignItems: "start",
-                  }}
-                >
-                  <Stack spacing={{ xs: 3.2, md: 4 }} alignItems="stretch">
-                    <Box
-                      className="glass"
-                      sx={{
-                        position: "relative",
-                        borderRadius: { xs: 3, md: 4 },
-                        overflow: "hidden",
-                        minHeight: { xs: 300, sm: 340, md: 360, lg: 400 },
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        pb: heroPaddingBottom,
-                        boxShadow: `0 28px 70px -44px ${alpha(theme.palette.common.black, isDark ? 0.58 : 0.2)}`,
-                        ["--glass-alpha" as any]: ".018",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
-                          backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
-                          backgroundPosition: "center",
-                          backgroundSize: "cover",
+            <motion.div
+              initial={
+                isTest || reduceMotion
+                  ? undefined
+                  : { opacity: 0.94, y: 18, scale: 0.99, filter: "blur(6px)" }
+              }
+              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+              transition={{ type: "spring", stiffness: 420, damping: 30, mass: 0.9 }}
+              className="relative overflow-hidden rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] px-6 py-8 text-page-foreground shadow-[0_36px_80px_rgba(6,15,35,0.42)] backdrop-blur-[18px] sm:px-8 sm:py-10"
+            >
+              <div className="flex flex-col gap-8 lg:[grid-template-columns:minmax(320px,380px)_minmax(0,1fr)] lg:grid lg:gap-10">
+                <div className="flex flex-col gap-6">
+                  <div
+                    className="relative isolate overflow-hidden rounded-ue-xl border border-white/10 bg-[color:color-mix(in_srgb,var(--card-bg)_80%,transparent_20%)] text-white shadow-surface-strong"
+                    style={{ paddingBottom: heroPaddingBottom }}
+                  >
+                    <div className="absolute inset-0">
+                      <img
+                        src={coverImageUrl}
+                        alt=""
+                        aria-hidden
+                        style={{
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                           transition: reduceMotion
                             ? "none"
                             : "transform 1200ms cubic-bezier(.33,1,.68,1)",
-                          filter: "saturate(1) contrast(1.02) brightness(0.98)",
+                          filter: "saturate(1.05) contrast(1.04)",
                         }}
+                        className="h-full w-full object-cover"
                       />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
-                          background:
-                            "linear-gradient(185deg, rgba(6,9,20,0) 40%, rgba(6,9,20,0.9) 100%)",
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          left: "50%",
-                          top: { xs: theme.spacing(6), sm: theme.spacing(7) },
-                          transform: "translateX(-50%)",
-                          width: avatarSize,
-                          height: avatarSize,
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          p: "4px",
-                          animation: reduceMotion
-                            ? "none"
-                            : `${auraPulse} 14s ease-in-out infinite`,
-                        }}
-                      >
-                        <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
-                          <Avatar
-                            src={avatarImageUrl}
-                            alt={user?.full_name ?? undefined}
-                            imgProps={{
-                              onError: handleAvatarImgError,
-                              loading: "lazy",
-                              decoding: "async",
-                              referrerPolicy: "no-referrer",
-                            }}
-                            sx={{
-                              width: "100%",
-                              height: "100%",
-                              borderRadius: "50%",
-                              fontSize: "clamp(28px, 6vw, 64px)",
-                              backgroundColor: alpha(theme.palette.common.white, 0.12),
-                              color: alpha(theme.palette.common.white, 0.92),
-                            }}
-                          >
-                            {user?.full_name?.[0]}
-                          </Avatar>
-                        </Box>
+                      <div className="absolute inset-0 bg-[linear-gradient(190deg,rgba(8,12,28,0.05)_0%,rgba(8,12,28,0.86)_100%)]" />
+                    </div>
 
-                        {isOnline && (
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              right: `${statusOffset}px`,
-                              bottom: `${statusOffset}px`,
-                              width: `${statusSize}px`,
-                              height: `${statusSize}px`,
-                              borderRadius: "50%",
-                              backgroundColor: "#22c55e",
-                              boxShadow: `0 0 0 2px rgba(0,0,0,.18), 0 4px 10px rgba(34,197,94,.45)`,
-                              zIndex: 3,
-                              pointerEvents: "none",
-                            }}
-                          >
-                            {!reduced && (
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  inset: "-6px",
-                                  borderRadius: "50%",
-                                  border: `2px solid ${alpha("#22c55e", 0.45)}`,
-                                  animation: `${onlinePulse} 1.8s ease-in-out infinite`,
-                                }}
-                              />
-                            )}
-                          </Box>
-                        )}
-                      </Box>
-                      <Box
-                        sx={{
-                          position: "relative",
-                          zIndex: 2,
-                          width: "100%",
-                          textAlign: { xs: "center", md: "left" },
-                          px: { xs: 2.4, sm: 3, md: 3.4 },
-                          pt: heroTextPaddingTop,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2.4,
-                        }}
-                      >
-                        <Box>
-                          <Typography
-                            className="profile-name"
-                            variant="h3"
-                            component="h1"
-                            data-testid="profile-name"
-                            sx={{
-                              fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)",
-                              fontWeight: 900,
-                              lineHeight: 1.08,
-                            }}
-                          >
-                            {user!.full_name}
-                          </Typography>
-                          {!!user?.position && user?.role === "teacher" && (
-                            <Typography
-                              className="profile-subtitle"
-                              variant="subtitle1"
-                              sx={{ mt: 0.9, fontWeight: 600 }}
-                            >
-                              {user.position}
-                            </Typography>
-                          )}
-                        </Box>
-                        <Stack
-                          direction="row"
-                          spacing={1.2}
-                          useFlexGap
-                          flexWrap="wrap"
-                          sx={{ justifyContent: { xs: "center", md: "flex-start" } }}
-                        >
-                          {[
-                            user!.role === "teacher"
-                              ? t("profile:chips.teacher")
-                              : user!.role === "student"
-                                ? t("profile:chips.student")
-                                : t("profile:chips.admin"),
-                            ...(user!.role === "student" && user!.course
-                              ? [t("profile:chips.course", { value: user!.course })]
-                              : []),
-                            ...(user!.institute ? [user!.institute] : []),
-                          ].map((chip, idx) => (
-                            <Grow
-                              in
-                              key={`${chip}-${idx}`}
-                              timeout={isTest || reduced ? 0 : 560}
-                              style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
-                            >
-                              <Chip
-                                size="small"
-                                label={chip}
-                                className="glass--chip"
-                                sx={{
-                                  borderRadius: 999,
-                                  "& .MuiChip-label": {
-                                    px: 1.6,
-                                    py: 0.62,
-                                    lineHeight: 1.28,
-                                    fontWeight: 700,
-                                    letterSpacing: ".01em",
-                                  },
-                                  animation: reduced
-                                    ? "none"
-                                    : `${chipHighlight} 12s ease-in-out infinite`,
-                                  animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
-                                }}
-                              />
-                            </Grow>
-                          ))}
-                        </Stack>
-                      </Box>
-                    </Box>
-
-                    <Paper
-                      elevation={0}
-                      className="glass profile-card"
-                      sx={{
-                        p: { xs: 2.6, sm: 3 },
-                        borderRadius: 3,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: { xs: 2.6, md: 3 },
-                        ["--glass-alpha" as any]: ".02",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
+                    <div
+                      className="absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 p-1.5 shadow-[0_25px_60px_rgba(8,15,35,0.36)] backdrop-blur-[14px]"
+                      style={{
+                        top: `clamp(2rem, 8vw, 4.5rem)`,
+                        width: avatarSize,
+                        height: avatarSize,
                       }}
                     >
-                      <Stack spacing={1.3} alignItems="stretch">
-                        <Button
-                          size="large"
-                          variant="contained"
-                          color="secondary"
-                          className="glass--btn"
-                          onClick={openQrModal}
-                          data-testid="open-qr"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 2,
-                            py: 1.05,
-                            fontWeight: 800,
-                            letterSpacing: 0.24,
-                          }}
-                        >
-                          {t("profile:buttons.showQr")}
-                        </Button>
-                      </Stack>
-                      <Divider />
-                      <Stack spacing={1.8} className="contact-links">
-                        <Stack
-                          direction="row"
-                          spacing={1.4}
-                          alignItems="center"
-                          sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                        >
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                            sx={{ minWidth: 0, flex: 1 }}
-                          >
-                            <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
-                            <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                              <a
-                                href={`mailto:${user!.email}`}
-                                style={{ color: "inherit", textDecoration: "none" }}
-                                data-testid="profile-email-link"
-                                title={t("profile:aria.openEmail")}
-                              >
-                                {user!.email}
-                              </a>
-                            </Typography>
-                          </Stack>
-                          <IconButton
-                            size="small"
-                            className="glass--btn"
-                            onClick={(e) => copy(user!.email, e)}
-                            aria-label={t("profile:aria.copyEmail")}
-                            title={t("profile:aria.copyEmail")}
-                            data-testid="copy-email"
-                            sx={{
-                              transition: reduced
-                                ? "color 140ms ease"
-                                : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": {
-                                transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                              },
+                      <div className="relative h-full w-full overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--nav-link)_30%,var(--card-bg)_70%)]">
+                        <img
+                          src={avatarImageUrl}
+                          alt={user?.full_name ?? undefined}
+                          loading="lazy"
+                          decoding="async"
+                          referrerPolicy="no-referrer"
+                          onError={handleAvatarImgError}
+                          className="h-full w-full object-cover"
+                        />
+                        {!user?.avatar_url ? (
+                          <span className="absolute inset-0 flex items-center justify-center font-display text-4xl font-bold text-white/80">
+                            {user?.full_name?.[0]}
+                          </span>
+                        ) : null}
+                        {isOnline ? (
+                          <span
+                            className="absolute rounded-full bg-[#22c55e] shadow-[0_0_0_2px_rgba(6,11,25,0.58),0_6px_14px_rgba(34,197,94,0.45)]"
+                            style={{
+                              width: `${statusSize}px`,
+                              height: `${statusSize}px`,
+                              right: `${statusOffset}px`,
+                              bottom: `${statusOffset}px`,
                             }}
                           >
-                            <ContentCopyIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
+                            {reduced ? null : (
+                              <span className="absolute inset-0 -z-10 animate-[ping_1.8s_ease-in-out_infinite] rounded-full border-2 border-[#22c55e]/40" />
+                            )}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                        {!!user!.telegram && (
-                          <Stack
-                            direction="row"
-                            spacing={1.4}
-                            alignItems="center"
-                            sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
+                    <div
+                      className="relative z-10 mx-auto flex w-full max-w-xl flex-col items-center gap-6 px-6 text-center lg:items-start lg:px-8 lg:text-left"
+                      style={{ paddingTop: heroTextPaddingTop }}
+                    >
+                      <header className="space-y-2">
+                        <h1
+                          className="font-display text-[clamp(1.9rem,3vw,3rem)] font-extrabold leading-[1.05] tracking-tight"
+                          data-testid="profile-name"
+                        >
+                          {user?.full_name}
+                        </h1>
+                        {user?.role === "teacher" && user?.position ? (
+                          <p className="text-[clamp(1rem,1.5vw,1.2rem)] font-semibold text-white/80">
+                            {user.position}
+                          </p>
+                        ) : null}
+                      </header>
+
+                      <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+                        {[
+                          user?.role === "teacher"
+                            ? t("profile:chips.teacher")
+                            : user?.role === "student"
+                              ? t("profile:chips.student")
+                              : t("profile:chips.admin"),
+                          ...(user?.role === "student" && user?.course
+                            ? [t("profile:chips.course", { value: user.course })]
+                            : []),
+                          ...(user?.institute ? [user.institute] : []),
+                        ].map((chip, idx) => (
+                          <motion.span
+                            key={`${chip}-${idx}`}
+                            initial={reduced ? undefined : { opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: reduced ? 0 : idx * 0.08, duration: 0.4 }}
                           >
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{ minWidth: 0, flex: 1 }}
-                            >
-                              <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
-                              <Typography
-                                sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}
-                              >
-                                <a
-                                  href={telegramHref}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ color: "inherit", textDecoration: "none" }}
-                                  data-testid="profile-telegram-link"
-                                  title={t("profile:aria.openTelegram")}
-                                >
-                                  {user!.telegram}
-                                </a>
-                              </Typography>
-                            </Stack>
-                            <IconButton
-                              size="small"
-                              className="glass--btn"
-                              onClick={(e) => copy(user!.telegram!, e)}
-                              aria-label={t("profile:aria.copyTelegram")}
-                              title={t("profile:aria.copyTelegram")}
-                              data-testid="copy-telegram"
-                              sx={{
-                                transition: reduced
-                                  ? "color 140ms ease"
-                                  : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                                "&:hover": {
-                                  transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                                },
-                              }}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
-                        )}
-                      </Stack>
-                    </Paper>
+                            <Chip
+                              size="sm"
+                              tone="info"
+                              variant="outline"
+                              label={chip}
+                              className="bg-white/10 text-white"
+                            />
+                          </motion.span>
+                        ))}
+                      </div>
 
-                    {showNowPlaying && nowPlaying && (
-                      <Fade in timeout={isTest || reduced ? 0 : 720}>
-                        <Stack spacing={1.4}>
-                          <Typography
-                            variant="overline"
-                            sx={{ letterSpacing: 2.2, color: textSecondary }}
+                      {!edit ? (
+                        <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+                          <Button
+                            as={Link}
+                            to="/profile/edit"
+                            variant="solid"
+                            className="w-full rounded-ue-lg px-6 py-3 text-base font-extrabold shadow-surface-strong transition hover:-translate-y-[1px] hover:shadow-surface-strong lg:w-auto"
                           >
-                            {t("profile:sections.nowPlaying")}
-                          </Typography>
-                          <NowPlayingCard data={nowPlaying} />
-                        </Stack>
-                      </Fade>
-                    )}
-                  </Stack>
+                            {t("profile:buttons.edit", { defaultValue: "Редактировать профиль" })}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={openQrModal}
+                            className="w-full rounded-ue-lg px-6 py-3 text-base font-semibold lg:w-auto"
+                            data-testid="open-qr"
+                          >
+                            {t("profile:buttons.showQr")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
 
-                  <Box
-                    sx={{
-                      width: "100%",
-                      position: "relative",
-                      mt: { xs: `${Math.round(avatarPx * 0.55) + 36}px`, md: 0 },
-                    }}
+                  <Card
+                    padding="lg"
+                    className="gap-6 border-[color:color-mix(in_srgb,var(--page-text)_10%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] shadow-surface"
                   >
-                    {edit ? (
-                      <Paper
-                        elevation={0}
-                        className="glass profile-card profile-edit"
-                        sx={{
-                          width: "100%",
-                          borderRadius: 3,
-                          p: { xs: 2.6, sm: 3, md: 3.4 },
-                          ["--glass-alpha" as any]: ".02",
-                          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                        }}
-                      >
-                        <Stack spacing={2.2}>
-                          <TextField
-                            label={t("profile:form.name")}
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            fullWidth
-                            inputProps={{ maxLength: 120 }}
-                          />
-                          <TextField
-                            label={t("profile:form.email")}
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            fullWidth
-                            type="email"
-                          />
-                          <TextField
-                            label={t("profile:form.telegram")}
-                            value={telegram}
-                            onChange={(e) => setTelegram(e.target.value)}
-                            fullWidth
-                            helperText={t("profile:form.telegramHint")}
-                          />
-                          {user!.role === "teacher" && (
-                            <>
-                              <TextField
-                                label={t("profile:form.department")}
-                                value={department}
-                                onChange={(e) => setDepartment(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.position")}
-                                value={position}
-                                onChange={(e) => setPosition(e.target.value)}
-                                fullWidth
-                              />
-                            </>
-                          )}
-                          {user!.role === "student" && (
-                            <>
-                              <TextField
-                                label={t("profile:form.about")}
-                                value={about}
-                                onChange={(e) => setAbout(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={3}
-                              />
-                              <TextField
-                                label={t("profile:form.recordBookNumber")}
-                                value={recordBookNumber}
-                                onChange={(e) => setRecordBookNumber(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.status")}
-                                value={status}
-                                onChange={(e) => setStatus(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.institute")}
-                                value={institute}
-                                onChange={(e) => setInstitute(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.course")}
-                                value={course}
-                                onChange={(e) => setCourse(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.educationLevel")}
-                                value={educationLevel}
-                                onChange={(e) => setEducationLevel(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.track")}
-                                value={track}
-                                onChange={(e) => setTrack(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.program")}
-                                value={program}
-                                onChange={(e) => setProgram(e.target.value)}
-                                fullWidth
-                              />
-                              <TextField
-                                label={t("profile:form.achievements")}
-                                value={achievements}
-                                onChange={(e) => setAchievements(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={2}
-                              />
-                            </>
-                          )}
-                          <Stack
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={2}
-                            sx={{ alignItems: { xs: "stretch", sm: "center" } }}
-                          >
-                            <Button
-                              onClick={handleSave}
-                              variant="contained"
-                              disabled={saving}
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                    {edit ? null : (
+                      <div className="flex flex-col gap-4">
+                        <h2 className="font-display text-[clamp(1.2rem,2vw,1.4rem)] font-semibold">
+                          {t("profile:sections.contacts", { defaultValue: "Контакты" })}
+                        </h2>
+                        <div className="flex flex-col gap-3">
+                          <div className="flex flex-wrap items-center gap-3 rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 shadow-surface transition-all duration-200 hover:border-[color:color-mix(in_srgb,var(--page-text)_24%,transparent)]">
+                            <MailIcon className="text-[color:var(--nav-link)]" />
+                            <a
+                              href={`mailto:${user?.email ?? ""}`}
+                              className="max-w-full flex-1 truncate text-base font-semibold text-page-foreground no-underline hover:text-nav-link"
+                              data-testid="profile-email-link"
+                              title={t("profile:aria.openEmail")}
                             >
-                              {saving ? t("profile:form.saving") : t("profile:form.save")}
-                            </Button>
-                            <Button
-                              onClick={handleCancel}
-                              variant="outlined"
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
-                            >
-                              {t("profile:form.cancel")}
-                            </Button>
-                          </Stack>
-                        </Stack>
-                      </Paper>
-                    ) : (
-                      <>
-                        <Paper
-                          elevation={0}
-                          className="glass profile-card"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 3,
-                            p: { xs: 2.6, sm: 3, md: 3.4 },
-                            ["--glass-alpha" as any]: ".02",
-                            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                          }}
-                        >
-                          <Typography
-                            variant="h5"
-                            component="h2"
-                            sx={{
-                              fontWeight: 900,
-                              fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)",
-                              mb: 2.2,
-                              letterSpacing: "-.01em",
-                            }}
-                          >
-                            {t("profile:sections.details")}
-                          </Typography>
-                          <Accordion
-                            disableGutters
-                            defaultExpanded
-                            className="glass"
-                            sx={{
-                              borderRadius: 3,
-                              boxShadow: "none",
-                              "&::before": { display: "none" },
-                              ["--glass-alpha" as any]: ".016",
-                              ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                            }}
-                          >
-                            <AccordionSummary
-                              expandIcon={<ExpandMoreIcon />}
-                              sx={{
-                                px: 2.2,
-                                py: 1.4,
-                                borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.08)}`,
+                              {user?.email}
+                            </a>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                const { clientX, clientY } = event
+                                copy(user?.email ?? "", { clientX, clientY })
                               }}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] bg-white/60 text-[color:var(--nav-link)] shadow-surface transition hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                              aria-label={t("profile:aria.copyEmail")}
+                              data-testid="copy-email"
                             >
-                              <Typography fontWeight={900}>
-                                {t("profile:sections.profileDetails")}
-                              </Typography>
-                            </AccordionSummary>
-                            <AccordionDetails
-                              sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}
-                            >
-                              {(() => {
-                                const rows = [
-                                  { label: t("profile:form.about"), value: user!.about },
-                                  { label: t("profile:form.status"), value: user!.status },
-                                  {
-                                    label: t("profile:form.recordBookNumber"),
-                                    value: user!.record_book_number,
-                                  },
-                                  {
-                                    label: t("profile:form.educationLevel"),
-                                    value: user!.education_level,
-                                  },
-                                  { label: t("profile:form.track"), value: user!.track },
-                                  { label: t("profile:form.program"), value: user!.program },
-                                  { label: t("profile:form.department"), value: user!.department },
-                                  { label: t("profile:form.position"), value: user!.position },
-                                ]
-                                return (
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                                      gap: { xs: 1.2, md: 1.6 },
-                                    }}
-                                  >
-                                    {rows.map((r) => (
-                                      <DetailRow key={r.label} label={r.label} value={r.value} />
-                                    ))}
-                                  </Box>
-                                )
-                              })()}
-                              {achievementsList.length > 0 && (
-                                <Box sx={{ mt: 2.4 }}>
-                                  <Typography
-                                    variant="subtitle1"
-                                    component="h3"
-                                    sx={{ fontWeight: 800, mb: 1.4 }}
-                                  >
-                                    {t("profile:sections.achievements")}
-                                  </Typography>
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: {
-                                        xs: "repeat(auto-fit, minmax(140px, 1fr))",
-                                        sm: "repeat(auto-fit, minmax(160px, 1fr))",
-                                      },
-                                      gap: 1.2,
-                                    }}
-                                  >
-                                    {achievementsList.map((ach, idx) => (
-                                      <Grow
-                                        in
-                                        key={ach.key}
-                                        timeout={isTest || reduced ? 0 : 500}
-                                        style={{
-                                          transitionDelay: reduced ? "0ms" : `${idx * 90}ms`,
-                                        }}
-                                      >
-                                        <Chip
-                                          label={ach.name}
-                                          clickable
-                                          onClick={() =>
-                                            setAchOpen({
-                                              name: ach.name,
-                                              issuer: ach.issuer,
-                                              date: ach.date,
-                                              url: ach.url,
-                                            })
-                                          }
-                                          className="glass--chip"
-                                          sx={{
-                                            borderRadius: 2,
-                                            alignSelf: "stretch",
-                                            "& .MuiChip-label": {
-                                              display: "block",
-                                              whiteSpace: "normal",
-                                              lineHeight: 1.3,
-                                              px: 1.6,
-                                              py: 1.1,
-                                              fontWeight: 700,
-                                            },
-                                            animation: reduced
-                                              ? "none"
-                                              : `${chipHighlight} 14s ease-in-out infinite`,
-                                            animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
-                                          }}
-                                        />
-                                      </Grow>
-                                    ))}
-                                  </Box>
-                                </Box>
-                              )}
-                            </AccordionDetails>
-                          </Accordion>
-                        </Paper>
-                      </>
+                              <CopyIcon />
+                            </button>
+                          </div>
+
+                          {user?.telegram ? (
+                            <div className="flex flex-wrap items-center gap-3 rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 shadow-surface transition-all duration-200 hover:border-[color:color-mix(in_srgb,var(--page-text)_24%,transparent)]">
+                              <TelegramIcon className="text-[color:var(--nav-link)]" />
+                              <a
+                                href={telegramHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="max-w-full flex-1 truncate text-base font-semibold text-page-foreground no-underline hover:text-nav-link"
+                                data-testid="profile-telegram-link"
+                                title={t("profile:aria.openTelegram")}
+                              >
+                                {user.telegram}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  const { clientX, clientY } = event
+                                  copy(user.telegram ?? "", { clientX, clientY })
+                                }}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] bg-white/60 text-[color:var(--nav-link)] shadow-surface transition hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                aria-label={t("profile:aria.copyTelegram")}
+                                data-testid="copy-telegram"
+                              >
+                                <CopyIcon />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
                     )}
-                  </Box>
-                </Box>
-              </MotionPaper>
-            </Container>
+
+                    {showNowPlaying && nowPlaying ? (
+                      <section className="space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[color:var(--secondary-text)]">
+                          {t("profile:sections.nowPlaying")}
+                        </p>
+                        <NowPlayingCard data={nowPlaying} />
+                      </section>
+                    ) : null}
+
+                    {!edit && achievementsList.length > 0 ? (
+                      <section className="space-y-4">
+                        <header className="flex items-center justify-between">
+                          <h2 className="font-display text-[clamp(1.2rem,2vw,1.4rem)] font-semibold">
+                            {t("profile:sections.achievements", { defaultValue: "Достижения" })}
+                          </h2>
+                          <span className="text-sm font-medium text-[color:var(--secondary-text)]">
+                            {t("profile:aria.totalAchievements", {
+                              count: achievementsList.length,
+                              defaultValue:
+                                achievementsList.length === 1
+                                  ? "1 достижение"
+                                  : `${achievementsList.length} достижений`,
+                            })}
+                          </span>
+                        </header>
+                        <div className="grid gap-2.5 sm:grid-cols-2">
+                          {achievementsList.map((ach, idx) => (
+                            <motion.button
+                              key={ach.key}
+                              type="button"
+                              initial={reduced ? undefined : { opacity: 0, y: 12 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: reduced ? 0 : idx * 0.05, duration: 0.4 }}
+                              onClick={() =>
+                                setAchOpen({
+                                  name: ach.name,
+                                  issuer: ach.issuer,
+                                  date: ach.date,
+                                  url: ach.url,
+                                })
+                              }
+                              className="group flex h-full w-full items-center justify-between gap-3 rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-left text-sm font-semibold text-page-foreground shadow-surface transition hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--card-bg)_98%,transparent_2%)] hover:shadow-surface-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                            >
+                              <span className="truncate font-semibold">{ach.name}</span>
+                              <ArrowUpRightIcon className="text-[color:var(--nav-link)] transition group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" />
+                            </motion.button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {edit ? (
+                      <section className="space-y-6">
+                        <div className="flex flex-col gap-1">
+                          <h2 className="font-display text-[clamp(1.4rem,2.4vw,1.8rem)] font-semibold">
+                            {t("profile:sections.editTitle", { defaultValue: "Обновить профиль" })}
+                          </h2>
+                          <p className="text-sm text-[color:var(--secondary-text)]">
+                            {t("profile:sections.editHint", {
+                              defaultValue: "Измените публичную информацию о себе.",
+                            })}
+                          </p>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2 md:gap-5">
+                          <div className="flex flex-col gap-2 md:col-span-2">
+                            <label
+                              className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                              htmlFor="profile-full-name"
+                            >
+                              {t("profile:form.name")}
+                            </label>
+                            <input
+                              id="profile-full-name"
+                              value={fullName}
+                              onChange={(event) => setFullName(event.target.value)}
+                              maxLength={120}
+                              className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                              placeholder={t("profile:form.namePlaceholder", "Ваше имя")}
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                              htmlFor="profile-email"
+                            >
+                              {t("profile:form.email")}
+                            </label>
+                            <input
+                              id="profile-email"
+                              type="email"
+                              value={email}
+                              onChange={(event) => setEmail(event.target.value)}
+                              className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                              placeholder="example@domain.com"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                              htmlFor="profile-telegram"
+                            >
+                              {t("profile:form.telegram")}
+                            </label>
+                            <input
+                              id="profile-telegram"
+                              value={telegram}
+                              onChange={(event) => setTelegram(event.target.value)}
+                              className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                              placeholder="@username"
+                              aria-describedby="profile-telegram-hint"
+                            />
+                            <p
+                              id="profile-telegram-hint"
+                              className="text-xs text-[color:var(--secondary-text)]"
+                            >
+                              {t("profile:form.telegramHint")}
+                            </p>
+                          </div>
+
+                          {user?.role === "teacher" ? (
+                            <>
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-department"
+                                >
+                                  {t("profile:form.department")}
+                                </label>
+                                <input
+                                  id="profile-department"
+                                  value={department}
+                                  onChange={(event) => setDepartment(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-position"
+                                >
+                                  {t("profile:form.position")}
+                                </label>
+                                <input
+                                  id="profile-position"
+                                  value={position}
+                                  onChange={(event) => setPosition(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+                            </>
+                          ) : null}
+
+                          {user?.role === "student" ? (
+                            <>
+                              <div className="md:col-span-2 flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-about"
+                                >
+                                  {t("profile:form.about")}
+                                </label>
+                                <textarea
+                                  id="profile-about"
+                                  value={about}
+                                  onChange={(event) => setAbout(event.target.value)}
+                                  className="min-h-[120px] w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-record-book"
+                                >
+                                  {t("profile:form.recordBookNumber")}
+                                </label>
+                                <input
+                                  id="profile-record-book"
+                                  value={recordBookNumber}
+                                  onChange={(event) => setRecordBookNumber(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-status"
+                                >
+                                  {t("profile:form.status")}
+                                </label>
+                                <input
+                                  id="profile-status"
+                                  value={status}
+                                  onChange={(event) => setStatus(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-institute"
+                                >
+                                  {t("profile:form.institute")}
+                                </label>
+                                <input
+                                  id="profile-institute"
+                                  value={institute}
+                                  onChange={(event) => setInstitute(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-course"
+                                >
+                                  {t("profile:form.course")}
+                                </label>
+                                <input
+                                  id="profile-course"
+                                  value={course}
+                                  onChange={(event) => setCourse(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-education-level"
+                                >
+                                  {t("profile:form.educationLevel")}
+                                </label>
+                                <input
+                                  id="profile-education-level"
+                                  value={educationLevel}
+                                  onChange={(event) => setEducationLevel(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-track"
+                                >
+                                  {t("profile:form.track")}
+                                </label>
+                                <input
+                                  id="profile-track"
+                                  value={track}
+                                  onChange={(event) => setTrack(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-program"
+                                >
+                                  {t("profile:form.program")}
+                                </label>
+                                <input
+                                  id="profile-program"
+                                  value={program}
+                                  onChange={(event) => setProgram(event.target.value)}
+                                  className="w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+
+                              <div className="md:col-span-2 flex flex-col gap-2">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-achievements"
+                                >
+                                  {t("profile:form.achievements")}
+                                </label>
+                                <textarea
+                                  id="profile-achievements"
+                                  value={achievements}
+                                  onChange={(event) => setAchievements(event.target.value)}
+                                  className="min-h-[96px] w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 text-base font-medium text-page-foreground shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
+                                />
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                          <Button
+                            onClick={handleSave}
+                            variant="solid"
+                            loading={saving}
+                            className="rounded-ue-lg px-6 py-3 text-base font-extrabold"
+                          >
+                            {saving ? t("profile:form.saving") : t("profile:form.save")}
+                          </Button>
+                          <Button
+                            onClick={handleCancel}
+                            variant="outline"
+                            className="rounded-ue-lg px-6 py-3 text-base font-semibold"
+                          >
+                            {t("profile:form.cancel")}
+                          </Button>
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {!edit ? (
+                      <section className="space-y-4">
+                        <header className="flex flex-col gap-2">
+                          <h2 className="font-display text-[clamp(1.25rem,2.2vw,1.6rem)] font-semibold">
+                            {t("profile:sections.details", { defaultValue: "Детали" })}
+                          </h2>
+                          <p className="text-sm text-[color:var(--secondary-text)]">
+                            {t("profile:sections.detailsHint", {
+                              defaultValue: "Подробности о вашей учебе и работе",
+                            })}
+                          </p>
+                        </header>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <DetailRow label={t("profile:form.about") ?? ""} value={user?.about} />
+                          <DetailRow label={t("profile:form.status") ?? ""} value={user?.status} />
+                          <DetailRow
+                            label={t("profile:form.recordBookNumber") ?? ""}
+                            value={user?.record_book_number}
+                          />
+                          <DetailRow
+                            label={t("profile:form.educationLevel") ?? ""}
+                            value={user?.education_level}
+                          />
+                          <DetailRow label={t("profile:form.track") ?? ""} value={user?.track} />
+                          <DetailRow
+                            label={t("profile:form.program") ?? ""}
+                            value={user?.program}
+                          />
+                          <DetailRow
+                            label={t("profile:form.department") ?? ""}
+                            value={user?.department}
+                          />
+                          <DetailRow
+                            label={t("profile:form.position") ?? ""}
+                            value={user?.position}
+                          />
+                          <DetailRow
+                            label={t("profile:form.institute") ?? ""}
+                            value={user?.institute}
+                          />
+                        </div>
+                      </section>
+                    ) : null}
+                  </Card>
+                </div>
+              </div>
+            </motion.div>
 
             <canvas
               ref={confettiRef}
-              style={{
-                position: "fixed",
-                left: 0,
-                top: 0,
-                width: "100vw",
-                height: "100vh",
-                pointerEvents: "none",
-                zIndex: 2147483000,
-              }}
+              className="pointer-events-none fixed left-0 top-0 z-[2147483000] h-screen w-screen"
             />
-          </Box>
+          </main>
         </motion.div>
       </PageFadeIn>
 
       <Dialog
         open={qrOpen}
         onClose={closeQrModal}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
+        title={t("profile:dialog.qr.title")}
+        size="sm"
+        footer={
+          <Button onClick={closeQrModal} variant="solid" className="rounded-ue-lg">
+            {t("common:buttons.done")}
+          </Button>
+        }
       >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>
-          {t("profile:dialog.qr.title")}
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1.2,
-            minHeight: 320,
-          }}
-        >
-          <Box
-            sx={{
-              background: "#fff",
-              p: 2,
-              borderRadius: 3,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`,
-            }}
-          >
+        <div className="flex flex-col items-center gap-4">
+          <div className="rounded-ue-xl border border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent)] bg-white p-3 shadow-[0_16px_40px_rgba(6,11,25,0.24)]">
             <QRCodeSVG
               value={buildVCard()}
-              size={300}
+              size={260}
               level="H"
               includeMargin
               bgColor="#ffffff"
-              fgColor={theme.palette.primary.dark}
+              fgColor="#0f172a"
               imageSettings={{
                 src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
-                height: 56,
-                width: 56,
+                height: 48,
+                width: 48,
                 excavate: true,
               }}
             />
-          </Box>
-          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+          </div>
+          <p className="text-center text-sm text-[color:var(--secondary-text)]">
             {t("profile:dialog.qr.hint")}
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
-          <Button
-            onClick={closeQrModal}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("common:buttons.done")}
-          </Button>
-        </DialogActions>
+          </p>
+        </div>
       </Dialog>
 
       <Dialog
-        open={!!achOpen}
+        open={Boolean(achOpen)}
         onClose={() => setAchOpen(null)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
+        title={achOpen?.name ?? ""}
+        size="sm"
+        footer={
+          <Button onClick={() => setAchOpen(null)} variant="solid" className="rounded-ue-lg">
+            {t("profile:dialog.achievement.close")}
+          </Button>
+        }
       >
-        <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
-        <DialogContent sx={{ display: "grid", gap: 1.2 }}>
-          {achOpen?.issuer && (
-            <Typography>
-              {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
-            </Typography>
-          )}
-          {achOpen?.date && (
-            <Typography>{t("profile:dialog.achievement.date", { date: achOpen.date })}</Typography>
-          )}
-          {achOpen?.url && (
+        <div className="space-y-3 text-sm">
+          {achOpen?.issuer ? (
+            <p>{t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}</p>
+          ) : null}
+          {achOpen?.date ? (
+            <p>{t("profile:dialog.achievement.date", { date: achOpen.date })}</p>
+          ) : null}
+          {achOpen?.url ? (
             <Button
-              variant="outlined"
-              className="glass--btn"
+              as="a"
               href={achOpen.url}
               target="_blank"
               rel="noreferrer"
-              sx={{ fontWeight: 800 }}
+              variant="outline"
+              className="rounded-ue-lg"
             >
               {t("profile:dialog.achievement.openLink")}
             </Button>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setAchOpen(null)}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("profile:dialog.achievement.close")}
-          </Button>
-        </DialogActions>
+          ) : null}
+        </div>
       </Dialog>
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={2600}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
-      >
-        <Alert
-          onClose={() => setSnack(null)}
-          severity={snack?.sev || "info"}
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
-          {snackMessage}
-        </Alert>
-      </Snackbar>
+      <Snackbar snack={snack} message={snackMessage} onClose={() => setSnack(null)} />
     </>
   )
 }
