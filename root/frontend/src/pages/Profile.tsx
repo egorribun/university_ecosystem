@@ -41,7 +41,9 @@ type SnackState = {
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const reduced = useReducedMotion()
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
@@ -186,9 +188,13 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           <div className="flex items-center gap-2 w-full">
             <div className="flex-1 h-1.5 bg-[#2a2a2a] rounded-full overflow-hidden">
               <div
+                role="progressbar"
+                aria-valuenow={progress}
+                aria-valuemin={0}
+                aria-valuemax={duration}
+                aria-label={t("profile:nowPlaying.progress")}
                 className="h-full bg-[#1db954] rounded-full transition-all duration-200"
                 style={{ width: `${pct}%` }}
-                aria-label={t("profile:nowPlaying.progress")}
               />
             </div>
             <span className="np-time text-xs text-[#b3b3b3] whitespace-nowrap tabular-nums">
@@ -219,9 +225,17 @@ export default function Profile() {
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
   const reduceMotion =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  const isTwoCol = typeof window !== "undefined" && window.matchMedia("(min-width: 1400px)").matches
-  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 600px)").matches
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const isTwoCol =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(min-width: 1400px)").matches
+  const isMobile =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(max-width: 600px)").matches
   const reduced = useReducedMotion()
   const { t } = useTranslation(["profile", "common"])
   const [scrollY, setScrollY] = useState(0)
