@@ -653,7 +653,13 @@ export default function Profile() {
                                 transition={
                                   isTest || reduced
                                     ? { duration: 0 }
-                                    : { delay: idx * 0.08, duration: 0.5, type: "spring", stiffness: 400, damping: 28 }
+                                    : {
+                                        delay: idx * 0.08,
+                                        duration: 0.5,
+                                        type: "spring",
+                                        stiffness: 400,
+                                        damping: 28,
+                                      }
                                 }
                                 className="glass--chip inline-flex items-center rounded-full border border-glass-border/80 bg-glass/90 px-5 py-2.5 text-sm font-extrabold tracking-wide shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-[0_8px_20px_rgba(0,0,0,0.2)] dark:border-glass-border/60 dark:bg-glass/80 dark:shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
                               >
@@ -734,11 +740,7 @@ export default function Profile() {
                           <div className="group flex items-center justify-between gap-5 rounded-2xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/40 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
                             <div className="flex min-w-0 flex-1 items-center gap-4">
                               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0088cc]/10 text-[#0088cc] transition-all duration-300 group-hover:scale-110 group-hover:bg-[#0088cc]/15 dark:bg-[#2aabee]/10 dark:text-[#2aabee] dark:group-hover:bg-[#2aabee]/15">
-                                <svg
-                                  className="h-5 w-5"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
+                                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
                                   <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z" />
                                 </svg>
                               </div>
@@ -829,7 +831,9 @@ export default function Profile() {
                             onChange={(e) => setTelegram(e.target.value)}
                             className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
-                          <p className="-mt-2 text-xs font-medium text-hint/80">{t("profile:form.telegramHint")}</p>
+                          <p className="-mt-2 text-xs font-medium text-hint/80">
+                            {t("profile:form.telegramHint")}
+                          </p>
 
                           {user!.role === "teacher" && (
                             <>
@@ -924,7 +928,9 @@ export default function Profile() {
                               disabled={saving}
                               className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-8 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 disabled:pointer-events-none disabled:opacity-60 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
                             >
-                              <span className="relative z-10">{saving ? t("profile:form.saving") : t("profile:form.save")}</span>
+                              <span className="relative z-10">
+                                {saving ? t("profile:form.saving") : t("profile:form.save")}
+                              </span>
                               <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                             </button>
                             <button
@@ -1000,7 +1006,13 @@ export default function Profile() {
                                         transition={
                                           isTest || reduced
                                             ? { duration: 0 }
-                                            : { delay: idx * 0.07, duration: 0.4, type: "spring", stiffness: 400, damping: 26 }
+                                            : {
+                                                delay: idx * 0.07,
+                                                duration: 0.4,
+                                                type: "spring",
+                                                stiffness: 400,
+                                                damping: 26,
+                                              }
                                         }
                                         onClick={() =>
                                           setAchOpen({
@@ -1117,18 +1129,27 @@ export default function Profile() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-glass-border/50 px-7 py-7">
-              <h2 className="text-2xl font-black tracking-tight text-page-foreground">{achOpen.name}</h2>
+              <h2 className="text-2xl font-black tracking-tight text-page-foreground">
+                {achOpen.name}
+              </h2>
             </div>
             <div className="flex flex-col gap-5 px-7 py-7">
               {achOpen.issuer && (
                 <div className="flex items-start gap-4 rounded-2xl border border-glass-border/50 bg-glass/40 p-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                      />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-secondary/90">{t("profile:dialog.achievement.organizer", { issuer: "" })}</p>
+                    <p className="text-sm font-semibold text-secondary/90">
+                      {t("profile:dialog.achievement.organizer", { issuer: "" })}
+                    </p>
                     <p className="mt-1 font-bold text-page-foreground">{achOpen.issuer}</p>
                   </div>
                 </div>
@@ -1137,11 +1158,18 @@ export default function Profile() {
                 <div className="flex items-start gap-4 rounded-2xl border border-glass-border/50 bg-glass/40 p-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-secondary/90">{t("profile:dialog.achievement.date", { date: "" })}</p>
+                    <p className="text-sm font-semibold text-secondary/90">
+                      {t("profile:dialog.achievement.date", { date: "" })}
+                    </p>
                     <p className="mt-1 font-bold text-page-foreground">{achOpen.date}</p>
                   </div>
                 </div>
@@ -1154,7 +1182,12 @@ export default function Profile() {
                   className="group relative mt-2 inline-flex items-center justify-center gap-2 overflow-hidden rounded-2xl border border-glass-border/60 bg-glass/60 px-6 py-4 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:bg-glass/80 hover:shadow-lg dark:border-glass-border/50"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                   </svg>
                   <span>{t("profile:dialog.achievement.openLink")}</span>
                 </a>
@@ -1190,7 +1223,8 @@ export default function Profile() {
                 "bg-gradient-to-r from-[#2e7d32] via-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
               snack.sev === "error" &&
                 "bg-gradient-to-r from-[#d32f2f] via-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
-              snack.sev === "info" && "bg-gradient-to-r from-[#005ea2] via-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
+              snack.sev === "info" &&
+                "bg-gradient-to-r from-[#005ea2] via-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
               snack.sev === "warning" &&
                 "bg-gradient-to-r from-[#f59e0b] via-[#f59e0b] to-[#b45309] text-[#fff8e1]"
             )}
@@ -1198,26 +1232,48 @@ export default function Profile() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
               {snack.sev === "success" && (
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               )}
               {snack.sev === "error" && (
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               )}
               {snack.sev === "info" && (
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               )}
               {snack.sev === "warning" && (
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               )}
             </div>
-            <span className="flex-1 text-sm font-bold leading-relaxed sm:text-base">{snackMessage}</span>
+            <span className="flex-1 text-sm font-bold leading-relaxed sm:text-base">
+              {snackMessage}
+            </span>
             <button
               onClick={() => setSnack(null)}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 hover:scale-110 hover:bg-white/20 active:scale-95"
