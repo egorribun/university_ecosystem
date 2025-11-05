@@ -127,19 +127,19 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
           : t("profile:nowPlaying.openSpotify")
       }
-      className="group block w-full no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-nav-link rounded-2xl dark:focus-visible:ring-nav-hover"
+      className="block w-full no-underline"
     >
       <motion.div
         initial={isTest || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        whileHover={reduced ? {} : { y: -2, scale: 1.01 }}
-        whileTap={reduced ? {} : { scale: 0.99 }}
+        whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
+        whileTap={reduced ? {} : { scale: 0.997 }}
         transition={
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
-        className="relative grid w-full grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3 overflow-hidden rounded-2xl border border-glass-border/60 bg-gradient-to-br from-glass/80 via-glass/70 to-glass/60 px-5 py-5 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-300 hover:border-nav-link/40 hover:shadow-[0_12px_32px_rgba(0,94,162,0.2)] dark:border-glass-border/50 dark:from-glass/60 dark:via-glass/50 dark:to-glass/40 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)] dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_12px_32px_rgba(127,182,230,0.18)]"
+        className="relative grid w-full grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 overflow-hidden rounded-3xl border border-[#1db95433] bg-[#121212] px-4 py-4 shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition-all duration-300"
       >
-        <div className="relative h-16 w-16 overflow-hidden rounded-xl shadow-[0_8px_20px_rgba(0,0,0,0.25)] ring-2 ring-glass-border/30 transition-all duration-300 group-hover:ring-nav-link/40 dark:ring-glass-border/20 dark:group-hover:ring-nav-link-hover/40">
+        <div className="relative h-14 w-14 overflow-hidden rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
           <img
             src={data.album_image_url ?? ""}
             alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
@@ -147,40 +147,37 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             decoding="async"
             referrerPolicy="no-referrer"
             className={cn(
-              "h-full w-full rounded-xl object-cover",
+              "h-full w-full rounded-2xl object-cover",
               !reduced &&
-                "scale-[1.015] transition-transform duration-[900ms] ease-out group-hover:scale-[1.03]"
+                "scale-[1.012] transition-transform duration-[900ms] ease-out hover:scale-[1.02]"
             )}
           />
         </div>
-        <div className="flex min-w-0 flex-col gap-2.5" aria-live="polite">
-          <h3 className="text-base font-extrabold leading-tight tracking-tight text-page-foreground line-clamp-1">
+        <div className="flex min-w-0 flex-col gap-2" aria-live="polite">
+          <h3 className="text-base font-extrabold leading-tight tracking-tight text-white">
             {data.track_name || "—"}
           </h3>
-          <p className="text-sm font-medium text-secondary/90 line-clamp-1">
-            {data.artists.join(", ")}
-          </p>
+          <p className="text-sm text-[#b3b3b3] opacity-90">{data.artists.join(", ")}</p>
           {!data.is_playing && (
-            <span className="inline-flex w-fit items-center rounded-full border border-glass-border/60 bg-glass/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-secondary/80 backdrop-blur-sm dark:border-glass-border/50 dark:bg-glass/50">
+            <span className="inline-flex w-fit items-center rounded-full border border-gray-600 bg-gray-800 px-3 py-1 text-xs font-bold uppercase text-gray-300">
               {t("profile:nowPlaying.paused")}
             </span>
           )}
-          <div className="flex w-full items-center gap-3">
+          <div className="flex w-full items-center gap-2">
             <div
-              className="relative h-2 flex-1 overflow-hidden rounded-full bg-glass-border/40 dark:bg-glass-border/30"
+              className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[#2a2a2a]"
               role="progressbar"
               aria-label={t("profile:nowPlaying.progress")}
               aria-valuenow={Math.round(pct)}
               aria-valuemin={0}
               aria-valuemax={100}
             >
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-[#1db954] to-[#1ed760] shadow-[0_0_8px_rgba(29,185,84,0.4)]"
+              <div
+                className="h-full rounded-full bg-[#1db954] transition-all"
                 style={{ width: `${pct}%` }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
               />
             </div>
-            <span className="whitespace-nowrap text-xs font-medium text-secondary/80">
+            <span className="whitespace-nowrap text-xs text-[#b3b3b3]">
               {fmt(progress)} / {fmt(duration)}
             </span>
           </div>
@@ -193,20 +190,15 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
-      className="group relative flex min-h-[52px] items-center gap-4 rounded-xl border border-glass-border/50 bg-gradient-to-br from-glass/50 via-glass/40 to-glass/30 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/50 hover:bg-glass/60 hover:shadow-[0_8px_24px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:from-glass/40 dark:via-glass/30 dark:to-glass/20 dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_8px_24px_rgba(127,182,230,0.12)]"
-    >
+    <div className="group flex min-h-[48px] items-center gap-4 rounded-2xl border border-glass-border bg-gradient-to-br from-glass-tint1/50 via-glass-tint2/30 to-transparent px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:shadow-[0_8px_24px_rgba(0,94,162,0.18)] dark:border-glass-border/60 dark:from-glass-tint1/40 dark:via-glass-tint2/20 dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_8px_24px_rgba(127,182,230,0.15)]">
       <div className="flex h-2.5 w-2.5 shrink-0 items-center justify-center">
-        <div className="h-2.5 w-2.5 rounded-full bg-nav-link shadow-[0_0_0_4px_rgba(15,79,170,0.15)] transition-all duration-300 group-hover:scale-125 group-hover:shadow-[0_0_0_6px_rgba(15,79,170,0.25)] dark:bg-nav-link-hover dark:shadow-[0_0_0_4px_rgba(127,182,230,0.18)] dark:group-hover:shadow-[0_0_0_6px_rgba(127,182,230,0.3)]" />
+        <div className="h-2.5 w-2.5 rounded-full bg-nav-link shadow-[0_0_0_4px_rgba(15,79,170,0.18)] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_0_6px_rgba(15,79,170,0.25)] dark:bg-nav-link-hover dark:shadow-[0_0_0_4px_rgba(127,182,230,0.22)] dark:group-hover:shadow-[0_0_0_6px_rgba(127,182,230,0.35)]" />
       </div>
       <p className="flex-1 text-sm leading-relaxed text-page-foreground">
         <span className="font-bold opacity-90">{label}:</span>{" "}
         <span className="font-medium opacity-95">{value}</span>
       </p>
-    </motion.div>
+    </div>
   )
 }
 
@@ -572,14 +564,14 @@ export default function Profile() {
         >
           <main
             id="main"
-            className="profile-page relative flex min-h-screen flex-col px-4 py-12 sm:px-6 sm:py-16 md:px-8 md:py-20 lg:px-10 lg:py-24"
+            className="profile-page relative flex min-h-screen flex-col px-4 py-16 sm:px-6 sm:py-20 md:px-8 md:py-24 lg:py-28"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
             <div className="relative z-0 mx-auto w-full max-w-7xl">
               <motion.div
                 ref={containerRef}
-                className="glass profile-card relative overflow-hidden rounded-3xl backdrop-blur-xl shadow-[0_20px_60px_-20px_rgba(0,0,0,0.3)] sm:rounded-[2rem] md:rounded-[2.5rem] lg:rounded-[2.75rem] dark:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
+                className="glass profile-card relative overflow-hidden rounded-[2rem] px-6 py-10 backdrop-blur-xl sm:px-10 sm:py-12 md:rounded-[2.5rem] md:px-14 md:py-14 lg:px-20 lg:py-16"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.96, y: reduced ? 0 : 12, scale: 0.99 }
                 }
@@ -590,16 +582,11 @@ export default function Profile() {
                     : { type: "spring", stiffness: 480, damping: 32, mass: 0.8 }
                 }
               >
-                <div className="grid grid-cols-1 items-start gap-8 px-6 py-8 sm:gap-10 sm:px-8 sm:py-10 md:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] md:gap-12 md:px-10 md:py-12 lg:gap-16 lg:px-12 lg:py-14">
+                <div className="grid grid-cols-1 items-start gap-10 md:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] md:gap-14 lg:gap-20">
                   {/* Left Column */}
-                  <div className="flex flex-col gap-6 sm:gap-8 md:gap-10">
+                  <div className="flex flex-col gap-8 md:gap-10 lg:gap-12">
                     {/* Hero Card */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, delay: 0.1 }}
-                      className="glass relative flex min-h-[360px] flex-col items-center justify-end overflow-hidden rounded-2xl shadow-[0_20px_60px_-20px_rgba(0,0,0,0.25)] transition-all duration-500 hover:shadow-[0_28px_80px_-20px_rgba(0,0,0,0.35)] sm:min-h-[400px] md:min-h-[420px] md:rounded-[2rem] lg:min-h-[460px] dark:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] dark:hover:shadow-[0_28px_80px_-20px_rgba(0,0,0,0.65)]"
-                    >
+                    <div className="glass relative flex min-h-[340px] flex-col items-center justify-end overflow-hidden rounded-[2rem] pb-20 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.3)] transition-all duration-500 hover:shadow-[0_28px_80px_-20px_rgba(0,0,0,0.4)] sm:min-h-[380px] md:min-h-[400px] md:rounded-[2.5rem] lg:min-h-[440px] dark:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] dark:hover:shadow-[0_28px_80px_-20px_rgba(0,0,0,0.7)]">
                       <div
                         className="absolute inset-0 bg-cover bg-center transition-transform duration-[1400ms] ease-out"
                         style={{
@@ -611,14 +598,8 @@ export default function Profile() {
                       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-black/40 to-black/90 dark:from-black/10 dark:via-black/50 dark:to-black/95" />
 
                       {/* Avatar */}
-                      <div className="absolute left-1/2 top-8 flex h-32 w-32 -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-10 sm:h-36 sm:w-36 md:h-40 md:w-40 lg:h-44 lg:w-44">
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ duration: 0.5, delay: 0.2 }}
-                          className="avatar-ring relative h-full w-full transition-all duration-500 hover:scale-105"
-                        >
-                          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-nav-link/20 via-nav-link-hover/10 to-transparent opacity-60 dark:from-nav-link-hover/30 dark:via-nav-link/20 dark:opacity-70" />
+                      <div className="absolute left-1/2 top-10 flex h-36 w-36 -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-12 sm:h-40 sm:w-40 md:h-44 md:w-44 lg:h-48 lg:w-48">
+                        <div className="avatar-ring relative h-full w-full transition-all duration-500 hover:scale-105">
                           <img
                             src={avatarImageUrl}
                             alt={user?.full_name ?? undefined}
@@ -626,47 +607,34 @@ export default function Profile() {
                             loading="lazy"
                             decoding="async"
                             referrerPolicy="no-referrer"
-                            className="relative h-full w-full rounded-full object-cover ring-4 ring-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300 dark:ring-white/10"
+                            className="h-full w-full rounded-full object-cover text-4xl font-medium text-white/90 transition-all duration-300 md:text-5xl lg:text-6xl"
                           />
                           {isOnline && (
-                            <div className="absolute bottom-2 right-2 z-10 h-5 w-5 rounded-full bg-[#22c55e] shadow-[0_0_0_3px_rgba(0,0,0,0.2),0_4px_12px_rgba(34,197,94,0.5)] ring-2 ring-white/60 transition-all duration-300 dark:ring-white/40 md:h-6 md:w-6">
+                            <div className="absolute bottom-2 right-2 z-10 h-5 w-5 rounded-full bg-[#22c55e] shadow-[0_0_0_3px_rgba(0,0,0,0.2),0_4px_12px_rgba(34,197,94,0.5)] transition-all duration-300 md:h-6 md:w-6">
                               {!reduced && (
                                 <div className="absolute -inset-2 animate-[onlinePulse_1.8s_ease-in-out_infinite] rounded-full border-2 border-[#22c55e]/50" />
                               )}
                             </div>
                           )}
-                        </motion.div>
+                        </div>
                       </div>
 
-                      <div className="relative z-10 w-full px-6 pt-28 text-center sm:px-8 sm:pt-32 md:px-10 md:text-left lg:px-12">
-                        <div className="flex flex-col gap-6">
-                          <div className="space-y-2.5">
-                            <motion.h1
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.4, delay: 0.3 }}
-                              className="profile-name text-[clamp(1.75rem,3.5vw,3rem)] font-black leading-[1.1] tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)] text-white"
+                      <div className="relative z-10 w-full px-6 pt-28 text-center sm:px-8 sm:pt-32 md:px-12 md:text-left lg:px-14">
+                        <div className="flex flex-col gap-7">
+                          <div className="space-y-3">
+                            <h1
+                              className="profile-name text-[clamp(1.85rem,3.5vw,3.2rem)] font-black leading-[1.1] tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
                               data-testid="profile-name"
                             >
                               {user!.full_name}
-                            </motion.h1>
+                            </h1>
                             {!!user?.position && user?.role === "teacher" && (
-                              <motion.p
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.4, delay: 0.35 }}
-                                className="profile-subtitle text-base font-semibold drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] text-white/90 sm:text-lg"
-                              >
+                              <p className="profile-subtitle mt-2.5 text-base font-semibold drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] sm:text-lg">
                                 {user.position}
-                              </motion.p>
+                              </p>
                             )}
                           </div>
-                          <motion.div
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.4, delay: 0.4 }}
-                            className="flex flex-wrap items-center justify-center gap-2.5 md:justify-start"
-                          >
+                          <div className="flex flex-wrap items-center justify-center gap-3 md:justify-start">
                             {[
                               user!.role === "teacher"
                                 ? t("profile:chips.teacher")
@@ -686,34 +654,29 @@ export default function Profile() {
                                   isTest || reduced
                                     ? { duration: 0 }
                                     : {
-                                        delay: 0.45 + idx * 0.08,
+                                        delay: idx * 0.08,
                                         duration: 0.5,
                                         type: "spring",
                                         stiffness: 400,
                                         damping: 28,
                                       }
                                 }
-                                className="glass--chip inline-flex items-center rounded-full border border-glass-border/70 bg-glass/80 px-4 py-2 text-sm font-extrabold tracking-wide shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:border-nav-link/50 hover:shadow-[0_8px_20px_rgba(0,94,162,0.2)] dark:border-glass-border/60 dark:bg-glass/70 dark:shadow-[0_4px_12px_rgba(0,0,0,0.3)] dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.18)]"
+                                className="glass--chip inline-flex items-center rounded-full border border-glass-border/80 bg-glass/90 px-5 py-2.5 text-sm font-extrabold tracking-wide shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-[0_8px_20px_rgba(0,0,0,0.2)] dark:border-glass-border/60 dark:bg-glass/80 dark:shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
                               >
                                 {chip}
                               </motion.span>
                             ))}
-                          </motion.div>
+                          </div>
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
 
                     {/* Contact Card */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, delay: 0.2 }}
-                      className="glass relative flex flex-col gap-6 overflow-hidden rounded-2xl bg-glass/60 p-6 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-300 hover:shadow-[0_12px_32px_rgba(0,0,0,0.16)] sm:p-8 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
-                    >
+                    <div className="glass relative flex flex-col gap-7 overflow-hidden rounded-[2rem] bg-glass/60 p-7 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-300 hover:shadow-[0_12px_32px_rgba(0,0,0,0.16)] sm:p-9 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
                       <button
                         onClick={openQrModal}
                         data-testid="open-qr"
-                        className="group relative flex w-full items-center justify-center overflow-hidden rounded-xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-6 py-3.5 font-extrabold tracking-wide text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 focus-visible:ring-offset-2 active:translate-y-0 active:scale-[0.98] dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
+                        className="glass--btn group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-7 py-4 font-extrabold tracking-wide text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 active:translate-y-0 active:scale-[0.98] dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
                       >
                         <span className="relative z-10">{t("profile:buttons.showQr")}</span>
                         <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -721,11 +684,11 @@ export default function Profile() {
 
                       <div className="h-px bg-gradient-to-r from-transparent via-nav-link/30 to-transparent dark:via-nav-link-hover/30" />
 
-                      <div className="contact-links flex flex-col gap-4">
+                      <div className="contact-links flex flex-col gap-6">
                         {/* Email */}
-                        <div className="group flex items-center justify-between gap-4 rounded-xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/50 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
-                          <div className="flex min-w-0 flex-1 items-center gap-3.5">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-nav-link/10 text-nav-link transition-all duration-300 group-hover:scale-110 group-hover:bg-nav-link/15 dark:bg-nav-link-hover/10 dark:text-nav-link-hover dark:group-hover:bg-nav-link-hover/15">
+                        <div className="group flex items-center justify-between gap-5 rounded-2xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/40 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
+                          <div className="flex min-w-0 flex-1 items-center gap-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link transition-all duration-300 group-hover:scale-110 group-hover:bg-nav-link/15 dark:bg-nav-link-hover/10 dark:text-nav-link-hover dark:group-hover:bg-nav-link-hover/15">
                               <svg
                                 className="h-5 w-5"
                                 fill="none"
@@ -754,7 +717,7 @@ export default function Profile() {
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-glass-border/60 bg-glass/70 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-nav-link/50 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-100 dark:border-glass-border/50 dark:bg-glass/60 dark:text-nav-link-hover dark:hover:border-nav-link-hover/50"
+                            className="glass--btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-glass-border/60 bg-glass/70 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-nav-link/50 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-100 dark:border-glass-border/50 dark:bg-glass/60 dark:text-nav-link-hover dark:hover:border-nav-link-hover/50"
                           >
                             <svg
                               className="h-5 w-5"
@@ -774,9 +737,9 @@ export default function Profile() {
 
                         {/* Telegram */}
                         {!!user!.telegram && (
-                          <div className="group flex items-center justify-between gap-4 rounded-xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/50 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
-                            <div className="flex min-w-0 flex-1 items-center gap-3.5">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0088cc]/10 text-[#0088cc] transition-all duration-300 group-hover:scale-110 group-hover:bg-[#0088cc]/15 dark:bg-[#2aabee]/10 dark:text-[#2aabee] dark:group-hover:bg-[#2aabee]/15">
+                          <div className="group flex items-center justify-between gap-5 rounded-2xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/40 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
+                            <div className="flex min-w-0 flex-1 items-center gap-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0088cc]/10 text-[#0088cc] transition-all duration-300 group-hover:scale-110 group-hover:bg-[#0088cc]/15 dark:bg-[#2aabee]/10 dark:text-[#2aabee] dark:group-hover:bg-[#2aabee]/15">
                                 <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
                                   <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z" />
                                 </svg>
@@ -797,7 +760,7 @@ export default function Profile() {
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-glass-border/60 bg-glass/70 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-nav-link/50 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-100 dark:border-glass-border/50 dark:bg-glass/60 dark:text-nav-link-hover dark:hover:border-nav-link-hover/50"
+                              className="glass--btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-glass-border/60 bg-glass/70 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-nav-link/50 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-100 dark:border-glass-border/50 dark:bg-glass/60 dark:text-nav-link-hover dark:hover:border-nav-link-hover/50"
                             >
                               <svg
                                 className="h-5 w-5"
@@ -816,7 +779,7 @@ export default function Profile() {
                           </div>
                         )}
                       </div>
-                    </motion.div>
+                    </div>
 
                     {/* Now Playing */}
                     {showNowPlaying && nowPlaying && (
@@ -828,10 +791,10 @@ export default function Profile() {
                             ? { duration: 0 }
                             : { duration: 0.6, type: "spring", stiffness: 400, damping: 28 }
                         }
-                        className="flex flex-col gap-4"
+                        className="flex flex-col gap-5"
                       >
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#1db954] shadow-[0_0_8px_rgba(29,185,84,0.5)]" />
+                        <div className="flex items-center gap-3">
+                          <div className="h-1 w-1 rounded-full bg-[#1db954]" />
                           <p className="text-xs font-extrabold uppercase tracking-[0.15em] text-secondary/90 dark:text-secondary/80">
                             {t("profile:sections.nowPlaying")}
                           </p>
@@ -842,36 +805,31 @@ export default function Profile() {
                   </div>
 
                   {/* Right Column */}
-                  <div className="relative mt-8 w-full md:mt-0">
+                  <div className="relative mt-36 w-full md:mt-0">
                     {edit ? (
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.4 }}
-                        className="glass profile-edit relative w-full overflow-hidden rounded-2xl bg-glass/60 p-6 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:p-8 md:rounded-[2rem] md:p-10 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
-                      >
-                        <div className="flex flex-col gap-5">
+                      <div className="glass profile-edit relative w-full overflow-hidden rounded-[2rem] bg-glass/60 p-7 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:p-9 md:rounded-[2.5rem] md:p-11 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
+                        <div className="flex flex-col gap-6">
                           <input
                             type="text"
                             placeholder={t("profile:form.name")}
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
                             maxLength={120}
-                            className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                            className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
                           <input
                             type="email"
                             placeholder={t("profile:form.email")}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                            className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
                           <input
                             type="text"
                             placeholder={t("profile:form.telegram")}
                             value={telegram}
                             onChange={(e) => setTelegram(e.target.value)}
-                            className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                            className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
                           <p className="-mt-2 text-xs font-medium text-hint/80">
                             {t("profile:form.telegramHint")}
@@ -884,14 +842,14 @@ export default function Profile() {
                                 placeholder={t("profile:form.department")}
                                 value={department}
                                 onChange={(e) => setDepartment(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.position")}
                                 value={position}
                                 onChange={(e) => setPosition(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                             </>
                           )}
@@ -903,72 +861,72 @@ export default function Profile() {
                                 value={about}
                                 onChange={(e) => setAbout(e.target.value)}
                                 rows={3}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.recordBookNumber")}
                                 value={recordBookNumber}
                                 onChange={(e) => setRecordBookNumber(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.status")}
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.institute")}
                                 value={institute}
                                 onChange={(e) => setInstitute(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.course")}
                                 value={course}
                                 onChange={(e) => setCourse(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.educationLevel")}
                                 value={educationLevel}
                                 onChange={(e) => setEducationLevel(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.track")}
                                 value={track}
                                 onChange={(e) => setTrack(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.program")}
                                 value={program}
                                 onChange={(e) => setProgram(e.target.value)}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <textarea
                                 placeholder={t("profile:form.achievements")}
                                 value={achievements}
                                 onChange={(e) => setAchievements(e.target.value)}
                                 rows={2}
-                                className="w-full rounded-xl border border-glass-border/60 bg-surface/80 px-5 py-3.5 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                             </>
                           )}
 
-                          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center">
                             <button
                               onClick={handleSave}
                               disabled={saving}
-                              className="group relative flex w-full items-center justify-center overflow-hidden rounded-xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-7 py-3.5 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
+                              className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-8 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 disabled:pointer-events-none disabled:opacity-60 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
                             >
                               <span className="relative z-10">
                                 {saving ? t("profile:form.saving") : t("profile:form.save")}
@@ -977,26 +935,21 @@ export default function Profile() {
                             </button>
                             <button
                               onClick={handleCancel}
-                              className="glass--btn flex w-full items-center justify-center rounded-xl border border-glass-border/60 bg-glass/60 px-7 py-3.5 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-glass-border hover:bg-glass/80 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 focus-visible:ring-offset-2 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:border-glass-border/50 dark:bg-glass/50"
+                              className="glass--btn flex w-full items-center justify-center rounded-2xl border border-glass-border/60 bg-glass/60 px-8 py-4 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-glass-border hover:bg-glass/80 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:border-glass-border/50 dark:bg-glass/50"
                             >
                               {t("profile:form.cancel")}
                             </button>
                           </div>
                         </div>
-                      </motion.div>
+                      </div>
                     ) : (
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.4 }}
-                        className="glass profile-card relative w-full overflow-hidden rounded-2xl bg-glass/60 p-6 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:p-8 md:rounded-[2rem] md:p-10 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
-                      >
-                        <h2 className="mb-7 text-[clamp(1.4rem,2.5vw,1.875rem)] font-black tracking-tight text-page-foreground">
+                      <div className="glass profile-card relative w-full overflow-hidden rounded-[2rem] bg-glass/60 p-7 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:p-9 md:rounded-[2.5rem] md:p-11 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
+                        <h2 className="mb-8 text-[clamp(1.4rem,2.5vw,2rem)] font-black tracking-tight text-page-foreground">
                           {t("profile:sections.details")}
                         </h2>
-                        <div className="glass overflow-hidden rounded-2xl border border-glass-border/60 bg-glass/50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] dark:border-glass-border/50 dark:bg-glass/40">
+                        <div className="glass overflow-hidden rounded-[2rem] border border-glass-border/60 bg-glass/50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] dark:border-glass-border/50 dark:bg-glass/40">
                           <details open className="group">
-                            <summary className="flex cursor-pointer items-center justify-between border-b border-glass-border/50 px-6 py-5 transition-all duration-300 hover:bg-glass/40 dark:border-glass-border/40 dark:hover:bg-glass/30">
+                            <summary className="flex cursor-pointer items-center justify-between border-b border-glass-border/50 px-7 py-6 transition-all duration-300 hover:bg-glass/40 dark:border-glass-border/40 dark:hover:bg-glass/30">
                               <h3 className="text-lg font-black tracking-tight text-page-foreground">
                                 {t("profile:sections.profileDetails")}
                               </h3>
@@ -1014,8 +967,8 @@ export default function Profile() {
                                 />
                               </svg>
                             </summary>
-                            <div className="px-6 py-6">
-                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="px-7 py-7">
+                              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                                 {[
                                   { label: t("profile:form.about"), value: user!.about },
                                   { label: t("profile:form.status"), value: user!.status },
@@ -1037,14 +990,14 @@ export default function Profile() {
                               </div>
 
                               {achievementsList.length > 0 && (
-                                <div className="mt-8">
-                                  <div className="mb-5 flex items-center gap-2.5">
-                                    <div className="h-1.5 w-1.5 rounded-full bg-nav-link shadow-[0_0_8px_rgba(15,79,170,0.4)] dark:bg-nav-link-hover dark:shadow-[0_0_8px_rgba(127,182,230,0.4)]" />
+                                <div className="mt-10">
+                                  <div className="mb-6 flex items-center gap-3">
+                                    <div className="h-1 w-1 rounded-full bg-nav-link dark:bg-nav-link-hover" />
                                     <h3 className="text-base font-extrabold uppercase tracking-[0.1em] text-page-foreground/90">
                                       {t("profile:sections.achievements")}
                                     </h3>
                                   </div>
-                                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
+                                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
                                     {achievementsList.map((ach, idx) => (
                                       <motion.button
                                         key={ach.key}
@@ -1069,7 +1022,7 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        className="glass--chip group inline-flex w-full items-center justify-center rounded-xl border border-glass-border/60 bg-gradient-to-br from-glass/70 via-glass/50 to-glass/60 px-5 py-4 text-sm font-extrabold leading-snug text-page-foreground backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:shadow-[0_12px_28px_rgba(0,94,162,0.18)] dark:border-glass-border/50 dark:from-glass/60 dark:via-glass/40 dark:to-glass/50 dark:shadow-[0_4px_12px_rgba(0,0,0,0.2)] dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_12px_28px_rgba(127,182,230,0.15)]"
+                                        className="glass--chip group inline-flex w-full items-center justify-center rounded-2xl border border-glass-border/60 bg-gradient-to-br from-glass/70 via-glass/50 to-glass/60 px-5 py-4 text-sm font-extrabold leading-snug text-page-foreground backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:shadow-[0_12px_28px_rgba(0,94,162,0.18)] dark:border-glass-border/50 dark:from-glass/60 dark:via-glass/40 dark:to-glass/50 dark:shadow-[0_4px_12px_rgba(0,0,0,0.2)] dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_12px_28px_rgba(127,182,230,0.15)]"
                                       >
                                         <span className="relative">
                                           {ach.name}
@@ -1083,7 +1036,7 @@ export default function Profile() {
                             </div>
                           </details>
                         </div>
-                      </motion.div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1114,7 +1067,7 @@ export default function Profile() {
             initial={{ opacity: 0, scale: 0.92, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 28 }}
-            className="glass relative w-full max-w-md overflow-hidden rounded-2xl bg-glass/95 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] dark:bg-glass/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
+            className="glass relative w-full max-w-md overflow-hidden rounded-[2rem] bg-glass/95 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] dark:bg-glass/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-glass-border/50 px-7 py-7 text-center">
@@ -1123,7 +1076,7 @@ export default function Profile() {
               </h2>
             </div>
             <div className="flex min-h-[340px] flex-col items-center justify-center gap-5 px-7 pb-7 pt-8">
-              <div className="rounded-2xl border border-nav-link/20 bg-white p-5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.3)] transition-all duration-300 hover:scale-105 dark:border-nav-link-hover/30 dark:shadow-[0_20px_50px_-20px_rgba(0,0,0,0.5)]">
+              <div className="rounded-[2rem] border border-nav-link/20 bg-white p-5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.3)] transition-all duration-300 hover:scale-105 dark:border-nav-link-hover/30 dark:shadow-[0_20px_50px_-20px_rgba(0,0,0,0.5)]">
                 <div
                   className="flex h-[280px] w-[280px] items-center justify-center text-sm font-medium text-nav-link sm:h-[300px] sm:w-[300px]"
                   dangerouslySetInnerHTML={{
@@ -1147,7 +1100,7 @@ export default function Profile() {
             <div className="flex justify-center border-t border-glass-border/50 px-7 py-6">
               <button
                 onClick={closeQrModal}
-                className="group relative flex items-center justify-center overflow-hidden rounded-xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-10 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 focus-visible:ring-offset-2 active:translate-y-0 active:scale-100 dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)]"
+                className="group relative flex items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-10 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 active:translate-y-0 active:scale-100 dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)]"
               >
                 <span className="relative z-10">{t("common:buttons.done")}</span>
                 <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -1172,7 +1125,7 @@ export default function Profile() {
             initial={{ opacity: 0, scale: 0.92, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 28 }}
-            className="glass relative w-full max-w-lg overflow-hidden rounded-2xl bg-glass/95 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] dark:bg-glass/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
+            className="glass relative w-full max-w-lg overflow-hidden rounded-[2rem] bg-glass/95 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] dark:bg-glass/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-glass-border/50 px-7 py-7">
@@ -1182,8 +1135,8 @@ export default function Profile() {
             </div>
             <div className="flex flex-col gap-5 px-7 py-7">
               {achOpen.issuer && (
-                <div className="flex items-start gap-4 rounded-xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:bg-glass/50 dark:bg-glass/30 dark:hover:bg-glass/40">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
+                <div className="flex items-start gap-4 rounded-2xl border border-glass-border/50 bg-glass/40 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
                         strokeLinecap="round"
@@ -1202,8 +1155,8 @@ export default function Profile() {
                 </div>
               )}
               {achOpen.date && (
-                <div className="flex items-start gap-4 rounded-xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:bg-glass/50 dark:bg-glass/30 dark:hover:bg-glass/40">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
+                <div className="flex items-start gap-4 rounded-2xl border border-glass-border/50 bg-glass/40 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
                         strokeLinecap="round"
@@ -1226,7 +1179,7 @@ export default function Profile() {
                   href={achOpen.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="group relative mt-2 inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl border border-glass-border/60 bg-glass/60 px-6 py-4 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:bg-glass/80 hover:shadow-lg dark:border-glass-border/50"
+                  className="group relative mt-2 inline-flex items-center justify-center gap-2 overflow-hidden rounded-2xl border border-glass-border/60 bg-glass/60 px-6 py-4 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:bg-glass/80 hover:shadow-lg dark:border-glass-border/50"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
@@ -1243,7 +1196,7 @@ export default function Profile() {
             <div className="flex justify-center border-t border-glass-border/50 px-7 py-6">
               <button
                 onClick={() => setAchOpen(null)}
-                className="group relative flex items-center justify-center overflow-hidden rounded-xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-10 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 focus-visible:ring-offset-2 active:translate-y-0 active:scale-100 dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)]"
+                className="group relative flex items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-10 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 active:translate-y-0 active:scale-100 dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)]"
               >
                 <span className="relative z-10">{t("profile:dialog.achievement.close")}</span>
                 <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -1265,7 +1218,7 @@ export default function Profile() {
             exit={{ opacity: 0, y: 24, scale: 0.92 }}
             transition={{ type: "spring", stiffness: 400, damping: 28 }}
             className={cn(
-              "flex min-w-[320px] items-center gap-4 rounded-xl px-6 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.25),0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-xl sm:min-w-[380px]",
+              "flex min-w-[320px] items-center gap-4 rounded-2xl px-7 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.25),0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-xl sm:min-w-[380px]",
               snack.sev === "success" &&
                 "bg-gradient-to-r from-[#2e7d32] via-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
               snack.sev === "error" &&
@@ -1276,7 +1229,7 @@ export default function Profile() {
                 "bg-gradient-to-r from-[#f59e0b] via-[#f59e0b] to-[#b45309] text-[#fff8e1]"
             )}
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
               {snack.sev === "success" && (
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
@@ -1323,7 +1276,7 @@ export default function Profile() {
             </span>
             <button
               onClick={() => setSnack(null)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-300 hover:scale-110 hover:bg-white/20 active:scale-95"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 hover:scale-110 hover:bg-white/20 active:scale-95"
               aria-label="Close"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
