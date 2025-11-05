@@ -6,6 +6,7 @@ import api from "../api/client"
 import type { User } from "@/types/User"
 import profileBg from "../assets/background.jpg"
 import guuLogo from "../assets/guu_logo.png"
+import spotifyLogo from "../assets/spotify_icon.png"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
@@ -762,9 +763,20 @@ export default function Profile() {
                         }
                         className="flex flex-col gap-3"
                       >
-                        <h3 className="text-xs uppercase tracking-[2.2px] font-bold text-secondary opacity-90">
-                          {t("profile:sections.nowPlaying")}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={spotifyLogo}
+                            alt="Spotify"
+                            width={16}
+                            height={16}
+                            style={{ display: "block", borderRadius: "50%" }}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                          <h3 className="text-xs uppercase tracking-[2.2px] font-bold text-secondary opacity-90">
+                            {t("profile:sections.nowPlaying")}
+                          </h3>
+                        </div>
                         <NowPlayingCard data={nowPlaying} />
                       </motion.div>
                     )}
