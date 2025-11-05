@@ -370,12 +370,12 @@
   }
 
   .profile-subtitle {
-    @apply font-semibold opacity-96;
+    @apply font-semibold opacity-95;
     color: var(--secondary-text);
   }
 
   body.dark .profile-subtitle {
     color: #c9d2df;
-    @apply opacity-96;
+    @apply opacity-95;
   }
 }
