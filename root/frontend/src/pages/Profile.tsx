@@ -9,63 +9,13 @@ import guuLogo from "../assets/guu_logo.png"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
-import {
-  Avatar,
-  Typography,
-  Box,
-  Paper,
-  Stack,
-  CircularProgress,
-  IconButton,
-  Snackbar,
-  Chip,
-  Alert,
-  LinearProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Container,
-  Divider,
-  Fade,
-  Grow,
-} from "@mui/material"
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
-import EmailIcon from "@mui/icons-material/Email"
-import TelegramIcon from "@mui/icons-material/Telegram"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import useMediaQuery from "@mui/material/useMediaQuery"
-import { alpha, useTheme } from "@mui/material/styles"
-import { keyframes } from "@mui/system"
-import { QRCodeSVG } from "qrcode.react"
 import { motion, useReducedMotion } from "framer-motion"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import type { NowPlaying } from "@/types/spotify"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
 
-const auraPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(255,255,255,.18); }
-  50% { box-shadow: 0 0 0 14px rgba(255,255,255,.03); }
-  100% { box-shadow: 0 0 0 0 rgba(255,255,255,.02); }
-`
-const chipHighlight = keyframes`
-  0% { border-color: rgba(255,255,255,.18); }
-  50% { border-color: rgba(255,255,255,.34); }
-  100% { border-color: rgba(255,255,255,.18); }
-`
-const onlinePulse = keyframes`
-  0% { transform: scale(1); opacity: .6; }
-  70% { transform: scale(1.8); opacity: 0; }
-  100% { transform: scale(1.8); opacity: 0; }
-`
-
-const MotionPaper = motion.create(Paper)
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
 type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
@@ -77,14 +27,7 @@ type SnackState = {
 }
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const theme = useTheme()
-  const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const reduced = useReducedMotion()
-  const isDark = theme.palette.mode === "dark"
-  const borderCol = isDark
-    ? alpha(theme.palette.common.white, 0.14)
-    : alpha(theme.palette.common.black, 0.12)
-  const textSecondary = theme.palette.text.secondary
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
 
@@ -139,7 +82,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     }
   }, [clampProgress, data.is_playing, data.progress_ms])
 
-  const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0
+  const shouldAnimate = !isTest && data.is_playing && !reduced && duration > 0
 
   useEffect(() => {
     if (!shouldAnimate) {
@@ -175,8 +118,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const href = data.track_url || "https://open.spotify.com"
 
   return (
-    <Box
-      component="a"
+    <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
@@ -185,154 +127,85 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
           : t("profile:nowPlaying.openSpotify")
       }
-      sx={{ display: "block", textDecoration: "none", width: "100%" }}
+      className="block w-full no-underline"
     >
-      <MotionPaper
-        elevation={0}
-        className="nowplaying--spotify"
-        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
+      <motion.div
+        initial={isTest || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
-        whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
+        whileHover={reduced ? {} : { y: -1, scale: 1.002 }}
+        whileTap={reduced ? {} : { scale: 0.997 }}
         transition={
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
-        sx={{
-          width: "100%",
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          alignItems: "center",
-          columnGap: 2,
-          rowGap: 1,
-          px: 2,
-          py: 1.8,
-          borderRadius: 3,
-          position: "relative",
-          overflow: "hidden",
-          border: `1px solid ${borderCol}`,
-          textDecoration: "none",
-          ["--glass-alpha" as any]: ".018",
-          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-        }}
+        className="relative grid w-full grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 overflow-hidden rounded-3xl border border-[#1db95433] bg-[#121212] px-4 py-4 shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition-all duration-300"
       >
-        <Box
-          sx={{
-            position: "relative",
-            width: 56,
-            height: 56,
-            borderRadius: 2,
-            overflow: "hidden",
-            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, isDark ? 0.35 : 0.18)}`,
-          }}
-        >
-          <Avatar
+        <div className="relative h-14 w-14 overflow-hidden rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
+          <img
             src={data.album_image_url ?? ""}
-            variant="rounded"
             alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
-            imgProps={{ loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }}
-            sx={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 2,
-              transform: prefersReduce || reduced ? "none" : "scale(1.012)",
-              transition:
-                prefersReduce || reduced ? "none" : "transform 900ms cubic-bezier(.22,.61,.36,1)",
-              "&:hover": prefersReduce || reduced ? undefined : { transform: "scale(1.02)" },
-            }}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={cn(
+              "h-full w-full rounded-2xl object-cover",
+              !reduced &&
+                "scale-[1.012] transition-transform duration-[900ms] ease-out hover:scale-[1.02]"
+            )}
           />
-        </Box>
-        <Box
-          sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}
-          aria-live="polite"
-        >
-          <Typography
-            className="np-title"
-            variant="body1"
-            sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: "-.01em" }}
-          >
+        </div>
+        <div className="flex min-w-0 flex-col gap-2" aria-live="polite">
+          <h3 className="text-base font-extrabold leading-tight tracking-tight text-white">
             {data.track_name || "—"}
-          </Typography>
-          <Typography className="np-art" variant="body2" sx={{ opacity: 0.9 }}>
-            {data.artists.join(", ")}
-          </Typography>
+          </h3>
+          <p className="text-sm text-[#b3b3b3] opacity-90">{data.artists.join(", ")}</p>
           {!data.is_playing && (
-            <Chip
-              size="small"
-              label={t("profile:nowPlaying.paused")}
-              color="default"
-              sx={{ alignSelf: "flex-start", textTransform: "uppercase", fontWeight: 700 }}
-              aria-hidden
-            />
+            <span className="inline-flex w-fit items-center rounded-full border border-gray-600 bg-gray-800 px-3 py-1 text-xs font-bold uppercase text-gray-300">
+              {t("profile:nowPlaying.paused")}
+            </span>
           )}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-            <LinearProgress
-              className="progress"
-              variant="determinate"
-              value={pct}
+          <div className="flex w-full items-center gap-2">
+            <div
+              className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[#2a2a2a]"
+              role="progressbar"
               aria-label={t("profile:nowPlaying.progress")}
-              sx={{ flex: 1, height: 6, borderRadius: 999 }}
-            />
-            <Typography
-              className="np-time"
-              variant="caption"
-              sx={{ color: textSecondary, whiteSpace: "nowrap" }}
+              aria-valuenow={Math.round(pct)}
+              aria-valuemin={0}
+              aria-valuemax={100}
             >
+              <div
+                className="h-full rounded-full bg-[#1db954] transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="whitespace-nowrap text-xs text-[#b3b3b3]">
               {fmt(progress)} / {fmt(duration)}
-            </Typography>
-          </Box>
-        </Box>
-      </MotionPaper>
-    </Box>
+            </span>
+          </div>
+        </div>
+      </motion.div>
+    </a>
   )
 })
 
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
-  const theme = useTheme()
-  const isDark = theme.palette.mode === "dark"
   if (value == null || value === "") return null
   return (
-    <Box
-      className="glass"
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "14px 1fr",
-        alignItems: "center",
-        gap: 1.2,
-        px: 1.2,
-        py: 1.1,
-        minHeight: 44,
-        borderRadius: 2,
-        border: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.12) : alpha(theme.palette.common.black, 0.1)}`,
-        ["--glass-alpha" as any]: ".016",
-        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-      }}
-    >
-      <Box
-        sx={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          bgcolor: theme.palette.info.main,
-          boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.22)}`,
-          justifySelf: "center",
-        }}
-      />
-      <Typography sx={{ lineHeight: 1.25 }}>
-        <b>{label}:</b> {value}
-      </Typography>
-    </Box>
+    <div className="group flex min-h-[44px] items-center gap-3 rounded-xl border border-glass-border bg-gradient-to-br from-glass-tint1/40 via-glass-tint2/20 to-transparent px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm transition-all duration-300 hover:border-nav-link/30 hover:shadow-[0_4px_12px_rgba(0,94,162,0.15)] dark:border-glass-border dark:hover:border-nav-link/40">
+      <div className="flex h-2 w-2 shrink-0 items-center justify-center">
+        <div className="h-2 w-2 rounded-full bg-nav-link shadow-[0_0_0_3px_rgba(15,79,170,0.22)] dark:bg-nav-link-hover dark:shadow-[0_0_0_3px_rgba(127,182,230,0.3)]" />
+      </div>
+      <p className="flex-1 text-sm leading-tight text-page-foreground">
+        <span className="font-bold">{label}:</span> {value}
+      </p>
+    </div>
   )
 }
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth()
-  const theme = useTheme()
   const [snack, setSnack] = useState<SnackState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const isTwoCol = useMediaQuery("(min-width:1400px)")
-  const isMobile = useMediaQuery("(max-width:600px)")
   const reduced = useReducedMotion()
   const { t } = useTranslation(["profile", "common"])
   const [scrollY, setScrollY] = useState(0)
@@ -409,8 +282,8 @@ export default function Profile() {
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
-  const coverParallax = reduceMotion ? 0 : Math.min(scrollY * 0.1, 40)
-  const coverScale = reduceMotion ? 1 : Math.min(1 + scrollY * 0.00014, 1.04)
+  const coverParallax = reduced ? 0 : Math.min(scrollY * 0.1, 40)
+  const coverScale = reduced ? 1 : Math.min(1 + scrollY * 0.00014, 1.04)
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
@@ -473,9 +346,9 @@ export default function Profile() {
 
   if (loading)
     return (
-      <Box minHeight="70vh" display="flex" alignItems="center" justifyContent="center">
-        <CircularProgress />
-      </Box>
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-nav-link border-t-transparent" />
+      </div>
     )
 
   const avatarImageUrl = useMemo(() => {
@@ -618,19 +491,7 @@ export default function Profile() {
     [user?.achievements]
   )
 
-  const avatarPx = useMemo(() => {
-    if (isMobile) return 132
-    return isTwoCol ? 188 : 168
-  }, [isMobile, isTwoCol])
-  const avatarSize = `${avatarPx}px`
-  const avatarFloat = Math.round(avatarPx * 0.55)
-  const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
-  const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`
-  const isDark = theme.palette.mode === "dark"
-  const textSecondary = theme.palette.text.secondary
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
-  const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
-  const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
 
   const handleSave = async () => {
     setSaving(true)
@@ -684,57 +545,31 @@ export default function Profile() {
 
   return (
     <>
-      <Box
-        sx={{
-          position: "fixed",
-          inset: 0,
-          zIndex: -2,
-          backgroundImage: `url(${profileBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "fixed",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `linear-gradient(120deg, ${alpha(theme.palette.primary.dark, 0.66)}, ${alpha(theme.palette.secondary.dark, 0.6)})`,
-            mixBlendMode: "multiply",
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background: `radial-gradient(1600px 800px at 50% 0%, ${alpha(theme.palette.primary.light, 0.08)} 0%, transparent 60%)`,
-            opacity: 0.6,
-          },
-        }}
-      />
+      {/* Background */}
+      <div
+        className="fixed inset-0 -z-10 bg-cover bg-center bg-fixed"
+        style={{ backgroundImage: `url(${profileBg})` }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-[#112f4e]/70 via-[#1a4480]/65 to-[#005ea2]/60 mix-blend-multiply dark:from-[#0a1524]/85 dark:via-[#0b2b47]/80 dark:to-[#123e67]/75" />
+        <div className="absolute inset-0 bg-[radial-gradient(1600px_800px_at_50%_0%,rgba(105,169,220,0.08)_0%,transparent_60%)] opacity-60" />
+      </div>
 
       <PageFadeIn>
         <motion.div
-          initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+          initial={isTest ? false : { opacity: reduced ? 1 : 0.96, y: reduced ? 0 : 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
-          <Box
-            component="main"
+          <main
             id="main"
-            className="profile-page"
+            className="profile-page relative flex min-h-screen flex-col px-4 py-20 sm:px-6 sm:py-24 md:px-8 md:py-28"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
-            sx={{
-              position: "relative",
-              minHeight: "100svh",
-              display: "flex",
-              flexDirection: "column",
-              py: { xs: 8, sm: 9, md: 10 },
-              px: { xs: 1.5, sm: 2, md: 3 },
-            }}
           >
-            <Container maxWidth="xl" sx={{ position: "relative", zIndex: 0 }}>
-              <MotionPaper
+            <div className="relative z-0 mx-auto w-full max-w-7xl">
+              <motion.div
                 ref={containerRef}
-                className="glass profile-card"
+                className="glass profile-card relative overflow-hidden rounded-3xl px-6 py-8 backdrop-blur-xl sm:px-10 sm:py-10 md:rounded-[2rem] md:px-14 md:py-12 lg:px-16"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -744,563 +579,376 @@ export default function Profile() {
                     ? { duration: 0 }
                     : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
                 }
-                sx={{
-                  px: { xs: 2.6, sm: 3.6, md: 4.6, lg: 5.6 },
-                  py: { xs: 3.6, sm: 4.2, md: 5 },
-                  borderRadius: { xs: 3, md: 4 },
-                  position: "relative",
-                  overflow: "hidden",
-                  ["--glass-alpha" as any]: ".02",
-                  ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                }}
               >
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "1fr", md: "minmax(360px, 420px) minmax(0, 1fr)" },
-                    columnGap: { xs: 3, sm: 4, md: 6 },
-                    rowGap: { xs: 4, md: 0 },
-                    alignItems: "start",
-                  }}
-                >
-                  <Stack spacing={{ xs: 3.2, md: 4 }} alignItems="stretch">
-                    <Box
-                      className="glass"
-                      sx={{
-                        position: "relative",
-                        borderRadius: { xs: 3, md: 4 },
-                        overflow: "hidden",
-                        minHeight: { xs: 300, sm: 340, md: 360, lg: 400 },
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        pb: heroPaddingBottom,
-                        boxShadow: `0 28px 70px -44px ${alpha(theme.palette.common.black, isDark ? 0.58 : 0.2)}`,
-                        ["--glass-alpha" as any]: ".018",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
+                <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] md:gap-12 lg:gap-16">
+                  {/* Left Column */}
+                  <div className="flex flex-col gap-8 md:gap-10">
+                    {/* Hero Card */}
+                    <div className="glass relative flex min-h-[320px] flex-col items-center justify-end overflow-hidden rounded-3xl pb-20 shadow-[0_28px_70px_-44px_rgba(0,0,0,0.35)] sm:min-h-[360px] md:min-h-[380px] md:rounded-[2rem] lg:min-h-[420px] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)]">
+                      <div
+                        className="absolute inset-0 bg-cover bg-center transition-transform duration-[1200ms] ease-out"
+                        style={{
                           backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
-                          backgroundPosition: "center",
-                          backgroundSize: "cover",
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-                          transition: reduceMotion
-                            ? "none"
-                            : "transform 1200ms cubic-bezier(.33,1,.68,1)",
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
                       />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
-                          background:
-                            "linear-gradient(185deg, rgba(6,9,20,0) 40%, rgba(6,9,20,0.9) 100%)",
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          left: "50%",
-                          top: { xs: theme.spacing(6), sm: theme.spacing(7) },
-                          transform: "translateX(-50%)",
-                          width: avatarSize,
-                          height: avatarSize,
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          p: "4px",
-                          animation: reduceMotion
-                            ? "none"
-                            : `${auraPulse} 14s ease-in-out infinite`,
-                        }}
-                      >
-                        <Box className="avatar-ring" sx={{ width: "100%", height: "100%" }}>
-                          <Avatar
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[rgba(6,9,20,0.4)] to-[rgba(6,9,20,0.92)]" />
+
+                      {/* Avatar */}
+                      <div className="absolute left-1/2 top-12 flex h-32 w-32 -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-14 sm:h-36 sm:w-36 md:h-40 md:w-40 lg:h-44 lg:w-44">
+                        <div className="avatar-ring relative h-full w-full">
+                          <img
                             src={avatarImageUrl}
                             alt={user?.full_name ?? undefined}
-                            imgProps={{
-                              onError: handleAvatarImgError,
-                              loading: "lazy",
-                              decoding: "async",
-                              referrerPolicy: "no-referrer",
-                            }}
-                            sx={{
-                              width: "100%",
-                              height: "100%",
-                              borderRadius: "50%",
-                              fontSize: "clamp(28px, 6vw, 64px)",
-                              backgroundColor: alpha(theme.palette.common.white, 0.12),
-                              color: alpha(theme.palette.common.white, 0.92),
-                            }}
-                          >
-                            {user?.full_name?.[0]}
-                          </Avatar>
-                        </Box>
-
-                        {isOnline && (
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              right: `${statusOffset}px`,
-                              bottom: `${statusOffset}px`,
-                              width: `${statusSize}px`,
-                              height: `${statusSize}px`,
-                              borderRadius: "50%",
-                              backgroundColor: "#22c55e",
-                              boxShadow: `0 0 0 2px rgba(0,0,0,.18), 0 4px 10px rgba(34,197,94,.45)`,
-                              zIndex: 3,
-                              pointerEvents: "none",
-                            }}
-                          >
-                            {!reduced && (
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  inset: "-6px",
-                                  borderRadius: "50%",
-                                  border: `2px solid ${alpha("#22c55e", 0.45)}`,
-                                  animation: `${onlinePulse} 1.8s ease-in-out infinite`,
-                                }}
-                              />
-                            )}
-                          </Box>
-                        )}
-                      </Box>
-                      <Box
-                        sx={{
-                          position: "relative",
-                          zIndex: 2,
-                          width: "100%",
-                          textAlign: { xs: "center", md: "left" },
-                          px: { xs: 2.4, sm: 3, md: 3.4 },
-                          pt: heroTextPaddingTop,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2.4,
-                        }}
-                      >
-                        <Box>
-                          <Typography
-                            className="profile-name"
-                            variant="h3"
-                            component="h1"
-                            data-testid="profile-name"
-                            sx={{
-                              fontSize: "clamp(1.7rem, 3.2vw, 2.9rem)",
-                              fontWeight: 900,
-                              lineHeight: 1.08,
-                            }}
-                          >
-                            {user!.full_name}
-                          </Typography>
-                          {!!user?.position && user?.role === "teacher" && (
-                            <Typography
-                              className="profile-subtitle"
-                              variant="subtitle1"
-                              sx={{ mt: 0.9, fontWeight: 600 }}
-                            >
-                              {user.position}
-                            </Typography>
+                            onError={handleAvatarImgError}
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full rounded-full object-cover text-4xl font-medium text-white/90 md:text-5xl lg:text-6xl"
+                          />
+                          {isOnline && (
+                            <div className="absolute bottom-2 right-2 z-10 h-4 w-4 rounded-full bg-[#22c55e] shadow-[0_0_0_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(34,197,94,0.45)] md:h-5 md:w-5">
+                              {!reduced && (
+                                <div className="absolute -inset-1.5 animate-[onlinePulse_1.8s_ease-in-out_infinite] rounded-full border-2 border-[#22c55e]/45" />
+                              )}
+                            </div>
                           )}
-                        </Box>
-                        <Stack
-                          direction="row"
-                          spacing={1.2}
-                          useFlexGap
-                          flexWrap="wrap"
-                          sx={{ justifyContent: { xs: "center", md: "flex-start" } }}
-                        >
-                          {[
-                            user!.role === "teacher"
-                              ? t("profile:chips.teacher")
-                              : user!.role === "student"
-                                ? t("profile:chips.student")
-                                : t("profile:chips.admin"),
-                            ...(user!.role === "student" && user!.course
-                              ? [t("profile:chips.course", { value: user!.course })]
-                              : []),
-                            ...(user!.institute ? [user!.institute] : []),
-                          ].map((chip, idx) => (
-                            <Grow
-                              in
-                              key={`${chip}-${idx}`}
-                              timeout={isTest || reduced ? 0 : 560}
-                              style={{ transitionDelay: reduced ? "0ms" : `${idx * 90}ms` }}
-                            >
-                              <Chip
-                                size="small"
-                                label={chip}
-                                className="glass--chip"
-                                sx={{
-                                  borderRadius: 999,
-                                  "& .MuiChip-label": {
-                                    px: 1.6,
-                                    py: 0.62,
-                                    lineHeight: 1.28,
-                                    fontWeight: 700,
-                                    letterSpacing: ".01em",
-                                  },
-                                  animation: reduced
-                                    ? "none"
-                                    : `${chipHighlight} 12s ease-in-out infinite`,
-                                  animationDelay: reduced ? "0ms" : `${idx * 90}ms`,
-                                }}
-                              />
-                            </Grow>
-                          ))}
-                        </Stack>
-                      </Box>
-                    </Box>
+                        </div>
+                      </div>
 
-                    <Paper
-                      elevation={0}
-                      className="glass profile-card"
-                      sx={{
-                        p: { xs: 2.6, sm: 3 },
-                        borderRadius: 3,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: { xs: 2.6, md: 3 },
-                        ["--glass-alpha" as any]: ".02",
-                        ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                      }}
-                    >
-                      <Stack spacing={1.3} alignItems="stretch">
-                        <Button
-                          size="large"
-                          variant="contained"
-                          color="secondary"
-                          className="glass--btn"
-                          onClick={openQrModal}
-                          data-testid="open-qr"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 2,
-                            py: 1.05,
-                            fontWeight: 800,
-                            letterSpacing: 0.24,
-                          }}
-                        >
-                          {t("profile:buttons.showQr")}
-                        </Button>
-                      </Stack>
-                      <Divider />
-                      <Stack spacing={1.8} className="contact-links">
-                        <Stack
-                          direction="row"
-                          spacing={1.4}
-                          alignItems="center"
-                          sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                        >
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                            sx={{ minWidth: 0, flex: 1 }}
-                          >
-                            <EmailIcon aria-hidden sx={{ fontSize: 22 }} />
-                            <Typography sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}>
-                              <a
-                                href={`mailto:${user!.email}`}
-                                style={{ color: "inherit", textDecoration: "none" }}
-                                data-testid="profile-email-link"
-                                title={t("profile:aria.openEmail")}
+                      <div className="relative z-10 w-full px-6 pt-24 text-center sm:px-8 sm:pt-28 md:px-10 md:text-left">
+                        <div className="flex flex-col gap-6">
+                          <div>
+                            <h1
+                              className="profile-name text-[clamp(1.7rem,3.2vw,2.9rem)] font-black leading-tight tracking-tight"
+                              data-testid="profile-name"
+                            >
+                              {user!.full_name}
+                            </h1>
+                            {!!user?.position && user?.role === "teacher" && (
+                              <p className="profile-subtitle mt-2 text-base font-semibold">
+                                {user.position}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-3 md:justify-start">
+                            {[
+                              user!.role === "teacher"
+                                ? t("profile:chips.teacher")
+                                : user!.role === "student"
+                                  ? t("profile:chips.student")
+                                  : t("profile:chips.admin"),
+                              ...(user!.role === "student" && user!.course
+                                ? [t("profile:chips.course", { value: user!.course })]
+                                : []),
+                              ...(user!.institute ? [user!.institute] : []),
+                            ].map((chip, idx) => (
+                              <motion.span
+                                key={`${chip}-${idx}`}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={
+                                  isTest || reduced
+                                    ? { duration: 0 }
+                                    : { delay: idx * 0.09, duration: 0.56 }
+                                }
+                                className="glass--chip inline-flex items-center rounded-full border border-glass-border bg-glass px-4 py-2 text-sm font-bold tracking-wide backdrop-blur-sm"
                               >
-                                {user!.email}
-                              </a>
-                            </Typography>
-                          </Stack>
-                          <IconButton
-                            size="small"
-                            className="glass--btn"
+                                {chip}
+                              </motion.span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Contact Card */}
+                    <div className="glass relative flex flex-col gap-6 overflow-hidden rounded-3xl bg-glass/50 p-6 backdrop-blur-xl sm:p-8">
+                      <button
+                        onClick={openQrModal}
+                        data-testid="open-qr"
+                        className="glass--btn group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-glass-border bg-nav-link px-6 py-4 font-extrabold tracking-wide text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link focus-visible:ring-offset-2 active:translate-y-0 dark:bg-nav-link-hover dark:shadow-[0_10px_26px_rgba(105,169,220,0.25)] dark:hover:shadow-[0_16px_38px_rgba(105,169,220,0.32)]"
+                      >
+                        {t("profile:buttons.showQr")}
+                      </button>
+
+                      <div className="h-px bg-gradient-to-r from-nav-link/0 via-nav-link/40 to-nav-link/0 dark:from-nav-link-hover/0 dark:via-nav-link-hover/40 dark:to-nav-link-hover/0" />
+
+                      <div className="contact-links flex flex-col gap-5">
+                        {/* Email */}
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <svg
+                              className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <a
+                              href={`mailto:${user!.email}`}
+                              className="flex-1 overflow-hidden text-ellipsis break-words font-extrabold text-nav-link no-underline hover:text-nav-link-hover hover:underline dark:text-nav-link-hover"
+                              data-testid="profile-email-link"
+                              title={t("profile:aria.openEmail")}
+                            >
+                              {user!.email}
+                            </a>
+                          </div>
+                          <button
                             onClick={(e) => copy(user!.email, e)}
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            sx={{
-                              transition: reduced
-                                ? "color 140ms ease"
-                                : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                              "&:hover": {
-                                transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                              },
-                            }}
+                            className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass/50 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 active:scale-100 dark:text-nav-link-hover"
                           >
-                            <ContentCopyIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
-
-                        {!!user!.telegram && (
-                          <Stack
-                            direction="row"
-                            spacing={1.4}
-                            alignItems="center"
-                            sx={{ justifyContent: "space-between", flexWrap: "wrap" }}
-                          >
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{ minWidth: 0, flex: 1 }}
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
                             >
-                              <TelegramIcon aria-hidden sx={{ fontSize: 22 }} />
-                              <Typography
-                                sx={{ fontWeight: 800, wordBreak: "break-word", flex: 1 }}
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Telegram */}
+                        {!!user!.telegram && (
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <svg
+                                className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
                               >
-                                <a
-                                  href={telegramHref}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ color: "inherit", textDecoration: "none" }}
-                                  data-testid="profile-telegram-link"
-                                  title={t("profile:aria.openTelegram")}
-                                >
-                                  {user!.telegram}
-                                </a>
-                              </Typography>
-                            </Stack>
-                            <IconButton
-                              size="small"
-                              className="glass--btn"
+                                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z" />
+                              </svg>
+                              <a
+                                href={telegramHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-1 overflow-hidden text-ellipsis break-words font-extrabold text-nav-link no-underline hover:text-nav-link-hover hover:underline dark:text-nav-link-hover"
+                                data-testid="profile-telegram-link"
+                                title={t("profile:aria.openTelegram")}
+                              >
+                                {user!.telegram}
+                              </a>
+                            </div>
+                            <button
                               onClick={(e) => copy(user!.telegram!, e)}
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              sx={{
-                                transition: reduced
-                                  ? "color 140ms ease"
-                                  : "transform 200ms ease, box-shadow 200ms ease, color 200ms ease",
-                                "&:hover": {
-                                  transform: reduced ? "none" : "translateY(-1px) scale(1.05)",
-                                },
-                              }}
+                              className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass/50 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 active:scale-100 dark:text-nav-link-hover"
                             >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                />
+                              </svg>
+                            </button>
+                          </div>
                         )}
-                      </Stack>
-                    </Paper>
+                      </div>
+                    </div>
 
+                    {/* Now Playing */}
                     {showNowPlaying && nowPlaying && (
-                      <Fade in timeout={isTest || reduced ? 0 : 720}>
-                        <Stack spacing={1.4}>
-                          <Typography
-                            variant="overline"
-                            sx={{ letterSpacing: 2.2, color: textSecondary }}
-                          >
-                            {t("profile:sections.nowPlaying")}
-                          </Typography>
-                          <NowPlayingCard data={nowPlaying} />
-                        </Stack>
-                      </Fade>
-                    )}
-                  </Stack>
-
-                  <Box
-                    sx={{
-                      width: "100%",
-                      position: "relative",
-                      mt: { xs: `${Math.round(avatarPx * 0.55) + 36}px`, md: 0 },
-                    }}
-                  >
-                    {edit ? (
-                      <Paper
-                        elevation={0}
-                        className="glass profile-card profile-edit"
-                        sx={{
-                          width: "100%",
-                          borderRadius: 3,
-                          p: { xs: 2.6, sm: 3, md: 3.4 },
-                          ["--glass-alpha" as any]: ".02",
-                          ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                        }}
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={isTest || reduced ? { duration: 0 } : { duration: 0.72 }}
+                        className="flex flex-col gap-4"
                       >
-                        <Stack spacing={2.2}>
-                          <TextField
-                            label={t("profile:form.name")}
+                        <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary opacity-80">
+                          {t("profile:sections.nowPlaying")}
+                        </p>
+                        <NowPlayingCard data={nowPlaying} />
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Right Column */}
+                  <div className="relative mt-32 w-full md:mt-0">
+                    {edit ? (
+                      <div className="glass profile-edit relative w-full overflow-hidden rounded-3xl bg-glass/50 p-6 backdrop-blur-xl sm:p-8 md:p-10">
+                        <div className="flex flex-col gap-6">
+                          <input
+                            type="text"
+                            placeholder={t("profile:form.name")}
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
-                            fullWidth
-                            inputProps={{ maxLength: 120 }}
+                            maxLength={120}
+                            className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                           />
-                          <TextField
-                            label={t("profile:form.email")}
+                          <input
+                            type="email"
+                            placeholder={t("profile:form.email")}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            fullWidth
-                            type="email"
+                            className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                           />
-                          <TextField
-                            label={t("profile:form.telegram")}
+                          <input
+                            type="text"
+                            placeholder={t("profile:form.telegram")}
                             value={telegram}
                             onChange={(e) => setTelegram(e.target.value)}
-                            fullWidth
-                            helperText={t("profile:form.telegramHint")}
+                            className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                           />
+                          <p className="text-xs text-hint">{t("profile:form.telegramHint")}</p>
+
                           {user!.role === "teacher" && (
                             <>
-                              <TextField
-                                label={t("profile:form.department")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.department")}
                                 value={department}
                                 onChange={(e) => setDepartment(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.position")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.position")}
                                 value={position}
                                 onChange={(e) => setPosition(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
                             </>
                           )}
+
                           {user!.role === "student" && (
                             <>
-                              <TextField
-                                label={t("profile:form.about")}
+                              <textarea
+                                placeholder={t("profile:form.about")}
                                 value={about}
                                 onChange={(e) => setAbout(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={3}
+                                rows={3}
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.recordBookNumber")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.recordBookNumber")}
                                 value={recordBookNumber}
                                 onChange={(e) => setRecordBookNumber(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.status")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.status")}
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.institute")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.institute")}
                                 value={institute}
                                 onChange={(e) => setInstitute(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.course")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.course")}
                                 value={course}
                                 onChange={(e) => setCourse(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.educationLevel")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.educationLevel")}
                                 value={educationLevel}
                                 onChange={(e) => setEducationLevel(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.track")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.track")}
                                 value={track}
                                 onChange={(e) => setTrack(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.program")}
+                              <input
+                                type="text"
+                                placeholder={t("profile:form.program")}
                                 value={program}
                                 onChange={(e) => setProgram(e.target.value)}
-                                fullWidth
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
-                              <TextField
-                                label={t("profile:form.achievements")}
+                              <textarea
+                                placeholder={t("profile:form.achievements")}
                                 value={achievements}
                                 onChange={(e) => setAchievements(e.target.value)}
-                                fullWidth
-                                multiline
-                                minRows={2}
+                                rows={2}
+                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
                               />
                             </>
                           )}
-                          <Stack
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={2}
-                            sx={{ alignItems: { xs: "stretch", sm: "center" } }}
-                          >
-                            <Button
+
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                            <button
                               onClick={handleSave}
-                              variant="contained"
                               disabled={saving}
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                              className="flex w-full items-center justify-center rounded-2xl border border-transparent bg-nav-link px-6 py-3 font-extrabold text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 active:translate-y-0 sm:w-auto dark:bg-nav-link-hover dark:shadow-[0_10px_26px_rgba(105,169,220,0.25)] dark:hover:shadow-[0_16px_38px_rgba(105,169,220,0.32)]"
                             >
                               {saving ? t("profile:form.saving") : t("profile:form.save")}
-                            </Button>
-                            <Button
+                            </button>
+                            <button
                               onClick={handleCancel}
-                              variant="outlined"
-                              className="glass--btn"
-                              sx={{ width: { xs: "100%", sm: "auto" }, fontWeight: 800 }}
+                              className="glass--btn flex w-full items-center justify-center rounded-2xl border border-glass-border bg-glass/50 px-6 py-3 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 sm:w-auto"
                             >
                               {t("profile:form.cancel")}
-                            </Button>
-                          </Stack>
-                        </Stack>
-                      </Paper>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <Paper
-                          elevation={0}
-                          className="glass profile-card"
-                          sx={{
-                            width: "100%",
-                            borderRadius: 3,
-                            p: { xs: 2.6, sm: 3, md: 3.4 },
-                            ["--glass-alpha" as any]: ".02",
-                            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                          }}
-                        >
-                          <Typography
-                            variant="h5"
-                            component="h2"
-                            sx={{
-                              fontWeight: 900,
-                              fontSize: "clamp(1.3rem, 2.3vw, 1.8rem)",
-                              mb: 2.2,
-                              letterSpacing: "-.01em",
-                            }}
-                          >
-                            {t("profile:sections.details")}
-                          </Typography>
-                          <Accordion
-                            disableGutters
-                            defaultExpanded
-                            className="glass"
-                            sx={{
-                              borderRadius: 3,
-                              boxShadow: "none",
-                              "&::before": { display: "none" },
-                              ["--glass-alpha" as any]: ".016",
-                              ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-                            }}
-                          >
-                            <AccordionSummary
-                              expandIcon={<ExpandMoreIcon />}
-                              sx={{
-                                px: 2.2,
-                                py: 1.4,
-                                borderBottom: `1px solid ${isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.08)}`,
-                              }}
-                            >
-                              <Typography fontWeight={900}>
+                      <div className="glass profile-card relative w-full overflow-hidden rounded-3xl bg-glass/50 p-6 backdrop-blur-xl sm:p-8 md:p-10">
+                        <h2 className="mb-6 text-[clamp(1.3rem,2.3vw,1.8rem)] font-black tracking-tight text-page-foreground">
+                          {t("profile:sections.details")}
+                        </h2>
+                        <div className="glass overflow-hidden rounded-3xl border border-glass-border bg-glass/40 backdrop-blur-sm">
+                          <details open className="group">
+                            <summary className="flex cursor-pointer items-center justify-between border-b border-glass-border px-6 py-5 transition-colors hover:bg-glass/30">
+                              <h3 className="font-black text-page-foreground">
                                 {t("profile:sections.profileDetails")}
-                              </Typography>
-                            </AccordionSummary>
-                            <AccordionDetails
-                              sx={{ px: { xs: 1.6, sm: 2.2 }, py: { xs: 1.8, sm: 2 } }}
-                            >
-                              {(() => {
-                                const rows = [
+                              </h3>
+                              <svg
+                                className="h-5 w-5 transition-transform group-open:rotate-180"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 9l-7 7-7-7"
+                                />
+                              </svg>
+                            </summary>
+                            <div className="px-6 py-6">
+                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                {[
                                   { label: t("profile:form.about"), value: user!.about },
                                   { label: t("profile:form.status"), value: user!.status },
                                   {
@@ -1315,241 +963,211 @@ export default function Profile() {
                                   { label: t("profile:form.program"), value: user!.program },
                                   { label: t("profile:form.department"), value: user!.department },
                                   { label: t("profile:form.position"), value: user!.position },
-                                ]
-                                return (
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                                      gap: { xs: 1.2, md: 1.6 },
-                                    }}
-                                  >
-                                    {rows.map((r) => (
-                                      <DetailRow key={r.label} label={r.label} value={r.value} />
-                                    ))}
-                                  </Box>
-                                )
-                              })()}
+                                ].map((r) => (
+                                  <DetailRow key={r.label} label={r.label} value={r.value} />
+                                ))}
+                              </div>
+
                               {achievementsList.length > 0 && (
-                                <Box sx={{ mt: 2.4 }}>
-                                  <Typography
-                                    variant="subtitle1"
-                                    component="h3"
-                                    sx={{ fontWeight: 800, mb: 1.4 }}
-                                  >
+                                <div className="mt-8">
+                                  <h3 className="mb-4 text-base font-extrabold text-page-foreground">
                                     {t("profile:sections.achievements")}
-                                  </Typography>
-                                  <Box
-                                    sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: {
-                                        xs: "repeat(auto-fit, minmax(140px, 1fr))",
-                                        sm: "repeat(auto-fit, minmax(160px, 1fr))",
-                                      },
-                                      gap: 1.2,
-                                    }}
-                                  >
+                                  </h3>
+                                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(160px,1fr))]">
                                     {achievementsList.map((ach, idx) => (
-                                      <Grow
-                                        in
+                                      <motion.button
                                         key={ach.key}
-                                        timeout={isTest || reduced ? 0 : 500}
-                                        style={{
-                                          transitionDelay: reduced ? "0ms" : `${idx * 90}ms`,
-                                        }}
+                                        initial={{ opacity: 0, scale: 0.95 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={
+                                          isTest || reduced
+                                            ? { duration: 0 }
+                                            : { delay: idx * 0.09, duration: 0.5 }
+                                        }
+                                        onClick={() =>
+                                          setAchOpen({
+                                            name: ach.name,
+                                            issuer: ach.issuer,
+                                            date: ach.date,
+                                            url: ach.url,
+                                          })
+                                        }
+                                        className="glass--chip inline-flex w-full items-center justify-center rounded-2xl border border-glass-border bg-glass px-4 py-3 text-sm font-bold leading-snug text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/30 hover:shadow-md"
                                       >
-                                        <Chip
-                                          label={ach.name}
-                                          clickable
-                                          onClick={() =>
-                                            setAchOpen({
-                                              name: ach.name,
-                                              issuer: ach.issuer,
-                                              date: ach.date,
-                                              url: ach.url,
-                                            })
-                                          }
-                                          className="glass--chip"
-                                          sx={{
-                                            borderRadius: 2,
-                                            alignSelf: "stretch",
-                                            "& .MuiChip-label": {
-                                              display: "block",
-                                              whiteSpace: "normal",
-                                              lineHeight: 1.3,
-                                              px: 1.6,
-                                              py: 1.1,
-                                              fontWeight: 700,
-                                            },
-                                            animation: reduced
-                                              ? "none"
-                                              : `${chipHighlight} 14s ease-in-out infinite`,
-                                            animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
-                                          }}
-                                        />
-                                      </Grow>
+                                        {ach.name}
+                                      </motion.button>
                                     ))}
-                                  </Box>
-                                </Box>
+                                  </div>
+                                </div>
                               )}
-                            </AccordionDetails>
-                          </Accordion>
-                        </Paper>
-                      </>
+                            </div>
+                          </details>
+                        </div>
+                      </div>
                     )}
-                  </Box>
-                </Box>
-              </MotionPaper>
-            </Container>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
 
             <canvas
               ref={confettiRef}
-              style={{
-                position: "fixed",
-                left: 0,
-                top: 0,
-                width: "100vw",
-                height: "100vh",
-                pointerEvents: "none",
-                zIndex: 2147483000,
-              }}
+              className="pointer-events-none fixed left-0 top-0 h-screen w-screen"
+              style={{ zIndex: 2147483000 }}
             />
-          </Box>
+          </main>
         </motion.div>
       </PageFadeIn>
 
-      <Dialog
-        open={qrOpen}
-        onClose={closeQrModal}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 900, letterSpacing: 0.4 }}>
-          {t("profile:dialog.qr.title")}
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1.2,
-            minHeight: 320,
+      {/* QR Dialog */}
+      {qrOpen && (
+        <div
+          role="button"
+          tabIndex={0}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+          onClick={closeQrModal}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter") closeQrModal()
           }}
         >
-          <Box
-            sx={{
-              background: "#fff",
-              p: 2,
-              borderRadius: 3,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-              boxShadow: `0 18px 40px -28px ${alpha(theme.palette.common.black, 0.4)}`,
-            }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass relative w-full max-w-md overflow-hidden rounded-3xl bg-glass backdrop-blur-xl"
+            onClick={(e) => e.stopPropagation()}
           >
-            <QRCodeSVG
-              value={buildVCard()}
-              size={300}
-              level="H"
-              includeMargin
-              bgColor="#ffffff"
-              fgColor={theme.palette.primary.dark}
-              imageSettings={{
-                src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
-                height: 56,
-                width: 56,
-                excavate: true,
-              }}
-            />
-          </Box>
-          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-            {t("profile:dialog.qr.hint")}
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", pb: 2 }}>
-          <Button
-            onClick={closeQrModal}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("common:buttons.done")}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <div className="px-6 py-6 text-center">
+              <h2 className="text-xl font-black tracking-wide text-page-foreground">
+                {t("profile:dialog.qr.title")}
+              </h2>
+            </div>
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 pb-6">
+              <div className="rounded-3xl border border-nav-link/15 bg-white p-4 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
+                <div
+                  className="flex h-[300px] w-[300px] items-center justify-center text-sm font-medium text-nav-link"
+                  dangerouslySetInnerHTML={{
+                    __html: `
+                      <svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="300" height="300" fill="white"/>
+                        <g transform="translate(150,150)">
+                          <circle cx="0" cy="0" r="40" fill="none" stroke="currentColor" stroke-width="2"/>
+                          <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" font-size="14" fill="currentColor">
+                            ${user?.full_name || "QR Code"}
+                          </text>
+                          <image href="${guuLogo}" x="-28" y="-80" width="56" height="56"/>
+                        </g>
+                      </svg>
+                    `.trim(),
+                  }}
+                />
+              </div>
+              <p className="text-sm text-secondary">{t("profile:dialog.qr.hint")}</p>
+            </div>
+            <div className="flex justify-center px-6 pb-6">
+              <button
+                onClick={closeQrModal}
+                className="glass--btn rounded-2xl border border-transparent bg-nav-link px-8 py-3 font-extrabold text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 dark:bg-nav-link-hover"
+              >
+                {t("common:buttons.done")}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
-      <Dialog
-        open={!!achOpen}
-        onClose={() => setAchOpen(null)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className: "glass",
-          sx: {
-            borderRadius: 3,
-            ["--glass-alpha" as any]: ".02",
-            ["--glass-highlight" as any]: "rgba(255,255,255,0)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 900 }}>{achOpen?.name}</DialogTitle>
-        <DialogContent sx={{ display: "grid", gap: 1.2 }}>
-          {achOpen?.issuer && (
-            <Typography>
-              {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
-            </Typography>
-          )}
-          {achOpen?.date && (
-            <Typography>{t("profile:dialog.achievement.date", { date: achOpen.date })}</Typography>
-          )}
-          {achOpen?.url && (
-            <Button
-              variant="outlined"
-              className="glass--btn"
-              href={achOpen.url}
-              target="_blank"
-              rel="noreferrer"
-              sx={{ fontWeight: 800 }}
-            >
-              {t("profile:dialog.achievement.openLink")}
-            </Button>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setAchOpen(null)}
-            className="glass--btn"
-            variant="contained"
-            sx={{ fontWeight: 800 }}
-          >
-            {t("profile:dialog.achievement.close")}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={2600}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
-      >
-        <Alert
-          onClose={() => setSnack(null)}
-          severity={snack?.sev || "info"}
-          variant="filled"
-          sx={{ width: "100%" }}
+      {/* Achievement Dialog */}
+      {achOpen && (
+        <div
+          role="button"
+          tabIndex={0}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+          onClick={() => setAchOpen(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter") setAchOpen(null)
+          }}
         >
-          {snackMessage}
-        </Alert>
-      </Snackbar>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass relative w-full max-w-md overflow-hidden rounded-3xl bg-glass backdrop-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-6">
+              <h2 className="text-xl font-black text-page-foreground">{achOpen.name}</h2>
+            </div>
+            <div className="flex flex-col gap-3 px-6 pb-6">
+              {achOpen.issuer && (
+                <p className="text-page-foreground">
+                  {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
+                </p>
+              )}
+              {achOpen.date && (
+                <p className="text-page-foreground">
+                  {t("profile:dialog.achievement.date", { date: achOpen.date })}
+                </p>
+              )}
+              {achOpen.url && (
+                <a
+                  href={achOpen.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="glass--btn inline-flex items-center justify-center rounded-2xl border border-glass-border bg-glass/50 px-6 py-3 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  {t("profile:dialog.achievement.openLink")}
+                </a>
+              )}
+            </div>
+            <div className="flex justify-center px-6 pb-6">
+              <button
+                onClick={() => setAchOpen(null)}
+                className="glass--btn rounded-2xl border border-transparent bg-nav-link px-8 py-3 font-extrabold text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 dark:bg-nav-link-hover"
+              >
+                {t("profile:dialog.achievement.close")}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Snackbar */}
+      {snack && (
+        <div
+          className="fixed bottom-8 left-1/2 z-[4000] -translate-x-1/2"
+          data-testid={snack.key === "copied" ? "snackbar-copied" : undefined}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className={cn(
+              "flex min-w-[300px] items-center gap-3 rounded-2xl px-6 py-4 shadow-[0_10px_26px_rgba(0,0,0,0.18),0_2px_10px_rgba(0,0,0,0.08)] backdrop-blur-lg",
+              snack.sev === "success" &&
+                "bg-gradient-to-r from-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
+              snack.sev === "error" &&
+                "bg-gradient-to-r from-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
+              snack.sev === "info" && "bg-gradient-to-r from-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
+              snack.sev === "warning" &&
+                "bg-gradient-to-r from-[#f59e0b] to-[#b45309] text-[#fff8e1]"
+            )}
+          >
+            <span className="flex-1 font-semibold">{snackMessage}</span>
+            <button
+              onClick={() => setSnack(null)}
+              className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-white/20"
+              aria-label="Close"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </motion.div>
+        </div>
+      )}
     </>
   )
 }
