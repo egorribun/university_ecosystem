@@ -1,4 +1,5 @@
 import plugin from "tailwindcss/plugin";
+import lineClamp from "@tailwindcss/line-clamp";
 import type { Config } from "tailwindcss";
 
 const attributeSelector = (attribute: "data" | "aria", value: string) => {
@@ -120,11 +121,6 @@ const config: Config = {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(100%)" },
         },
-        "onlinePulse": {
-          "0%": { transform: "scale(1)", opacity: "0.6" },
-          "70%": { transform: "scale(1.8)", opacity: "0" },
-          "100%": { transform: "scale(1.8)", opacity: "0" },
-        },
       },
       animation: {
         "fade-in":
@@ -132,7 +128,6 @@ const config: Config = {
         "card-hover":
           "card-hover var(--anim-card, 0.42s cubic-bezier(0.22, 0.61, 0.36, 1)) both",
         "skeleton-wave": "skeleton-wave 1.6s ease-in-out infinite",
-        "onlinePulse": "onlinePulse 1.8s ease-in-out infinite",
       },
     },
   },
@@ -170,6 +165,7 @@ const config: Config = {
         return selector ? `.peer${selector} ~ &` : ".peer ~ &";
       });
     }),
+    lineClamp,
   ],
 };
 
