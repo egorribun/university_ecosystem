@@ -45,7 +45,8 @@ type SnackState = {
 }
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
-  const prefersReduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const prefersReduce =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const reduced = useReducedMotion()
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
@@ -222,7 +223,8 @@ export default function Profile() {
   const [snack, setSnack] = useState<SnackState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const reduceMotion =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const isTwoCol = typeof window !== "undefined" && window.matchMedia("(min-width: 1400px)").matches
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 600px)").matches
   const reduced = useReducedMotion()
@@ -576,11 +578,18 @@ export default function Profile() {
   return (
     <>
       {/* Background with gradient overlay */}
-      <div className="fixed inset-0 -z-20 bg-cover bg-center bg-fixed" style={{ backgroundImage: `url(${profileBg})` }}>
+      <div
+        className="fixed inset-0 -z-20 bg-cover bg-center bg-fixed"
+        style={{ backgroundImage: `url(${profileBg})` }}
+      >
         <div className="absolute inset-0 bg-gradient-to-br from-[#1a4480]/70 via-[#0b4778]/65 to-[#112f4e]/60 mix-blend-multiply" />
-        <div className="absolute inset-0 opacity-60" style={{
-          background: 'radial-gradient(1600px 800px at 50% 0%, rgba(127, 182, 230, 0.08) 0%, transparent 60%)'
-        }} />
+        <div
+          className="absolute inset-0 opacity-60"
+          style={{
+            background:
+              "radial-gradient(1600px 800px at 50% 0%, rgba(127, 182, 230, 0.08) 0%, transparent 60%)",
+          }}
+        />
       </div>
 
       <PageFadeIn>
@@ -612,13 +621,13 @@ export default function Profile() {
                 <div className="grid grid-cols-1 md:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] gap-x-6 sm:gap-x-8 md:gap-x-12 gap-y-8 md:gap-y-0 items-start">
                   <div className="flex flex-col gap-6 md:gap-8 items-stretch">
                     {/* Hero Card with Cover and Avatar */}
-                    <div 
+                    <div
                       className="glass relative rounded-2xl md:rounded-3xl overflow-hidden min-h-[300px] sm:min-h-[340px] md:min-h-[360px] lg:min-h-[400px] flex items-end justify-center shadow-[0_28px_70px_-44px_rgba(0,0,0,0.3)] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)] backdrop-blur-md border border-glass-border bg-glass"
                       style={{ paddingBottom: heroPaddingBottom }}
                     >
                       {/* Cover Image with Parallax */}
                       <div
-                        className={`absolute inset-0 bg-center bg-cover ${reduceMotion ? '' : 'transition-transform duration-[1200ms] cubic-bezier-[0.33,1,0.68,1]'}`}
+                        className={`absolute inset-0 bg-center bg-cover ${reduceMotion ? "" : "transition-transform duration-[1200ms] cubic-bezier-[0.33,1,0.68,1]"}`}
                         style={{
                           backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
@@ -627,10 +636,10 @@ export default function Profile() {
                       />
                       {/* Dark Gradient Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.9)] from-40%" />
-                      
+
                       {/* Avatar Container */}
                       <div
-                        className={`absolute left-1/2 top-12 sm:top-14 -translate-x-1/2 flex items-center justify-center p-1 ${reduceMotion ? '' : 'animate-[aura-pulse_14s_ease-in-out_infinite]'}`}
+                        className={`absolute left-1/2 top-12 sm:top-14 -translate-x-1/2 flex items-center justify-center p-1 ${reduceMotion ? "" : "animate-[aura-pulse_14s_ease-in-out_infinite]"}`}
                         style={{ width: avatarSize, height: avatarSize }}
                       >
                         <div className="avatar-ring w-full h-full">
@@ -670,9 +679,9 @@ export default function Profile() {
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Name and Chips Section */}
-                      <div 
+                      <div
                         className="relative z-[2] w-full text-center md:text-left px-6 sm:px-8 md:px-10 flex flex-col gap-5"
                         style={{ paddingTop: heroTextPaddingTop }}
                       >
@@ -705,14 +714,19 @@ export default function Profile() {
                               key={`${chip}-${idx}`}
                               initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
                               animate={{ opacity: 1, scale: 1 }}
-                              transition={isTest || reduced ? { duration: 0 } : { 
-                                delay: idx * 0.09,
-                                duration: 0.56,
-                                ease: [0.22, 0.61, 0.36, 1]
-                              }}
+                              transition={
+                                isTest || reduced
+                                  ? { duration: 0 }
+                                  : {
+                                      delay: idx * 0.09,
+                                      duration: 0.56,
+                                      ease: [0.22, 0.61, 0.36, 1],
+                                    }
+                              }
                             >
-                              <span className={`inline-flex items-center px-4 py-1.5 rounded-full border border-glass-border bg-button text-nav-text text-sm font-bold tracking-wide backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md ${reduced ? '' : 'animate-[chip-highlight_12s_ease-in-out_infinite]'}`}
-                                style={{ animationDelay: reduced ? '0ms' : `${idx * 90}ms` }}
+                              <span
+                                className={`inline-flex items-center px-4 py-1.5 rounded-full border border-glass-border bg-button text-nav-text text-sm font-bold tracking-wide backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md ${reduced ? "" : "animate-[chip-highlight_12s_ease-in-out_infinite]"}`}
+                                style={{ animationDelay: reduced ? "0ms" : `${idx * 90}ms` }}
                               >
                                 {chip}
                               </span>
@@ -734,16 +748,19 @@ export default function Profile() {
                           {t("profile:buttons.showQr")}
                         </button>
                       </div>
-                      
+
                       {/* Divider */}
                       <div className="h-px bg-gradient-to-r from-transparent via-glass-border to-transparent" />
-                      
+
                       {/* Contact Links */}
                       <div className="flex flex-col gap-4 contact-links">
                         {/* Email */}
                         <div className="flex flex-row items-center justify-between flex-wrap gap-3">
                           <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-                            <EnvelopeIcon className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]" aria-hidden />
+                            <EnvelopeIcon
+                              className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                              aria-hidden
+                            />
                             <p className="font-extrabold break-words flex-1 text-page-foreground">
                               <a
                                 href={`mailto:${user!.email}`}
@@ -760,7 +777,7 @@ export default function Profile() {
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? '' : 'hover:-translate-y-0.5 hover:scale-105'}`}
+                            className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
                           >
                             <PaperClipboardIcon className="w-4 h-4 text-page-foreground" />
                           </button>
@@ -770,7 +787,10 @@ export default function Profile() {
                         {!!user!.telegram && (
                           <div className="flex flex-row items-center justify-between flex-wrap gap-3">
                             <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-                              <ChatBubbleLeftRightIcon className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]" aria-hidden />
+                              <ChatBubbleLeftRightIcon
+                                className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                                aria-hidden
+                              />
                               <p className="font-extrabold break-words flex-1 text-page-foreground">
                                 <a
                                   href={telegramHref}
@@ -789,7 +809,7 @@ export default function Profile() {
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? '' : 'hover:-translate-y-0.5 hover:scale-105'}`}
+                              className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
                             >
                               <PaperClipboardIcon className="w-4 h-4 text-page-foreground" />
                             </button>
@@ -803,7 +823,11 @@ export default function Profile() {
                       <motion.div
                         initial={isTest || reduced ? false : { opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={isTest || reduced ? { duration: 0 } : { duration: 0.72, ease: [0.22, 0.61, 0.36, 1] }}
+                        transition={
+                          isTest || reduced
+                            ? { duration: 0 }
+                            : { duration: 0.72, ease: [0.22, 0.61, 0.36, 1] }
+                        }
                         className="flex flex-col gap-3"
                       >
                         <h3 className="text-xs uppercase tracking-[2.2px] font-bold text-secondary opacity-90">
@@ -815,16 +839,18 @@ export default function Profile() {
                   </div>
 
                   {/* Right Column - Profile Details / Edit Form */}
-                  <div 
+                  <div
                     className="w-full relative"
-                    style={{ marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : '0' }}
+                    style={{ marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : "0" }}
                   >
                     {edit ? (
                       <div className="glass profile-card profile-edit w-full rounded-2xl p-6 sm:p-8 md:p-10 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
                         <div className="flex flex-col gap-5">
                           {/* Name Field */}
                           <div className="flex flex-col gap-2">
-                            <label className="text-sm font-bold text-page-foreground">{t("profile:form.name")}</label>
+                            <label className="text-sm font-bold text-page-foreground">
+                              {t("profile:form.name")}
+                            </label>
                             <input
                               type="text"
                               value={fullName}
@@ -833,10 +859,12 @@ export default function Profile() {
                               className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                             />
                           </div>
-                          
+
                           {/* Email Field */}
                           <div className="flex flex-col gap-2">
-                            <label className="text-sm font-bold text-page-foreground">{t("profile:form.email")}</label>
+                            <label className="text-sm font-bold text-page-foreground">
+                              {t("profile:form.email")}
+                            </label>
                             <input
                               type="email"
                               value={email}
@@ -844,10 +872,12 @@ export default function Profile() {
                               className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                             />
                           </div>
-                          
+
                           {/* Telegram Field */}
                           <div className="flex flex-col gap-2">
-                            <label className="text-sm font-bold text-page-foreground">{t("profile:form.telegram")}</label>
+                            <label className="text-sm font-bold text-page-foreground">
+                              {t("profile:form.telegram")}
+                            </label>
                             <input
                               type="text"
                               value={telegram}
@@ -856,12 +886,14 @@ export default function Profile() {
                             />
                             <p className="text-xs text-hint">{t("profile:form.telegramHint")}</p>
                           </div>
-                          
+
                           {/* Teacher Fields */}
                           {user!.role === "teacher" && (
                             <>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.department")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.department")}
+                                </label>
                                 <input
                                   type="text"
                                   value={department}
@@ -870,7 +902,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.position")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.position")}
+                                </label>
                                 <input
                                   type="text"
                                   value={position}
@@ -880,12 +914,14 @@ export default function Profile() {
                               </div>
                             </>
                           )}
-                          
+
                           {/* Student Fields */}
                           {user!.role === "student" && (
                             <>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.about")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.about")}
+                                </label>
                                 <textarea
                                   value={about}
                                   onChange={(e) => setAbout(e.target.value)}
@@ -894,7 +930,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.recordBookNumber")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.recordBookNumber")}
+                                </label>
                                 <input
                                   type="text"
                                   value={recordBookNumber}
@@ -903,7 +941,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.status")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.status")}
+                                </label>
                                 <input
                                   type="text"
                                   value={status}
@@ -912,7 +952,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.institute")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.institute")}
+                                </label>
                                 <input
                                   type="text"
                                   value={institute}
@@ -921,7 +963,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.course")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.course")}
+                                </label>
                                 <input
                                   type="text"
                                   value={course}
@@ -930,7 +974,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.educationLevel")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.educationLevel")}
+                                </label>
                                 <input
                                   type="text"
                                   value={educationLevel}
@@ -939,7 +985,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.track")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.track")}
+                                </label>
                                 <input
                                   type="text"
                                   value={track}
@@ -948,7 +996,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.program")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.program")}
+                                </label>
                                 <input
                                   type="text"
                                   value={program}
@@ -957,7 +1007,9 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">{t("profile:form.achievements")}</label>
+                                <label className="text-sm font-bold text-page-foreground">
+                                  {t("profile:form.achievements")}
+                                </label>
                                 <textarea
                                   value={achievements}
                                   onChange={(e) => setAchievements(e.target.value)}
@@ -967,7 +1019,7 @@ export default function Profile() {
                               </div>
                             </>
                           )}
-                          
+
                           {/* Action Buttons */}
                           <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center pt-2">
                             <button
@@ -993,7 +1045,7 @@ export default function Profile() {
                           <h2 className="text-[clamp(1.3rem,2.3vw,1.8rem)] font-black mb-5 tracking-tight text-page-foreground">
                             {t("profile:sections.details")}
                           </h2>
-                          
+
                           {/* Custom Accordion */}
                           <div className="glass rounded-2xl overflow-hidden backdrop-blur-md border border-glass-border bg-glass/50 shadow-md">
                             {/* Accordion Header */}
@@ -1004,15 +1056,18 @@ export default function Profile() {
                               <span className="font-black text-page-foreground">
                                 {t("profile:sections.profileDetails")}
                               </span>
-                              <ChevronDownIcon 
-                                className={`w-5 h-5 text-page-foreground transition-transform duration-300 ${detailsOpen ? 'rotate-180' : ''}`}
+                              <ChevronDownIcon
+                                className={`w-5 h-5 text-page-foreground transition-transform duration-300 ${detailsOpen ? "rotate-180" : ""}`}
                               />
                             </button>
-                            
+
                             {/* Accordion Content */}
                             <motion.div
                               initial={false}
-                              animate={{ height: detailsOpen ? "auto" : 0, opacity: detailsOpen ? 1 : 0 }}
+                              animate={{
+                                height: detailsOpen ? "auto" : 0,
+                                opacity: detailsOpen ? 1 : 0,
+                              }}
                               transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
                               className="overflow-hidden"
                             >
@@ -1022,17 +1077,26 @@ export default function Profile() {
                                   {[
                                     { label: t("profile:form.about"), value: user!.about },
                                     { label: t("profile:form.status"), value: user!.status },
-                                    { label: t("profile:form.recordBookNumber"), value: user!.record_book_number },
-                                    { label: t("profile:form.educationLevel"), value: user!.education_level },
+                                    {
+                                      label: t("profile:form.recordBookNumber"),
+                                      value: user!.record_book_number,
+                                    },
+                                    {
+                                      label: t("profile:form.educationLevel"),
+                                      value: user!.education_level,
+                                    },
                                     { label: t("profile:form.track"), value: user!.track },
                                     { label: t("profile:form.program"), value: user!.program },
-                                    { label: t("profile:form.department"), value: user!.department },
+                                    {
+                                      label: t("profile:form.department"),
+                                      value: user!.department,
+                                    },
                                     { label: t("profile:form.position"), value: user!.position },
                                   ].map((r) => (
                                     <DetailRow key={r.label} label={r.label} value={r.value} />
                                   ))}
                                 </div>
-                                
+
                                 {/* Achievements Section */}
                                 {achievementsList.length > 0 && (
                                   <div className="mt-6">
@@ -1043,13 +1107,19 @@ export default function Profile() {
                                       {achievementsList.map((ach, idx) => (
                                         <motion.button
                                           key={ach.key}
-                                          initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
+                                          initial={
+                                            isTest || reduced ? false : { opacity: 0, scale: 0.9 }
+                                          }
                                           animate={{ opacity: 1, scale: 1 }}
-                                          transition={isTest || reduced ? { duration: 0 } : { 
-                                            delay: idx * 0.09,
-                                            duration: 0.5,
-                                            ease: [0.22, 0.61, 0.36, 1]
-                                          }}
+                                          transition={
+                                            isTest || reduced
+                                              ? { duration: 0 }
+                                              : {
+                                                  delay: idx * 0.09,
+                                                  duration: 0.5,
+                                                  ease: [0.22, 0.61, 0.36, 1],
+                                                }
+                                          }
                                           onClick={() =>
                                             setAchOpen({
                                               name: ach.name,
@@ -1058,8 +1128,10 @@ export default function Profile() {
                                               url: ach.url,
                                             })
                                           }
-                                          className={`glass--chip px-4 py-3 rounded-xl border border-glass-border bg-button hover:bg-button/80 text-nav-text font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left ${reduced ? '' : 'animate-[chip-highlight_14s_ease-in-out_infinite]'}`}
-                                          style={{ animationDelay: reduced ? '0ms' : `${idx * 110}ms` }}
+                                          className={`glass--chip px-4 py-3 rounded-xl border border-glass-border bg-button hover:bg-button/80 text-nav-text font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left ${reduced ? "" : "animate-[chip-highlight_14s_ease-in-out_infinite]"}`}
+                                          style={{
+                                            animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
+                                          }}
                                         >
                                           {ach.name}
                                         </motion.button>
@@ -1095,7 +1167,8 @@ export default function Profile() {
         maxWidth="xs"
         fullWidth
         PaperProps={{
-          className: "glass !rounded-2xl backdrop-blur-md border border-glass-border bg-glass shadow-glass",
+          className:
+            "glass !rounded-2xl backdrop-blur-md border border-glass-border bg-glass shadow-glass",
         }}
       >
         <DialogTitle className="text-center font-black tracking-wide text-page-foreground">
@@ -1118,9 +1191,7 @@ export default function Profile() {
               }}
             />
           </div>
-          <p className="text-xs text-secondary text-center">
-            {t("profile:dialog.qr.hint")}
-          </p>
+          <p className="text-xs text-secondary text-center">{t("profile:dialog.qr.hint")}</p>
         </DialogContent>
         <DialogActions className="justify-center pb-4">
           <button
@@ -1139,7 +1210,8 @@ export default function Profile() {
         maxWidth="xs"
         fullWidth
         PaperProps={{
-          className: "glass !rounded-2xl backdrop-blur-md border border-glass-border bg-glass shadow-glass",
+          className:
+            "glass !rounded-2xl backdrop-blur-md border border-glass-border bg-glass shadow-glass",
         }}
       >
         <DialogTitle className="font-black text-page-foreground">{achOpen?.name}</DialogTitle>
