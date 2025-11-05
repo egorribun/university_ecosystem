@@ -657,7 +657,7 @@ export default function Profile() {
                               }
                             >
                               <span
-                                className={`inline-flex items-center px-4 py-1.5 rounded-full border border-glass-border bg-button text-nav-text text-sm font-bold tracking-wide backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md ${reduced ? "" : "animate-[chip-highlight_12s_ease-in-out_infinite]"}`}
+                                className={`inline-flex items-center px-4 py-1.5 rounded-full border border-white/20 dark:border-white/10 bg-white/8 dark:bg-white/4 text-white dark:text-white/95 text-sm font-bold tracking-wide backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:shadow-lg hover:bg-white/12 dark:hover:bg-white/7 ${reduced ? "" : "animate-[chip-highlight_12s_ease-in-out_infinite]"}`}
                                 style={{ animationDelay: reduced ? "0ms" : `${idx * 90}ms` }}
                               >
                                 {chip}
