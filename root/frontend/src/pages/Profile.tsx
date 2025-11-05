@@ -671,12 +671,7 @@ export default function Profile() {
   return (
     <>
       <div className="fixed inset-0 -z-20">
-        <img
-          src={profileBg}
-          alt=""
-          aria-hidden
-          className="h-full w-full object-cover"
-        />
+        <img src={profileBg} alt="" aria-hidden className="h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[linear-gradient(118deg,color-mix(in_srgb,var(--nav-link)_64%,transparent),color-mix(in_srgb,var(--btn-bg,_#1f3b84)_38%,transparent))] mix-blend-multiply" />
         <div className="absolute inset-0 bg-[radial-gradient(1200px_760px_at_50%_-10%,color-mix(in_srgb,var(--nav-link)_24%,transparent)_0%,transparent_76%)]" />
       </div>
@@ -716,7 +711,9 @@ export default function Profile() {
                         aria-hidden
                         style={{
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-                          transition: reduceMotion ? "none" : "transform 1200ms cubic-bezier(.33,1,.68,1)",
+                          transition: reduceMotion
+                            ? "none"
+                            : "transform 1200ms cubic-bezier(.33,1,.68,1)",
                           filter: "saturate(1.05) contrast(1.04)",
                         }}
                         className="h-full w-full object-cover"
@@ -813,15 +810,15 @@ export default function Profile() {
                       </div>
 
                       {!edit ? (
-                          <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-                            <Button
-                              as={Link}
-                              to="/profile/edit"
-                              variant="solid"
-                              className="w-full rounded-ue-lg px-6 py-3 text-base font-extrabold shadow-surface-strong transition hover:-translate-y-[1px] hover:shadow-surface-strong lg:w-auto"
-                            >
-                              {t("profile:buttons.edit", { defaultValue: "Редактировать профиль" })}
-                            </Button>
+                        <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+                          <Button
+                            as={Link}
+                            to="/profile/edit"
+                            variant="solid"
+                            className="w-full rounded-ue-lg px-6 py-3 text-base font-extrabold shadow-surface-strong transition hover:-translate-y-[1px] hover:shadow-surface-strong lg:w-auto"
+                          >
+                            {t("profile:buttons.edit", { defaultValue: "Редактировать профиль" })}
+                          </Button>
                           <Button
                             variant="outline"
                             onClick={openQrModal}
@@ -839,11 +836,11 @@ export default function Profile() {
                     padding="lg"
                     className="gap-6 border-[color:color-mix(in_srgb,var(--page-text)_10%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] shadow-surface"
                   >
-                      {edit ? null : (
-                        <div className="flex flex-col gap-4">
-                          <h2 className="font-display text-[clamp(1.2rem,2vw,1.4rem)] font-semibold">
-                            {t("profile:sections.contacts", { defaultValue: "Контакты" })}
-                          </h2>
+                    {edit ? null : (
+                      <div className="flex flex-col gap-4">
+                        <h2 className="font-display text-[clamp(1.2rem,2vw,1.4rem)] font-semibold">
+                          {t("profile:sections.contacts", { defaultValue: "Контакты" })}
+                        </h2>
                         <div className="flex flex-col gap-3">
                           <div className="flex flex-wrap items-center gap-3 rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,transparent_4%)] px-4 py-3 shadow-surface transition-all duration-200 hover:border-[color:color-mix(in_srgb,var(--page-text)_24%,transparent)]">
                             <MailIcon className="text-[color:var(--nav-link)]" />
@@ -855,12 +852,12 @@ export default function Profile() {
                             >
                               {user?.email}
                             </a>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  const { clientX, clientY } = event
-                                  copy(user?.email ?? "", { clientX, clientY })
-                                }}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                const { clientX, clientY } = event
+                                copy(user?.email ?? "", { clientX, clientY })
+                              }}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] bg-white/60 text-[color:var(--nav-link)] shadow-surface transition hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
                               aria-label={t("profile:aria.copyEmail")}
                               data-testid="copy-email"
@@ -882,12 +879,12 @@ export default function Profile() {
                               >
                                 {user.telegram}
                               </a>
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    const { clientX, clientY } = event
-                                    copy(user.telegram ?? "", { clientX, clientY })
-                                  }}
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  const { clientX, clientY } = event
+                                  copy(user.telegram ?? "", { clientX, clientY })
+                                }}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] bg-white/60 text-[color:var(--nav-link)] shadow-surface transition hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)]"
                                 aria-label={t("profile:aria.copyTelegram")}
                                 data-testid="copy-telegram"
@@ -909,21 +906,21 @@ export default function Profile() {
                       </section>
                     ) : null}
 
-                      {!edit && achievementsList.length > 0 ? (
-                        <section className="space-y-4">
-                          <header className="flex items-center justify-between">
-                            <h2 className="font-display text-[clamp(1.2rem,2vw,1.4rem)] font-semibold">
-                              {t("profile:sections.achievements", { defaultValue: "Достижения" })}
-                            </h2>
-                            <span className="text-sm font-medium text-[color:var(--secondary-text)]">
-                              {t("profile:aria.totalAchievements", {
-                                count: achievementsList.length,
-                                defaultValue:
-                                  achievementsList.length === 1
-                                    ? "1 достижение"
-                                    : `${achievementsList.length} достижений`,
-                              })}
-                            </span>
+                    {!edit && achievementsList.length > 0 ? (
+                      <section className="space-y-4">
+                        <header className="flex items-center justify-between">
+                          <h2 className="font-display text-[clamp(1.2rem,2vw,1.4rem)] font-semibold">
+                            {t("profile:sections.achievements", { defaultValue: "Достижения" })}
+                          </h2>
+                          <span className="text-sm font-medium text-[color:var(--secondary-text)]">
+                            {t("profile:aria.totalAchievements", {
+                              count: achievementsList.length,
+                              defaultValue:
+                                achievementsList.length === 1
+                                  ? "1 достижение"
+                                  : `${achievementsList.length} достижений`,
+                            })}
+                          </span>
                         </header>
                         <div className="grid gap-2.5 sm:grid-cols-2">
                           {achievementsList.map((ach, idx) => (
@@ -954,18 +951,21 @@ export default function Profile() {
                     {edit ? (
                       <section className="space-y-6">
                         <div className="flex flex-col gap-1">
-                            <h2 className="font-display text-[clamp(1.4rem,2.4vw,1.8rem)] font-semibold">
-                              {t("profile:sections.editTitle", { defaultValue: "Обновить профиль" })}
-                            </h2>
-                            <p className="text-sm text-[color:var(--secondary-text)]">
-                              {t("profile:sections.editHint", {
-                                defaultValue: "Измените публичную информацию о себе.",
-                              })}
-                            </p>
+                          <h2 className="font-display text-[clamp(1.4rem,2.4vw,1.8rem)] font-semibold">
+                            {t("profile:sections.editTitle", { defaultValue: "Обновить профиль" })}
+                          </h2>
+                          <p className="text-sm text-[color:var(--secondary-text)]">
+                            {t("profile:sections.editHint", {
+                              defaultValue: "Измените публичную информацию о себе.",
+                            })}
+                          </p>
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 md:gap-5">
                           <div className="flex flex-col gap-2 md:col-span-2">
-                            <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-full-name">
+                            <label
+                              className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                              htmlFor="profile-full-name"
+                            >
                               {t("profile:form.name")}
                             </label>
                             <input
@@ -979,7 +979,10 @@ export default function Profile() {
                           </div>
 
                           <div className="flex flex-col gap-2">
-                            <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-email">
+                            <label
+                              className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                              htmlFor="profile-email"
+                            >
                               {t("profile:form.email")}
                             </label>
                             <input
@@ -993,7 +996,10 @@ export default function Profile() {
                           </div>
 
                           <div className="flex flex-col gap-2">
-                            <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-telegram">
+                            <label
+                              className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                              htmlFor="profile-telegram"
+                            >
                               {t("profile:form.telegram")}
                             </label>
                             <input
@@ -1004,7 +1010,10 @@ export default function Profile() {
                               placeholder="@username"
                               aria-describedby="profile-telegram-hint"
                             />
-                            <p id="profile-telegram-hint" className="text-xs text-[color:var(--secondary-text)]">
+                            <p
+                              id="profile-telegram-hint"
+                              className="text-xs text-[color:var(--secondary-text)]"
+                            >
                               {t("profile:form.telegramHint")}
                             </p>
                           </div>
@@ -1012,7 +1021,10 @@ export default function Profile() {
                           {user?.role === "teacher" ? (
                             <>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-department">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-department"
+                                >
                                   {t("profile:form.department")}
                                 </label>
                                 <input
@@ -1023,7 +1035,10 @@ export default function Profile() {
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-position">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-position"
+                                >
                                   {t("profile:form.position")}
                                 </label>
                                 <input
@@ -1039,7 +1054,10 @@ export default function Profile() {
                           {user?.role === "student" ? (
                             <>
                               <div className="md:col-span-2 flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-about">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-about"
+                                >
                                   {t("profile:form.about")}
                                 </label>
                                 <textarea
@@ -1051,7 +1069,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-record-book">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-record-book"
+                                >
                                   {t("profile:form.recordBookNumber")}
                                 </label>
                                 <input
@@ -1063,7 +1084,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-status">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-status"
+                                >
                                   {t("profile:form.status")}
                                 </label>
                                 <input
@@ -1075,7 +1099,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-institute">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-institute"
+                                >
                                   {t("profile:form.institute")}
                                 </label>
                                 <input
@@ -1087,7 +1114,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-course">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-course"
+                                >
                                   {t("profile:form.course")}
                                 </label>
                                 <input
@@ -1099,7 +1129,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-education-level">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-education-level"
+                                >
                                   {t("profile:form.educationLevel")}
                                 </label>
                                 <input
@@ -1111,7 +1144,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-track">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-track"
+                                >
                                   {t("profile:form.track")}
                                 </label>
                                 <input
@@ -1123,7 +1159,10 @@ export default function Profile() {
                               </div>
 
                               <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-program">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-program"
+                                >
                                   {t("profile:form.program")}
                                 </label>
                                 <input
@@ -1135,7 +1174,10 @@ export default function Profile() {
                               </div>
 
                               <div className="md:col-span-2 flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-[color:var(--secondary-text)]" htmlFor="profile-achievements">
+                                <label
+                                  className="text-sm font-semibold text-[color:var(--secondary-text)]"
+                                  htmlFor="profile-achievements"
+                                >
                                   {t("profile:form.achievements")}
                                 </label>
                                 <textarea
@@ -1171,15 +1213,15 @@ export default function Profile() {
 
                     {!edit ? (
                       <section className="space-y-4">
-                          <header className="flex flex-col gap-2">
-                            <h2 className="font-display text-[clamp(1.25rem,2.2vw,1.6rem)] font-semibold">
-                              {t("profile:sections.details", { defaultValue: "Детали" })}
-                            </h2>
-                            <p className="text-sm text-[color:var(--secondary-text)]">
-                              {t("profile:sections.detailsHint", {
-                                defaultValue: "Подробности о вашей учебе и работе",
-                              })}
-                            </p>
+                        <header className="flex flex-col gap-2">
+                          <h2 className="font-display text-[clamp(1.25rem,2.2vw,1.6rem)] font-semibold">
+                            {t("profile:sections.details", { defaultValue: "Детали" })}
+                          </h2>
+                          <p className="text-sm text-[color:var(--secondary-text)]">
+                            {t("profile:sections.detailsHint", {
+                              defaultValue: "Подробности о вашей учебе и работе",
+                            })}
+                          </p>
                         </header>
                         <div className="grid gap-3 md:grid-cols-2">
                           <DetailRow label={t("profile:form.about") ?? ""} value={user?.about} />
@@ -1193,10 +1235,22 @@ export default function Profile() {
                             value={user?.education_level}
                           />
                           <DetailRow label={t("profile:form.track") ?? ""} value={user?.track} />
-                          <DetailRow label={t("profile:form.program") ?? ""} value={user?.program} />
-                          <DetailRow label={t("profile:form.department") ?? ""} value={user?.department} />
-                          <DetailRow label={t("profile:form.position") ?? ""} value={user?.position} />
-                          <DetailRow label={t("profile:form.institute") ?? ""} value={user?.institute} />
+                          <DetailRow
+                            label={t("profile:form.program") ?? ""}
+                            value={user?.program}
+                          />
+                          <DetailRow
+                            label={t("profile:form.department") ?? ""}
+                            value={user?.department}
+                          />
+                          <DetailRow
+                            label={t("profile:form.position") ?? ""}
+                            value={user?.position}
+                          />
+                          <DetailRow
+                            label={t("profile:form.institute") ?? ""}
+                            value={user?.institute}
+                          />
                         </div>
                       </section>
                     ) : null}
