@@ -148,7 +148,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             referrerPolicy="no-referrer"
             className={cn(
               "h-full w-full rounded-2xl object-cover",
-              !reduced && "scale-[1.012] transition-transform duration-[900ms] ease-out hover:scale-[1.02]"
+              !reduced &&
+                "scale-[1.012] transition-transform duration-[900ms] ease-out hover:scale-[1.02]"
             )}
           />
         </div>
@@ -577,9 +578,7 @@ export default function Profile() {
                   {/* Left Column */}
                   <div className="flex flex-col gap-8 md:gap-10">
                     {/* Hero Card */}
-                    <div
-                      className="glass relative flex min-h-[320px] flex-col items-center justify-end overflow-hidden rounded-3xl pb-20 shadow-[0_28px_70px_-44px_rgba(0,0,0,0.35)] sm:min-h-[360px] md:min-h-[380px] md:rounded-[2rem] lg:min-h-[420px] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)]"
-                    >
+                    <div className="glass relative flex min-h-[320px] flex-col items-center justify-end overflow-hidden rounded-3xl pb-20 shadow-[0_28px_70px_-44px_rgba(0,0,0,0.35)] sm:min-h-[360px] md:min-h-[380px] md:rounded-[2rem] lg:min-h-[420px] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)]">
                       <div
                         className="absolute inset-0 bg-cover bg-center transition-transform duration-[1200ms] ease-out"
                         style={{
@@ -589,7 +588,7 @@ export default function Profile() {
                         }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[rgba(6,9,20,0.4)] to-[rgba(6,9,20,0.92)]" />
-                      
+
                       {/* Avatar */}
                       <div className="absolute left-1/2 top-12 flex h-32 w-32 -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-14 sm:h-36 sm:w-36 md:h-40 md:w-40 lg:h-44 lg:w-44">
                         <div className="avatar-ring relative h-full w-full">
@@ -667,15 +666,25 @@ export default function Profile() {
                       >
                         {t("profile:buttons.showQr")}
                       </button>
-                      
+
                       <div className="h-px bg-gradient-to-r from-nav-link/0 via-nav-link/40 to-nav-link/0 dark:from-nav-link-hover/0 dark:via-nav-link-hover/40 dark:to-nav-link-hover/0" />
-                      
+
                       <div className="contact-links flex flex-col gap-5">
                         {/* Email */}
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex min-w-0 flex-1 items-center gap-3">
-                            <svg className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            <svg
+                              className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                              />
                             </svg>
                             <a
                               href={`mailto:${user!.email}`}
@@ -693,8 +702,18 @@ export default function Profile() {
                             data-testid="copy-email"
                             className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass/50 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 active:scale-100 dark:text-nav-link-hover"
                           >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
                             </svg>
                           </button>
                         </div>
@@ -703,8 +722,12 @@ export default function Profile() {
                         {!!user!.telegram && (
                           <div className="flex items-center justify-between gap-4">
                             <div className="flex min-w-0 flex-1 items-center gap-3">
-                              <svg className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z"/>
+                              <svg
+                                className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z" />
                               </svg>
                               <a
                                 href={telegramHref}
@@ -724,8 +747,18 @@ export default function Profile() {
                               data-testid="copy-telegram"
                               className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass/50 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 active:scale-100 dark:text-nav-link-hover"
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                />
                               </svg>
                             </button>
                           </div>
@@ -893,8 +926,18 @@ export default function Profile() {
                               <h3 className="font-black text-page-foreground">
                                 {t("profile:sections.profileDetails")}
                               </h3>
-                              <svg className="h-5 w-5 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              <svg
+                                className="h-5 w-5 transition-transform group-open:rotate-180"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 9l-7 7-7-7"
+                                />
                               </svg>
                             </summary>
                             <div className="px-6 py-6">
@@ -978,7 +1021,7 @@ export default function Profile() {
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
           onClick={closeQrModal}
           onKeyDown={(e) => {
-            if (e.key === 'Escape' || e.key === 'Enter') closeQrModal()
+            if (e.key === "Escape" || e.key === "Enter") closeQrModal()
           }}
         >
           <motion.div
@@ -994,7 +1037,7 @@ export default function Profile() {
             </div>
             <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 pb-6">
               <div className="rounded-3xl border border-nav-link/15 bg-white p-4 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
-                <div 
+                <div
                   className="flex h-[300px] w-[300px] items-center justify-center text-sm font-medium text-nav-link"
                   dangerouslySetInnerHTML={{
                     __html: `
@@ -1003,12 +1046,12 @@ export default function Profile() {
                         <g transform="translate(150,150)">
                           <circle cx="0" cy="0" r="40" fill="none" stroke="currentColor" stroke-width="2"/>
                           <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" font-size="14" fill="currentColor">
-                            ${user?.full_name || 'QR Code'}
+                            ${user?.full_name || "QR Code"}
                           </text>
                           <image href="${guuLogo}" x="-28" y="-80" width="56" height="56"/>
                         </g>
                       </svg>
-                    `.trim()
+                    `.trim(),
                   }}
                 />
               </div>
@@ -1034,7 +1077,7 @@ export default function Profile() {
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
           onClick={() => setAchOpen(null)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape' || e.key === 'Enter') setAchOpen(null)
+            if (e.key === "Escape" || e.key === "Enter") setAchOpen(null)
           }}
         >
           <motion.div
@@ -1082,17 +1125,23 @@ export default function Profile() {
 
       {/* Snackbar */}
       {snack && (
-        <div className="fixed bottom-8 left-1/2 z-[4000] -translate-x-1/2" data-testid={snack.key === "copied" ? "snackbar-copied" : undefined}>
+        <div
+          className="fixed bottom-8 left-1/2 z-[4000] -translate-x-1/2"
+          data-testid={snack.key === "copied" ? "snackbar-copied" : undefined}
+        >
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             className={cn(
               "flex min-w-[300px] items-center gap-3 rounded-2xl px-6 py-4 shadow-[0_10px_26px_rgba(0,0,0,0.18),0_2px_10px_rgba(0,0,0,0.08)] backdrop-blur-lg",
-              snack.sev === "success" && "bg-gradient-to-r from-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
-              snack.sev === "error" && "bg-gradient-to-r from-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
+              snack.sev === "success" &&
+                "bg-gradient-to-r from-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
+              snack.sev === "error" &&
+                "bg-gradient-to-r from-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
               snack.sev === "info" && "bg-gradient-to-r from-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
-              snack.sev === "warning" && "bg-gradient-to-r from-[#f59e0b] to-[#b45309] text-[#fff8e1]"
+              snack.sev === "warning" &&
+                "bg-gradient-to-r from-[#f59e0b] to-[#b45309] text-[#fff8e1]"
             )}
           >
             <span className="flex-1 font-semibold">{snackMessage}</span>
@@ -1102,7 +1151,12 @@ export default function Profile() {
               aria-label="Close"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </motion.div>
