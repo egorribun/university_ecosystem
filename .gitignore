@@ -207,3 +207,4 @@ root/frontend/playwright-report/
 root/frontend/test-results/
 root/frontend/blob-report/
 **/.lighthouseci/
+**/vitest-report.xml
