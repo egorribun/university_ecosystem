@@ -190,12 +190,13 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="group flex min-h-[44px] items-center gap-3 rounded-xl border border-glass-border bg-gradient-to-br from-glass-tint1/40 via-glass-tint2/20 to-transparent px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm transition-all duration-300 hover:border-nav-link/30 hover:shadow-[0_4px_12px_rgba(0,94,162,0.15)] dark:border-glass-border dark:hover:border-nav-link/40">
-      <div className="flex h-2 w-2 shrink-0 items-center justify-center">
-        <div className="h-2 w-2 rounded-full bg-nav-link shadow-[0_0_0_3px_rgba(15,79,170,0.22)] dark:bg-nav-link-hover dark:shadow-[0_0_0_3px_rgba(127,182,230,0.3)]" />
+    <div className="group flex min-h-[48px] items-center gap-4 rounded-2xl border border-glass-border bg-gradient-to-br from-glass-tint1/50 via-glass-tint2/30 to-transparent px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:shadow-[0_8px_24px_rgba(0,94,162,0.18)] dark:border-glass-border/60 dark:from-glass-tint1/40 dark:via-glass-tint2/20 dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_8px_24px_rgba(127,182,230,0.15)]">
+      <div className="flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+        <div className="h-2.5 w-2.5 rounded-full bg-nav-link shadow-[0_0_0_4px_rgba(15,79,170,0.18)] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_0_6px_rgba(15,79,170,0.25)] dark:bg-nav-link-hover dark:shadow-[0_0_0_4px_rgba(127,182,230,0.22)] dark:group-hover:shadow-[0_0_0_6px_rgba(127,182,230,0.35)]" />
       </div>
-      <p className="flex-1 text-sm leading-tight text-page-foreground">
-        <span className="font-bold">{label}:</span> {value}
+      <p className="flex-1 text-sm leading-relaxed text-page-foreground">
+        <span className="font-bold opacity-90">{label}:</span>{" "}
+        <span className="font-medium opacity-95">{value}</span>
       </p>
     </div>
   )
@@ -550,8 +551,9 @@ export default function Profile() {
         className="fixed inset-0 -z-10 bg-cover bg-center bg-fixed"
         style={{ backgroundImage: `url(${profileBg})` }}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-[#112f4e]/70 via-[#1a4480]/65 to-[#005ea2]/60 mix-blend-multiply dark:from-[#0a1524]/85 dark:via-[#0b2b47]/80 dark:to-[#123e67]/75" />
-        <div className="absolute inset-0 bg-[radial-gradient(1600px_800px_at_50%_0%,rgba(105,169,220,0.08)_0%,transparent_60%)] opacity-60" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0f4faa]/20 via-[#1a4480]/25 to-[#005ea2]/30 mix-blend-overlay dark:from-[#0a1524]/90 dark:via-[#0b2b47]/85 dark:to-[#0d2543]/80" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-page/60 to-page dark:via-page/70" />
+        <div className="absolute inset-0 bg-[radial-gradient(1400px_700px_at_50%_10%,rgba(105,169,220,0.12)_0%,transparent_65%)] opacity-70 dark:opacity-40" />
       </div>
 
       <PageFadeIn>
@@ -562,42 +564,42 @@ export default function Profile() {
         >
           <main
             id="main"
-            className="profile-page relative flex min-h-screen flex-col px-4 py-20 sm:px-6 sm:py-24 md:px-8 md:py-28"
+            className="profile-page relative flex min-h-screen flex-col px-4 py-16 sm:px-6 sm:py-20 md:px-8 md:py-24 lg:py-28"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
             <div className="relative z-0 mx-auto w-full max-w-7xl">
               <motion.div
                 ref={containerRef}
-                className="glass profile-card relative overflow-hidden rounded-3xl px-6 py-8 backdrop-blur-xl sm:px-10 sm:py-10 md:rounded-[2rem] md:px-14 md:py-12 lg:px-16"
+                className="glass profile-card relative overflow-hidden rounded-[2rem] px-6 py-10 backdrop-blur-xl sm:px-10 sm:py-12 md:rounded-[2.5rem] md:px-14 md:py-14 lg:px-20 lg:py-16"
                 initial={
-                  isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
+                  isTest ? false : { opacity: reduced ? 1 : 0.96, y: reduced ? 0 : 12, scale: 0.99 }
                 }
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={
                   isTest
                     ? { duration: 0 }
-                    : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
+                    : { type: "spring", stiffness: 480, damping: 32, mass: 0.8 }
                 }
               >
-                <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] md:gap-12 lg:gap-16">
+                <div className="grid grid-cols-1 items-start gap-10 md:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] md:gap-14 lg:gap-20">
                   {/* Left Column */}
-                  <div className="flex flex-col gap-8 md:gap-10">
+                  <div className="flex flex-col gap-8 md:gap-10 lg:gap-12">
                     {/* Hero Card */}
-                    <div className="glass relative flex min-h-[320px] flex-col items-center justify-end overflow-hidden rounded-3xl pb-20 shadow-[0_28px_70px_-44px_rgba(0,0,0,0.35)] sm:min-h-[360px] md:min-h-[380px] md:rounded-[2rem] lg:min-h-[420px] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)]">
+                    <div className="glass relative flex min-h-[340px] flex-col items-center justify-end overflow-hidden rounded-[2rem] pb-20 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.3)] transition-all duration-500 hover:shadow-[0_28px_80px_-20px_rgba(0,0,0,0.4)] sm:min-h-[380px] md:min-h-[400px] md:rounded-[2.5rem] lg:min-h-[440px] dark:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] dark:hover:shadow-[0_28px_80px_-20px_rgba(0,0,0,0.7)]">
                       <div
-                        className="absolute inset-0 bg-cover bg-center transition-transform duration-[1200ms] ease-out"
+                        className="absolute inset-0 bg-cover bg-center transition-transform duration-[1400ms] ease-out"
                         style={{
                           backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-                          filter: "saturate(1) contrast(1.02) brightness(0.98)",
+                          filter: "saturate(1.05) contrast(1.03) brightness(0.96)",
                         }}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[rgba(6,9,20,0.4)] to-[rgba(6,9,20,0.92)]" />
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-black/40 to-black/90 dark:from-black/10 dark:via-black/50 dark:to-black/95" />
 
                       {/* Avatar */}
-                      <div className="absolute left-1/2 top-12 flex h-32 w-32 -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-14 sm:h-36 sm:w-36 md:h-40 md:w-40 lg:h-44 lg:w-44">
-                        <div className="avatar-ring relative h-full w-full">
+                      <div className="absolute left-1/2 top-10 flex h-36 w-36 -translate-x-1/2 items-center justify-center rounded-full p-1 sm:top-12 sm:h-40 sm:w-40 md:h-44 md:w-44 lg:h-48 lg:w-48">
+                        <div className="avatar-ring relative h-full w-full transition-all duration-500 hover:scale-105">
                           <img
                             src={avatarImageUrl}
                             alt={user?.full_name ?? undefined}
@@ -605,29 +607,29 @@ export default function Profile() {
                             loading="lazy"
                             decoding="async"
                             referrerPolicy="no-referrer"
-                            className="h-full w-full rounded-full object-cover text-4xl font-medium text-white/90 md:text-5xl lg:text-6xl"
+                            className="h-full w-full rounded-full object-cover text-4xl font-medium text-white/90 transition-all duration-300 md:text-5xl lg:text-6xl"
                           />
                           {isOnline && (
-                            <div className="absolute bottom-2 right-2 z-10 h-4 w-4 rounded-full bg-[#22c55e] shadow-[0_0_0_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(34,197,94,0.45)] md:h-5 md:w-5">
+                            <div className="absolute bottom-2 right-2 z-10 h-5 w-5 rounded-full bg-[#22c55e] shadow-[0_0_0_3px_rgba(0,0,0,0.2),0_4px_12px_rgba(34,197,94,0.5)] transition-all duration-300 md:h-6 md:w-6">
                               {!reduced && (
-                                <div className="absolute -inset-1.5 animate-[onlinePulse_1.8s_ease-in-out_infinite] rounded-full border-2 border-[#22c55e]/45" />
+                                <div className="absolute -inset-2 animate-[onlinePulse_1.8s_ease-in-out_infinite] rounded-full border-2 border-[#22c55e]/50" />
                               )}
                             </div>
                           )}
                         </div>
                       </div>
 
-                      <div className="relative z-10 w-full px-6 pt-24 text-center sm:px-8 sm:pt-28 md:px-10 md:text-left">
-                        <div className="flex flex-col gap-6">
-                          <div>
+                      <div className="relative z-10 w-full px-6 pt-28 text-center sm:px-8 sm:pt-32 md:px-12 md:text-left lg:px-14">
+                        <div className="flex flex-col gap-7">
+                          <div className="space-y-3">
                             <h1
-                              className="profile-name text-[clamp(1.7rem,3.2vw,2.9rem)] font-black leading-tight tracking-tight"
+                              className="profile-name text-[clamp(1.85rem,3.5vw,3.2rem)] font-black leading-[1.1] tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
                               data-testid="profile-name"
                             >
                               {user!.full_name}
                             </h1>
                             {!!user?.position && user?.role === "teacher" && (
-                              <p className="profile-subtitle mt-2 text-base font-semibold">
+                              <p className="profile-subtitle mt-2.5 text-base font-semibold drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] sm:text-lg">
                                 {user.position}
                               </p>
                             )}
@@ -646,14 +648,20 @@ export default function Profile() {
                             ].map((chip, idx) => (
                               <motion.span
                                 key={`${chip}-${idx}`}
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
+                                initial={{ opacity: 0, scale: 0.92, y: 8 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
                                 transition={
                                   isTest || reduced
                                     ? { duration: 0 }
-                                    : { delay: idx * 0.09, duration: 0.56 }
+                                    : {
+                                        delay: idx * 0.08,
+                                        duration: 0.5,
+                                        type: "spring",
+                                        stiffness: 400,
+                                        damping: 28,
+                                      }
                                 }
-                                className="glass--chip inline-flex items-center rounded-full border border-glass-border bg-glass px-4 py-2 text-sm font-bold tracking-wide backdrop-blur-sm"
+                                className="glass--chip inline-flex items-center rounded-full border border-glass-border/80 bg-glass/90 px-5 py-2.5 text-sm font-extrabold tracking-wide shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-[0_8px_20px_rgba(0,0,0,0.2)] dark:border-glass-border/60 dark:bg-glass/80 dark:shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
                               >
                                 {chip}
                               </motion.span>
@@ -664,37 +672,40 @@ export default function Profile() {
                     </div>
 
                     {/* Contact Card */}
-                    <div className="glass relative flex flex-col gap-6 overflow-hidden rounded-3xl bg-glass/50 p-6 backdrop-blur-xl sm:p-8">
+                    <div className="glass relative flex flex-col gap-7 overflow-hidden rounded-[2rem] bg-glass/60 p-7 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-300 hover:shadow-[0_12px_32px_rgba(0,0,0,0.16)] sm:p-9 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
                       <button
                         onClick={openQrModal}
                         data-testid="open-qr"
-                        className="glass--btn group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-glass-border bg-nav-link px-6 py-4 font-extrabold tracking-wide text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link focus-visible:ring-offset-2 active:translate-y-0 dark:bg-nav-link-hover dark:shadow-[0_10px_26px_rgba(105,169,220,0.25)] dark:hover:shadow-[0_16px_38px_rgba(105,169,220,0.32)]"
+                        className="glass--btn group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-7 py-4 font-extrabold tracking-wide text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 active:translate-y-0 active:scale-[0.98] dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
                       >
-                        {t("profile:buttons.showQr")}
+                        <span className="relative z-10">{t("profile:buttons.showQr")}</span>
+                        <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                       </button>
 
-                      <div className="h-px bg-gradient-to-r from-nav-link/0 via-nav-link/40 to-nav-link/0 dark:from-nav-link-hover/0 dark:via-nav-link-hover/40 dark:to-nav-link-hover/0" />
+                      <div className="h-px bg-gradient-to-r from-transparent via-nav-link/30 to-transparent dark:via-nav-link-hover/30" />
 
-                      <div className="contact-links flex flex-col gap-5">
+                      <div className="contact-links flex flex-col gap-6">
                         {/* Email */}
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex min-w-0 flex-1 items-center gap-3">
-                            <svg
-                              className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                              />
-                            </svg>
+                        <div className="group flex items-center justify-between gap-5 rounded-2xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/40 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
+                          <div className="flex min-w-0 flex-1 items-center gap-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link transition-all duration-300 group-hover:scale-110 group-hover:bg-nav-link/15 dark:bg-nav-link-hover/10 dark:text-nav-link-hover dark:group-hover:bg-nav-link-hover/15">
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2.5}
+                                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                />
+                              </svg>
+                            </div>
                             <a
                               href={`mailto:${user!.email}`}
-                              className="flex-1 overflow-hidden text-ellipsis break-words font-extrabold text-nav-link no-underline hover:text-nav-link-hover hover:underline dark:text-nav-link-hover"
+                              className="flex-1 overflow-hidden text-ellipsis break-words text-sm font-extrabold text-nav-link no-underline transition-all duration-300 hover:text-nav-link-hover sm:text-base dark:text-nav-link-hover"
                               data-testid="profile-email-link"
                               title={t("profile:aria.openEmail")}
                             >
@@ -706,10 +717,10 @@ export default function Profile() {
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass/50 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 active:scale-100 dark:text-nav-link-hover"
+                            className="glass--btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-glass-border/60 bg-glass/70 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-nav-link/50 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-100 dark:border-glass-border/50 dark:bg-glass/60 dark:text-nav-link-hover dark:hover:border-nav-link-hover/50"
                           >
                             <svg
-                              className="h-4 w-4"
+                              className="h-5 w-5"
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
@@ -717,7 +728,7 @@ export default function Profile() {
                               <path
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                strokeWidth={2}
+                                strokeWidth={2.5}
                                 d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                               />
                             </svg>
@@ -726,20 +737,18 @@ export default function Profile() {
 
                         {/* Telegram */}
                         {!!user!.telegram && (
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex min-w-0 flex-1 items-center gap-3">
-                              <svg
-                                className="h-5 w-5 shrink-0 text-nav-link dark:text-nav-link-hover"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z" />
-                              </svg>
+                          <div className="group flex items-center justify-between gap-5 rounded-2xl border border-glass-border/50 bg-glass/40 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/40 hover:bg-glass/60 hover:shadow-[0_8px_20px_rgba(0,94,162,0.15)] dark:border-glass-border/40 dark:bg-glass/30 dark:hover:border-nav-link-hover/40 dark:hover:shadow-[0_8px_20px_rgba(127,182,230,0.12)]">
+                            <div className="flex min-w-0 flex-1 items-center gap-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0088cc]/10 text-[#0088cc] transition-all duration-300 group-hover:scale-110 group-hover:bg-[#0088cc]/15 dark:bg-[#2aabee]/10 dark:text-[#2aabee] dark:group-hover:bg-[#2aabee]/15">
+                                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.015-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.751-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.141.121.099.155.232.171.326.016.093.036.307.02.473z" />
+                                </svg>
+                              </div>
                               <a
                                 href={telegramHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex-1 overflow-hidden text-ellipsis break-words font-extrabold text-nav-link no-underline hover:text-nav-link-hover hover:underline dark:text-nav-link-hover"
+                                className="flex-1 overflow-hidden text-ellipsis break-words text-sm font-extrabold text-nav-link no-underline transition-all duration-300 hover:text-nav-link-hover sm:text-base dark:text-nav-link-hover"
                                 data-testid="profile-telegram-link"
                                 title={t("profile:aria.openTelegram")}
                               >
@@ -751,10 +760,10 @@ export default function Profile() {
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              className="glass--btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass/50 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 active:scale-100 dark:text-nav-link-hover"
+                              className="glass--btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-glass-border/60 bg-glass/70 text-nav-link backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-nav-link/50 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-100 dark:border-glass-border/50 dark:bg-glass/60 dark:text-nav-link-hover dark:hover:border-nav-link-hover/50"
                             >
                               <svg
-                                className="h-4 w-4"
+                                className="h-5 w-5"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -762,7 +771,7 @@ export default function Profile() {
                                 <path
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
-                                  strokeWidth={2}
+                                  strokeWidth={2.5}
                                   d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                                 />
                               </svg>
@@ -775,23 +784,30 @@ export default function Profile() {
                     {/* Now Playing */}
                     {showNowPlaying && nowPlaying && (
                       <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={isTest || reduced ? { duration: 0 } : { duration: 0.72 }}
-                        className="flex flex-col gap-4"
+                        initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={
+                          isTest || reduced
+                            ? { duration: 0 }
+                            : { duration: 0.6, type: "spring", stiffness: 400, damping: 28 }
+                        }
+                        className="flex flex-col gap-5"
                       >
-                        <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary opacity-80">
-                          {t("profile:sections.nowPlaying")}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-1 w-1 rounded-full bg-[#1db954]" />
+                          <p className="text-xs font-extrabold uppercase tracking-[0.15em] text-secondary/90 dark:text-secondary/80">
+                            {t("profile:sections.nowPlaying")}
+                          </p>
+                        </div>
                         <NowPlayingCard data={nowPlaying} />
                       </motion.div>
                     )}
                   </div>
 
                   {/* Right Column */}
-                  <div className="relative mt-32 w-full md:mt-0">
+                  <div className="relative mt-36 w-full md:mt-0">
                     {edit ? (
-                      <div className="glass profile-edit relative w-full overflow-hidden rounded-3xl bg-glass/50 p-6 backdrop-blur-xl sm:p-8 md:p-10">
+                      <div className="glass profile-edit relative w-full overflow-hidden rounded-[2rem] bg-glass/60 p-7 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:p-9 md:rounded-[2.5rem] md:p-11 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
                         <div className="flex flex-col gap-6">
                           <input
                             type="text"
@@ -799,23 +815,25 @@ export default function Profile() {
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
                             maxLength={120}
-                            className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                            className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
                           <input
                             type="email"
                             placeholder={t("profile:form.email")}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                            className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
                           <input
                             type="text"
                             placeholder={t("profile:form.telegram")}
                             value={telegram}
                             onChange={(e) => setTelegram(e.target.value)}
-                            className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                            className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                           />
-                          <p className="text-xs text-hint">{t("profile:form.telegramHint")}</p>
+                          <p className="-mt-2 text-xs font-medium text-hint/80">
+                            {t("profile:form.telegramHint")}
+                          </p>
 
                           {user!.role === "teacher" && (
                             <>
@@ -824,14 +842,14 @@ export default function Profile() {
                                 placeholder={t("profile:form.department")}
                                 value={department}
                                 onChange={(e) => setDepartment(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.position")}
                                 value={position}
                                 onChange={(e) => setPosition(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                             </>
                           )}
@@ -843,78 +861,81 @@ export default function Profile() {
                                 value={about}
                                 onChange={(e) => setAbout(e.target.value)}
                                 rows={3}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.recordBookNumber")}
                                 value={recordBookNumber}
                                 onChange={(e) => setRecordBookNumber(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.status")}
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.institute")}
                                 value={institute}
                                 onChange={(e) => setInstitute(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.course")}
                                 value={course}
                                 onChange={(e) => setCourse(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.educationLevel")}
                                 value={educationLevel}
                                 onChange={(e) => setEducationLevel(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.track")}
                                 value={track}
                                 onChange={(e) => setTrack(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <input
                                 type="text"
                                 placeholder={t("profile:form.program")}
                                 value={program}
                                 onChange={(e) => setProgram(e.target.value)}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                               <textarea
                                 placeholder={t("profile:form.achievements")}
                                 value={achievements}
                                 onChange={(e) => setAchievements(e.target.value)}
                                 rows={2}
-                                className="w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-page-foreground placeholder-placeholder focus:border-nav-link focus:outline-none focus:ring-2 focus:ring-nav-link/30 dark:border-glass-border/50 dark:bg-card-bg"
+                                className="w-full rounded-2xl border border-glass-border/60 bg-surface/80 px-5 py-4 text-page-foreground placeholder-placeholder transition-all duration-300 focus:border-nav-link focus:bg-surface focus:outline-none focus:ring-4 focus:ring-nav-link/20 dark:border-glass-border/50 dark:bg-card-bg/80 dark:focus:border-nav-link-hover dark:focus:bg-card-bg dark:focus:ring-nav-link-hover/20"
                               />
                             </>
                           )}
 
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                          <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center">
                             <button
                               onClick={handleSave}
                               disabled={saving}
-                              className="flex w-full items-center justify-center rounded-2xl border border-transparent bg-nav-link px-6 py-3 font-extrabold text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 active:translate-y-0 sm:w-auto dark:bg-nav-link-hover dark:shadow-[0_10px_26px_rgba(105,169,220,0.25)] dark:hover:shadow-[0_16px_38px_rgba(105,169,220,0.32)]"
+                              className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-8 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 disabled:pointer-events-none disabled:opacity-60 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)] dark:hover:shadow-[0_20px_40px_rgba(105,169,220,0.4)]"
                             >
-                              {saving ? t("profile:form.saving") : t("profile:form.save")}
+                              <span className="relative z-10">
+                                {saving ? t("profile:form.saving") : t("profile:form.save")}
+                              </span>
+                              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                             </button>
                             <button
                               onClick={handleCancel}
-                              className="glass--btn flex w-full items-center justify-center rounded-2xl border border-glass-border bg-glass/50 px-6 py-3 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 sm:w-auto"
+                              className="glass--btn flex w-full items-center justify-center rounded-2xl border border-glass-border/60 bg-glass/60 px-8 py-4 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-glass-border hover:bg-glass/80 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/30 active:translate-y-0 active:scale-[0.98] sm:w-auto dark:border-glass-border/50 dark:bg-glass/50"
                             >
                               {t("profile:form.cancel")}
                             </button>
@@ -922,18 +943,18 @@ export default function Profile() {
                         </div>
                       </div>
                     ) : (
-                      <div className="glass profile-card relative w-full overflow-hidden rounded-3xl bg-glass/50 p-6 backdrop-blur-xl sm:p-8 md:p-10">
-                        <h2 className="mb-6 text-[clamp(1.3rem,2.3vw,1.8rem)] font-black tracking-tight text-page-foreground">
+                      <div className="glass profile-card relative w-full overflow-hidden rounded-[2rem] bg-glass/60 p-7 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:p-9 md:rounded-[2.5rem] md:p-11 dark:bg-glass/50 dark:shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
+                        <h2 className="mb-8 text-[clamp(1.4rem,2.5vw,2rem)] font-black tracking-tight text-page-foreground">
                           {t("profile:sections.details")}
                         </h2>
-                        <div className="glass overflow-hidden rounded-3xl border border-glass-border bg-glass/40 backdrop-blur-sm">
+                        <div className="glass overflow-hidden rounded-[2rem] border border-glass-border/60 bg-glass/50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] dark:border-glass-border/50 dark:bg-glass/40">
                           <details open className="group">
-                            <summary className="flex cursor-pointer items-center justify-between border-b border-glass-border px-6 py-5 transition-colors hover:bg-glass/30">
-                              <h3 className="font-black text-page-foreground">
+                            <summary className="flex cursor-pointer items-center justify-between border-b border-glass-border/50 px-7 py-6 transition-all duration-300 hover:bg-glass/40 dark:border-glass-border/40 dark:hover:bg-glass/30">
+                              <h3 className="text-lg font-black tracking-tight text-page-foreground">
                                 {t("profile:sections.profileDetails")}
                               </h3>
                               <svg
-                                className="h-5 w-5 transition-transform group-open:rotate-180"
+                                className="h-6 w-6 text-nav-link transition-all duration-300 group-open:rotate-180 dark:text-nav-link-hover"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -941,13 +962,13 @@ export default function Profile() {
                                 <path
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
-                                  strokeWidth={2}
+                                  strokeWidth={2.5}
                                   d="M19 9l-7 7-7-7"
                                 />
                               </svg>
                             </summary>
-                            <div className="px-6 py-6">
-                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="px-7 py-7">
+                              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                                 {[
                                   { label: t("profile:form.about"), value: user!.about },
                                   { label: t("profile:form.status"), value: user!.status },
@@ -969,20 +990,29 @@ export default function Profile() {
                               </div>
 
                               {achievementsList.length > 0 && (
-                                <div className="mt-8">
-                                  <h3 className="mb-4 text-base font-extrabold text-page-foreground">
-                                    {t("profile:sections.achievements")}
-                                  </h3>
-                                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(160px,1fr))]">
+                                <div className="mt-10">
+                                  <div className="mb-6 flex items-center gap-3">
+                                    <div className="h-1 w-1 rounded-full bg-nav-link dark:bg-nav-link-hover" />
+                                    <h3 className="text-base font-extrabold uppercase tracking-[0.1em] text-page-foreground/90">
+                                      {t("profile:sections.achievements")}
+                                    </h3>
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
                                     {achievementsList.map((ach, idx) => (
                                       <motion.button
                                         key={ach.key}
-                                        initial={{ opacity: 0, scale: 0.95 }}
-                                        animate={{ opacity: 1, scale: 1 }}
+                                        initial={{ opacity: 0, scale: 0.92, y: 8 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
                                         transition={
                                           isTest || reduced
                                             ? { duration: 0 }
-                                            : { delay: idx * 0.09, duration: 0.5 }
+                                            : {
+                                                delay: idx * 0.07,
+                                                duration: 0.4,
+                                                type: "spring",
+                                                stiffness: 400,
+                                                damping: 26,
+                                              }
                                         }
                                         onClick={() =>
                                           setAchOpen({
@@ -992,9 +1022,12 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        className="glass--chip inline-flex w-full items-center justify-center rounded-2xl border border-glass-border bg-glass px-4 py-3 text-sm font-bold leading-snug text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-nav-link/30 hover:shadow-md"
+                                        className="glass--chip group inline-flex w-full items-center justify-center rounded-2xl border border-glass-border/60 bg-gradient-to-br from-glass/70 via-glass/50 to-glass/60 px-5 py-4 text-sm font-extrabold leading-snug text-page-foreground backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:shadow-[0_12px_28px_rgba(0,94,162,0.18)] dark:border-glass-border/50 dark:from-glass/60 dark:via-glass/40 dark:to-glass/50 dark:shadow-[0_4px_12px_rgba(0,0,0,0.2)] dark:hover:border-nav-link-hover/50 dark:hover:shadow-[0_12px_28px_rgba(127,182,230,0.15)]"
                                       >
-                                        {ach.name}
+                                        <span className="relative">
+                                          {ach.name}
+                                          <span className="absolute -right-3 -top-2 h-2 w-2 rounded-full bg-nav-link opacity-0 transition-all duration-300 group-hover:opacity-100 dark:bg-nav-link-hover" />
+                                        </span>
                                       </motion.button>
                                     ))}
                                   </div>
@@ -1024,27 +1057,28 @@ export default function Profile() {
         <div
           role="button"
           tabIndex={0}
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4 backdrop-blur-md transition-all duration-300"
           onClick={closeQrModal}
           onKeyDown={(e) => {
             if (e.key === "Escape" || e.key === "Enter") closeQrModal()
           }}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="glass relative w-full max-w-md overflow-hidden rounded-3xl bg-glass backdrop-blur-xl"
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
+            className="glass relative w-full max-w-md overflow-hidden rounded-[2rem] bg-glass/95 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] dark:bg-glass/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-6 text-center">
-              <h2 className="text-xl font-black tracking-wide text-page-foreground">
+            <div className="border-b border-glass-border/50 px-7 py-7 text-center">
+              <h2 className="text-2xl font-black tracking-tight text-page-foreground">
                 {t("profile:dialog.qr.title")}
               </h2>
             </div>
-            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 pb-6">
-              <div className="rounded-3xl border border-nav-link/15 bg-white p-4 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
+            <div className="flex min-h-[340px] flex-col items-center justify-center gap-5 px-7 pb-7 pt-8">
+              <div className="rounded-[2rem] border border-nav-link/20 bg-white p-5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.3)] transition-all duration-300 hover:scale-105 dark:border-nav-link-hover/30 dark:shadow-[0_20px_50px_-20px_rgba(0,0,0,0.5)]">
                 <div
-                  className="flex h-[300px] w-[300px] items-center justify-center text-sm font-medium text-nav-link"
+                  className="flex h-[280px] w-[280px] items-center justify-center text-sm font-medium text-nav-link sm:h-[300px] sm:w-[300px]"
                   dangerouslySetInnerHTML={{
                     __html: `
                       <svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
@@ -1061,14 +1095,15 @@ export default function Profile() {
                   }}
                 />
               </div>
-              <p className="text-sm text-secondary">{t("profile:dialog.qr.hint")}</p>
+              <p className="text-sm font-medium text-secondary/90">{t("profile:dialog.qr.hint")}</p>
             </div>
-            <div className="flex justify-center px-6 pb-6">
+            <div className="flex justify-center border-t border-glass-border/50 px-7 py-6">
               <button
                 onClick={closeQrModal}
-                className="glass--btn rounded-2xl border border-transparent bg-nav-link px-8 py-3 font-extrabold text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 dark:bg-nav-link-hover"
+                className="group relative flex items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-10 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 active:translate-y-0 active:scale-100 dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)]"
               >
-                {t("common:buttons.done")}
+                <span className="relative z-10">{t("common:buttons.done")}</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               </button>
             </div>
           </motion.div>
@@ -1080,49 +1115,91 @@ export default function Profile() {
         <div
           role="button"
           tabIndex={0}
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4 backdrop-blur-md transition-all duration-300"
           onClick={() => setAchOpen(null)}
           onKeyDown={(e) => {
             if (e.key === "Escape" || e.key === "Enter") setAchOpen(null)
           }}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="glass relative w-full max-w-md overflow-hidden rounded-3xl bg-glass backdrop-blur-xl"
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
+            className="glass relative w-full max-w-lg overflow-hidden rounded-[2rem] bg-glass/95 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] dark:bg-glass/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-6">
-              <h2 className="text-xl font-black text-page-foreground">{achOpen.name}</h2>
+            <div className="border-b border-glass-border/50 px-7 py-7">
+              <h2 className="text-2xl font-black tracking-tight text-page-foreground">
+                {achOpen.name}
+              </h2>
             </div>
-            <div className="flex flex-col gap-3 px-6 pb-6">
+            <div className="flex flex-col gap-5 px-7 py-7">
               {achOpen.issuer && (
-                <p className="text-page-foreground">
-                  {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
-                </p>
+                <div className="flex items-start gap-4 rounded-2xl border border-glass-border/50 bg-glass/40 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-secondary/90">
+                      {t("profile:dialog.achievement.organizer", { issuer: "" })}
+                    </p>
+                    <p className="mt-1 font-bold text-page-foreground">{achOpen.issuer}</p>
+                  </div>
+                </div>
               )}
               {achOpen.date && (
-                <p className="text-page-foreground">
-                  {t("profile:dialog.achievement.date", { date: achOpen.date })}
-                </p>
+                <div className="flex items-start gap-4 rounded-2xl border border-glass-border/50 bg-glass/40 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-nav-link/10 text-nav-link dark:bg-nav-link-hover/10 dark:text-nav-link-hover">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-secondary/90">
+                      {t("profile:dialog.achievement.date", { date: "" })}
+                    </p>
+                    <p className="mt-1 font-bold text-page-foreground">{achOpen.date}</p>
+                  </div>
+                </div>
               )}
               {achOpen.url && (
                 <a
                   href={achOpen.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="glass--btn inline-flex items-center justify-center rounded-2xl border border-glass-border bg-glass/50 px-6 py-3 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                  className="group relative mt-2 inline-flex items-center justify-center gap-2 overflow-hidden rounded-2xl border border-glass-border/60 bg-glass/60 px-6 py-4 font-extrabold text-page-foreground backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-nav-link/50 hover:bg-glass/80 hover:shadow-lg dark:border-glass-border/50"
                 >
-                  {t("profile:dialog.achievement.openLink")}
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
+                  </svg>
+                  <span>{t("profile:dialog.achievement.openLink")}</span>
                 </a>
               )}
             </div>
-            <div className="flex justify-center px-6 pb-6">
+            <div className="flex justify-center border-t border-glass-border/50 px-7 py-6">
               <button
                 onClick={() => setAchOpen(null)}
-                className="glass--btn rounded-2xl border border-transparent bg-nav-link px-8 py-3 font-extrabold text-white shadow-[0_10px_26px_rgba(0,94,162,0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(0,94,162,0.42)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nav-link active:translate-y-0 dark:bg-nav-link-hover"
+                className="group relative flex items-center justify-center overflow-hidden rounded-2xl border border-transparent bg-gradient-to-r from-nav-link to-nav-link/90 px-10 py-4 font-extrabold text-white shadow-[0_12px_28px_rgba(0,94,162,0.38)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:shadow-[0_20px_40px_rgba(0,94,162,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-nav-link/40 active:translate-y-0 active:scale-100 dark:from-nav-link-hover dark:to-nav-link-hover/90 dark:shadow-[0_12px_28px_rgba(105,169,220,0.3)]"
               >
-                {t("profile:dialog.achievement.close")}
+                <span className="relative z-10">{t("profile:dialog.achievement.close")}</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               </button>
             </div>
           </motion.div>
@@ -1132,35 +1209,81 @@ export default function Profile() {
       {/* Snackbar */}
       {snack && (
         <div
-          className="fixed bottom-8 left-1/2 z-[4000] -translate-x-1/2"
+          className="fixed bottom-10 left-1/2 z-[4000] -translate-x-1/2"
           data-testid={snack.key === "copied" ? "snackbar-copied" : undefined}
         >
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            initial={{ opacity: 0, y: 24, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            exit={{ opacity: 0, y: 24, scale: 0.92 }}
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
             className={cn(
-              "flex min-w-[300px] items-center gap-3 rounded-2xl px-6 py-4 shadow-[0_10px_26px_rgba(0,0,0,0.18),0_2px_10px_rgba(0,0,0,0.08)] backdrop-blur-lg",
+              "flex min-w-[320px] items-center gap-4 rounded-2xl px-7 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.25),0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-xl sm:min-w-[380px]",
               snack.sev === "success" &&
-                "bg-gradient-to-r from-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
+                "bg-gradient-to-r from-[#2e7d32] via-[#2e7d32] to-[#1b5e20] text-[#e9ffef]",
               snack.sev === "error" &&
-                "bg-gradient-to-r from-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
-              snack.sev === "info" && "bg-gradient-to-r from-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
+                "bg-gradient-to-r from-[#d32f2f] via-[#d32f2f] to-[#b71c1c] text-[#fff5f5]",
+              snack.sev === "info" &&
+                "bg-gradient-to-r from-[#005ea2] via-[#005ea2] to-[#1a4480] text-[#eaf4ff]",
               snack.sev === "warning" &&
-                "bg-gradient-to-r from-[#f59e0b] to-[#b45309] text-[#fff8e1]"
+                "bg-gradient-to-r from-[#f59e0b] via-[#f59e0b] to-[#b45309] text-[#fff8e1]"
             )}
           >
-            <span className="flex-1 font-semibold">{snackMessage}</span>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
+              {snack.sev === "success" && (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              )}
+              {snack.sev === "error" && (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              )}
+              {snack.sev === "info" && (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              )}
+              {snack.sev === "warning" && (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              )}
+            </div>
+            <span className="flex-1 text-sm font-bold leading-relaxed sm:text-base">
+              {snackMessage}
+            </span>
             <button
               onClick={() => setSnack(null)}
-              className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-white/20"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 hover:scale-110 hover:bg-white/20 active:scale-95"
               aria-label="Close"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
+                  strokeWidth={2.5}
                   d="M6 18L18 6M6 6l12 12"
                 />
               </svg>
