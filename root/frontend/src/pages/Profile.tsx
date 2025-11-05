@@ -613,7 +613,7 @@ export default function Profile() {
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-7xl mx-auto w-full relative z-0">
+            <div className="max-w-[95%] mx-auto w-full relative z-0">
               <motion.div
                 ref={containerRef}
                 className="glass profile-card px-6 sm:px-10 md:px-14 lg:px-16 py-10 sm:py-12 md:py-14 rounded-2xl md:rounded-3xl relative overflow-hidden backdrop-blur-md border border-glass-border bg-glass shadow-glass"
@@ -648,7 +648,7 @@ export default function Profile() {
 
                       {/* Avatar Container */}
                       <div
-                        className={`absolute left-1/2 top-12 sm:top-14 -translate-x-1/2 flex items-center justify-center p-1 ${reduceMotion ? "" : "animate-[aura-pulse_14s_ease-in-out_infinite]"}`}
+                        className="absolute left-1/2 top-12 sm:top-14 -translate-x-1/2 flex items-center justify-center p-1"
                         style={{ width: avatarSize, height: avatarSize }}
                       >
                         <div className="avatar-ring w-full h-full">
