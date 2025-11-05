@@ -24,15 +24,10 @@ import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import type { NowPlaying } from "@/types/spotify"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
-
-// Icons imports
-import {
-  EnvelopeIcon,
-  PaperClipboardIcon,
-  ChevronDownIcon,
-  XMarkIcon,
-} from "@heroicons/react/24/outline"
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/solid"
+import EmailIcon from "@mui/icons-material/Email"
+import TelegramIcon from "@mui/icons-material/Telegram"
+import ContentCopyIcon from "@mui/icons-material/ContentCopy"
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
@@ -757,7 +752,7 @@ export default function Profile() {
                         {/* Email */}
                         <div className="flex flex-row items-center justify-between flex-wrap gap-3">
                           <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-                            <EnvelopeIcon
+                            <EmailIcon
                               className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
                               aria-hidden
                             />
@@ -779,7 +774,7 @@ export default function Profile() {
                             data-testid="copy-email"
                             className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
                           >
-                            <PaperClipboardIcon className="w-4 h-4 text-page-foreground" />
+                            <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
                           </button>
                         </div>
 
@@ -787,7 +782,7 @@ export default function Profile() {
                         {!!user!.telegram && (
                           <div className="flex flex-row items-center justify-between flex-wrap gap-3">
                             <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-                              <ChatBubbleLeftRightIcon
+                              <TelegramIcon
                                 className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
                                 aria-hidden
                               />
@@ -811,7 +806,7 @@ export default function Profile() {
                               data-testid="copy-telegram"
                               className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
                             >
-                              <PaperClipboardIcon className="w-4 h-4 text-page-foreground" />
+                              <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
                             </button>
                           </div>
                         )}
@@ -1056,7 +1051,7 @@ export default function Profile() {
                               <span className="font-black text-page-foreground">
                                 {t("profile:sections.profileDetails")}
                               </span>
-                              <ChevronDownIcon
+                              <ExpandMoreIcon
                                 className={`w-5 h-5 text-page-foreground transition-transform duration-300 ${detailsOpen ? "rotate-180" : ""}`}
                               />
                             </button>
