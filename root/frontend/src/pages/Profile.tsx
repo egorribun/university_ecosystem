@@ -210,7 +210,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="glass grid grid-cols-[14px_1fr] items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-lg border border-glass-border bg-glass backdrop-blur-md transition-all duration-300 hover:shadow-md hover:scale-[1.01]">
+    <div className="glass grid grid-cols-[14px_1fr] items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-lg border border-white/20 dark:border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl transition-all duration-300 hover:shadow-lg hover:scale-[1.02] hover:bg-white/15 dark:hover:bg-white/8">
       <div className="w-2 h-2 rounded-full bg-[#0f4faa] dark:bg-[#7fb6e6] shadow-[0_0_0_3px_rgba(15,79,170,0.22)] dark:shadow-[0_0_0_3px_rgba(127,182,230,0.22)] justify-self-center" />
       <p className="text-sm sm:text-base leading-tight text-page-foreground">
         <span className="font-bold">{label}:</span> {value}
@@ -248,7 +248,6 @@ export default function Profile() {
     url?: string
   } | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const confettiRef = useRef<HTMLCanvasElement | null>(null)
   const ldJsonRef = useRef<HTMLScriptElement | null>(null)
   const queryClient = useQueryClient()
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
@@ -398,87 +397,11 @@ export default function Profile() {
     img.src = DEFAULT_AVATAR
   }, [])
 
-  const ensureConfettiSize = useCallback(() => {
-    const canvas = confettiRef.current
-    if (!canvas) return { dpr: 1, w: window.innerWidth, h: window.innerHeight }
-    const dpr = Math.max(1, window.devicePixelRatio || 1)
-    const w = Math.max(1, window.innerWidth)
-    const h = Math.max(1, window.innerHeight)
-    canvas.style.width = `${w}px`
-    canvas.style.height = `${h}px`
-    canvas.width = Math.floor(w * dpr)
-    canvas.height = Math.floor(h * dpr)
-    return { dpr, w, h }
-  }, [])
-
-  useEffect(() => {
-    const onResize = () => ensureConfettiSize()
-    ensureConfettiSize()
-    window.addEventListener("resize", onResize)
-    window.addEventListener("orientationchange", onResize)
-    return () => {
-      window.removeEventListener("resize", onResize)
-      window.removeEventListener("orientationchange", onResize)
-    }
-  }, [ensureConfettiSize])
-
-  const burstConfetti = useCallback(
-    (x?: number, y?: number) => {
-      const canvas = confettiRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      const { dpr, w, h } = ensureConfettiSize()
-      const cx = x != null ? x * dpr : (w * dpr) / 2
-      const cy = y != null ? y * dpr : (h * dpr) / 5
-      const count = 120
-      const parts = Array.from({ length: count }).map((_, i) => {
-        const angle = Math.random() * Math.PI - Math.PI / 2
-        const speed = 3 + Math.random() * 6
-        const hue = Math.floor((i / count) * 360)
-        return {
-          x: cx,
-          y: cy,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 2,
-          life: 56 + Math.random() * 36,
-          size: 2 + Math.random() * 3,
-          color: `hsl(${hue} 90% 55%)`,
-        }
-      })
-      let raf = 0
-      const step = () => {
-        const context = ctx
-        context.clearRect(0, 0, canvas.width, canvas.height)
-        parts.forEach((p) => {
-          p.vy += 0.12 * dpr
-          p.x += p.vx * dpr
-          p.y += p.vy * dpr
-          p.life -= 1
-          context.fillStyle = p.color
-          context.beginPath()
-          context.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2)
-          context.fill()
-        })
-        for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1)
-        if (parts.length > 0) raf = requestAnimationFrame(step)
-        else cancelAnimationFrame(raf)
-      }
-      step()
-    },
-    [ensureConfettiSize]
-  )
-
-  useEffect(() => {
-    if (snack && snack.sev === "success" && snack.key !== "copied") burstConfetti()
-  }, [snack, burstConfetti])
-
   const copy = async (text: string, evt?: { clientX: number; clientY: number }) => {
     try {
       await navigator.clipboard?.writeText(text)
     } finally {
       setSnack({ key: "copied", sev: "success" })
-      if (evt) burstConfetti(evt.clientX, evt.clientY)
     }
   }
 
@@ -1158,13 +1081,6 @@ export default function Profile() {
                 </div>
               </motion.div>
             </div>
-
-            {/* Confetti Canvas */}
-            <canvas
-              ref={confettiRef}
-              className="fixed left-0 top-0 w-screen h-screen pointer-events-none"
-              style={{ zIndex: 2147483000 }}
-            />
           </main>
         </motion.div>
       </PageFadeIn>
