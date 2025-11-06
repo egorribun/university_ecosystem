@@ -2229,31 +2229,14 @@ body.dark .profile-subtitle {
   text-decoration: underline;
 }
 .profile-name {
-  background: linear-gradient(
-    92deg,
-    #0e1116 0%,
-    #005ea2 22%,
-    #69a9dc 50%,
-    #1a4480 78%,
-    #0e1116 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #ffffff;
   letter-spacing: 0.01em;
   font-weight: 900;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 body.dark .profile-name {
-  background: linear-gradient(
-    92deg,
-    #eaf4ff 0%,
-    #69a9dc 22%,
-    #ffffff 50%,
-    #69a9dc 78%,
-    #eaf4ff 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 .profile-subtitle {
   color: var(--secondary-text);

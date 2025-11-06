@@ -211,7 +211,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="glass grid grid-cols-[12px_1fr] items-start gap-3 px-4 py-3 min-h-[48px] rounded-xl border border-white/15 dark:border-white/8 bg-white/8 dark:bg-white/4 backdrop-blur-xl transition-all duration-300 hover:shadow-md hover:border-white/25 dark:hover:border-white/12 hover:bg-white/12 dark:hover:bg-white/6">
+    <div className="glass grid grid-cols-[12px_1fr] items-start gap-3 px-4 py-3 min-h-[48px] rounded-xl border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 backdrop-blur-xl transition-all duration-300 hover:shadow-md hover:border-white/30 dark:hover:border-white/20 hover:bg-white/16 dark:hover:bg-white/12">
       <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-[#0f4faa] dark:bg-[#7fb6e6] shadow-[0_0_0_2px_rgba(15,79,170,0.18)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.18)] justify-self-center" />
       <div className="text-sm sm:text-base leading-relaxed text-page-foreground">
         <span className="font-extrabold text-[#0f4faa] dark:text-[#7fb6e6]">{label}</span>
@@ -544,7 +544,7 @@ export default function Profile() {
             <div className="max-w-[95%] mx-auto w-full relative z-0">
               <motion.div
                 ref={containerRef}
-                className="glass profile-card px-6 sm:px-10 md:px-14 lg:px-16 py-10 sm:py-12 md:py-14 rounded-2xl md:rounded-3xl relative overflow-hidden backdrop-blur-md border border-glass-border bg-glass shadow-glass"
+                className="glass profile-card px-6 sm:px-10 md:px-14 lg:px-16 py-10 sm:py-12 md:py-14 rounded-2xl md:rounded-3xl relative overflow-hidden backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 shadow-glass"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -555,11 +555,11 @@ export default function Profile() {
                     : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
                 }
               >
-                <div className="grid grid-cols-1 md:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] gap-x-6 sm:gap-x-8 md:gap-x-12 gap-y-8 md:gap-y-0 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] xl:grid-cols-[minmax(380px,440px)_minmax(0,1fr)] gap-x-6 sm:gap-x-8 lg:gap-x-10 xl:gap-x-12 gap-y-8 lg:gap-y-0 items-start">
                   <div className="flex flex-col gap-6 md:gap-8 items-stretch">
                     {/* Hero Card with Cover and Avatar */}
                     <div
-                      className="glass relative rounded-2xl md:rounded-3xl overflow-hidden min-h-[300px] sm:min-h-[340px] md:min-h-[360px] lg:min-h-[400px] flex items-end justify-center shadow-[0_28px_70px_-44px_rgba(0,0,0,0.3)] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)] backdrop-blur-md border border-glass-border bg-glass"
+                      className="glass relative rounded-2xl md:rounded-3xl overflow-hidden min-h-[300px] sm:min-h-[340px] md:min-h-[360px] lg:min-h-[400px] flex items-end justify-center shadow-[0_28px_70px_-44px_rgba(0,0,0,0.3)] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)] backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8"
                       style={{ paddingBottom: heroPaddingBottom }}
                     >
                       {/* Cover Image with Parallax */}
@@ -662,96 +662,13 @@ export default function Profile() {
                               }
                             >
                               <span
-                                className={`inline-flex items-center px-4 py-1.5 rounded-full border border-white/20 dark:border-white/10 bg-white/8 dark:bg-white/4 text-white dark:text-white/95 text-sm font-bold tracking-wide backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:shadow-lg hover:bg-white/12 dark:hover:bg-white/7 ${reduced ? "" : "animate-[chip-highlight_12s_ease-in-out_infinite]"}`}
-                                style={{ animationDelay: reduced ? "0ms" : `${idx * 90}ms` }}
+                                className="inline-flex items-center px-4 py-1.5 rounded-full border border-white/25 dark:border-white/20 bg-white/16 dark:bg-white/12 text-white dark:text-white/95 text-sm font-bold tracking-wide backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:shadow-lg hover:bg-white/24 dark:hover:bg-white/18"
                               >
                                 {chip}
                               </span>
                             </motion.div>
                           ))}
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Contact Panel */}
-                    <div className="glass profile-card p-6 sm:p-8 rounded-2xl flex flex-col gap-6 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
-                      {/* QR Button */}
-                      <div className="flex flex-col gap-3 items-stretch">
-                        <button
-                          onClick={openQrModal}
-                          data-testid="open-qr"
-                          className="glass--btn w-full py-3 px-6 rounded-xl bg-gradient-to-br from-[#0f4faa] to-[#1a4480] dark:from-[#7fb6e6] dark:to-[#c7e1f7] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm border border-white/10"
-                        >
-                          {t("profile:buttons.showQr")}
-                        </button>
-                      </div>
-
-                      {/* Divider */}
-                      <div className="h-px bg-gradient-to-r from-transparent via-glass-border to-transparent" />
-
-                      {/* Contact Links */}
-                      <div className="flex flex-col gap-4 contact-links">
-                        {/* Email */}
-                        <div className="flex flex-row items-center justify-between flex-wrap gap-3">
-                          <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-                            <EmailIcon
-                              className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
-                              aria-hidden
-                            />
-                            <p className="font-extrabold break-words flex-1 text-page-foreground">
-                              <a
-                                href={`mailto:${user!.email}`}
-                                className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200"
-                                data-testid="profile-email-link"
-                                title={t("profile:aria.openEmail")}
-                              >
-                                {user!.email}
-                              </a>
-                            </p>
-                          </div>
-                          <button
-                            onClick={(e) => copy(user!.email, e)}
-                            aria-label={t("profile:aria.copyEmail")}
-                            title={t("profile:aria.copyEmail")}
-                            data-testid="copy-email"
-                            className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
-                          >
-                            <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
-                          </button>
-                        </div>
-
-                        {/* Telegram */}
-                        {!!user!.telegram && (
-                          <div className="flex flex-row items-center justify-between flex-wrap gap-3">
-                            <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-                              <TelegramIcon
-                                className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
-                                aria-hidden
-                              />
-                              <p className="font-extrabold break-words flex-1 text-page-foreground">
-                                <a
-                                  href={telegramHref}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200"
-                                  data-testid="profile-telegram-link"
-                                  title={t("profile:aria.openTelegram")}
-                                >
-                                  {user!.telegram}
-                                </a>
-                              </p>
-                            </div>
-                            <button
-                              onClick={(e) => copy(user!.telegram!, e)}
-                              aria-label={t("profile:aria.copyTelegram")}
-                              title={t("profile:aria.copyTelegram")}
-                              data-testid="copy-telegram"
-                              className={`glass--btn p-2 rounded-lg border border-glass-border bg-glass/50 hover:bg-glass backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
-                            >
-                              <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
 
@@ -784,6 +701,88 @@ export default function Profile() {
                         <NowPlayingCard data={nowPlaying} />
                       </motion.div>
                     )}
+
+                    {/* Contact Panel */}
+                    <div className="glass profile-card p-5 sm:p-6 rounded-2xl flex flex-col gap-5 backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 shadow-glass">
+                      {/* QR Button */}
+                      <div className="flex flex-col gap-3 items-stretch">
+                        <button
+                          onClick={openQrModal}
+                          data-testid="open-qr"
+                          className="glass--btn w-full py-3 px-6 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] backdrop-blur-sm border border-white/20 dark:border-white/15"
+                        >
+                          {t("profile:buttons.showQr")}
+                        </button>
+                      </div>
+
+                      {/* Divider */}
+                      <div className="h-px bg-white/20 dark:bg-white/15" />
+
+                      {/* Contact Links */}
+                      <div className="flex flex-col gap-4 contact-links">
+                        {/* Email */}
+                        <div className="flex flex-row items-center justify-between flex-wrap gap-3">
+                          <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
+                            <EmailIcon
+                              className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                              aria-hidden
+                            />
+                            <p className="font-extrabold break-words flex-1 text-page-foreground">
+                              <a
+                                href={`mailto:${user!.email}`}
+                                className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200"
+                                data-testid="profile-email-link"
+                                title={t("profile:aria.openEmail")}
+                              >
+                                {user!.email}
+                              </a>
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => copy(user!.email, e)}
+                            aria-label={t("profile:aria.copyEmail")}
+                            title={t("profile:aria.copyEmail")}
+                            data-testid="copy-email"
+                            className={`glass--btn p-2 rounded-lg border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 hover:bg-white/20 dark:hover:bg-white/16 backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
+                          >
+                            <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
+                          </button>
+                        </div>
+
+                        {/* Telegram */}
+                        {!!user!.telegram && (
+                          <div className="flex flex-row items-center justify-between flex-wrap gap-3">
+                            <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
+                              <TelegramIcon
+                                className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                                aria-hidden
+                              />
+                              <p className="font-extrabold break-words flex-1 text-page-foreground">
+                                <a
+                                  href={telegramHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200"
+                                  data-testid="profile-telegram-link"
+                                  title={t("profile:aria.openTelegram")}
+                                >
+                                  {user!.telegram}
+                                </a>
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => copy(user!.telegram!, e)}
+                              aria-label={t("profile:aria.copyTelegram")}
+                              title={t("profile:aria.copyTelegram")}
+                              data-testid="copy-telegram"
+                              className={`glass--btn p-2 rounded-lg border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 hover:bg-white/20 dark:hover:bg-white/16 backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
+                            >
+                              <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Right Column - Profile Details / Edit Form */}
@@ -792,7 +791,7 @@ export default function Profile() {
                     style={{ marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : "0" }}
                   >
                     {edit ? (
-                      <div className="glass profile-card profile-edit w-full rounded-2xl p-6 sm:p-8 md:p-10 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
+                      <div className="glass profile-card profile-edit w-full rounded-2xl p-6 sm:p-8 md:p-10 backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 shadow-glass">
                         <div className="flex flex-col gap-5">
                           {/* Name Field */}
                           <div className="flex flex-col gap-2">
@@ -973,13 +972,13 @@ export default function Profile() {
                             <button
                               onClick={handleSave}
                               disabled={saving}
-                              className="glass--btn w-full sm:w-auto py-3 px-8 rounded-xl bg-gradient-to-br from-[#0f4faa] to-[#1a4480] dark:from-[#7fb6e6] dark:to-[#c7e1f7] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100"
+                              className="glass--btn w-full sm:w-auto py-3 px-8 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:bg-[#0f4faa] dark:disabled:hover:bg-[#7fb6e6] border border-white/20 dark:border-white/15"
                             >
                               {saving ? t("profile:form.saving") : t("profile:form.save")}
                             </button>
                             <button
                               onClick={handleCancel}
-                              className="glass--btn w-full sm:w-auto py-3 px-8 rounded-xl border-2 border-glass-border bg-transparent hover:bg-glass/50 text-page-foreground font-extrabold tracking-wide transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm"
+                              className="glass--btn w-full sm:w-auto py-3 px-8 rounded-xl border-2 border-white/20 dark:border-white/15 bg-transparent hover:bg-white/12 dark:hover:bg-white/8 text-page-foreground font-extrabold tracking-wide transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm"
                             >
                               {t("profile:form.cancel")}
                             </button>
@@ -989,7 +988,7 @@ export default function Profile() {
                     ) : (
                       <>
                         {/* Profile Details View */}
-                        <div className="w-full flex flex-col gap-6">
+                        <div className="w-full flex flex-col gap-5 md:gap-6">
                           {/* Section Header */}
                           <div className="flex items-center justify-between">
                             <h2 className="text-[clamp(1.5rem,2.8vw,2.2rem)] font-black tracking-tight text-page-foreground">
@@ -1073,10 +1072,7 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        className={`glass--chip px-4 py-3 rounded-xl border border-glass-border bg-button hover:bg-button/80 text-nav-text font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left ${reduced ? "" : "animate-[chip-highlight_14s_ease-in-out_infinite]"}`}
-                                        style={{
-                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
-                                        }}
+                                        className="glass--chip px-4 py-3 rounded-xl border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 hover:bg-white/20 dark:hover:bg-white/16 text-page-foreground font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left"
                                       >
                                         {ach.name}
                                       </motion.button>
@@ -1133,7 +1129,7 @@ export default function Profile() {
         <DialogActions className="justify-center pb-4">
           <button
             onClick={closeQrModal}
-            className="glass--btn py-2.5 px-6 rounded-xl bg-gradient-to-br from-[#0f4faa] to-[#1a4480] dark:from-[#7fb6e6] dark:to-[#c7e1f7] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98]"
+            className="glass--btn py-2.5 px-6 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-white/20 dark:border-white/15"
           >
             {t("common:buttons.done")}
           </button>
@@ -1168,7 +1164,7 @@ export default function Profile() {
               href={achOpen.url}
               target="_blank"
               rel="noreferrer"
-              className="glass--btn inline-flex justify-center py-2.5 px-6 rounded-xl border-2 border-glass-border bg-transparent hover:bg-glass/50 text-page-foreground font-extrabold tracking-wide transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm no-underline"
+              className="glass--btn inline-flex justify-center py-2.5 px-6 rounded-xl border-2 border-white/20 dark:border-white/15 bg-transparent hover:bg-white/12 dark:hover:bg-white/8 text-page-foreground font-extrabold tracking-wide transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm no-underline"
             >
               {t("profile:dialog.achievement.openLink")}
             </a>
@@ -1177,7 +1173,7 @@ export default function Profile() {
         <DialogActions className="p-4">
           <button
             onClick={() => setAchOpen(null)}
-            className="glass--btn py-2.5 px-6 rounded-xl bg-gradient-to-br from-[#0f4faa] to-[#1a4480] dark:from-[#7fb6e6] dark:to-[#c7e1f7] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98]"
+            className="glass--btn py-2.5 px-6 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-white/20 dark:border-white/15"
           >
             {t("profile:dialog.achievement.close")}
           </button>
