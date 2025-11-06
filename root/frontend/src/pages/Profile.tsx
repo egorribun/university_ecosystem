@@ -211,11 +211,13 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="glass grid grid-cols-[14px_1fr] items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-lg border border-white/20 dark:border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl transition-all duration-300 hover:shadow-lg hover:scale-[1.02] hover:bg-white/15 dark:hover:bg-white/8">
-      <div className="w-2 h-2 rounded-full bg-[#0f4faa] dark:bg-[#7fb6e6] shadow-[0_0_0_3px_rgba(15,79,170,0.22)] dark:shadow-[0_0_0_3px_rgba(127,182,230,0.22)] justify-self-center" />
-      <p className="text-sm sm:text-base leading-tight text-page-foreground">
-        <span className="font-bold">{label}:</span> {value}
-      </p>
+    <div className="glass grid grid-cols-[12px_1fr] items-start gap-3 px-4 py-3 min-h-[48px] rounded-xl border border-white/15 dark:border-white/8 bg-white/8 dark:bg-white/4 backdrop-blur-xl transition-all duration-300 hover:shadow-md hover:border-white/25 dark:hover:border-white/12 hover:bg-white/12 dark:hover:bg-white/6">
+      <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-[#0f4faa] dark:bg-[#7fb6e6] shadow-[0_0_0_2px_rgba(15,79,170,0.18)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.18)] justify-self-center" />
+      <div className="text-sm sm:text-base leading-relaxed text-page-foreground">
+        <span className="font-extrabold text-[#0f4faa] dark:text-[#7fb6e6]">{label}</span>
+        <span className="mx-1.5 text-secondary/50">·</span>
+        <span className="font-medium">{value}</span>
+      </div>
     </div>
   )
 }
@@ -987,107 +989,103 @@ export default function Profile() {
                     ) : (
                       <>
                         {/* Profile Details View */}
-                        <div className="glass profile-card w-full rounded-2xl p-6 sm:p-8 md:p-10 backdrop-blur-md border border-glass-border bg-glass shadow-glass">
-                          <h2 className="text-[clamp(1.3rem,2.3vw,1.8rem)] font-black mb-5 tracking-tight text-page-foreground">
-                            {t("profile:sections.details")}
-                          </h2>
-
-                          {/* Custom Accordion */}
-                          <div className="glass rounded-2xl overflow-hidden backdrop-blur-md border border-glass-border bg-glass/50 shadow-md">
-                            {/* Accordion Header */}
+                        <div className="w-full flex flex-col gap-6">
+                          {/* Section Header */}
+                          <div className="flex items-center justify-between">
+                            <h2 className="text-[clamp(1.5rem,2.8vw,2.2rem)] font-black tracking-tight text-page-foreground">
+                              {t("profile:sections.details")}
+                            </h2>
                             <button
                               onClick={() => setDetailsOpen(!detailsOpen)}
-                              className="w-full flex items-center justify-between px-5 py-4 border-b border-glass-border hover:bg-glass/30 transition-colors duration-200 text-left"
+                              className={`p-2 rounded-lg hover:bg-white/10 dark:hover:bg-white/5 transition-all duration-200 ${reduced ? "" : "hover:scale-105"}`}
+                              aria-label={detailsOpen ? "Свернуть" : "Развернуть"}
                             >
-                              <span className="font-black text-page-foreground">
-                                {t("profile:sections.profileDetails")}
-                              </span>
                               <ExpandMoreIcon
-                                className={`w-5 h-5 text-page-foreground transition-transform duration-300 ${detailsOpen ? "rotate-180" : ""}`}
+                                className={`w-6 h-6 text-page-foreground transition-transform duration-300 ${detailsOpen ? "rotate-180" : ""}`}
                               />
                             </button>
-
-                            {/* Accordion Content */}
-                            <motion.div
-                              initial={false}
-                              animate={{
-                                height: detailsOpen ? "auto" : 0,
-                                opacity: detailsOpen ? 1 : 0,
-                              }}
-                              transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
-                              className="overflow-hidden"
-                            >
-                              <div className="px-4 sm:px-5 py-4 sm:py-5">
-                                {/* Detail Rows Grid */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                                  {[
-                                    { label: t("profile:form.about"), value: user!.about },
-                                    { label: t("profile:form.status"), value: user!.status },
-                                    {
-                                      label: t("profile:form.recordBookNumber"),
-                                      value: user!.record_book_number,
-                                    },
-                                    {
-                                      label: t("profile:form.educationLevel"),
-                                      value: user!.education_level,
-                                    },
-                                    { label: t("profile:form.track"), value: user!.track },
-                                    { label: t("profile:form.program"), value: user!.program },
-                                    {
-                                      label: t("profile:form.department"),
-                                      value: user!.department,
-                                    },
-                                    { label: t("profile:form.position"), value: user!.position },
-                                  ].map((r) => (
-                                    <DetailRow key={r.label} label={r.label} value={r.value} />
-                                  ))}
-                                </div>
-
-                                {/* Achievements Section */}
-                                {achievementsList.length > 0 && (
-                                  <div className="mt-6">
-                                    <h3 className="font-extrabold mb-4 text-lg text-page-foreground">
-                                      {t("profile:sections.achievements")}
-                                    </h3>
-                                    <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
-                                      {achievementsList.map((ach, idx) => (
-                                        <motion.button
-                                          key={ach.key}
-                                          initial={
-                                            isTest || reduced ? false : { opacity: 0, scale: 0.9 }
-                                          }
-                                          animate={{ opacity: 1, scale: 1 }}
-                                          transition={
-                                            isTest || reduced
-                                              ? { duration: 0 }
-                                              : {
-                                                  delay: idx * 0.09,
-                                                  duration: 0.5,
-                                                  ease: [0.22, 0.61, 0.36, 1],
-                                                }
-                                          }
-                                          onClick={() =>
-                                            setAchOpen({
-                                              name: ach.name,
-                                              issuer: ach.issuer,
-                                              date: ach.date,
-                                              url: ach.url,
-                                            })
-                                          }
-                                          className={`glass--chip px-4 py-3 rounded-xl border border-glass-border bg-button hover:bg-button/80 text-nav-text font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left ${reduced ? "" : "animate-[chip-highlight_14s_ease-in-out_infinite]"}`}
-                                          style={{
-                                            animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
-                                          }}
-                                        >
-                                          {ach.name}
-                                        </motion.button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
                           </div>
+
+                          {/* Collapsible Content */}
+                          <motion.div
+                            initial={false}
+                            animate={{
+                              height: detailsOpen ? "auto" : 0,
+                              opacity: detailsOpen ? 1 : 0,
+                            }}
+                            transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <div className="flex flex-col gap-6">
+                              {/* Detail Rows Grid */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                                {[
+                                  { label: t("profile:form.about"), value: user!.about },
+                                  { label: t("profile:form.status"), value: user!.status },
+                                  {
+                                    label: t("profile:form.recordBookNumber"),
+                                    value: user!.record_book_number,
+                                  },
+                                  {
+                                    label: t("profile:form.educationLevel"),
+                                    value: user!.education_level,
+                                  },
+                                  { label: t("profile:form.track"), value: user!.track },
+                                  { label: t("profile:form.program"), value: user!.program },
+                                  {
+                                    label: t("profile:form.department"),
+                                    value: user!.department,
+                                  },
+                                  { label: t("profile:form.position"), value: user!.position },
+                                ].map((r) => (
+                                  <DetailRow key={r.label} label={r.label} value={r.value} />
+                                ))}
+                              </div>
+
+                              {/* Achievements Section */}
+                              {achievementsList.length > 0 && (
+                                <div className="pt-2">
+                                  <h3 className="font-extrabold mb-4 text-xl text-page-foreground">
+                                    {t("profile:sections.achievements")}
+                                  </h3>
+                                  <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+                                    {achievementsList.map((ach, idx) => (
+                                      <motion.button
+                                        key={ach.key}
+                                        initial={
+                                          isTest || reduced ? false : { opacity: 0, scale: 0.9 }
+                                        }
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={
+                                          isTest || reduced
+                                            ? { duration: 0 }
+                                            : {
+                                                delay: idx * 0.09,
+                                                duration: 0.5,
+                                                ease: [0.22, 0.61, 0.36, 1],
+                                              }
+                                        }
+                                        onClick={() =>
+                                          setAchOpen({
+                                            name: ach.name,
+                                            issuer: ach.issuer,
+                                            date: ach.date,
+                                            url: ach.url,
+                                          })
+                                        }
+                                        className={`glass--chip px-4 py-3 rounded-xl border border-glass-border bg-button hover:bg-button/80 text-nav-text font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left ${reduced ? "" : "animate-[chip-highlight_14s_ease-in-out_infinite]"}`}
+                                        style={{
+                                          animationDelay: reduced ? "0ms" : `${idx * 110}ms`,
+                                        }}
+                                      >
+                                        {ach.name}
+                                      </motion.button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
                         </div>
                       </>
                     )}
