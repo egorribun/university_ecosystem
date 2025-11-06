@@ -29,6 +29,8 @@ import EmailIcon from "@mui/icons-material/Email"
 import TelegramIcon from "@mui/icons-material/Telegram"
 import ContentCopyIcon from "@mui/icons-material/ContentCopy"
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
+import QrCodeIcon from "@mui/icons-material/QrCode"
+import OpenInNewIcon from "@mui/icons-material/OpenInNew"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
@@ -319,6 +321,12 @@ export default function Profile() {
     date?: string
     url?: string
   } | null>(null)
+  const [emailMenuAnchor, setEmailMenuAnchor] = useState<HTMLElement | null>(null)
+  const [telegramMenuAnchor, setTelegramMenuAnchor] = useState<HTMLElement | null>(null)
+  const emailButtonRef = useRef<HTMLButtonElement | null>(null)
+  const telegramButtonRef = useRef<HTMLButtonElement | null>(null)
+  const emailMenuRef = useRef<HTMLDivElement | null>(null)
+  const telegramMenuRef = useRef<HTMLDivElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const ldJsonRef = useRef<HTMLScriptElement | null>(null)
   const queryClient = useQueryClient()
@@ -476,6 +484,59 @@ export default function Profile() {
       setSnack({ key: "copied", sev: "success" })
     }
   }
+
+  const handleEmailClick = (e: React.MouseEvent<HTMLElement>) => {
+    e.preventDefault()
+    setEmailMenuAnchor(emailButtonRef.current)
+  }
+
+  const handleTelegramClick = (e: React.MouseEvent<HTMLElement>) => {
+    e.preventDefault()
+    setTelegramMenuAnchor(telegramButtonRef.current)
+  }
+
+  const handleEmailCopy = () => {
+    copy(user!.email)
+    setEmailMenuAnchor(null)
+  }
+
+  const handleEmailOpen = () => {
+    window.location.href = `mailto:${user!.email}`
+    setEmailMenuAnchor(null)
+  }
+
+  const handleTelegramCopy = () => {
+    copy(user!.telegram!)
+    setTelegramMenuAnchor(null)
+  }
+
+  const handleTelegramOpen = () => {
+    window.open(telegramHref, "_blank", "noopener,noreferrer")
+    setTelegramMenuAnchor(null)
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (emailMenuAnchor) {
+        if (emailMenuRef.current && !emailMenuRef.current.contains(target) && emailButtonRef.current && !emailButtonRef.current.contains(target)) {
+          setEmailMenuAnchor(null)
+        }
+      }
+      if (telegramMenuAnchor) {
+        if (telegramMenuRef.current && !telegramMenuRef.current.contains(target) && telegramButtonRef.current && !telegramButtonRef.current.contains(target)) {
+          setTelegramMenuAnchor(null)
+        }
+      }
+    }
+
+    if (emailMenuAnchor || telegramMenuAnchor) {
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside)
+      }
+    }
+  }, [emailMenuAnchor, telegramMenuAnchor])
 
   const buildVCard = useCallback(() => {
     const u = user!
@@ -690,19 +751,28 @@ export default function Profile() {
                         className="relative z-[2] w-full text-center md:text-left px-4 sm:px-6 md:px-8 lg:px-10 flex flex-col gap-3 sm:gap-4 md:gap-5"
                         style={{ paddingTop: heroTextPaddingTop }}
                       >
-                        <div>
+                        <div className="flex items-center justify-center md:justify-start gap-3 sm:gap-4">
                           <h1
                             className="profile-name text-[clamp(1.5rem,4vw+0.5rem,2.5rem)] sm:text-[clamp(1.7rem,3.5vw+0.5rem,2.7rem)] md:text-[clamp(1.9rem,3.2vw+0.5rem,2.9rem)] font-black leading-[1.08] tracking-tight"
                             data-testid="profile-name"
                           >
                             {user!.full_name}
                           </h1>
-                          {!!user?.position && user?.role === "teacher" && (
-                            <p className="profile-subtitle mt-1.5 sm:mt-2 font-semibold text-base sm:text-lg text-white/90 dark:text-white/95">
-                              {user.position}
-                            </p>
-                          )}
+                          <button
+                            onClick={openQrModal}
+                            data-testid="open-qr"
+                            className="flex-shrink-0 p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-white/20 dark:bg-white/15 hover:bg-white/30 dark:hover:bg-white/25 border border-white/30 dark:border-white/25 text-white transition-all duration-300 hover:scale-110 hover:shadow-lg active:scale-95"
+                            aria-label={t("profile:buttons.showQr")}
+                            title={t("profile:buttons.showQr")}
+                          >
+                            <QrCodeIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+                          </button>
                         </div>
+                        {!!user?.position && user?.role === "teacher" && (
+                          <p className="profile-subtitle mt-1.5 sm:mt-2 font-semibold text-base sm:text-lg text-white/90 dark:text-white/95">
+                            {user.position}
+                          </p>
+                        )}
                         <div className="flex flex-row flex-wrap gap-2 sm:gap-2.5 justify-center md:justify-start">
                           {[
                             user!.role === "teacher"
@@ -771,81 +841,87 @@ export default function Profile() {
 
                     {/* Contact Panel */}
                     <div className="profile-card p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
-                      {/* QR Button */}
-                      <div className="flex flex-col gap-3 items-stretch">
-                        <button
-                          onClick={openQrModal}
-                          data-testid="open-qr"
-                          className="w-full py-2.5 sm:py-3 px-5 sm:px-6 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-nav-link/20 dark:border-nav-link/30"
-                        >
-                          {t("profile:buttons.showQr")}
-                        </button>
-                      </div>
-
-                      {/* Divider */}
-                      <div className="h-px bg-glass-border dark:bg-glass-border" />
-
                       {/* Contact Links */}
                       <div className="flex flex-col gap-3 sm:gap-4 contact-links">
                         {/* Email */}
-                        <div className="flex flex-row items-center justify-between flex-wrap gap-2 sm:gap-3">
-                          <div className="flex flex-row items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+                        <div className="relative">
+                          <button
+                            ref={emailButtonRef}
+                            onClick={handleEmailClick}
+                            className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md group"
+                            data-testid="profile-email-link"
+                          >
                             <EmailIcon
-                              className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                              className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
                               aria-hidden
                             />
-                            <p className="font-extrabold break-words flex-1 text-sm sm:text-base text-page-foreground">
-                              <a
-                                href={`mailto:${user!.email}`}
-                                className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200 break-all"
-                                data-testid="profile-email-link"
-                                title={t("profile:aria.openEmail")}
-                              >
-                                {user!.email}
-                              </a>
-                            </p>
-                          </div>
-                          <button
-                            onClick={(e) => copy(user!.email, e)}
-                            aria-label={t("profile:aria.copyEmail")}
-                            title={t("profile:aria.copyEmail")}
-                            data-testid="copy-email"
-                            className={`p-2 rounded-lg border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
-                          >
-                            <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
+                            <span className="font-extrabold break-words flex-1 text-left text-sm sm:text-base text-nav-link dark:text-[#7fb6e6] group-hover:text-nav-link-hover dark:group-hover:text-[#c7e1f7] transition-colors duration-200 break-all">
+                              {user!.email}
+                            </span>
                           </button>
+                          {emailMenuAnchor && (
+                            <div
+                              ref={emailMenuRef}
+                              data-email-menu
+                              className="absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-lg border border-glass-border bg-surface dark:bg-card-bg shadow-surface-strong backdrop-blur-xl"
+                            >
+                              <button
+                                onClick={handleEmailCopy}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition hover:bg-surface-accent dark:hover:bg-surface-accent focus-visible:outline-none"
+                              >
+                                <ContentCopyIcon className="w-5 h-5 text-page-foreground" />
+                                {t("profile:menu.copy")}
+                              </button>
+                              <button
+                                onClick={handleEmailOpen}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition hover:bg-surface-accent dark:hover:bg-surface-accent focus-visible:outline-none border-t border-glass-border"
+                              >
+                                <OpenInNewIcon className="w-5 h-5 text-page-foreground" />
+                                {t("profile:menu.openEmail")}
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Telegram */}
                         {!!user!.telegram && (
-                          <div className="flex flex-row items-center justify-between flex-wrap gap-2 sm:gap-3">
-                            <div className="flex flex-row items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+                          <div className="relative">
+                            <button
+                              ref={telegramButtonRef}
+                              onClick={handleTelegramClick}
+                              className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md group"
+                              data-testid="profile-telegram-link"
+                            >
                               <TelegramIcon
-                                className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                                className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
                                 aria-hidden
                               />
-                              <p className="font-extrabold break-words flex-1 text-sm sm:text-base text-page-foreground">
-                                <a
-                                  href={telegramHref}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200 break-all"
-                                  data-testid="profile-telegram-link"
-                                  title={t("profile:aria.openTelegram")}
-                                >
-                                  {user!.telegram}
-                                </a>
-                              </p>
-                            </div>
-                            <button
-                              onClick={(e) => copy(user!.telegram!, e)}
-                              aria-label={t("profile:aria.copyTelegram")}
-                              title={t("profile:aria.copyTelegram")}
-                              data-testid="copy-telegram"
-                              className={`p-2 rounded-lg border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
-                            >
-                              <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
+                              <span className="font-extrabold break-words flex-1 text-left text-sm sm:text-base text-nav-link dark:text-[#7fb6e6] group-hover:text-nav-link-hover dark:group-hover:text-[#c7e1f7] transition-colors duration-200 break-all">
+                                {user!.telegram}
+                              </span>
                             </button>
+                            {telegramMenuAnchor && (
+                              <div
+                                ref={telegramMenuRef}
+                                data-telegram-menu
+                                className="absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-lg border border-glass-border bg-surface dark:bg-card-bg shadow-surface-strong backdrop-blur-xl"
+                              >
+                                <button
+                                  onClick={handleTelegramCopy}
+                                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition hover:bg-surface-accent dark:hover:bg-surface-accent focus-visible:outline-none"
+                                >
+                                  <ContentCopyIcon className="w-5 h-5 text-page-foreground" />
+                                  {t("profile:menu.copy")}
+                                </button>
+                                <button
+                                  onClick={handleTelegramOpen}
+                                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition hover:bg-surface-accent dark:hover:bg-surface-accent focus-visible:outline-none border-t border-glass-border"
+                                >
+                                  <OpenInNewIcon className="w-5 h-5 text-page-foreground" />
+                                  {t("profile:menu.openTelegram")}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
