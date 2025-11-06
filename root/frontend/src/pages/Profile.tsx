@@ -453,7 +453,9 @@ export default function Profile() {
   const avatarSize = `${avatarPx}px`
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
-  const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`
+  const heroTextPaddingTop = isMobile
+    ? `${Math.round(48 + avatarPx + 16)}px`
+    : `${Math.round(56 + avatarPx + 16)}px`
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
   const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
