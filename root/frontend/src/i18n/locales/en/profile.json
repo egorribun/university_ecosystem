@@ -13,6 +13,11 @@
     "openEmail": "Open email",
     "openTelegram": "Open Telegram"
   },
+  "menu": {
+    "copy": "Copy",
+    "openEmail": "Open email",
+    "openTelegram": "Open Telegram"
+  },
   "buttons": {
     "showQr": "Show QR"
   },

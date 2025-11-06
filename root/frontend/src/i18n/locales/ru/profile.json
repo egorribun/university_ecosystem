@@ -13,6 +13,11 @@
     "openEmail": "Открыть почтовый клиент",
     "openTelegram": "Открыть Telegram"
   },
+  "menu": {
+    "copy": "Скопировать",
+    "openEmail": "Открыть почтовый ящик",
+    "openTelegram": "Открыть Telegram"
+  },
   "buttons": {
     "showQr": "Показать QR"
   },
