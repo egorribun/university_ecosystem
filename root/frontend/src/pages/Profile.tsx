@@ -157,9 +157,9 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       const rest = String(seconds % 60).padStart(2, "0")
       return `${minutes}:${rest}`
     }
-    const maxProgress = fmtTime(duration)
-    const maxDuration = fmtTime(duration)
-    return `${Math.max(maxProgress.length, maxDuration.length) * 0.6 + 2}ch`
+    const maxTimeStr = fmtTime(duration)
+    const fullFormat = `${maxTimeStr} / ${maxTimeStr}`
+    return `${fullFormat.length * 0.6}ch`
   }, [duration])
 
   useEffect(() => {
@@ -266,7 +266,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             </div>
             <span
               className="np-time text-xs text-[#b3b3b3] whitespace-nowrap tabular-nums flex-shrink-0"
-              style={{ minWidth: maxTimeWidth }}
+              style={{ width: maxTimeWidth }}
             >
               {fmt(progress)} / {fmt(duration)}
             </span>
