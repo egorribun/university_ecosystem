@@ -148,7 +148,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   }, [])
 
   const href = data.track_url || "https://open.spotify.com"
-  
+
   const maxTimeWidth = useMemo(() => {
     const fmtTime = (ms: number | null | undefined) => {
       if (ms == null) return "0:00"
@@ -161,22 +161,22 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     const maxDuration = fmtTime(duration)
     return `${Math.max(maxProgress.length, maxDuration.length) * 0.6 + 2}ch`
   }, [duration])
-  
+
   useEffect(() => {
     if (!data.album_image_url) {
       setImageLoaded(true)
       return
     }
-    
+
     const img = new Image()
     img.src = data.album_image_url
-    
+
     if (img.complete) {
       setImageLoaded(true)
       setImageError(false)
     }
   }, [data.album_image_url])
-  
+
   const progressBarTransition = useMemo(() => {
     if (shouldAnimate && !prefersReduce && !reduced) {
       return "transform 0.1s linear"
@@ -231,7 +231,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           )}
         </div>
         <div className="min-w-0 flex flex-col gap-1.5" aria-live="polite">
-          <h3 
+          <h3
             className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${
               imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
             }`}
@@ -264,7 +264,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
                 }}
               />
             </div>
-            <span 
+            <span
               className="np-time text-xs text-[#b3b3b3] whitespace-nowrap tabular-nums flex-shrink-0"
               style={{ minWidth: maxTimeWidth }}
             >
