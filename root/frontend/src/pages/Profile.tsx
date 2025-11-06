@@ -450,7 +450,11 @@ export default function Profile() {
 
   const avatarPx = useMemo(() => {
     if (isMobile) return 120
-    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1400px)").matches)
+    if (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(min-width: 1400px)").matches
+    )
       return 188
     return 168
   }, [isMobile])
