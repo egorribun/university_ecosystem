@@ -453,7 +453,12 @@ export default function Profile() {
   const avatarSize = `${avatarPx}px`
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
-  const heroTextPaddingTop = `${Math.round(avatarPx * 0.65)}px`
+  // На десктопе увеличиваем отступ, чтобы имя не налегало на аватар
+  // Аватар находится на top-14 (56px) и имеет размер avatarPx, поэтому нужно
+  // добавить достаточно отступа, чтобы имя начиналось ниже аватара
+  const heroTextPaddingTop = isMobile 
+    ? `${Math.round(avatarPx * 0.65)}px`
+    : `${Math.round(56 + avatarPx + 16)}px` // top-14 (56px) + размер аватара + небольшой отступ
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
   const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
