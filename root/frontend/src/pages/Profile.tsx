@@ -939,10 +939,7 @@ export default function Profile() {
                   </div>
 
                   {/* Right Column - Profile Details / Edit Form */}
-                  <div
-                    className="w-full relative"
-                    style={{ marginTop: isMobile ? "0" : "0" }}
-                  >
+                  <div className="w-full relative" style={{ marginTop: isMobile ? "0" : "0" }}>
                     {edit ? (
                       <div className="profile-card profile-edit w-full rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
                         <div className="flex flex-col gap-4 sm:gap-5">
