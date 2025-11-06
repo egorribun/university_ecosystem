@@ -450,7 +450,8 @@ export default function Profile() {
 
   const avatarPx = useMemo(() => {
     if (isMobile) return 120
-    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1400px)").matches) return 188
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1400px)").matches)
+      return 188
     return 168
   }, [isMobile])
   const avatarSize = `${avatarPx}px`
@@ -824,7 +825,9 @@ export default function Profile() {
                               onChange={(e) => setTelegram(e.target.value)}
                               className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                             />
-                            <p className="text-[10px] xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
+                            <p className="text-[10px] xs:text-xs text-hint">
+                              {t("profile:form.telegramHint")}
+                            </p>
                           </div>
 
                           {/* Teacher Fields */}
