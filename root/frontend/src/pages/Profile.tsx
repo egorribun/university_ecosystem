@@ -661,9 +661,7 @@ export default function Profile() {
                                     }
                               }
                             >
-                              <span
-                                className="inline-flex items-center px-4 py-1.5 rounded-full border border-white/25 dark:border-white/20 bg-white/16 dark:bg-white/12 text-white dark:text-white/95 text-sm font-bold tracking-wide backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:shadow-lg hover:bg-white/24 dark:hover:bg-white/18"
-                              >
+                              <span className="inline-flex items-center px-4 py-1.5 rounded-full border border-white/25 dark:border-white/20 bg-white/16 dark:bg-white/12 text-white dark:text-white/95 text-sm font-bold tracking-wide backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:shadow-lg hover:bg-white/24 dark:hover:bg-white/18">
                                 {chip}
                               </span>
                             </motion.div>
