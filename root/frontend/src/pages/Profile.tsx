@@ -519,12 +519,22 @@ export default function Profile() {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node
       if (emailMenuAnchor) {
-        if (emailMenuRef.current && !emailMenuRef.current.contains(target) && emailButtonRef.current && !emailButtonRef.current.contains(target)) {
+        if (
+          emailMenuRef.current &&
+          !emailMenuRef.current.contains(target) &&
+          emailButtonRef.current &&
+          !emailButtonRef.current.contains(target)
+        ) {
           setEmailMenuAnchor(null)
         }
       }
       if (telegramMenuAnchor) {
-        if (telegramMenuRef.current && !telegramMenuRef.current.contains(target) && telegramButtonRef.current && !telegramButtonRef.current.contains(target)) {
+        if (
+          telegramMenuRef.current &&
+          !telegramMenuRef.current.contains(target) &&
+          telegramButtonRef.current &&
+          !telegramButtonRef.current.contains(target)
+        ) {
           setTelegramMenuAnchor(null)
         }
       }
