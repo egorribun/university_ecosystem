@@ -211,12 +211,12 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="glass grid grid-cols-[12px_1fr] items-start gap-3 px-4 py-3 min-h-[48px] rounded-xl border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 backdrop-blur-xl transition-all duration-300 hover:shadow-md hover:border-white/30 dark:hover:border-white/20 hover:bg-white/16 dark:hover:bg-white/12">
-      <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-[#0f4faa] dark:bg-[#7fb6e6] shadow-[0_0_0_2px_rgba(15,79,170,0.18)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.18)] justify-self-center" />
-      <div className="text-sm sm:text-base leading-relaxed text-page-foreground">
-        <span className="font-extrabold text-[#0f4faa] dark:text-[#7fb6e6]">{label}</span>
-        <span className="mx-1.5 text-secondary/50">·</span>
-        <span className="font-medium">{value}</span>
+    <div className="grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg transition-all duration-300 hover:shadow-md hover:border-glass-border/80 dark:hover:border-glass-border/80 hover:bg-surface-accent dark:hover:bg-surface-accent">
+      <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-nav-link dark:bg-nav-link shadow-[0_0_0_2px_rgba(15,79,170,0.15)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.15)] justify-self-center" />
+      <div className="text-xs sm:text-sm md:text-base leading-relaxed text-page-foreground">
+        <span className="font-extrabold text-nav-link dark:text-nav-link">{label}</span>
+        <span className="mx-1 sm:mx-1.5 text-secondary/50">·</span>
+        <span className="font-medium break-words">{value}</span>
       </div>
     </div>
   )
@@ -449,15 +449,16 @@ export default function Profile() {
   )
 
   const avatarPx = useMemo(() => {
-    if (isMobile) return 132
-    return isTwoCol ? 188 : 168
-  }, [isMobile, isTwoCol])
+    if (isMobile) return 120
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1400px)").matches) return 188
+    return 168
+  }, [isMobile])
   const avatarSize = `${avatarPx}px`
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
   const heroTextPaddingTop = isMobile
-    ? `${Math.round(48 + avatarPx + 16)}px`
-    : `${Math.round(56 + avatarPx + 16)}px`
+    ? `${Math.round(40 + avatarPx + 12)}px`
+    : `${Math.round(48 + avatarPx + 16)}px`
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
   const statusSize = useMemo(() => Math.max(12, Math.round(avatarPx * 0.16)), [avatarPx])
   const statusOffset = useMemo(() => Math.max(6, Math.round(avatarPx * 0.08)), [avatarPx])
@@ -514,19 +515,12 @@ export default function Profile() {
 
   return (
     <>
-      {/* Background with gradient overlay */}
+      {/* Background with matte overlay */}
       <div
         className="fixed inset-0 -z-20 bg-cover bg-center bg-fixed"
         style={{ backgroundImage: `url(${profileBg})` }}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1a4480]/70 via-[#0b4778]/65 to-[#112f4e]/60 mix-blend-multiply" />
-        <div
-          className="absolute inset-0 opacity-60"
-          style={{
-            background:
-              "radial-gradient(1600px 800px at 50% 0%, rgba(127, 182, 230, 0.08) 0%, transparent 60%)",
-          }}
-        />
+        <div className="absolute inset-0 bg-[#1a4480]/75 dark:bg-[#0b121f]/85" />
       </div>
 
       <PageFadeIn>
@@ -537,14 +531,14 @@ export default function Profile() {
         >
           <main
             id="main"
-            className="profile-page relative min-h-screen flex flex-col py-16 sm:py-20 md:py-24 px-4 sm:px-6 md:px-8"
+            className="profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-[95%] mx-auto w-full relative z-0">
+            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-[1400px] mx-auto w-full relative z-0">
               <motion.div
                 ref={containerRef}
-                className="glass profile-card px-6 sm:px-10 md:px-14 lg:px-16 py-10 sm:py-12 md:py-14 rounded-2xl md:rounded-3xl relative overflow-hidden backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 shadow-glass"
+                className="profile-card px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -555,11 +549,11 @@ export default function Profile() {
                     : { type: "spring", stiffness: 520, damping: 34, mass: 0.9 }
                 }
               >
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] xl:grid-cols-[minmax(380px,440px)_minmax(0,1fr)] gap-x-6 sm:gap-x-8 lg:gap-x-10 xl:gap-x-12 gap-y-8 lg:gap-y-0 items-start">
-                  <div className="flex flex-col gap-6 md:gap-8 items-stretch">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(380px,460px)_minmax(0,1fr)] gap-x-4 sm:gap-x-6 md:gap-x-8 lg:gap-x-10 xl:gap-x-12 gap-y-6 sm:gap-y-8 lg:gap-y-0 items-start">
+                  <div className="flex flex-col gap-4 sm:gap-5 md:gap-6 lg:gap-8 items-stretch">
                     {/* Hero Card with Cover and Avatar */}
                     <div
-                      className="glass relative rounded-2xl md:rounded-3xl overflow-hidden min-h-[300px] sm:min-h-[340px] md:min-h-[360px] lg:min-h-[400px] flex items-end justify-center shadow-[0_28px_70px_-44px_rgba(0,0,0,0.3)] dark:shadow-[0_28px_70px_-44px_rgba(0,0,0,0.58)] backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8"
+                      className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center shadow-surface dark:shadow-surface-strong border border-glass-border bg-surface dark:bg-card-bg"
                       style={{ paddingBottom: heroPaddingBottom }}
                     >
                       {/* Cover Image with Parallax */}
@@ -571,12 +565,12 @@ export default function Profile() {
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
                       />
-                      {/* Dark Gradient Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.9)] from-40%" />
+                      {/* Dark Matte Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.85)] dark:to-[rgba(6,9,20,0.92)] from-35%" />
 
                       {/* Avatar Container */}
                       <div
-                        className="absolute left-1/2 top-12 sm:top-14 -translate-x-1/2 flex items-center justify-center p-1"
+                        className="absolute left-1/2 top-8 xs:top-10 sm:top-12 md:top-14 -translate-x-1/2 flex items-center justify-center p-0.5 sm:p-1"
                         style={{ width: avatarSize, height: avatarSize }}
                       >
                         <div className="avatar-ring w-full h-full">
@@ -619,23 +613,23 @@ export default function Profile() {
 
                       {/* Name and Chips Section */}
                       <div
-                        className="relative z-[2] w-full text-center md:text-left px-6 sm:px-8 md:px-10 flex flex-col gap-5"
+                        className="relative z-[2] w-full text-center md:text-left px-4 sm:px-6 md:px-8 lg:px-10 flex flex-col gap-3 sm:gap-4 md:gap-5"
                         style={{ paddingTop: heroTextPaddingTop }}
                       >
                         <div>
                           <h1
-                            className="profile-name text-[clamp(1.7rem,3.2vw,2.9rem)] font-black leading-[1.08] tracking-tight"
+                            className="profile-name text-[clamp(1.5rem,4vw+0.5rem,2.5rem)] sm:text-[clamp(1.7rem,3.5vw+0.5rem,2.7rem)] md:text-[clamp(1.9rem,3.2vw+0.5rem,2.9rem)] font-black leading-[1.08] tracking-tight"
                             data-testid="profile-name"
                           >
                             {user!.full_name}
                           </h1>
                           {!!user?.position && user?.role === "teacher" && (
-                            <p className="profile-subtitle mt-2 font-semibold text-lg text-secondary">
+                            <p className="profile-subtitle mt-1.5 sm:mt-2 font-semibold text-base sm:text-lg text-white/90 dark:text-white/95">
                               {user.position}
                             </p>
                           )}
                         </div>
-                        <div className="flex flex-row flex-wrap gap-2.5 justify-center md:justify-start">
+                        <div className="flex flex-row flex-wrap gap-2 sm:gap-2.5 justify-center md:justify-start">
                           {[
                             user!.role === "teacher"
                               ? t("profile:chips.teacher")
@@ -661,7 +655,7 @@ export default function Profile() {
                                     }
                               }
                             >
-                              <span className="inline-flex items-center px-4 py-1.5 rounded-full border border-white/25 dark:border-white/20 bg-white/16 dark:bg-white/12 text-white dark:text-white/95 text-sm font-bold tracking-wide backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:shadow-lg hover:bg-white/24 dark:hover:bg-white/18">
+                              <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full border border-white/30 dark:border-white/25 bg-white/20 dark:bg-white/15 text-white text-xs sm:text-sm font-bold tracking-wide transition-all duration-300 hover:scale-105 hover:shadow-md hover:bg-white/28 dark:hover:bg-white/22">
                                 {chip}
                               </span>
                             </motion.div>
@@ -691,8 +685,9 @@ export default function Profile() {
                             style={{ display: "block", borderRadius: "50%" }}
                             loading="lazy"
                             decoding="async"
+                            className="flex-shrink-0"
                           />
-                          <h3 className="text-xs uppercase tracking-[2.2px] font-bold text-secondary opacity-90">
+                          <h3 className="text-[10px] xs:text-xs uppercase tracking-[2.2px] font-bold text-secondary opacity-90">
                             {t("profile:sections.nowPlaying")}
                           </h3>
                         </div>
@@ -701,34 +696,34 @@ export default function Profile() {
                     )}
 
                     {/* Contact Panel */}
-                    <div className="glass profile-card p-5 sm:p-6 rounded-2xl flex flex-col gap-5 backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 shadow-glass">
+                    <div className="profile-card p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
                       {/* QR Button */}
                       <div className="flex flex-col gap-3 items-stretch">
                         <button
                           onClick={openQrModal}
                           data-testid="open-qr"
-                          className="glass--btn w-full py-3 px-6 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] backdrop-blur-sm border border-white/20 dark:border-white/15"
+                          className="w-full py-2.5 sm:py-3 px-5 sm:px-6 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-nav-link/20 dark:border-nav-link/30"
                         >
                           {t("profile:buttons.showQr")}
                         </button>
                       </div>
 
                       {/* Divider */}
-                      <div className="h-px bg-white/20 dark:bg-white/15" />
+                      <div className="h-px bg-glass-border dark:bg-glass-border" />
 
                       {/* Contact Links */}
-                      <div className="flex flex-col gap-4 contact-links">
+                      <div className="flex flex-col gap-3 sm:gap-4 contact-links">
                         {/* Email */}
-                        <div className="flex flex-row items-center justify-between flex-wrap gap-3">
-                          <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
+                        <div className="flex flex-row items-center justify-between flex-wrap gap-2 sm:gap-3">
+                          <div className="flex flex-row items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                             <EmailIcon
-                              className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                              className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
                               aria-hidden
                             />
-                            <p className="font-extrabold break-words flex-1 text-page-foreground">
+                            <p className="font-extrabold break-words flex-1 text-sm sm:text-base text-page-foreground">
                               <a
                                 href={`mailto:${user!.email}`}
-                                className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200"
+                                className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200 break-all"
                                 data-testid="profile-email-link"
                                 title={t("profile:aria.openEmail")}
                               >
@@ -741,7 +736,7 @@ export default function Profile() {
                             aria-label={t("profile:aria.copyEmail")}
                             title={t("profile:aria.copyEmail")}
                             data-testid="copy-email"
-                            className={`glass--btn p-2 rounded-lg border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 hover:bg-white/20 dark:hover:bg-white/16 backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
+                            className={`p-2 rounded-lg border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
                           >
                             <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
                           </button>
@@ -749,18 +744,18 @@ export default function Profile() {
 
                         {/* Telegram */}
                         {!!user!.telegram && (
-                          <div className="flex flex-row items-center justify-between flex-wrap gap-3">
-                            <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
+                          <div className="flex flex-row items-center justify-between flex-wrap gap-2 sm:gap-3">
+                            <div className="flex flex-row items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                               <TelegramIcon
-                                className="w-5 h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
+                                className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
                                 aria-hidden
                               />
-                              <p className="font-extrabold break-words flex-1 text-page-foreground">
+                              <p className="font-extrabold break-words flex-1 text-sm sm:text-base text-page-foreground">
                                 <a
                                   href={telegramHref}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200"
+                                  className="text-nav-link dark:text-[#7fb6e6] hover:text-nav-link-hover dark:hover:text-[#c7e1f7] no-underline hover:underline transition-colors duration-200 break-all"
                                   data-testid="profile-telegram-link"
                                   title={t("profile:aria.openTelegram")}
                                 >
@@ -773,7 +768,7 @@ export default function Profile() {
                               aria-label={t("profile:aria.copyTelegram")}
                               title={t("profile:aria.copyTelegram")}
                               data-testid="copy-telegram"
-                              className={`glass--btn p-2 rounded-lg border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 hover:bg-white/20 dark:hover:bg-white/16 backdrop-blur-sm transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
+                              className={`p-2 rounded-lg border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md ${reduced ? "" : "hover:-translate-y-0.5 hover:scale-105"}`}
                             >
                               <ContentCopyIcon className="w-4 h-4 text-page-foreground" />
                             </button>
@@ -789,11 +784,11 @@ export default function Profile() {
                     style={{ marginTop: isMobile ? `${Math.round(avatarPx * 0.55) + 36}px` : "0" }}
                   >
                     {edit ? (
-                      <div className="glass profile-card profile-edit w-full rounded-2xl p-6 sm:p-8 md:p-10 backdrop-blur-md border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 shadow-glass">
-                        <div className="flex flex-col gap-5">
+                      <div className="profile-card profile-edit w-full rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
+                        <div className="flex flex-col gap-4 sm:gap-5">
                           {/* Name Field */}
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-bold text-page-foreground">
+                          <div className="flex flex-col gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm font-bold text-page-foreground">
                               {t("profile:form.name")}
                             </label>
                             <input
@@ -801,60 +796,60 @@ export default function Profile() {
                               value={fullName}
                               onChange={(e) => setFullName(e.target.value)}
                               maxLength={120}
-                              className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                              className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                             />
                           </div>
 
                           {/* Email Field */}
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-bold text-page-foreground">
+                          <div className="flex flex-col gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm font-bold text-page-foreground">
                               {t("profile:form.email")}
                             </label>
                             <input
                               type="email"
                               value={email}
                               onChange={(e) => setEmail(e.target.value)}
-                              className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                              className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                             />
                           </div>
 
                           {/* Telegram Field */}
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-bold text-page-foreground">
+                          <div className="flex flex-col gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm font-bold text-page-foreground">
                               {t("profile:form.telegram")}
                             </label>
                             <input
                               type="text"
                               value={telegram}
                               onChange={(e) => setTelegram(e.target.value)}
-                              className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                              className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                             />
-                            <p className="text-xs text-hint">{t("profile:form.telegramHint")}</p>
+                            <p className="text-[10px] xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
                           </div>
 
                           {/* Teacher Fields */}
                           {user!.role === "teacher" && (
                             <>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.department")}
                                 </label>
                                 <input
                                   type="text"
                                   value={department}
                                   onChange={(e) => setDepartment(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.position")}
                                 </label>
                                 <input
                                   type="text"
                                   value={position}
                                   onChange={(e) => setPosition(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
                             </>
@@ -863,120 +858,120 @@ export default function Profile() {
                           {/* Student Fields */}
                           {user!.role === "student" && (
                             <>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.about")}
                                 </label>
                                 <textarea
                                   value={about}
                                   onChange={(e) => setAbout(e.target.value)}
                                   rows={3}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200 resize-y min-h-[80px]"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200 resize-y min-h-[70px] sm:min-h-[80px]"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.recordBookNumber")}
                                 </label>
                                 <input
                                   type="text"
                                   value={recordBookNumber}
                                   onChange={(e) => setRecordBookNumber(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.status")}
                                 </label>
                                 <input
                                   type="text"
                                   value={status}
                                   onChange={(e) => setStatus(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.institute")}
                                 </label>
                                 <input
                                   type="text"
                                   value={institute}
                                   onChange={(e) => setInstitute(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.course")}
                                 </label>
                                 <input
                                   type="text"
                                   value={course}
                                   onChange={(e) => setCourse(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.educationLevel")}
                                 </label>
                                 <input
                                   type="text"
                                   value={educationLevel}
                                   onChange={(e) => setEducationLevel(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.track")}
                                 </label>
                                 <input
                                   type="text"
                                   value={track}
                                   onChange={(e) => setTrack(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.program")}
                                 </label>
                                 <input
                                   type="text"
                                   value={program}
                                   onChange={(e) => setProgram(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200"
                                 />
                               </div>
-                              <div className="flex flex-col gap-2">
-                                <label className="text-sm font-bold text-page-foreground">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
+                                <label className="text-xs sm:text-sm font-bold text-page-foreground">
                                   {t("profile:form.achievements")}
                                 </label>
                                 <textarea
                                   value={achievements}
                                   onChange={(e) => setAchievements(e.target.value)}
                                   rows={2}
-                                  className="w-full px-4 py-3 rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200 resize-y min-h-[60px]"
+                                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-[#0f4faa] dark:focus:ring-[#7fb6e6] focus:border-transparent transition-all duration-200 resize-y min-h-[50px] sm:min-h-[60px]"
                                 />
                               </div>
                             </>
                           )}
 
                           {/* Action Buttons */}
-                          <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center pt-2">
+                          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center pt-2">
                             <button
                               onClick={handleSave}
                               disabled={saving}
-                              className="glass--btn w-full sm:w-auto py-3 px-8 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:bg-[#0f4faa] dark:disabled:hover:bg-[#7fb6e6] border border-white/20 dark:border-white/15"
+                              className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:bg-nav-link dark:disabled:hover:bg-nav-link border border-nav-link/20 dark:border-nav-link/30"
                             >
                               {saving ? t("profile:form.saving") : t("profile:form.save")}
                             </button>
                             <button
                               onClick={handleCancel}
-                              className="glass--btn w-full sm:w-auto py-3 px-8 rounded-xl border-2 border-white/20 dark:border-white/15 bg-transparent hover:bg-white/12 dark:hover:bg-white/8 text-page-foreground font-extrabold tracking-wide transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm"
+                              className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-surface-accent dark:hover:bg-surface-accent text-page-foreground font-extrabold tracking-wide text-sm sm:text-base transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98]"
                             >
                               {t("profile:form.cancel")}
                             </button>
@@ -986,10 +981,10 @@ export default function Profile() {
                     ) : (
                       <>
                         {/* Profile Details View */}
-                        <div className="w-full flex flex-col gap-5 md:gap-6">
+                        <div className="w-full flex flex-col gap-4 sm:gap-5 md:gap-6">
                           {/* Section Header */}
-                          <div className="flex items-center justify-between">
-                            <h2 className="text-[clamp(1.5rem,2.8vw,2.2rem)] font-black tracking-tight text-page-foreground">
+                          <div className="flex items-center justify-between gap-3 sm:gap-4">
+                            <h2 className="text-[clamp(1.3rem,3vw+0.5rem,2rem)] sm:text-[clamp(1.5rem,3.2vw+0.5rem,2.2rem)] font-black tracking-tight text-page-foreground">
                               {t("profile:sections.details")}
                             </h2>
                             <button
@@ -1013,9 +1008,9 @@ export default function Profile() {
                             transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
                             className="overflow-hidden"
                           >
-                            <div className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-4 sm:gap-5 md:gap-6">
                               {/* Detail Rows Grid */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 {[
                                   { label: t("profile:form.about"), value: user!.about },
                                   { label: t("profile:form.status"), value: user!.status },
@@ -1042,10 +1037,10 @@ export default function Profile() {
                               {/* Achievements Section */}
                               {achievementsList.length > 0 && (
                                 <div className="pt-2">
-                                  <h3 className="font-extrabold mb-4 text-xl text-page-foreground">
+                                  <h3 className="font-extrabold mb-3 sm:mb-4 text-lg sm:text-xl text-page-foreground">
                                     {t("profile:sections.achievements")}
                                   </h3>
-                                  <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+                                  <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(140px,1fr))] md:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5 sm:gap-3">
                                     {achievementsList.map((ach, idx) => (
                                       <motion.button
                                         key={ach.key}
@@ -1070,7 +1065,7 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        className="glass--chip px-4 py-3 rounded-xl border border-white/20 dark:border-white/15 bg-white/12 dark:bg-white/8 hover:bg-white/20 dark:hover:bg-white/16 text-page-foreground font-bold text-sm leading-tight backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left"
+                                        className="px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent text-page-foreground font-bold text-xs sm:text-sm leading-tight transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left"
                                       >
                                         {ach.name}
                                       </motion.button>
@@ -1099,7 +1094,7 @@ export default function Profile() {
         fullWidth
         PaperProps={{
           className:
-            "glass !rounded-2xl backdrop-blur-md border border-glass-border bg-glass shadow-glass",
+            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
         }}
       >
         <DialogTitle className="text-center font-black tracking-wide text-page-foreground">
@@ -1127,7 +1122,7 @@ export default function Profile() {
         <DialogActions className="justify-center pb-4">
           <button
             onClick={closeQrModal}
-            className="glass--btn py-2.5 px-6 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-white/20 dark:border-white/15"
+            className="py-2.5 px-6 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-nav-link/20 dark:border-nav-link/30"
           >
             {t("common:buttons.done")}
           </button>
@@ -1142,7 +1137,7 @@ export default function Profile() {
         fullWidth
         PaperProps={{
           className:
-            "glass !rounded-2xl backdrop-blur-md border border-glass-border bg-glass shadow-glass",
+            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
         }}
       >
         <DialogTitle className="font-black text-page-foreground">{achOpen?.name}</DialogTitle>
@@ -1162,7 +1157,7 @@ export default function Profile() {
               href={achOpen.url}
               target="_blank"
               rel="noreferrer"
-              className="glass--btn inline-flex justify-center py-2.5 px-6 rounded-xl border-2 border-white/20 dark:border-white/15 bg-transparent hover:bg-white/12 dark:hover:bg-white/8 text-page-foreground font-extrabold tracking-wide transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] backdrop-blur-sm no-underline"
+              className="inline-flex justify-center py-2.5 px-6 rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-surface-accent dark:hover:bg-surface-accent text-page-foreground font-extrabold tracking-wide text-sm sm:text-base transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] no-underline"
             >
               {t("profile:dialog.achievement.openLink")}
             </a>
@@ -1171,7 +1166,7 @@ export default function Profile() {
         <DialogActions className="p-4">
           <button
             onClick={() => setAchOpen(null)}
-            className="glass--btn py-2.5 px-6 rounded-xl bg-[#0f4faa] dark:bg-[#7fb6e6] text-white dark:text-[#0b121f] font-extrabold tracking-wide shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-white/20 dark:border-white/15"
+            className="py-2.5 px-6 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-nav-link/20 dark:border-nav-link/30"
           >
             {t("profile:dialog.achievement.close")}
           </button>
