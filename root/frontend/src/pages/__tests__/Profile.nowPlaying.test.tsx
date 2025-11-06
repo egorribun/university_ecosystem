@@ -1,6 +1,6 @@
 import { ThemeProvider, createTheme } from "@mui/material/styles"
 import { render, act } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { NowPlayingCard } from "@/pages/Profile"
 import type { NowPlaying } from "@/types/spotify"
 import i18n from "@/i18n/config"
@@ -33,14 +33,37 @@ const renderWithTheme = (track: NowPlaying) =>
   )
 
 describe("NowPlayingCard", () => {
-  it("matches snapshot when playing", () => {
+  beforeEach(() => {
+    Object.defineProperty(global.Image.prototype, "complete", {
+      writable: true,
+      value: true,
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("matches snapshot when playing", async () => {
     const { container } = renderWithTheme(baseTrack)
+    const img = container.querySelector("img")
+    if (img) {
+      act(() => {
+        img.dispatchEvent(new Event("load"))
+      })
+    }
     expect(container.firstChild).toMatchSnapshot()
   })
 
-  it("matches snapshot when paused", () => {
+  it("matches snapshot when paused", async () => {
     const paused: NowPlaying = { ...baseTrack, is_playing: false }
     const { container, getByText } = renderWithTheme(paused)
+    const img = container.querySelector("img")
+    if (img) {
+      act(() => {
+        img.dispatchEvent(new Event("load"))
+      })
+    }
     expect(getByText(i18n.t("profile:nowPlaying.paused"))).toBeInTheDocument()
     expect(container.firstChild).toMatchSnapshot()
   })

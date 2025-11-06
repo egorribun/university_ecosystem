@@ -48,6 +48,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const reduced = useReducedMotion()
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
   const clampProgress = useCallback(
     (value: number | null | undefined) => {
@@ -75,6 +77,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 
     if (trackChanged) {
       prevTrackIdRef.current = data.track_id ?? null
+      setImageLoaded(false)
+      setImageError(false)
     }
 
     if (progressChanged) {
@@ -133,7 +137,52 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     return `${minutes}:${rest}`
   }
 
+  const handleImageLoad = useCallback(() => {
+    setImageLoaded(true)
+    setImageError(false)
+  }, [])
+
+  const handleImageError = useCallback(() => {
+    setImageError(true)
+    setImageLoaded(true)
+  }, [])
+
   const href = data.track_url || "https://open.spotify.com"
+
+  const maxTimeWidth = useMemo(() => {
+    const fmtTime = (ms: number | null | undefined) => {
+      if (ms == null) return "0:00"
+      const seconds = Math.max(0, Math.floor(ms / 1000))
+      const minutes = Math.floor(seconds / 60)
+      const rest = String(seconds % 60).padStart(2, "0")
+      return `${minutes}:${rest}`
+    }
+    const maxProgress = fmtTime(duration)
+    const maxDuration = fmtTime(duration)
+    return `${Math.max(maxProgress.length, maxDuration.length) * 0.6 + 2}ch`
+  }, [duration])
+
+  useEffect(() => {
+    if (!data.album_image_url) {
+      setImageLoaded(true)
+      return
+    }
+
+    const img = new Image()
+    img.src = data.album_image_url
+
+    if (img.complete) {
+      setImageLoaded(true)
+      setImageError(false)
+    }
+  }, [data.album_image_url])
+
+  const progressBarTransition = useMemo(() => {
+    if (shouldAnimate && !prefersReduce && !reduced) {
+      return "transform 0.1s linear"
+    }
+    return "transform 0.2s ease-out"
+  }, [shouldAnimate, prefersReduce, reduced])
 
   return (
     <a
@@ -158,21 +207,35 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         }
       >
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
-          <img
-            src={data.album_image_url ?? ""}
-            alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            className={`w-full h-full rounded-lg object-cover ${
-              prefersReduce || reduced
-                ? ""
-                : "scale-[1.012] transition-transform duration-[900ms] cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
-            }`}
-          />
+          {data.album_image_url && !imageError ? (
+            <img
+              src={data.album_image_url}
+              alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
+              loading="eager"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${
+                imageLoaded ? "opacity-100" : "opacity-0"
+              } ${
+                prefersReduce || reduced
+                  ? ""
+                  : "scale-[1.012] transition-transform duration-[900ms] cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+              }`}
+            />
+          ) : (
+            <div className="w-full h-full rounded-lg bg-[#2a2a2a] flex items-center justify-center">
+              <span className="text-[#b3b3b3] text-xs">♪</span>
+            </div>
+          )}
         </div>
         <div className="min-w-0 flex flex-col gap-1.5" aria-live="polite">
-          <h3 className="np-title font-extrabold leading-tight tracking-tight text-white text-base">
+          <h3
+            className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${
+              imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
+            }`}
+          >
             {data.track_name || "—"}
           </h3>
           <p className="np-art text-sm text-[#b3b3b3] opacity-90 truncate">
@@ -187,18 +250,24 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             </span>
           )}
           <div className="flex items-center gap-2 w-full">
-            <div className="flex-1 h-1.5 bg-[#2a2a2a] rounded-full overflow-hidden">
+            <div className="flex-1 min-w-0 h-1.5 bg-[#2a2a2a] rounded-full overflow-hidden relative">
               <div
                 role="progressbar"
                 aria-valuenow={progress}
                 aria-valuemin={0}
                 aria-valuemax={duration}
                 aria-label={t("profile:nowPlaying.progress")}
-                className="h-full bg-[#1db954] rounded-full transition-all duration-200"
-                style={{ width: `${pct}%` }}
+                className="h-full bg-[#1db954] rounded-full origin-left will-change-transform"
+                style={{
+                  transform: `scaleX(${pct / 100})`,
+                  transition: progressBarTransition,
+                }}
               />
             </div>
-            <span className="np-time text-xs text-[#b3b3b3] whitespace-nowrap tabular-nums">
+            <span
+              className="np-time text-xs text-[#b3b3b3] whitespace-nowrap tabular-nums flex-shrink-0"
+              style={{ minWidth: maxTimeWidth }}
+            >
               {fmt(progress)} / {fmt(duration)}
             </span>
           </div>
