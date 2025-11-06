@@ -453,7 +453,7 @@ export default function Profile() {
   const avatarSize = `${avatarPx}px`
   const avatarFloat = Math.round(avatarPx * 0.55)
   const heroPaddingBottom = `${Math.max(avatarFloat - 12, 28)}px`
-  const heroTextPaddingTop = isMobile 
+  const heroTextPaddingTop = isMobile
     ? `${Math.round(48 + avatarPx + 16)}px`
     : `${Math.round(56 + avatarPx + 16)}px`
   const isOnline = ((user as any)?.is_online ?? (user as any)?.online ?? true) as boolean
