@@ -149,7 +149,6 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 
   const href = data.track_url || "https://open.spotify.com"
   
-  // Вычисляем максимальную ширину таймера для фиксации размера
   const maxTimeWidth = useMemo(() => {
     const fmtTime = (ms: number | null | undefined) => {
       if (ms == null) return "0:00"
@@ -160,31 +159,24 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     }
     const maxProgress = fmtTime(duration)
     const maxDuration = fmtTime(duration)
-    // Примерно 0.6ch на символ + небольшой отступ
     return `${Math.max(maxProgress.length, maxDuration.length) * 0.6 + 2}ch`
   }, [duration])
   
-  // Проверяем, загружено ли изображение из кеша при монтировании или смене трека
   useEffect(() => {
     if (!data.album_image_url) {
-      // Если нет изображения, сразу показываем контент
       setImageLoaded(true)
       return
     }
     
-    // Проверяем, загружено ли изображение из кеша браузера
     const img = new Image()
     img.src = data.album_image_url
     
     if (img.complete) {
-      // Изображение уже загружено из кеша
       setImageLoaded(true)
       setImageError(false)
     }
-    // Если изображение не загружено, событие onLoad реального <img> элемента обработает это
   }, [data.album_image_url])
   
-  // Вычисляем transition для прогресс-бара
   const progressBarTransition = useMemo(() => {
     if (shouldAnimate && !prefersReduce && !reduced) {
       return "transform 0.1s linear"
