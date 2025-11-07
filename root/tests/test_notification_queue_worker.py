@@ -135,7 +135,9 @@ async def test_reinitialize_notification_queue_metrics_replaces_registry() -> No
     )
     notification_queue._queue_metrics = metrics_one
     metrics_one.queue_size.set(5)
-    assert registry_one.get_sample_value("notification_queue_size") == pytest.approx(5.0)
+    assert registry_one.get_sample_value("notification_queue_size") == pytest.approx(
+        5.0
+    )
 
     registry_two = CollectorRegistry()
     metrics_two = observability.reinitialize_notification_queue_metrics(
@@ -144,9 +146,8 @@ async def test_reinitialize_notification_queue_metrics_replaces_registry() -> No
     notification_queue._queue_metrics = metrics_two
 
     assert registry_one.get_sample_value("notification_queue_size") is None
-    assert (
-        registry_two.get_sample_value("notification_queue_size")
-        == pytest.approx(0.0)
+    assert registry_two.get_sample_value("notification_queue_size") == pytest.approx(
+        0.0
     )
 
     global _METRICS_REGISTRY

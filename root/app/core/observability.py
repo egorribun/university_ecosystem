@@ -37,11 +37,11 @@ from starlette.responses import JSONResponse, Response
 try:
     from prometheus_client import (
         CONTENT_TYPE_LATEST,
+        REGISTRY,
         CollectorRegistry,
         Counter,
         Gauge,
         Histogram,
-        REGISTRY,
         generate_latest,
     )
 except Exception:  # pragma: no cover - optional dependency guard
@@ -697,7 +697,9 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
                 "prometheus-client is required to create notification queue metrics"
             )
 
-        _notification_queue_metrics = create_notification_queue_metrics(registry=REGISTRY)
+        _notification_queue_metrics = create_notification_queue_metrics(
+            registry=REGISTRY
+        )
 
     return _notification_queue_metrics
 
