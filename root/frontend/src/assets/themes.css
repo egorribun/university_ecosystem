@@ -7,7 +7,7 @@
   --btn-border: #c7d5e8;
   --page-bg: #e8f1fb;
   --page-text: #101621;
-  --card-bg: #ffffff;
+  --card-bg: #f8fbfe;
   --badge-lec: #0b5cad;
   --badge-prac: #2e7d32;
   --badge-lab: #b7791f;
@@ -18,9 +18,9 @@
   --link-color: #0f4faa;
   --menu-hover-bg: #dce6f6;
   --menu-hover-text: #0d2c55;
-  --option-bg: #ffffff;
-  --option-hover-bg: #f1f6fe;
-  --option-shadow: 0 22px 44px rgba(35, 64, 109, 0.14);
+  --option-bg: #f8fbfe;
+  --option-hover-bg: #eef4fc;
+  --option-shadow: 0 22px 44px rgba(35, 64, 109, 0.16);
   --font-ui:
     "Oxygen", "Manrope", "Inter", "Segoe UI", Arial, "Helvetica Neue", Helvetica, sans-serif;
   --font-display:
@@ -36,8 +36,8 @@
   --radius-lg: 2rem;
   --radius-md: 1.3em;
   --radius-sm: 8px;
-  --shadow-1: 0 4px 32px #0001;
-  --shadow-2: 0 8px 32px #0005, 0 2px 12px #0002;
+  --shadow-1: 0 4px 32px rgba(26, 68, 128, 0.08), 0 2px 8px rgba(15, 79, 170, 0.04);
+  --shadow-2: 0 8px 40px rgba(26, 68, 128, 0.12), 0 2px 16px rgba(15, 79, 170, 0.08);
   --shadow-focus: 0 0 0 3px rgba(0, 94, 162, 0.22), 0 0 0 6px rgba(0, 94, 162, 0.12);
   --selection-bg: #d7e7f6;
   --selection-text: #0e141b;
@@ -110,13 +110,13 @@
   --dash-chip-type-text: color-mix(in srgb, var(--nav-text) 78%, var(--nav-link-hover) 22%);
   --progress-track: #dde6f3;
   --progress-bar: #0f4faa;
-  --glass-bg: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(201, 213, 233, 0.56);
-  --glass-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48), 0 34px 80px rgba(15, 23, 42, 0.16);
-  --glass-highlight: rgba(255, 255, 255, 0.72);
-  --glass-tint-1: rgba(233, 240, 250, 0.45);
-  --glass-tint-2: rgba(226, 232, 240, 0.24);
-  --glass-tint-3: rgba(222, 230, 242, 0.12);
+  --glass-bg: rgba(248, 251, 254, 0.85);
+  --glass-border: rgba(176, 196, 222, 0.72);
+  --glass-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), 0 34px 80px rgba(15, 23, 42, 0.18);
+  --glass-highlight: rgba(255, 255, 255, 0.78);
+  --glass-tint-1: rgba(228, 237, 249, 0.52);
+  --glass-tint-2: rgba(220, 230, 244, 0.32);
+  --glass-tint-3: rgba(216, 228, 244, 0.18);
   --glass-alpha: 0.18;
   --glass-blur: 16px;
   --fed-blue-60v: #005ea2;
