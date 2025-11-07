@@ -1,4 +1,15 @@
-import { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react"
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  ChangeEvent,
+  FocusEvent,
+  useId,
+  type PropsWithChildren,
+  type ReactNode,
+} from "react"
 import { isAxiosError } from "axios"
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
 import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
@@ -34,33 +45,11 @@ import type {
   TotpEnrollmentStartResponse,
 } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
-import {
-  Box,
-  Paper,
-  Tabs,
-  Tab,
-  Stack,
-  Typography,
-  Button,
-  Chip,
-  Snackbar,
-  Alert,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Divider,
-  Avatar,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  CircularProgress,
-} from "@mui/material"
 import dayjs from "dayjs"
-import { useColorScheme, styled, alpha } from "@mui/material/styles"
-import type { PaperProps } from "@mui/material/Paper"
-import type { TypographyProps } from "@mui/material/Typography"
+import { useColorScheme } from "@mui/material/styles"
+import { Button, Card, Chip, Alert } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import { cn } from "@/utils/cn"
 import SettingsIcon from "@mui/icons-material/Settings"
 import DarkModeIcon from "@mui/icons-material/DarkMode"
 import LightModeIcon from "@mui/icons-material/LightMode"
@@ -70,6 +59,68 @@ const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import spotifyLogo from "@/assets/spotify_icon.png"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
+
+const INPUT_BASE_CLASS = cn(
+  "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)]",
+  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-2.5 text-[0.95rem] text-page-foreground",
+  "placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_75%,transparent)]",
+  "focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--nav-link)_42%,transparent)] focus:border-transparent",
+  "transition-[border-color,box-shadow,background-color] duration-200 ease-out",
+  "disabled:cursor-not-allowed disabled:bg-[color:color-mix(in_srgb,var(--page-text)_6%,transparent)] disabled:text-[color:color-mix(in_srgb,var(--page-text)_60%,transparent)]"
+)
+
+const INPUT_ERROR_CLASS =
+  "border-[color:rgba(248,113,113,0.55)] focus:ring-[color:rgba(248,113,113,0.52)] bg-[rgba(248,113,113,0.08)]"
+
+const TIME_INPUT_CLASS = cn(
+  INPUT_BASE_CLASS,
+  "max-w-[180px] text-center font-mono tracking-[0.3em]"
+)
+
+type SectionCardProps = PropsWithChildren<{ className?: string }>
+
+const SectionCard = ({ children, className }: SectionCardProps) => (
+  <Card
+    padding="lg"
+    className={cn(
+      "gap-5 rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-text)_10%,transparent)]",
+      "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] shadow-[0_24px_48px_rgba(15,23,42,0.14)] backdrop-blur-[12px]",
+      className
+    )}
+  >
+    {children}
+  </Card>
+)
+
+const SectionHeading = ({
+  title,
+  description,
+}: {
+  title: ReactNode
+  description?: ReactNode
+}) => (
+  <div className="space-y-1">
+    <h3 className="text-[1.05rem] font-semibold text-page-foreground">{title}</h3>
+    {description ? (
+      <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_68%,transparent)]">
+        {description}
+      </p>
+    ) : null}
+  </div>
+)
+
+const SESSION_ITEM_BASE_CLASS = cn(
+  "flex flex-col gap-3 rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)]",
+  "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,white_5%)] p-4 transition-[border-color,box-shadow,background-color] duration-200 ease-out",
+  "hover:border-[color:color-mix(in_srgb,var(--nav-link)_35%,transparent)] hover:shadow-[0_20px_48px_rgba(15,23,42,0.18)]",
+  "sm:flex-row sm:items-center sm:justify-between"
+)
+
+const SESSION_ITEM_REVOKED_CLASS = cn(
+  "opacity-70 border-dashed border-[color:color-mix(in_srgb,var(--page-text)_24%,transparent)]",
+  "bg-[color:color-mix(in_srgb,var(--card-bg)_90%,var(--page-text)_10%)]",
+  "hover:border-[color:color-mix(in_srgb,var(--page-text)_24%,transparent)] hover:shadow-none"
+)
 
 type ThemeMode = "system" | "light" | "dark"
 
@@ -103,154 +154,6 @@ const toServerTime = (value: string | null): string | null => {
   return trimmed
 }
 
-const ModernSwitch = styled("span")(({ theme }) => {
-  const on = theme.palette.primary.main
-  const trackBg = theme.palette.mode === "dark" ? alpha("#fff", 0.12) : alpha("#000", 0.08)
-  const trackBorder = theme.palette.mode === "dark" ? alpha("#fff", 0.24) : alpha("#000", 0.12)
-  const ring = alpha(on, 0.35)
-
-  return {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    width: 52,
-    height: 28,
-    padding: 2,
-    borderRadius: 999,
-    cursor: "pointer",
-    touchAction: "manipulation",
-    WebkitTapHighlightColor: "transparent",
-    "& input": {
-      opacity: 0,
-      width: 0,
-      height: 0,
-      position: "absolute",
-    },
-    "& .ms-track": {
-      position: "absolute",
-      inset: 0,
-      borderRadius: 999,
-      background: trackBg,
-      border: `1px solid ${trackBorder}`,
-      transition: "background-color .2s ease, border-color .2s ease",
-      boxSizing: "border-box",
-    },
-    "& .ms-thumb": {
-      position: "relative",
-      zIndex: 1,
-      width: 22,
-      height: 22,
-      borderRadius: "50%",
-      background: theme.palette.common.white,
-      boxShadow:
-        theme.palette.mode === "dark"
-          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
-          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
-      transform: "translateX(0)",
-      transition: "transform .18s cubic-bezier(.2,.9,.22,1), box-shadow .18s ease",
-    },
-    "&.ms-checked .ms-track": {
-      background: alpha(on, theme.palette.mode === "dark" ? 0.55 : 0.2),
-      borderColor: alpha(on, 0.6),
-    },
-    "&.ms-checked .ms-thumb": {
-      transform: "translateX(24px)",
-      boxShadow:
-        theme.palette.mode === "dark"
-          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
-          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
-    },
-    "&.ms-hover .ms-track": {
-      background: theme.palette.mode === "dark" ? alpha("#fff", 0.16) : alpha("#000", 0.1),
-    },
-    "&.ms-focus .ms-ring": {
-      boxShadow: `0 0 0 3px ${ring}`,
-      opacity: 1,
-      transform: "scale(1)",
-    },
-    "& .ms-ring": {
-      position: "absolute",
-      inset: -2,
-      borderRadius: 999,
-      boxShadow: "0 0 0 0px transparent",
-      transition: "box-shadow .18s ease, transform .18s ease, opacity .18s ease",
-      pointerEvents: "none",
-      opacity: 0,
-      transform: "scale(.98)",
-    },
-    "&.ms-disabled": {
-      cursor: "not-allowed",
-      opacity: 0.6,
-    },
-  }
-})
-
-const SectionCard = styled((props: PaperProps) => <Paper {...props} />)(({ theme }) => ({
-  backgroundColor: "var(--card-bg)",
-  borderRadius: 20,
-  padding: theme.spacing(2.75, 3),
-  border: "1px solid var(--glass-border)",
-  boxShadow: "none",
-  display: "flex",
-  flexDirection: "column",
-  gap: theme.spacing(1.5),
-}))
-
-const SectionTitle = styled(({ component = "h2", ...props }: TypographyProps) => (
-  <Typography {...props} component={component} />
-))({
-  fontWeight: 600,
-  color: "var(--page-text)",
-})
-
-const SectionSubtitle = styled(Typography)({
-  color: "color-mix(in srgb, var(--page-text) 72%, transparent)",
-})
-
-const SessionItem = styled("div")(({ theme }) => ({
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "space-between",
-  gap: theme.spacing(1.5),
-  padding: theme.spacing(1.5),
-  borderRadius: 18,
-  border: "1px solid var(--glass-border)",
-  backgroundColor: theme.palette.mode === "dark" ? alpha("#fff", 0.04) : alpha("#000", 0.03),
-  transition: "border-color .2s ease, box-shadow .2s ease, background-color .2s ease",
-  [theme.breakpoints.down("sm")]: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  "&:hover": {
-    borderColor: alpha(theme.palette.primary.main, 0.35),
-    boxShadow:
-      theme.palette.mode === "dark"
-        ? "0 12px 28px rgba(0,0,0,.35)"
-        : "0 12px 24px rgba(15,23,42,.12)",
-    backgroundColor:
-      theme.palette.mode === "dark"
-        ? alpha(theme.palette.primary.main, 0.18)
-        : alpha(theme.palette.primary.main, 0.08),
-  },
-  '&[data-revoked="true"]': {
-    opacity: 0.72,
-    borderStyle: "dashed",
-    borderColor: alpha(theme.palette.text.primary, 0.18),
-    backgroundColor:
-      theme.palette.mode === "dark"
-        ? alpha(theme.palette.text.primary, 0.06)
-        : alpha(theme.palette.text.primary, 0.04),
-  },
-  '&[data-revoked="true"]:hover': {
-    boxShadow: "none",
-    borderColor: alpha(theme.palette.text.primary, 0.18),
-    backgroundColor:
-      theme.palette.mode === "dark"
-        ? alpha(theme.palette.text.primary, 0.06)
-        : alpha(theme.palette.text.primary, 0.04),
-  },
-}))
-
 function SwitchControl({
   checked,
   disabled,
@@ -264,35 +167,41 @@ function SwitchControl({
   inputId?: string
   "aria-label"?: string
 }) {
-  const [hover, setHover] = useState(false)
-  const [focus, setFocus] = useState(false)
+  const generatedId = useId()
+  const id = inputId ?? generatedId
+
   return (
-    <ModernSwitch
-      className={[
-        checked ? "ms-checked" : "",
-        disabled ? "ms-disabled" : "",
-        hover ? "ms-hover" : "",
-        focus ? "ms-focus" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+    <div
+      className={cn(
+        "inline-flex items-center",
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+      )}
     >
-      <span className="ms-ring" />
-      <span className="ms-track" />
-      <span className="ms-thumb" />
       <input
-        id={inputId}
+        id={id}
         type="checkbox"
+        className="peer sr-only"
         checked={checked}
         disabled={disabled}
         aria-label={ariaLabel}
-        onChange={(e) => onChange(e, e.target.checked)}
-        onFocus={() => setFocus(true)}
-        onBlur={() => setFocus(false)}
+        onChange={(event) => onChange(event, event.target.checked)}
       />
-    </ModernSwitch>
+      <label
+        htmlFor={id}
+        className={cn(
+          "relative inline-flex h-8 w-14 items-center rounded-full border border-[color:color-mix(in_srgb,var(--page-text)_16%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--page-text)_8%)] transition-colors duration-200 ease-out",
+          "peer-focus-visible:outline-none peer-focus-visible:ring-4 peer-focus-visible:ring-[color:color-mix(in_srgb,var(--nav-link)_45%,transparent)]",
+          "peer-checked:border-[color:color-mix(in_srgb,var(--nav-link)_55%,transparent)] peer-checked:bg-[color:color-mix(in_srgb,var(--nav-link)_30%,transparent)]"
+        )}
+      >
+        <span
+          className={cn(
+            "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-[0_4px_10px_rgba(15,23,42,0.18)] transition-transform duration-200 ease-out",
+            "peer-checked:translate-x-6"
+          )}
+        />
+      </label>
+    </div>
   )
 }
 
@@ -310,46 +219,6 @@ export default function Settings() {
 
   const { mode: storedMode, setMode } = useColorScheme()
   const theme = (storedMode ?? "system") as ThemeMode
-
-  const timeFieldSx = useMemo(
-    () => ({
-      maxWidth: { xs: "100%", sm: 200 },
-      "& .MuiOutlinedInput-root": {
-        borderRadius: 2.5,
-        overflow: "hidden",
-        backgroundColor: "var(--card-bg)",
-        "& fieldset": {
-          borderColor: "color-mix(in srgb, var(--page-text) 24%, transparent)",
-          borderWidth: 1,
-        },
-        "&:hover fieldset": {
-          borderColor: "color-mix(in srgb, var(--page-text) 32%, transparent)",
-        },
-        "&.Mui-focused": {
-          boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 22%, transparent)",
-        },
-        "&.Mui-focused fieldset": {
-          borderColor: "var(--link-color)",
-        },
-        "&.Mui-disabled": {
-          backgroundColor: "color-mix(in srgb, var(--page-text) 6%, transparent)",
-        },
-        "&.Mui-disabled fieldset": {
-          borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
-        },
-      },
-      "& .MuiInputBase-input": {
-        textAlign: "center",
-        fontVariantNumeric: "tabular-nums",
-      },
-      "& .MuiInputLabel-root": {
-        px: 0.75,
-        backgroundColor: "var(--card-bg)",
-        color: "var(--page-text)",
-      },
-    }),
-    []
-  )
 
   const {
     pushSupported,
@@ -563,14 +432,14 @@ export default function Settings() {
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "")
       window.history.replaceState({}, "", next)
     }
-  }, [setSnack, t])
+    }, [setSnack, t])
 
-  const handleThemeChange = useCallback(
-    (_: ChangeEvent<HTMLInputElement>, value: string) => {
-      setMode(value as ThemeMode)
-    },
-    [setMode]
-  )
+    const handleThemeChange = useCallback(
+      (value: ThemeMode) => {
+        setMode(value)
+      },
+      [setMode]
+    )
 
   const handleNotificationsToggle = useCallback(
     (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {

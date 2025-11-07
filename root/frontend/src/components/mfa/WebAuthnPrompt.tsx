@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Alert, Button, Stack, Typography } from "@mui/material"
 import { startAuthentication } from "@simplewebauthn/browser"
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser"
 import { useTranslation } from "react-i18next"
+import { Alert, Button } from "@/components/ui"
+import { cn } from "@/utils/cn"
 
 type WebAuthnPromptProps = {
   options?: Record<string, unknown> | PublicKeyCredentialRequestOptionsJSON | null
@@ -68,30 +69,27 @@ export const WebAuthnPrompt = ({
   }, [autoStart, resolvedOptions, trigger])
 
   return (
-    <Stack spacing={2} alignItems="center" textAlign="center">
-      <Typography variant="h6" fontWeight={600} sx={{ color: "var(--page-text)" }}>
+    <div className="flex flex-col items-center gap-4 text-center">
+      <h3 className="text-[1.1rem] font-semibold text-page-foreground">
         {t("mfa.webauthn.heading")}
-      </Typography>
-      <Typography
-        variant="body2"
-        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-      >
+      </h3>
+      <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_70%,transparent)]">
         {t("mfa.webauthn.instructions")}
-      </Typography>
+      </p>
       <Button
-        variant="contained"
         onClick={() => void trigger()}
         disabled={busy || loading || !resolvedOptions}
-        size="large"
+        loading={busy || loading}
+        className={cn("min-w-[200px]", !resolvedOptions && "pointer-events-none opacity-60")}
       >
         {busy || loading ? t("mfa.webauthn.waiting") : t("mfa.webauthn.start")}
       </Button>
       {error || localError ? (
-        <Alert severity="error" variant="outlined" sx={{ width: "100%" }}>
+        <Alert tone="error" role="alert" className="max-w-md">
           {error || localError}
         </Alert>
       ) : null}
-    </Stack>
+    </div>
   )
 }
 

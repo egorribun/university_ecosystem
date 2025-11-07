@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react"
-import { Box, Stack, Typography, IconButton, Tooltip, TextField } from "@mui/material"
 import ContentCopyIcon from "@mui/icons-material/ContentCopy"
 import { QRCodeSVG } from "qrcode.react"
 import { useTranslation } from "react-i18next"
+import { Button } from "@/components/ui"
+import { cn } from "@/utils/cn"
 
 type TotpQrDisplayProps = {
   otpauthUrl: string
@@ -33,69 +34,57 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
   }, [normalizedSecret])
 
   return (
-    <Stack spacing={2} alignItems="center" textAlign="center">
-      <Typography variant="h6" fontWeight={600} sx={{ color: "var(--page-text)" }}>
+    <div className="flex flex-col items-center gap-4 text-center">
+      <h3 className="text-[1.1rem] font-semibold text-page-foreground">
         {t("mfa.totp.scanHeading")}
-      </Typography>
+      </h3>
       {label ? (
-        <Typography
-          variant="body2"
-          sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
-        >
+        <p className="text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_70%,transparent)]">
           {t("mfa.totp.accountLabel", { label })}
-        </Typography>
+        </p>
       ) : null}
-      <Box
-        sx={{
-          p: 2,
-          borderRadius: 2,
-          border: "1px solid var(--glass-border)",
-          backgroundColor: "var(--card-bg)",
-        }}
-      >
-        <QRCodeSVG value={otpauthUrl} size={192} />
-      </Box>
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        sx={{
-          width: "100%",
-          maxWidth: 320,
-        }}
-      >
-        <TextField
-          fullWidth
-          size="small"
-          label={t("mfa.totp.manualHeading")}
-          value={normalizedSecret}
-          InputProps={{ readOnly: true }}
-          sx={{
-            "& .MuiOutlinedInput-root": {
-              fontFamily: "monospace",
-              letterSpacing: 1,
-            },
-          }}
-        />
-        <Tooltip title={copied ? t("mfa.totp.copied") : t("mfa.totp.copySecret")}>
-          <span>
-            <IconButton
-              color={copied ? "success" : "primary"}
-              onClick={() => void handleCopy()}
-              aria-label={t("mfa.totp.copySecret")}
-            >
-              <ContentCopyIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-      </Stack>
-      <Typography
-        variant="body2"
-        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-      >
+
+      <div className="rounded-ue-xl border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_95%,white_5%)] p-4 shadow-[0_12px_32px_rgba(15,23,42,0.12)]">
+        <QRCodeSVG value={otpauthUrl} size={196} />
+      </div>
+
+      <div className="flex w-full max-w-[320px] items-center gap-2">
+        <div className="flex-1">
+          <label className="mb-1 block text-left text-xs font-semibold uppercase tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_80%,transparent)]">
+            {t("mfa.totp.manualHeading")}
+          </label>
+          <input
+            value={normalizedSecret}
+            readOnly
+            className={cn(
+              "w-full rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)]",
+              "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-3 py-2 text-center font-mono text-sm tracking-[0.32em] text-page-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--nav-link)_42%,transparent)]"
+            )}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(
+            "min-w-[42px] rounded-ue-md px-2 py-2",
+            "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)]",
+            copied
+              ? "border-[color:rgba(16,185,129,0.55)] bg-[rgba(16,185,129,0.14)] text-[color:rgba(6,95,70,0.92)] hover:bg-[rgba(16,185,129,0.18)]"
+              : "text-nav-link"
+          )}
+          aria-label={t("mfa.totp.copySecret")}
+          onClick={() => void handleCopy()}
+        >
+          <ContentCopyIcon fontSize="small" />
+        </Button>
+      </div>
+
+      <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_70%,transparent)]">
         {t("mfa.totp.instructions")}
-      </Typography>
-    </Stack>
+      </p>
+    </div>
   )
 }
 

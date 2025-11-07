@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Stack,
-  Typography,
-} from "@mui/material"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/contexts/AuthContext"
 import type { MfaMethod } from "@/types/Mfa"
 import OtpEntry, { type OtpMethod } from "./OtpEntry"
 import WebAuthnPrompt from "./WebAuthnPrompt"
+import { Button } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import { cn } from "@/utils/cn"
 
 type StepUpDialogProps = {
   open: boolean
@@ -120,49 +114,48 @@ export const StepUpDialog = ({
   const webAuthnChallenge = useMemo(() => getChallenge("webauthn"), [getChallenge])
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{title ?? t("mfa.stepUp.title")}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={3} sx={{ mt: 1 }}>
-          <Typography
-            variant="body2"
-            sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
-          >
-            {description ?? t("mfa.stepUp.description")}
-          </Typography>
-          {otpMethods.length ? (
-            <OtpEntry
-              availableMethods={otpMethods}
-              defaultMethod={
-                defaultMethod && defaultMethod !== "webauthn"
-                  ? (defaultMethod as Extract<MfaMethod, "totp" | "recovery">)
-                  : otpMethods[0]
-              }
-              loading={verifying}
-              error={error}
-              onSubmit={handleOtpSubmit}
-            />
-          ) : null}
-          {hasWebAuthn && webAuthnChallenge ? (
-            <WebAuthnPrompt
-              options={webAuthnChallenge.options ?? null}
-              autoStart
-              loading={verifying}
-              error={error}
-              onResolve={async (credential) => {
-                await handleSubmit({
-                  method: "webauthn",
-                  credential: credential as unknown as Record<string, unknown>,
-                  challengeToken: webAuthnChallenge.challenge_token,
-                })
-              }}
-            />
-          ) : null}
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{t("common:buttons.cancel")}</Button>
-      </DialogActions>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title ?? t("mfa.stepUp.title")}
+      subtitle={description ?? t("mfa.stepUp.description")}
+      footer={
+        <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
+          {t("common:buttons.cancel")}
+        </Button>
+      }
+      size="sm"
+    >
+      <div className={cn("flex flex-col gap-5")}>
+        {otpMethods.length ? (
+          <OtpEntry
+            availableMethods={otpMethods}
+            defaultMethod={
+              defaultMethod && defaultMethod !== "webauthn"
+                ? (defaultMethod as Extract<MfaMethod, "totp" | "recovery">)
+                : otpMethods[0]
+            }
+            loading={verifying}
+            error={error}
+            onSubmit={handleOtpSubmit}
+          />
+        ) : null}
+        {hasWebAuthn && webAuthnChallenge ? (
+          <WebAuthnPrompt
+            options={webAuthnChallenge.options ?? null}
+            autoStart
+            loading={verifying}
+            error={error}
+            onResolve={async (credential) => {
+              await handleSubmit({
+                method: "webauthn",
+                credential: credential as unknown as Record<string, unknown>,
+                challengeToken: webAuthnChallenge.challenge_token,
+              })
+            }}
+          />
+        ) : null}
+      </div>
     </Dialog>
   )
 }

@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useState } from "react"
-import { Alert, Box, Button, Divider, Stack, Typography } from "@mui/material"
 import ContentCopyIcon from "@mui/icons-material/ContentCopy"
 import { useTranslation } from "react-i18next"
+import { Alert, Button } from "@/components/ui"
+import { cn } from "@/utils/cn"
 
 export type RecoveryCodeEntry = {
   code: string
@@ -37,70 +38,62 @@ export const RecoveryCodeList = ({ codes, allowCopy = true }: RecoveryCodeListPr
 
   if (!codes.length) {
     return (
-      <Alert severity="info" variant="outlined">
+      <Alert tone="info" role="status">
         {t("mfa.recovery.empty")}
       </Alert>
     )
   }
 
   return (
-    <Stack spacing={2} alignItems="stretch">
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ color: "var(--page-text)" }}>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start">
+        <p className="text-[1.05rem] font-semibold text-page-foreground">
           {t("mfa.recovery.title")}
-        </Typography>
+        </p>
         {allowCopy ? (
           <Button
-            variant="outlined"
-            size="small"
-            startIcon={<ContentCopyIcon fontSize="small" />}
+            variant="outline"
+            size="sm"
+            leadingIcon={<ContentCopyIcon fontSize="small" />}
             onClick={() => void handleCopyAll()}
+            className={cn(
+              "w-full sm:w-auto",
+              copied
+                ? "border-[color:rgba(16,185,129,0.55)] bg-[rgba(16,185,129,0.14)] text-[color:rgba(6,95,70,0.92)] hover:bg-[rgba(16,185,129,0.18)]"
+                : "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)]"
+            )}
           >
             {copied ? t("mfa.recovery.copied") : t("mfa.recovery.copyAll")}
           </Button>
         ) : null}
-      </Stack>
-      <Typography
-        variant="body2"
-        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-      >
+      </div>
+      <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_68%,transparent)]">
         {t("mfa.recovery.instructions")}
-      </Typography>
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "repeat(1, minmax(0, 1fr))", sm: "repeat(2, minmax(0, 1fr))" },
-          gap: 1,
-        }}
-      >
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {codes.map((entry, index) => (
           <Fragment key={entry.code}>
-            <Box
-              sx={{
-                borderRadius: 1.5,
-                border: "1px solid var(--glass-border)",
-                backgroundColor: "color-mix(in srgb, var(--page-text) 4%, transparent)",
-                px: 2,
-                py: 1.5,
-                fontFamily: "monospace",
-                letterSpacing: 1,
-                fontSize: "1rem",
-                textAlign: "center",
-                color: entry.usedAt
-                  ? "color-mix(in srgb, var(--page-text) 50%, transparent)"
-                  : "var(--page-text)",
-              }}
+            <div
+              className={cn(
+                "rounded-ue-lg border border-[color:color-mix(in_srgb,var(--page-text)_12%,transparent)]",
+                "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,white_5%)] px-3 py-2 text-center font-mono text-[1.05rem] tracking-[0.28em] transition-all duration-200",
+                entry.usedAt
+                  ? "text-[color:color-mix(in_srgb,var(--page-text)_50%,transparent)] opacity-80"
+                  : "text-page-foreground"
+              )}
             >
               {entry.code}
-            </Box>
-            {(index + 1) % 2 === 0 ? <Divider sx={{ display: { sm: "none" } }} /> : null}
+            </div>
+            {(index + 1) % 2 === 0 ? (
+              <div className="col-span-full h-px bg-[color:color-mix(in_srgb,var(--page-text)_8%,transparent)] sm:hidden" />
+            ) : null}
           </Fragment>
         ))}
-      </Box>
-      <Alert severity="warning" variant="outlined">
+      </div>
+      <Alert tone="warning" role="status">
         {t("mfa.recovery.warning")}
       </Alert>
-    </Stack>
+    </div>
   )
 }
 
