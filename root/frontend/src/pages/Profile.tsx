@@ -660,7 +660,7 @@ export default function Profile() {
 
   return (
     <>
-        {/* Seamless tiled background */}
+      {/* Seamless tiled background */}
       <div className="profile-background" aria-hidden>
         <div
           className="profile-background__image"
