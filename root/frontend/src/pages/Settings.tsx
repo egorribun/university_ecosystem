@@ -521,8 +521,10 @@ function Dialog({
   }[maxWidth] || "max-w-md"
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+    <div role="presentation" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
         className={`bg-card rounded-2xl shadow-2xl ${fullWidth ? "w-full" : ""} ${maxWidthClasses}`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2012,42 +2014,36 @@ export default function Settings() {
               </Button>
             </SectionCard>
             <SectionCard component="section">
-              <Stack spacing={1}>
+              <div className="flex flex-col gap-2">
                 <SectionTitle variant="subtitle1">
                   {t("settings:security.account.title")}
                 </SectionTitle>
                 <SectionSubtitle variant="body2">
                   {t("settings:security.account.subtitle")}
                 </SectionSubtitle>
-              </Stack>
+              </div>
 
-              <Stack
-                component="form"
-                spacing={1.5}
+              <form
+                className="flex flex-col gap-3 mt-4"
                 onSubmit={(event) => {
                   event.preventDefault()
                   void handleEmailSubmit()
                 }}
-                sx={{ mt: 2 }}
               >
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.email.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.email.subtitle")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
                 {pendingEmail ? (
                   <Alert severity="info" variant="outlined">
                     {t("settings:security.email.pendingNotice", { email: pendingEmail })}
                   </Alert>
                 ) : null}
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.2}
-                  alignItems={{ sm: "flex-end" }}
-                >
+                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
                   <TextField
                     fullWidth
                     type="email"
@@ -2076,12 +2072,8 @@ export default function Settings() {
                     helperText={emailPasswordError ?? undefined}
                     autoComplete="current-password"
                   />
-                </Stack>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.2}
-                  alignItems={{ sm: "center" }}
-                >
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
                   <Button
                     type="submit"
                     variant="contained"
@@ -2092,34 +2084,30 @@ export default function Settings() {
                   >
                     {t("settings:security.email.updateButton")}
                   </Button>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
+                  <p className="text-sm text-page-text/70">
                     {t("settings:security.email.helper")}
-                  </Typography>
-                </Stack>
-              </Stack>
+                  </p>
+                </div>
+              </form>
 
-              <Divider sx={{ my: 2.5 }} />
+              <Divider className="my-5" />
 
-              <Stack
-                component="form"
-                spacing={1.5}
+              <form
+                className="flex flex-col gap-3"
                 onSubmit={(event) => {
                   event.preventDefault()
                   void handlePasswordSubmit()
                 }}
               >
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.password.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.password.subtitle")}
                   </SectionSubtitle>
-                </Stack>
-                <Stack spacing={1.2} direction={{ xs: "column", sm: "row" }}>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5">
                   <TextField
                     fullWidth
                     type="password"
@@ -2148,12 +2136,8 @@ export default function Settings() {
                     helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
                     autoComplete="new-password"
                   />
-                </Stack>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.2}
-                  alignItems={{ sm: "center" }}
-                >
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
                   <TextField
                     fullWidth
                     type="password"
@@ -2180,23 +2164,17 @@ export default function Settings() {
                       ? t("settings:security.password.updating")
                       : t("settings:security.password.updateButton")}
                   </Button>
-                </Stack>
-              </Stack>
+                </div>
+              </form>
             </SectionCard>
 
             <SectionCard component="section">
-              <Stack spacing={1}>
+              <div className="flex flex-col gap-2">
                 <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
                 <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
-              </Stack>
+              </div>
 
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1.2}
-                alignItems={{ sm: "center" }}
-                justifyContent={{ sm: "space-between" }}
-                sx={{ mt: 1.5 }}
-              >
+              <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center sm:justify-between mt-3">
                 <Button
                   variant="outlined"
                   color="error"
@@ -2210,31 +2188,28 @@ export default function Settings() {
                 >
                   {t("settings:sessions.revokeAll")}
                 </Button>
-                <Typography
-                  variant="body2"
-                  sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                >
+                <p className="text-sm text-page-text/70">
                   {t("settings:sessions.revokeAllHint")}
-                </Typography>
-              </Stack>
+                </p>
+              </div>
 
               {sessionsFetching ? (
-                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mt: 1.5 }}>
+                <div className="flex flex-row gap-2.5 items-center mt-3">
                   <CircularProgress size={18} />
-                  <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                  <p className="text-sm text-page-text">
                     {t("settings:sessions.loading")}
-                  </Typography>
-                </Stack>
+                  </p>
+                </div>
               ) : sessionsErrorMessage ? (
                 <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
                   {sessionsErrorMessage}
                 </Alert>
               ) : sessions.length === 0 ? (
-                <Typography variant="body2" sx={{ mt: 1.5, color: "var(--page-text)" }}>
+                <p className="text-sm text-page-text mt-3">
                   {t("settings:sessions.empty")}
-                </Typography>
+                </p>
               ) : (
-                <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                <div className="flex flex-col gap-3 mt-3">
                   {sortedSessions.map((session) => {
                     const isRevoked = Boolean(session.revoked_at)
                     const lastSeen = session.last_seen_at ?? session.created_at
@@ -2258,38 +2233,23 @@ export default function Settings() {
 
                     return (
                       <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              color: isRevoked
-                                ? "color-mix(in srgb, var(--page-text) 65%, transparent)"
-                                : "var(--page-text)",
-                              fontWeight: session.is_current ? 600 : 500,
-                              wordBreak: "break-word",
-                            }}
+                        <div className="min-w-0">
+                          <p
+                            className={`text-sm break-words ${
+                              isRevoked ? "text-page-text/65" : "text-page-text"
+                            } ${session.is_current ? "font-semibold" : "font-medium"}`}
                           >
                             {session.user_agent || t("settings:sessions.unknownDevice")}
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: isRevoked
-                                ? "color-mix(in srgb, var(--page-text) 58%, transparent)"
-                                : "color-mix(in srgb, var(--page-text) 68%, transparent)",
-                              fontStyle: isRevoked ? "italic" : "normal",
-                            }}
+                          </p>
+                          <p
+                            className={`text-xs ${
+                              isRevoked ? "text-page-text/60 italic" : "text-page-text/70"
+                            }`}
                           >
                             {details}
-                          </Typography>
-                        </Box>
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          alignItems="center"
-                          justifyContent={{ xs: "flex-start", sm: "flex-end" }}
-                          sx={{ flexWrap: "wrap", rowGap: 0.75, flexShrink: 0 }}
-                        >
+                          </p>
+                        </div>
+                        <div className="flex flex-row gap-2 items-center justify-start sm:justify-end flex-wrap gap-y-1.5 shrink-0">
                           <Chip
                             size="small"
                             label={statusLabel}
@@ -2326,46 +2286,43 @@ export default function Settings() {
                               {t("settings:sessions.revoke")}
                             </Button>
                           )}
-                        </Stack>
+                        </div>
                       </SessionItem>
                     )
                   })}
-                </Stack>
+                </div>
               )}
             </SectionCard>
 
             <SectionCard component="section">
-              <Stack spacing={1} sx={{ mb: 1.5 }}>
+              <div className="flex flex-col gap-2 mb-3">
                 <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
                 <SectionSubtitle variant="body2">{t("settings:security.subtitle")}</SectionSubtitle>
-              </Stack>
+              </div>
 
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
                 <Chip size="small" label={defaultMethodText} sx={{ fontWeight: 600 }} />
-                <Chip size="small" label={lastVerifiedText} sx={{ fontWeight: 600 }} />
-              </Stack>
+                <Chip size="small" label={lastVerifiedText} className="font-semibold" />
+              </div>
 
-              <Stack spacing={2.5} sx={{ mt: 1.5 }}>
-                <Stack spacing={1}>
+              <div className="flex flex-col gap-5 mt-3">
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.totp")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.totp.description")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
 
                 {totpDraft ? (
-                  <Stack spacing={2}>
-                    <Typography variant="subtitle2" fontWeight={600}>
+                  <div className="flex flex-col gap-4">
+                    <h4 className="text-sm font-semibold">
                       {t("settings:security.totp.pendingTitle")}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                    >
+                    </h4>
+                    <p className="text-sm text-page-text/70">
                       {t("settings:security.totp.pendingDescription")}
-                    </Typography>
+                    </p>
                     <TotpQrDisplay
                       otpauthUrl={totpDraft.otpauth_url}
                       secret={totpDraft.secret}
@@ -2385,40 +2342,27 @@ export default function Settings() {
                     >
                       {t("settings:security.totp.cancel")}
                     </Button>
-                  </Stack>
+                  </div>
                 ) : (
-                  <Stack spacing={1.5}>
+                  <div className="flex flex-col gap-3">
                     {activeTotp.length ? (
-                      <Stack spacing={1.25}>
+                      <div className="flex flex-col gap-2.5">
                         {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
-                          <Stack
+                          <div
                             key={enrollment.id}
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={1.25}
-                            alignItems={{ sm: "center" }}
-                            justifyContent="space-between"
-                            sx={{
-                              border: "1px solid var(--glass-border)",
-                              borderRadius: 2,
-                              padding: 1.5,
-                            }}
+                            className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between border border-glass-border rounded-lg p-3"
                           >
-                            <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                              <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <p className="font-semibold text-page-text">
                                 {enrollment.label ||
                                   t("settings:security.totp.unnamed", { index: index + 1 })}
-                              </Typography>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: "color-mix(in srgb, var(--page-text) 70%, transparent)",
-                                }}
-                              >
+                              </p>
+                              <p className="text-sm text-page-text/70">
                                 {t("settings:security.totp.added", {
                                   value: formatDateTime(enrollment.created_at) ?? "—",
                                 })}
-                              </Typography>
-                            </Stack>
+                              </p>
+                            </div>
                             <Button
                               variant="outlined"
                               color="error"
@@ -2427,16 +2371,13 @@ export default function Settings() {
                             >
                               {t("settings:security.totp.remove")}
                             </Button>
-                          </Stack>
+                          </div>
                         ))}
-                      </Stack>
+                      </div>
                     ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                      >
+                      <p className="text-sm text-page-text/70">
                         {t("settings:security.totp.empty")}
-                      </Typography>
+                      </p>
                     )}
                     <Button
                       variant="contained"
@@ -2445,26 +2386,21 @@ export default function Settings() {
                     >
                       {t("settings:security.totp.add")}
                     </Button>
-                  </Stack>
+                  </div>
                 )}
 
-                <Divider sx={{ my: 1 }} />
+                <Divider className="my-2" />
 
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.webauthn")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.webauthn.description")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
 
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.5}
-                  alignItems={{ sm: "center" }}
-                  sx={{ maxWidth: 420 }}
-                >
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
                   <TextField
                     fullWidth
                     size="small"
@@ -2482,52 +2418,34 @@ export default function Settings() {
                       ? t("settings:security.webauthn.registering")
                       : t("settings:security.webauthn.cta")}
                   </Button>
-                </Stack>
+                </div>
 
                 {activeWebAuthn.length ? (
-                  <Stack spacing={1.25}>
+                  <div className="flex flex-col gap-2.5">
                     {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
                       const added = formatDateTime(credential.created_at)
                       const lastUsed = formatDateTime(credential.last_used_at ?? null)
                       return (
-                        <Stack
+                        <div
                           key={credential.credential_id}
-                          direction={{ xs: "column", sm: "row" }}
-                          spacing={1.25}
-                          alignItems={{ sm: "center" }}
-                          justifyContent="space-between"
-                          sx={{
-                            border: "1px solid var(--glass-border)",
-                            borderRadius: 2,
-                            padding: 1.5,
-                          }}
+                          className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between border border-glass-border rounded-lg p-3"
                         >
-                          <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                            <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <p className="font-semibold text-page-text">
                               {credential.device_name ||
                                 t("settings:security.webauthn.unnamed", { index: index + 1 })}
-                            </Typography>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: "color-mix(in srgb, var(--page-text) 70%, transparent)",
-                              }}
-                            >
+                            </p>
+                            <p className="text-sm text-page-text/70">
                               {added
                                 ? t("settings:security.webauthn.added", { value: added })
                                 : null}
-                            </Typography>
+                            </p>
                             {lastUsed ? (
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: "color-mix(in srgb, var(--page-text) 60%, transparent)",
-                                }}
-                              >
+                              <p className="text-sm text-page-text/60">
                                 {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
-                              </Typography>
+                              </p>
                             ) : null}
-                          </Stack>
+                          </div>
                           <Button
                             variant="outlined"
                             color="error"
@@ -2536,35 +2454,28 @@ export default function Settings() {
                           >
                             {t("settings:security.webauthn.remove")}
                           </Button>
-                        </Stack>
+                        </div>
                       )
                     })}
-                  </Stack>
+                  </div>
                 ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
+                  <p className="text-sm text-page-text/70">
                     {t("settings:security.webauthn.empty")}
-                  </Typography>
+                  </p>
                 )}
 
-                <Divider sx={{ my: 1 }} />
+                <Divider className="my-2" />
 
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.recovery")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.recovery.description")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
 
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.5}
-                  alignItems={{ sm: "center" }}
-                >
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                   <Button
                     variant="outlined"
                     onClick={handleGenerateRecoveryCodes}
@@ -2574,13 +2485,10 @@ export default function Settings() {
                       ? t("settings:security.recovery.generating")
                       : t("settings:security.recovery.generate")}
                   </Button>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
+                  <p className="text-sm text-page-text/70">
                     {recoveryStatusText}
-                  </Typography>
-                </Stack>
+                  </p>
+                </div>
 
                 {generatedRecoveryCodes.length ? (
                   <RecoveryCodeList
@@ -2588,15 +2496,15 @@ export default function Settings() {
                     allowCopy
                   />
                 ) : null}
-              </Stack>
+              </div>
             </SectionCard>
-          </Stack>
+          </div>
         )}
 
         {tab === 2 && (
-          <Stack spacing={3}>
-            <Stack spacing={2}>
-              <Stack direction="row" alignItems="center" spacing={1}>
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-row items-center gap-2">
                 <img
                   src={spotifyLogo}
                   alt={t("settings:integrations.spotify.alt")}
@@ -2606,11 +2514,11 @@ export default function Settings() {
                   loading="lazy"
                   decoding="async"
                 />
-                <Typography variant="h6" sx={{ color: "var(--page-text)" }}>
+                <h3 className="text-lg font-semibold text-page-text">
                   {t("settings:integrations.spotify.title")}
-                </Typography>
-              </Stack>
-              <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
+                </h3>
+              </div>
+              <div className="flex flex-row items-center gap-2.5 flex-wrap">
                 <Chip
                   size="small"
                   className="glass--chip"
@@ -2625,12 +2533,12 @@ export default function Settings() {
                 {spotifyConnected && !!spotifyName && (
                   <Chip size="small" variant="outlined" label={spotifyName} />
                 )}
-              </Stack>
+              </div>
               {!spotifyConnected ? (
                 <Button
                   variant="contained"
                   onClick={connectSpotify}
-                  sx={{ alignSelf: "flex-start" }}
+                  className="self-start"
                 >
                   {t("settings:integrations.spotify.connect")}
                 </Button>
@@ -2639,13 +2547,13 @@ export default function Settings() {
                   variant="outlined"
                   color="error"
                   onClick={disconnectSpotify}
-                  sx={{ alignSelf: "flex-start" }}
+                  className="self-start"
                 >
                   {t("settings:integrations.spotify.disconnect")}
                 </Button>
               )}
-            </Stack>
-          </Stack>
+            </div>
+          </div>
         )}
       </div>
 
