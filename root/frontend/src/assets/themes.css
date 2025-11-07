@@ -2268,8 +2268,11 @@ body.dark .profile-background__overlay {
   transition: opacity 0.35s ease;
 }
 body:not(.dark) .profile-panel {
-  background: linear-gradient(170deg, rgba(255, 255, 255, 0.94), rgba(240, 247, 255, 0.88))
-    !important;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(240, 247, 255, 0.88)
+  ) !important;
   border: 1px solid color-mix(in srgb, var(--nav-link) 18%, transparent) !important;
   box-shadow:
     0 30px 84px -56px rgba(15, 40, 85, 0.28),
@@ -2289,8 +2292,11 @@ body.dark .profile-panel::before {
   opacity: 0.32;
 }
 body:not(.dark) .profile-panel--primary {
-  background: linear-gradient(175deg, rgba(255, 255, 255, 0.97), rgba(233, 242, 255, 0.9))
-    !important;
+  background: linear-gradient(
+    175deg,
+    rgba(255, 255, 255, 0.97),
+    rgba(233, 242, 255, 0.9)
+  ) !important;
   border-color: color-mix(in srgb, var(--nav-link) 26%, transparent) !important;
   box-shadow:
     0 36px 94px -58px color-mix(in srgb, var(--nav-link) 34%, transparent),
@@ -2307,8 +2313,11 @@ body:not(.dark) .profile-panel--hero::before {
   opacity: 0.58;
 }
 body:not(.dark) .profile-panel--compact {
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.99), rgba(232, 241, 255, 0.9))
-    !important;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.99),
+    rgba(232, 241, 255, 0.9)
+  ) !important;
   border-color: color-mix(in srgb, var(--nav-link) 20%, transparent) !important;
   box-shadow:
     0 26px 72px -50px rgba(15, 79, 170, 0.28),
@@ -2318,8 +2327,11 @@ body:not(.dark) .profile-panel--compact::before {
   opacity: 0.68;
 }
 body:not(.dark) .profile-panel--editor {
-  background: linear-gradient(172deg, rgba(255, 255, 255, 0.98), rgba(228, 239, 252, 0.9))
-    !important;
+  background: linear-gradient(
+    172deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(228, 239, 252, 0.9)
+  ) !important;
   border-color: color-mix(in srgb, var(--nav-link) 24%, transparent) !important;
 }
 .profile-contact-button,
