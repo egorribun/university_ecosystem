@@ -282,7 +282,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg transition-all duration-300 hover:shadow-md hover:border-glass-border/80 dark:hover:border-glass-border/80 hover:bg-surface-accent dark:hover:bg-surface-accent">
+    <div className="grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-lg sm:rounded-xl border border-glass-border bg-white dark:bg-card-bg shadow-[0_2px_8px_rgba(15,79,170,0.08),0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-none transition-all duration-300 hover:shadow-[0_4px_12px_rgba(15,79,170,0.12),0_2px_6px_rgba(0,0,0,0.08)] dark:hover:shadow-md hover:border-[rgba(15,79,170,0.24)] dark:hover:border-glass-border/80 hover:bg-[#f8faff] dark:hover:bg-surface-accent">
       <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-nav-link dark:bg-nav-link shadow-[0_0_0_2px_rgba(15,79,170,0.15)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.15)] justify-self-center" />
       <div className="text-xs sm:text-sm md:text-base leading-relaxed text-page-foreground">
         <span className="font-extrabold text-nav-link dark:text-nav-link">{label}</span>
@@ -683,7 +683,7 @@ export default function Profile() {
             <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-[1400px] mx-auto w-full relative z-0">
               <motion.div
                 ref={containerRef}
-                className="profile-card px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong"
+                className="profile-card px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden border border-[rgba(15,79,170,0.2)] dark:border-glass-border bg-white dark:bg-card-bg shadow-[0_8px_32px_rgba(15,79,170,0.12),0_4px_12px_rgba(0,0,0,0.08)] dark:shadow-surface-strong"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -698,7 +698,7 @@ export default function Profile() {
                   <div className="flex flex-col gap-4 sm:gap-5 md:gap-6 lg:gap-8 items-stretch">
                     {/* Hero Card with Cover and Avatar */}
                     <div
-                      className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center shadow-surface dark:shadow-surface-strong border border-glass-border bg-surface dark:bg-card-bg"
+                      className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center shadow-[0_6px_24px_rgba(15,79,170,0.1),0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-surface-strong border border-[rgba(15,79,170,0.18)] dark:border-glass-border bg-white dark:bg-card-bg"
                       style={{ paddingBottom: heroPaddingBottom }}
                     >
                       {/* Cover Image with Parallax */}
@@ -850,7 +850,7 @@ export default function Profile() {
                     )}
 
                     {/* Contact Panel */}
-                    <div className="profile-card p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
+                    <div className="profile-card p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5 border border-[rgba(15,79,170,0.18)] dark:border-glass-border bg-white dark:bg-card-bg shadow-[0_4px_16px_rgba(15,79,170,0.1),0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-surface-strong">
                       {/* Contact Links */}
                       <div className="flex flex-col gap-3 sm:gap-4 contact-links">
                         {/* Email */}
@@ -858,7 +858,7 @@ export default function Profile() {
                           <button
                             ref={emailButtonRef}
                             onClick={handleEmailClick}
-                            className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md group"
+                            className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-[rgba(15,79,170,0.16)] dark:border-glass-border bg-white dark:bg-card-bg hover:bg-[#f1f6fe] dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-[0_2px_8px_rgba(15,79,170,0.12)] dark:hover:shadow-md group"
                             data-testid="profile-email-link"
                           >
                             <EmailIcon
@@ -899,7 +899,7 @@ export default function Profile() {
                             <button
                               ref={telegramButtonRef}
                               onClick={handleTelegramClick}
-                              className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md group"
+                              className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-[rgba(15,79,170,0.16)] dark:border-glass-border bg-white dark:bg-card-bg hover:bg-[#f1f6fe] dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-[0_2px_8px_rgba(15,79,170,0.12)] dark:hover:shadow-md group"
                               data-testid="profile-telegram-link"
                             >
                               <TelegramIcon
@@ -1224,7 +1224,7 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        className="px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent text-page-foreground font-bold text-xs sm:text-sm leading-tight transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left"
+                                        className="px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl border border-[rgba(15,79,170,0.18)] dark:border-glass-border bg-white dark:bg-card-bg hover:bg-[#f1f6fe] dark:hover:bg-surface-accent text-page-foreground font-bold text-xs sm:text-sm leading-tight transition-all duration-300 hover:scale-105 hover:shadow-[0_3px_10px_rgba(15,79,170,0.12),0_1px_4px_rgba(0,0,0,0.08)] dark:hover:shadow-md cursor-pointer text-left"
                                       >
                                         {ach.name}
                                       </motion.button>
