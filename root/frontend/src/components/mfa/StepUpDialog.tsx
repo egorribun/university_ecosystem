@@ -114,14 +114,18 @@ export const StepUpDialog = ({
 
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="step-up-dialog-title"
         className="bg-card rounded-2xl shadow-2xl w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold text-page-text px-6 pt-6 pb-2">
+        <h2 id="step-up-dialog-title" className="text-xl font-bold text-page-text px-6 pt-6 pb-2">
           {title ?? t("mfa.stepUp.title")}
         </h2>
         <div className="px-6 py-4">

@@ -2000,13 +2000,13 @@ export default function Settings() {
                 <SectionSubtitle variant="body2">
                   {t("settings:account.logout.subtitle")}
                 </SectionSubtitle>
-              </Stack>
+              </div>
               <Button
                 size="small"
                 variant="outlined"
                 color="error"
                 onClick={() => setConfirmLogout(true)}
-                sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
+                className="self-start sm:self-end"
               >
                 {t("settings:account.logout.button")}
               </Button>
