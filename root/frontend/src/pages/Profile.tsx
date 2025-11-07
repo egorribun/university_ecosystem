@@ -282,8 +282,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-lg sm:rounded-xl border-2 border-glass-border bg-white/60 dark:bg-card-bg backdrop-blur-sm transition-all duration-300 hover:shadow-md hover:border-nav-link/30 dark:hover:border-glass-border/80 hover:bg-white/75 dark:hover:bg-surface-accent">
-      <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-nav-link dark:bg-nav-link shadow-[0_0_0_2px_rgba(15,79,170,0.2)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.15)] justify-self-center" />
+    <div className="grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg transition-all duration-300 hover:shadow-md hover:border-glass-border/80 dark:hover:border-glass-border/80 hover:bg-surface-accent dark:hover:bg-surface-accent">
+      <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-nav-link dark:bg-nav-link shadow-[0_0_0_2px_rgba(15,79,170,0.15)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.15)] justify-self-center" />
       <div className="text-xs sm:text-sm md:text-base leading-relaxed text-page-foreground">
         <span className="font-extrabold text-nav-link dark:text-nav-link">{label}</span>
         <span className="mx-1 sm:mx-1.5 text-secondary/50">·</span>
@@ -683,7 +683,7 @@ export default function Profile() {
             <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-[1400px] mx-auto w-full relative z-0">
               <motion.div
                 ref={containerRef}
-                className="profile-card px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden border-2 border-glass-border bg-white/65 dark:bg-card-bg backdrop-blur-md shadow-surface dark:shadow-surface-strong"
+                className="profile-card px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong"
                 initial={
                   isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10, scale: 1 }
                 }
@@ -698,7 +698,7 @@ export default function Profile() {
                   <div className="flex flex-col gap-4 sm:gap-5 md:gap-6 lg:gap-8 items-stretch">
                     {/* Hero Card with Cover and Avatar */}
                     <div
-                      className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center shadow-surface dark:shadow-surface-strong border-2 border-glass-border bg-white/60 dark:bg-card-bg backdrop-blur-sm"
+                      className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center shadow-surface dark:shadow-surface-strong border border-glass-border bg-surface dark:bg-card-bg"
                       style={{ paddingBottom: heroPaddingBottom }}
                     >
                       {/* Cover Image with Parallax */}
@@ -850,7 +850,7 @@ export default function Profile() {
                     )}
 
                     {/* Contact Panel */}
-                    <div className="profile-card p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5 border-2 border-glass-border bg-white/60 dark:bg-card-bg backdrop-blur-sm shadow-surface dark:shadow-surface-strong">
+                    <div className="profile-card p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
                       {/* Contact Links */}
                       <div className="flex flex-col gap-3 sm:gap-4 contact-links">
                         {/* Email */}
@@ -858,7 +858,7 @@ export default function Profile() {
                           <button
                             ref={emailButtonRef}
                             onClick={handleEmailClick}
-                            className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 border-glass-border bg-white/50 dark:bg-card-bg backdrop-blur-sm hover:bg-white/70 dark:hover:bg-surface-accent hover:border-nav-link/30 dark:hover:border-glass-border/80 transition-all duration-200 hover:shadow-md group"
+                            className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md group"
                             data-testid="profile-email-link"
                           >
                             <EmailIcon
@@ -873,7 +873,7 @@ export default function Profile() {
                             <div
                               ref={emailMenuRef}
                               data-email-menu
-                              className="absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-lg border-2 border-glass-border bg-white/90 dark:bg-card-bg shadow-surface-strong backdrop-blur-xl"
+                              className="absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-lg border border-glass-border bg-surface dark:bg-card-bg shadow-surface-strong backdrop-blur-xl"
                             >
                               <button
                                 onClick={handleEmailCopy}
@@ -899,7 +899,7 @@ export default function Profile() {
                             <button
                               ref={telegramButtonRef}
                               onClick={handleTelegramClick}
-                              className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 border-glass-border bg-white/50 dark:bg-card-bg backdrop-blur-sm hover:bg-white/70 dark:hover:bg-surface-accent hover:border-nav-link/30 dark:hover:border-glass-border/80 transition-all duration-200 hover:shadow-md group"
+                              className="w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent transition-all duration-200 hover:shadow-md group"
                               data-testid="profile-telegram-link"
                             >
                               <TelegramIcon
@@ -914,7 +914,7 @@ export default function Profile() {
                               <div
                                 ref={telegramMenuRef}
                                 data-telegram-menu
-                                className="absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-lg border-2 border-glass-border bg-white/90 dark:bg-card-bg shadow-surface-strong backdrop-blur-xl"
+                                className="absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-lg border border-glass-border bg-surface dark:bg-card-bg shadow-surface-strong backdrop-blur-xl"
                               >
                                 <button
                                   onClick={handleTelegramCopy}
@@ -941,7 +941,7 @@ export default function Profile() {
                   {/* Right Column - Profile Details / Edit Form */}
                   <div className="w-full relative" style={{ marginTop: isMobile ? "0" : "0" }}>
                     {edit ? (
-                      <div className="profile-card profile-edit w-full rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 border-2 border-glass-border bg-white/60 dark:bg-card-bg backdrop-blur-sm shadow-surface dark:shadow-surface-strong">
+                      <div className="profile-card profile-edit w-full rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong">
                         <div className="flex flex-col gap-4 sm:gap-5">
                           {/* Name Field */}
                           <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -1224,7 +1224,7 @@ export default function Profile() {
                                             url: ach.url,
                                           })
                                         }
-                                        className="px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl border-2 border-glass-border bg-white/50 dark:bg-card-bg backdrop-blur-sm hover:bg-white/70 dark:hover:bg-surface-accent hover:border-nav-link/30 dark:hover:border-glass-border/80 text-page-foreground font-bold text-xs sm:text-sm leading-tight transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left"
+                                        className="px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl border border-glass-border bg-surface dark:bg-card-bg hover:bg-surface-accent dark:hover:bg-surface-accent text-page-foreground font-bold text-xs sm:text-sm leading-tight transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer text-left"
                                       >
                                         {ach.name}
                                       </motion.button>
@@ -1253,14 +1253,14 @@ export default function Profile() {
         fullWidth
         PaperProps={{
           className:
-            "!rounded-xl sm:!rounded-2xl border-2 border-glass-border bg-white/95 dark:bg-card-bg backdrop-blur-md shadow-surface dark:shadow-surface-strong",
+            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
         }}
       >
         <DialogTitle className="text-center font-black tracking-wide text-page-foreground">
           {t("profile:dialog.qr.title")}
         </DialogTitle>
         <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px] p-6">
-          <div className="bg-white p-4 rounded-2xl border-2 border-[#0f4faa]/25 shadow-[0_18px_40px_-28px_rgba(15,79,170,0.35)]">
+          <div className="bg-white p-4 rounded-2xl border border-[#0f4faa]/15 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
             <QRCodeSVG
               value={buildVCard()}
               size={300}
@@ -1296,7 +1296,7 @@ export default function Profile() {
         fullWidth
         PaperProps={{
           className:
-            "!rounded-xl sm:!rounded-2xl border-2 border-glass-border bg-white/95 dark:bg-card-bg backdrop-blur-md shadow-surface dark:shadow-surface-strong",
+            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
         }}
       >
         <DialogTitle className="font-black text-page-foreground">{achOpen?.name}</DialogTitle>
