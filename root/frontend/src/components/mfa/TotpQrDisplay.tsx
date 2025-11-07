@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from "react"
-import { Box, Stack, Typography, IconButton, Tooltip, TextField } from "@mui/material"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
+import { Copy, Check } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import { useTranslation } from "react-i18next"
 
@@ -13,6 +12,7 @@ type TotpQrDisplayProps = {
 export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps) => {
   const { t } = useTranslation("auth")
   const [copied, setCopied] = useState(false)
+  const [showTooltip, setShowTooltip] = useState(false)
 
   const normalizedSecret = useMemo(() => secret.replace(/\s+/g, "").toUpperCase(), [secret])
 
@@ -33,69 +33,54 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
   }, [normalizedSecret])
 
   return (
-    <Stack spacing={2} alignItems="center" textAlign="center">
-      <Typography variant="h6" fontWeight={600} sx={{ color: "var(--page-text)" }}>
+    <div className="flex flex-col gap-4 items-center text-center">
+      <h3 className="text-lg font-semibold text-page-text">
         {t("mfa.totp.scanHeading")}
-      </Typography>
+      </h3>
       {label ? (
-        <Typography
-          variant="body2"
-          sx={{ color: "color-mix(in srgb, var(--page-text) 72%, transparent)" }}
-        >
+        <p className="text-sm text-page-text/70">
           {t("mfa.totp.accountLabel", { label })}
-        </Typography>
+        </p>
       ) : null}
-      <Box
-        sx={{
-          p: 2,
-          borderRadius: 2,
-          border: "1px solid var(--glass-border)",
-          backgroundColor: "var(--card-bg)",
-        }}
-      >
+      <div className="p-4 rounded-lg border border-glass-border bg-card">
         <QRCodeSVG value={otpauthUrl} size={192} />
-      </Box>
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        sx={{
-          width: "100%",
-          maxWidth: 320,
-        }}
-      >
-        <TextField
-          fullWidth
-          size="small"
-          label={t("mfa.totp.manualHeading")}
-          value={normalizedSecret}
-          InputProps={{ readOnly: true }}
-          sx={{
-            "& .MuiOutlinedInput-root": {
-              fontFamily: "monospace",
-              letterSpacing: 1,
-            },
-          }}
-        />
-        <Tooltip title={copied ? t("mfa.totp.copied") : t("mfa.totp.copySecret")}>
-          <span>
-            <IconButton
-              color={copied ? "success" : "primary"}
-              onClick={() => void handleCopy()}
-              aria-label={t("mfa.totp.copySecret")}
-            >
-              <ContentCopyIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-      </Stack>
-      <Typography
-        variant="body2"
-        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-      >
+      </div>
+      <div className="flex flex-row items-center gap-2 w-full max-w-[320px]">
+        <div className="relative flex-1">
+          <label className="block text-xs font-medium text-page-text mb-1 px-1 bg-card">
+            {t("mfa.totp.manualHeading")}
+          </label>
+          <input
+            type="text"
+            value={normalizedSecret}
+            readOnly
+            className="w-full px-3 py-1.5 text-sm rounded-lg border border-page-text/25 bg-card text-page-text font-mono tracking-wider"
+          />
+        </div>
+        <div className="relative mt-5">
+          <button
+            onClick={() => void handleCopy()}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            aria-label={t("mfa.totp.copySecret")}
+            className={`
+              p-2 rounded-lg transition-colors
+              ${copied ? "text-green-500 hover:bg-green-500/10" : "text-primary hover:bg-primary/10"}
+            `}
+          >
+            {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+          </button>
+          {showTooltip && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap pointer-events-none">
+              {copied ? t("mfa.totp.copied") : t("mfa.totp.copySecret")}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="text-sm text-page-text/70">
         {t("mfa.totp.instructions")}
-      </Typography>
-    </Stack>
+      </p>
+    </div>
   )
 }
 

@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useState } from "react"
-import { Alert, Box, Button, Divider, Stack, Typography } from "@mui/material"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
+import { Copy } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 export type RecoveryCodeEntry = {
@@ -37,70 +36,47 @@ export const RecoveryCodeList = ({ codes, allowCopy = true }: RecoveryCodeListPr
 
   if (!codes.length) {
     return (
-      <Alert severity="info" variant="outlined">
-        {t("mfa.recovery.empty")}
-      </Alert>
+      <div className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-500 text-blue-500 bg-transparent">
+        <span className="flex-1">{t("mfa.recovery.empty")}</span>
+      </div>
     )
   }
 
   return (
-    <Stack spacing={2} alignItems="stretch">
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ color: "var(--page-text)" }}>
-          {t("mfa.recovery.title")}
-        </Typography>
+    <div className="flex flex-col gap-4 items-stretch">
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <h3 className="text-base font-semibold text-page-text">{t("mfa.recovery.title")}</h3>
         {allowCopy ? (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<ContentCopyIcon fontSize="small" />}
+          <button
             onClick={() => void handleCopyAll()}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-bold rounded-lg border-2 border-primary text-primary hover:bg-primary/10 transition-colors"
           >
+            <Copy className="w-4 h-4" />
             {copied ? t("mfa.recovery.copied") : t("mfa.recovery.copyAll")}
-          </Button>
+          </button>
         ) : null}
-      </Stack>
-      <Typography
-        variant="body2"
-        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-      >
-        {t("mfa.recovery.instructions")}
-      </Typography>
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "repeat(1, minmax(0, 1fr))", sm: "repeat(2, minmax(0, 1fr))" },
-          gap: 1,
-        }}
-      >
+      </div>
+      <p className="text-sm text-page-text/70">{t("mfa.recovery.instructions")}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {codes.map((entry, index) => (
           <Fragment key={entry.code}>
-            <Box
-              sx={{
-                borderRadius: 1.5,
-                border: "1px solid var(--glass-border)",
-                backgroundColor: "color-mix(in srgb, var(--page-text) 4%, transparent)",
-                px: 2,
-                py: 1.5,
-                fontFamily: "monospace",
-                letterSpacing: 1,
-                fontSize: "1rem",
-                textAlign: "center",
-                color: entry.usedAt
-                  ? "color-mix(in srgb, var(--page-text) 50%, transparent)"
-                  : "var(--page-text)",
-              }}
+            <div
+              className={`
+                rounded-xl border border-glass-border bg-page-text/[0.04] px-4 py-3
+                font-mono tracking-wider text-base text-center
+                ${entry.usedAt ? "text-page-text/50" : "text-page-text"}
+              `}
             >
               {entry.code}
-            </Box>
-            {(index + 1) % 2 === 0 ? <Divider sx={{ display: { sm: "none" } }} /> : null}
+            </div>
+            {(index + 1) % 2 === 0 ? <hr className="border-t border-glass-border sm:hidden" /> : null}
           </Fragment>
         ))}
-      </Box>
-      <Alert severity="warning" variant="outlined">
-        {t("mfa.recovery.warning")}
-      </Alert>
-    </Stack>
+      </div>
+      <div className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-yellow-500 text-yellow-500 bg-transparent">
+        <span className="flex-1">{t("mfa.recovery.warning")}</span>
+      </div>
+    </div>
   )
 }
 
