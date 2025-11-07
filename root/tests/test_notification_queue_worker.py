@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from prometheus_client import REGISTRY
+from prometheus_client import CollectorRegistry
 from sqlalchemy import select
 
 from alembic import command
@@ -19,6 +19,8 @@ from app.models.models import NotificationQueueJob
 from app.services import notification_queue
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+_METRICS_REGISTRY: CollectorRegistry | None = None
 
 
 def _make_alembic_config(tmp_path: Path) -> tuple[Config, str, str | None]:
@@ -41,6 +43,23 @@ def _force_persistent_backend(monkeypatch: pytest.MonkeyPatch) -> None:
         False,
         raising=False,
     )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_notification_queue_metrics() -> None:
+    """Ensure each test sees a clean set of Prometheus metrics."""
+
+    registry = CollectorRegistry()
+    metrics = observability.reinitialize_notification_queue_metrics(registry=registry)
+    notification_queue._queue_metrics = metrics
+
+    global _METRICS_REGISTRY
+    _METRICS_REGISTRY = registry
+
+    yield
+
+    metrics.reset()
+    notification_queue._queue_metrics = metrics
 
 
 @pytest.mark.anyio
@@ -101,17 +120,63 @@ async def test_shutdown_notification_queue_does_not_leak_tasks(
 
 
 def _metric_value(name: str, labels: dict[str, str] | None = None) -> float | None:
+    if _METRICS_REGISTRY is None:
+        return None
     if labels is None:
-        return REGISTRY.get_sample_value(name)
-    return REGISTRY.get_sample_value(name, labels)
+        return _METRICS_REGISTRY.get_sample_value(name)
+    return _METRICS_REGISTRY.get_sample_value(name, labels)
+
+
+@pytest.mark.anyio
+async def test_reinitialize_notification_queue_metrics_replaces_registry() -> None:
+    registry_one = CollectorRegistry()
+    metrics_one = observability.reinitialize_notification_queue_metrics(
+        registry=registry_one
+    )
+    notification_queue._queue_metrics = metrics_one
+    metrics_one.queue_size.set(5)
+    assert registry_one.get_sample_value("notification_queue_size") == pytest.approx(5.0)
+
+    registry_two = CollectorRegistry()
+    metrics_two = observability.reinitialize_notification_queue_metrics(
+        registry=registry_two
+    )
+    notification_queue._queue_metrics = metrics_two
+
+    assert registry_one.get_sample_value("notification_queue_size") is None
+    assert (
+        registry_two.get_sample_value("notification_queue_size")
+        == pytest.approx(0.0)
+    )
+
+    global _METRICS_REGISTRY
+    _METRICS_REGISTRY = metrics_two.registry
+
+
+@pytest.mark.anyio
+async def test_notification_queue_metrics_reset_reinitializes_collectors() -> None:
+    metrics = observability.get_notification_queue_metrics()
+    metrics.queue_size.set(3)
+    metrics.processed_jobs_total.labels(kind="event").inc()
+
+    registry = metrics.registry
+    assert registry.get_sample_value("notification_queue_size") == pytest.approx(3.0)
+    assert registry.get_sample_value(
+        "notification_queue_processed_jobs_total", {"kind": "event"}
+    ) == pytest.approx(1.0)
+
+    metrics.reset()
+
+    assert registry.get_sample_value("notification_queue_size") == pytest.approx(0.0)
+    assert registry.get_sample_value(
+        "notification_queue_processed_jobs_total", {"kind": "event"}
+    ) in (None, pytest.approx(0.0))
 
 
 @pytest.mark.anyio
 async def test_notification_queue_records_drops_when_saturated(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
     monkeypatch.setattr(
         notification_queue.settings,
@@ -150,8 +215,6 @@ async def test_notification_queue_records_drops_when_saturated(
 async def test_notification_queue_records_processing_latency(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     async def _fake_process(job):
@@ -192,8 +255,6 @@ async def test_notification_queue_records_processing_latency(
 
 @pytest.mark.anyio
 async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatch):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     processed_event = asyncio.Event()
@@ -236,8 +297,6 @@ async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatc
 async def test_persistent_queue_persists_and_clears_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     processed_event = asyncio.Event()
@@ -268,8 +327,6 @@ async def test_persistent_queue_persists_and_clears_jobs(
 
 @pytest.mark.anyio
 async def test_persistent_queue_deduplicates_jobs(monkeypatch: pytest.MonkeyPatch):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     async def _noop_worker() -> None:
@@ -290,8 +347,6 @@ async def test_persistent_queue_deduplicates_jobs(monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.anyio
 async def test_persistent_queue_retries_failed_jobs(monkeypatch: pytest.MonkeyPatch):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     monkeypatch.setattr(
@@ -326,8 +381,6 @@ async def test_persistent_queue_retries_failed_jobs(monkeypatch: pytest.MonkeyPa
 async def test_persistent_queue_applies_exponential_backoff(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     monkeypatch.setattr(
@@ -390,8 +443,6 @@ async def test_persistent_queue_applies_exponential_backoff(
 async def test_persistent_queue_dead_letters_poison_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
     notification_queue._loop_states.clear()
 
     monkeypatch.setattr(
@@ -493,8 +544,6 @@ async def test_notification_queue_pending_index_migration(tmp_path: Path) -> Non
 @pytest.mark.anyio
 async def test_persistent_queue_claims_next_job_from_large_backlog() -> None:
     await notification_queue.reset_testing_state()
-    metrics = observability.get_notification_queue_metrics()
-    metrics.reset()
 
     now = datetime.now(UTC)
 

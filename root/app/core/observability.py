@@ -41,6 +41,7 @@ try:
         Counter,
         Gauge,
         Histogram,
+        REGISTRY,
         generate_latest,
     )
 except Exception:  # pragma: no cover - optional dependency guard
@@ -49,6 +50,7 @@ except Exception:  # pragma: no cover - optional dependency guard
     Counter = None  # type: ignore[assignment]
     Gauge = None  # type: ignore[assignment]
     Histogram = None  # type: ignore[assignment]
+    REGISTRY = None  # type: ignore[assignment]
 
     def generate_latest(_: object) -> bytes:  # type: ignore[misc]
         raise RuntimeError("prometheus-client is required for worker metrics")
@@ -645,57 +647,38 @@ class NotificationQueueMetrics:
     retry_delay_seconds: Histogram
     dead_lettered_jobs: Gauge
     oldest_dead_letter_age_seconds: Histogram | None
+    registry: CollectorRegistry
 
     def reset(self) -> None:
         """Best-effort helper used by tests to zero recorded values."""
 
-        self.queue_size.set(0)
-        # The internals below are implementation details of prometheus_client,
-        # hence the type: ignore annotations.
-        self.dropped_jobs_total._value.set(0)  # type: ignore[attr-defined]
-        self.failed_jobs_total._value.set(0)  # type: ignore[attr-defined]
-        # Reset labelled counters by clearing underlying metrics or zeroing values.
-        metrics = getattr(self.processed_jobs_total, "_metrics", None)
-        if metrics:
-            for metric in metrics.values():
-                metric._value.set(0)  # type: ignore[attr-defined]
-        value = getattr(self.processed_jobs_total, "_value", None)
-        if value is not None:
-            value.set(0)
-        self.processing_latency_seconds._sum.set(0)  # type: ignore[attr-defined]
-        for bucket in getattr(self.processing_latency_seconds, "_buckets", []):  # type: ignore[attr-defined]
-            bucket.set(0)
-        # Clear any cached sample collections to avoid stale histogram state
-        for attr in ("_samples", "_child_samples", "_multi_samples"):
-            samples = getattr(self.processing_latency_seconds, attr, None)
-            if hasattr(samples, "clear"):
-                samples.clear()
-        queue_wait_metrics = getattr(self.queue_wait_time_seconds, "_metrics", None)
-        if queue_wait_metrics:
-            for metric in queue_wait_metrics.values():
-                metric._sum.set(0)  # type: ignore[attr-defined]
-                for bucket in getattr(metric, "_buckets", []):
-                    bucket.set(0)
-                for attr in ("_samples", "_child_samples", "_multi_samples"):
-                    samples = getattr(metric, attr, None)
-                    if hasattr(samples, "clear"):
-                        samples.clear()
-        retry_delay_metrics = getattr(self.retry_delay_seconds, "_metrics", None)
-        if retry_delay_metrics:
-            for metric in retry_delay_metrics.values():
-                metric._sum.set(0)  # type: ignore[attr-defined]
-                for bucket in getattr(metric, "_buckets", []):
-                    bucket.set(0)
-                for attr in ("_samples", "_child_samples", "_multi_samples"):
-                    samples = getattr(metric, attr, None)
-                    if hasattr(samples, "clear"):
-                        samples.clear()
-        self.dead_lettered_jobs.set(0)
-        histogram = self.oldest_dead_letter_age_seconds
-        if histogram is not None:
-            histogram._sum.set(0)  # type: ignore[attr-defined]
-            for bucket in getattr(histogram, "_buckets", []):  # type: ignore[attr-defined]
-                bucket.set(0)
+        collectors = [
+            self.queue_size,
+            self.dropped_jobs_total,
+            self.failed_jobs_total,
+            self.processed_jobs_total,
+            self.processing_latency_seconds,
+            self.queue_wait_time_seconds,
+            self.retry_delay_seconds,
+            self.dead_lettered_jobs,
+        ]
+        if self.oldest_dead_letter_age_seconds is not None:
+            collectors.append(self.oldest_dead_letter_age_seconds)
+
+        for collector in collectors:
+            with suppress(KeyError):
+                self.registry.unregister(collector)
+
+        fresh = create_notification_queue_metrics(registry=self.registry)
+        self.queue_size = fresh.queue_size
+        self.dropped_jobs_total = fresh.dropped_jobs_total
+        self.failed_jobs_total = fresh.failed_jobs_total
+        self.processed_jobs_total = fresh.processed_jobs_total
+        self.processing_latency_seconds = fresh.processing_latency_seconds
+        self.queue_wait_time_seconds = fresh.queue_wait_time_seconds
+        self.retry_delay_seconds = fresh.retry_delay_seconds
+        self.dead_lettered_jobs = fresh.dead_lettered_jobs
+        self.oldest_dead_letter_age_seconds = fresh.oldest_dead_letter_age_seconds
 
 
 def get_notification_queue_metrics() -> NotificationQueueMetrics:
@@ -703,99 +686,169 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
 
     global _notification_queue_metrics
     if _notification_queue_metrics is None:
-        if Gauge is None or Counter is None or Histogram is None:  # pragma: no cover
+        if (
+            Gauge is None
+            or Counter is None
+            or Histogram is None
+            or CollectorRegistry is None
+            or REGISTRY is None
+        ):  # pragma: no cover
             raise RuntimeError(
                 "prometheus-client is required to create notification queue metrics"
             )
 
-        _notification_queue_metrics = NotificationQueueMetrics(
-            queue_size=Gauge(
-                "notification_queue_size",
-                "Number of pending notification jobs awaiting processing",
-            ),
-            dropped_jobs_total=Counter(
-                "notification_queue_dropped_jobs_total",
-                "Total notification jobs dropped due to queue saturation",
-            ),
-            failed_jobs_total=Counter(
-                "notification_queue_failed_jobs_total",
-                "Total notification jobs permanently failed or dead-lettered",
-            ),
-            processed_jobs_total=Counter(
-                "notification_queue_processed_jobs_total",
-                "Total notification jobs successfully processed",
-                labelnames=("kind",),
-            ),
-            processing_latency_seconds=Histogram(
-                "notification_queue_processing_latency_seconds",
-                "Time spent processing individual notification jobs in seconds",
-                buckets=(
-                    0.01,
-                    0.05,
-                    0.1,
-                    0.5,
-                    1.0,
-                    2.5,
-                    5.0,
-                    10.0,
-                ),
-            ),
-            queue_wait_time_seconds=Histogram(
-                "notification_queue_queue_wait_time_seconds",
-                "Time notification jobs spend waiting in the queue before processing",
-                labelnames=("kind",),
-                buckets=(
-                    0.01,
-                    0.05,
-                    0.1,
-                    0.5,
-                    1.0,
-                    2.5,
-                    5.0,
-                    10.0,
-                    30.0,
-                    60.0,
-                ),
-            ),
-            retry_delay_seconds=Histogram(
-                "notification_queue_retry_delay_seconds",
-                "Delay applied before retrying failed notification jobs",
-                labelnames=("kind",),
-                buckets=(
-                    0.01,
-                    0.05,
-                    0.1,
-                    0.5,
-                    1.0,
-                    2.5,
-                    5.0,
-                    10.0,
-                    30.0,
-                    60.0,
-                    120.0,
-                ),
-            ),
-            dead_lettered_jobs=Gauge(
-                "notification_queue_dead_lettered_jobs",
-                "Number of notification jobs in the dead-letter queue",
-            ),
-            oldest_dead_letter_age_seconds=Histogram(
-                "notification_queue_oldest_dead_letter_age_seconds",
-                "Age in seconds of the oldest dead-lettered notification job",
-                buckets=(
-                    1.0,
-                    5.0,
-                    10.0,
-                    30.0,
-                    60.0,
-                    300.0,
-                    600.0,
-                    1800.0,
-                    3600.0,
-                ),
-            ),
-        )
-        _notification_queue_metrics.queue_size.set(0)
-        _notification_queue_metrics.dead_lettered_jobs.set(0)
+        _notification_queue_metrics = create_notification_queue_metrics(registry=REGISTRY)
 
     return _notification_queue_metrics
+
+
+def create_notification_queue_metrics(
+    *, registry: CollectorRegistry | None = None
+) -> NotificationQueueMetrics:
+    """Create a new bundle of notification queue metrics."""
+
+    if (
+        Gauge is None
+        or Counter is None
+        or Histogram is None
+        or CollectorRegistry is None
+        or REGISTRY is None
+    ):  # pragma: no cover - optional dependency guard
+        raise RuntimeError(
+            "prometheus-client is required to create notification queue metrics"
+        )
+
+    target_registry = registry or REGISTRY
+
+    metrics = NotificationQueueMetrics(
+        queue_size=Gauge(
+            "notification_queue_size",
+            "Number of pending notification jobs awaiting processing",
+            registry=target_registry,
+        ),
+        dropped_jobs_total=Counter(
+            "notification_queue_dropped_jobs_total",
+            "Total notification jobs dropped due to queue saturation",
+            registry=target_registry,
+        ),
+        failed_jobs_total=Counter(
+            "notification_queue_failed_jobs_total",
+            "Total notification jobs permanently failed or dead-lettered",
+            registry=target_registry,
+        ),
+        processed_jobs_total=Counter(
+            "notification_queue_processed_jobs_total",
+            "Total notification jobs successfully processed",
+            labelnames=("kind",),
+            registry=target_registry,
+        ),
+        processing_latency_seconds=Histogram(
+            "notification_queue_processing_latency_seconds",
+            "Time spent processing individual notification jobs in seconds",
+            buckets=(
+                0.01,
+                0.05,
+                0.1,
+                0.5,
+                1.0,
+                2.5,
+                5.0,
+                10.0,
+            ),
+            registry=target_registry,
+        ),
+        queue_wait_time_seconds=Histogram(
+            "notification_queue_queue_wait_time_seconds",
+            "Time notification jobs spend waiting in the queue before processing",
+            labelnames=("kind",),
+            buckets=(
+                0.01,
+                0.05,
+                0.1,
+                0.5,
+                1.0,
+                2.5,
+                5.0,
+                10.0,
+                30.0,
+                60.0,
+            ),
+            registry=target_registry,
+        ),
+        retry_delay_seconds=Histogram(
+            "notification_queue_retry_delay_seconds",
+            "Delay applied before retrying failed notification jobs",
+            labelnames=("kind",),
+            buckets=(
+                0.01,
+                0.05,
+                0.1,
+                0.5,
+                1.0,
+                2.5,
+                5.0,
+                10.0,
+                30.0,
+                60.0,
+                120.0,
+            ),
+            registry=target_registry,
+        ),
+        dead_lettered_jobs=Gauge(
+            "notification_queue_dead_lettered_jobs",
+            "Number of notification jobs in the dead-letter queue",
+            registry=target_registry,
+        ),
+        oldest_dead_letter_age_seconds=Histogram(
+            "notification_queue_oldest_dead_letter_age_seconds",
+            "Age in seconds of the oldest dead-lettered notification job",
+            buckets=(
+                1.0,
+                5.0,
+                10.0,
+                30.0,
+                60.0,
+                300.0,
+                600.0,
+                1800.0,
+                3600.0,
+            ),
+            registry=target_registry,
+        ),
+        registry=target_registry,
+    )
+    metrics.queue_size.set(0)
+    metrics.dead_lettered_jobs.set(0)
+    return metrics
+
+
+def reinitialize_notification_queue_metrics(
+    *, registry: CollectorRegistry | None = None
+) -> NotificationQueueMetrics:
+    """Replace the cached notification queue metrics with a fresh instance."""
+
+    global _notification_queue_metrics
+
+    if _notification_queue_metrics is not None:
+        previous_collectors = [
+            _notification_queue_metrics.queue_size,
+            _notification_queue_metrics.dropped_jobs_total,
+            _notification_queue_metrics.failed_jobs_total,
+            _notification_queue_metrics.processed_jobs_total,
+            _notification_queue_metrics.processing_latency_seconds,
+            _notification_queue_metrics.queue_wait_time_seconds,
+            _notification_queue_metrics.retry_delay_seconds,
+            _notification_queue_metrics.dead_lettered_jobs,
+        ]
+        if _notification_queue_metrics.oldest_dead_letter_age_seconds is not None:
+            previous_collectors.append(
+                _notification_queue_metrics.oldest_dead_letter_age_seconds
+            )
+        for collector in previous_collectors:
+            with suppress(KeyError):
+                _notification_queue_metrics.registry.unregister(collector)
+
+    target_registry = registry or (CollectorRegistry() if CollectorRegistry else None)
+    metrics = create_notification_queue_metrics(registry=target_registry)
+    _notification_queue_metrics = metrics
+    return metrics
