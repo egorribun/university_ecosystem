@@ -660,13 +660,12 @@ export default function Profile() {
 
   return (
     <>
-      {/* Background with matte overlay */}
+        {/* Seamless tiled background */}
       <div className="profile-background" aria-hidden>
         <div
           className="profile-background__image"
           style={{ backgroundImage: `url(${profileBg})` }}
         />
-        <div className="profile-background__overlay" />
       </div>
 
       <PageFadeIn>
