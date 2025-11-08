@@ -62,3 +62,14 @@ Update both locales when these values change so the fallback remains accessible
 and consistent with the interactive map. Note that the full map still requires
 an active connection and permission to load third-party embeds; the fallback
 content must remain usable offline.
+
+## Documentation localization workflow
+
+- Keep the Russian and English deployment guides (`docs/DEPLOY.md` and
+  `docs/DEPLOY.en.md`) in sync.
+- When updating one language, replicate the change in the other file within the
+  same pull request and adjust the cross-links at the top if new sections are
+  introduced.
+- If a future contribution can only supply one language, clearly mark the
+  missing translation in both files and open a follow-up issue to track the
+  remaining work.

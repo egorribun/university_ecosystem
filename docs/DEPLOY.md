@@ -1,5 +1,7 @@
 # Деплой фронтенда и медиа
 
+_[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
+
 ## Переменные окружения
 
 - Перед сборкой фронтенда установите `VITE_BACKEND_ORIGIN` (например, через `frontend/.env.production`).

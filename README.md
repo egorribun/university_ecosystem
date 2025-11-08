@@ -26,6 +26,13 @@ Before running the project locally make sure you have the following tooling avai
 └── SECURITY.md                # Security policy (linked below)
 ```
 
+## Documentation
+
+- [Deployment guide (Russian)](docs/DEPLOY.md)
+- [Deployment guide (English)](docs/DEPLOY.en.md)
+- [Localization guidelines](docs/LOCALIZATION.md)
+- [Contributing](docs/CONTRIBUTING.md)
+
 ## Quick start
 
 ### 1. Configure environment variables
