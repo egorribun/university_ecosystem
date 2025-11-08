@@ -328,13 +328,31 @@ function RadioGroup({
   row?: boolean
   "aria-label"?: string
 }) {
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    onChange(e, e.target.value)
+  }
+
   return (
     <div
       className={`${row ? "flex flex-wrap gap-4" : "flex flex-col gap-2"}`}
       role="radiogroup"
       aria-label={ariaLabel}
     >
-      {children}
+      {React.Children.map(children, (child) => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(
+            child as React.ReactElement<{
+              groupValue?: string
+              groupOnChange?: (e: ChangeEvent<HTMLInputElement>) => void
+            }>,
+            {
+              groupValue: value,
+              groupOnChange: handleChange,
+            }
+          )
+        }
+        return child
+      })}
     </div>
   )
 }
@@ -344,15 +362,44 @@ function FormControlLabel({
   control,
   label,
   className = "",
+  groupValue,
+  groupOnChange,
 }: {
   value: string
   control: React.ReactNode
   label: React.ReactNode
   className?: string
+  groupValue?: string
+  groupOnChange?: (e: ChangeEvent<HTMLInputElement>) => void
 }) {
+  const inputId = useMemo(
+    () => `radio-${value}-${Math.random().toString(36).substr(2, 9)}`,
+    [value]
+  )
+
   return (
-    <label className={`inline-flex items-center gap-2 cursor-pointer ${className}`}>
-      {control}
+    <label
+      htmlFor={inputId}
+      className={`inline-flex items-center gap-2 cursor-pointer ${className}`}
+    >
+      {React.isValidElement(control)
+        ? React.cloneElement(
+            control as React.ReactElement<{
+              checked?: boolean
+              value?: string
+              name?: string
+              id?: string
+              onChange?: (e: ChangeEvent<HTMLInputElement>) => void
+            }>,
+            {
+              checked: groupValue === value,
+              value: value,
+              name: "radio-group",
+              id: inputId,
+              onChange: groupOnChange,
+            }
+          )
+        : control}
       <span className="text-page-text">{label}</span>
     </label>
   )
@@ -362,10 +409,14 @@ function Radio({
   checked,
   onChange,
   value,
+  name,
+  id,
 }: {
   checked?: boolean
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   value?: string
+  name?: string
+  id?: string
 }) {
   return (
     <input
@@ -373,7 +424,9 @@ function Radio({
       checked={checked}
       onChange={onChange}
       value={value}
-      className="w-4 h-4 text-primary border-page-text/30 focus:ring-2 focus:ring-primary/30"
+      name={name}
+      id={id}
+      className="w-4 h-4 text-primary border-page-text/30 focus:ring-2 focus:ring-primary/30 cursor-pointer"
     />
   )
 }
@@ -1753,7 +1806,7 @@ export default function Settings() {
               <RadioGroup row value={theme} onChange={handleThemeChange}>
                 <FormControlLabel
                   value="system"
-                  control={<Radio checked={theme === "system"} value="system" />}
+                  control={<Radio />}
                   label={
                     <span className="flex flex-row items-center gap-2 text-page-text">
                       <Monitor className="w-5 h-5" />
@@ -1763,7 +1816,7 @@ export default function Settings() {
                 />
                 <FormControlLabel
                   value="light"
-                  control={<Radio checked={theme === "light"} value="light" />}
+                  control={<Radio />}
                   label={
                     <span className="flex flex-row items-center gap-2 text-page-text">
                       <Sun className="w-5 h-5" />
@@ -1773,7 +1826,7 @@ export default function Settings() {
                 />
                 <FormControlLabel
                   value="dark"
-                  control={<Radio checked={theme === "dark"} value="dark" />}
+                  control={<Radio />}
                   label={
                     <span className="flex flex-row items-center gap-2 text-page-text">
                       <Moon className="w-5 h-5" />
@@ -1798,7 +1851,7 @@ export default function Settings() {
                   <FormControlLabel
                     key={code}
                     value={code}
-                    control={<Radio checked={language === code} value={code} />}
+                    control={<Radio />}
                     label={t(`settings:language.options.${code}`)}
                   />
                 ))}
