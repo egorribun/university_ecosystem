@@ -86,7 +86,7 @@ const renderSettings = () => {
           theme={theme}
           defaultMode="system"
           modeStorageKey="theme"
-          colorSchemeSelector="data"
+          colorSchemeSelector="class"
         >
           <LanguageProvider>
             <AuthContext.Provider

@@ -109,7 +109,7 @@ async function bootstrap() {
             theme={theme}
             defaultMode="system"
             modeStorageKey="theme"
-            colorSchemeSelector="data"
+            colorSchemeSelector="class"
             disableTransitionOnChange
           >
             <CssBaseline enableColorScheme />
