@@ -341,10 +341,13 @@ function RadioGroup({
       {React.Children.map(children, (child) => {
         if (React.isValidElement(child)) {
           return React.cloneElement(
-            child as React.ReactElement<{ groupValue?: string; groupOnChange?: (e: ChangeEvent<HTMLInputElement>) => void }>,
-            { 
+            child as React.ReactElement<{
+              groupValue?: string
+              groupOnChange?: (e: ChangeEvent<HTMLInputElement>) => void
+            }>,
+            {
               groupValue: value,
-              groupOnChange: handleChange
+              groupOnChange: handleChange,
             }
           )
         }
@@ -369,13 +372,19 @@ function FormControlLabel({
   groupValue?: string
   groupOnChange?: (e: ChangeEvent<HTMLInputElement>) => void
 }) {
-  const inputId = useMemo(() => `radio-${value}-${Math.random().toString(36).substr(2, 9)}`, [value])
-  
+  const inputId = useMemo(
+    () => `radio-${value}-${Math.random().toString(36).substr(2, 9)}`,
+    [value]
+  )
+
   return (
-    <label htmlFor={inputId} className={`inline-flex items-center gap-2 cursor-pointer ${className}`}>
+    <label
+      htmlFor={inputId}
+      className={`inline-flex items-center gap-2 cursor-pointer ${className}`}
+    >
       {React.isValidElement(control)
         ? React.cloneElement(
-            control as React.ReactElement<{ 
+            control as React.ReactElement<{
               checked?: boolean
               value?: string
               name?: string
