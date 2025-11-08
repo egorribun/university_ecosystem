@@ -3,25 +3,14 @@ import { Box, Button, Chip, Stack, Typography } from "@mui/material"
 import { alpha, useTheme } from "@mui/material/styles"
 import { useTranslation } from "react-i18next"
 
+import { getCampusPointsForLocale } from "@/data/campusPoints"
+
 type MapFallbackReason = "load-error" | "preferences"
 
 interface MapFallbackProps {
   reason: MapFallbackReason
   onRetry?: () => void
 }
-
-type CampusPointConfig = {
-  key: "main" | "library" | "sports" | "dormitory" | "cafeteria"
-  tags: ("services" | "study" | "events" | "sports" | "housing" | "food")[]
-}
-
-const CAMPUS_POINTS: CampusPointConfig[] = [
-  { key: "main", tags: ["services", "events"] },
-  { key: "library", tags: ["study", "services"] },
-  { key: "sports", tags: ["sports", "events"] },
-  { key: "dormitory", tags: ["housing", "services"] },
-  { key: "cafeteria", tags: ["food", "services"] },
-]
 
 const getBackground = (themeMode: "light" | "dark") =>
   themeMode === "dark"
@@ -30,24 +19,28 @@ const getBackground = (themeMode: "light" | "dark") =>
 
 export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
   const theme = useTheme()
-  const { t } = useTranslation("system")
+  const { t, i18n } = useTranslation("system")
   const baseId = useId()
   const instructionsId = `${baseId}-instructions`
   const titleId = `${baseId}-title`
   const listLabelId = `${baseId}-list`
+  const campusPointConfigs = useMemo(
+    () => getCampusPointsForLocale(i18n.resolvedLanguage ?? i18n.language),
+    [i18n.language, i18n.resolvedLanguage]
+  )
   const points = useMemo(
     () =>
-      CAMPUS_POINTS.map((point) => ({
-        key: point.key,
-        name: t(`map.fallback.points.${point.key}.title`),
-        description: t(`map.fallback.points.${point.key}.description`),
-        address: t(`map.fallback.points.${point.key}.address`),
+      campusPointConfigs.map((point) => ({
+        key: point.id,
+        name: point.title,
+        description: point.description,
+        address: point.address,
         tags: point.tags.map((tag) => ({
           key: tag,
           label: t(`map.fallback.tags.${tag}`),
         })),
       })),
-    [t]
+    [campusPointConfigs, t]
   )
   const [activeIndex, setActiveIndex] = useState(0)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
