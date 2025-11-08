@@ -814,13 +814,16 @@ export default function Settings() {
 
   // Theme management using MUI's useColorScheme
   const { mode, setMode: muiSetMode } = useColorScheme()
-  
+
   // Map MUI mode to our ThemeMode type
   const theme: ThemeMode = (mode as ThemeMode) || "system"
-  
-  const setMode = useCallback((value: ThemeMode) => {
-    muiSetMode(value)
-  }, [muiSetMode])
+
+  const setMode = useCallback(
+    (value: ThemeMode) => {
+      muiSetMode(value)
+    },
+    [muiSetMode]
+  )
 
   const {
     pushSupported,

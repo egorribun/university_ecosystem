@@ -1,23 +1,21 @@
-import plugin from "tailwindcss/plugin";
-import lineClamp from "@tailwindcss/line-clamp";
-import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin"
+import lineClamp from "@tailwindcss/line-clamp"
+import type { Config } from "tailwindcss"
 
 const attributeSelector = (attribute: "data" | "aria", value: string) => {
-  const [rawAttr, rawValue] = value.split("=");
-  const attr = rawAttr?.trim();
-  const attrValue = rawValue?.trim();
+  const [rawAttr, rawValue] = value.split("=")
+  const attr = rawAttr?.trim()
+  const attrValue = rawValue?.trim()
 
   if (!attr) {
-    return "";
+    return ""
   }
 
-  return attrValue
-    ? `[${attribute}-${attr}="${attrValue}"]`
-    : `[${attribute}-${attr}="true"]`;
-};
+  return attrValue ? `[${attribute}-${attr}="${attrValue}"]` : `[${attribute}-${attr}="true"]`
+}
 
 const config: Config = {
-  darkMode: 'class',
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
     extend: {
@@ -139,10 +137,8 @@ const config: Config = {
         },
       },
       animation: {
-        "fade-in":
-          "fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1)) both",
-        "card-hover":
-          "card-hover var(--anim-card, 0.42s cubic-bezier(0.22, 0.61, 0.36, 1)) both",
+        "fade-in": "fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1)) both",
+        "card-hover": "card-hover var(--anim-card, 0.42s cubic-bezier(0.22, 0.61, 0.36, 1)) both",
         "skeleton-wave": "skeleton-wave 1.6s ease-in-out infinite",
         "aura-pulse": "aura-pulse 14s ease-in-out infinite",
         "chip-highlight": "chip-highlight 12s ease-in-out infinite",
@@ -152,40 +148,40 @@ const config: Config = {
   },
   plugins: [
     plugin(({ addVariant, matchVariant }) => {
-      addVariant("supports-scroll", "@supports (scroll-behavior: smooth)");
+      addVariant("supports-scroll", "@supports (scroll-behavior: smooth)")
 
       matchVariant("data", (value) => {
-        const selector = attributeSelector("data", value);
-        return selector ? `&${selector}` : "&";
-      });
+        const selector = attributeSelector("data", value)
+        return selector ? `&${selector}` : "&"
+      })
 
       matchVariant("aria", (value) => {
-        const selector = attributeSelector("aria", value);
-        return selector ? `&${selector}` : "&";
-      });
+        const selector = attributeSelector("aria", value)
+        return selector ? `&${selector}` : "&"
+      })
 
       matchVariant("group-data", (value) => {
-        const selector = attributeSelector("data", value);
-        return selector ? `.group${selector} &` : ".group &";
-      });
+        const selector = attributeSelector("data", value)
+        return selector ? `.group${selector} &` : ".group &"
+      })
 
       matchVariant("group-aria", (value) => {
-        const selector = attributeSelector("aria", value);
-        return selector ? `.group${selector} &` : ".group &";
-      });
+        const selector = attributeSelector("aria", value)
+        return selector ? `.group${selector} &` : ".group &"
+      })
 
       matchVariant("peer-data", (value) => {
-        const selector = attributeSelector("data", value);
-        return selector ? `.peer${selector} ~ &` : ".peer ~ &";
-      });
+        const selector = attributeSelector("data", value)
+        return selector ? `.peer${selector} ~ &` : ".peer ~ &"
+      })
 
       matchVariant("peer-aria", (value) => {
-        const selector = attributeSelector("aria", value);
-        return selector ? `.peer${selector} ~ &` : ".peer ~ &";
-      });
+        const selector = attributeSelector("aria", value)
+        return selector ? `.peer${selector} ~ &` : ".peer ~ &"
+      })
     }),
     lineClamp,
   ],
-};
+}
 
-export default config;
+export default config
