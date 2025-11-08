@@ -34,13 +34,9 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
 
   return (
     <div className="flex flex-col gap-4 items-center text-center">
-      <h3 className="text-lg font-semibold text-page-text">
-        {t("mfa.totp.scanHeading")}
-      </h3>
+      <h3 className="text-lg font-semibold text-page-text">{t("mfa.totp.scanHeading")}</h3>
       {label ? (
-        <p className="text-sm text-page-text/70">
-          {t("mfa.totp.accountLabel", { label })}
-        </p>
+        <p className="text-sm text-page-text/70">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
       <div className="p-4 rounded-lg border border-glass-border bg-card">
         <QRCodeSVG value={otpauthUrl} size={192} />
@@ -77,9 +73,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           )}
         </div>
       </div>
-      <p className="text-sm text-page-text/70">
-        {t("mfa.totp.instructions")}
-      </p>
+      <p className="text-sm text-page-text/70">{t("mfa.totp.instructions")}</p>
     </div>
   )
 }

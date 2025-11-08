@@ -135,7 +135,8 @@ function SectionSubtitle({
   className?: string
   variant?: string
 } & React.HTMLAttributes<HTMLParagraphElement>) {
-  const sizeClasses = variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
+  const sizeClasses =
+    variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
   return (
     <p className={`text-page-text/70 ${sizeClasses} ${className}`} {...props}>
       {children}
@@ -268,12 +269,15 @@ function TextField({
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "size" | "onChange" | "onBlur">) {
   const sizeClasses = size === "small" ? "px-3 py-1.5 text-sm" : "px-4 py-2"
   const widthClass = fullWidth ? "w-full" : ""
-  const timeInputClasses = type === "time" ? "max-w-full sm:max-w-[200px] text-center tabular-nums" : ""
+  const timeInputClasses =
+    type === "time" ? "max-w-full sm:max-w-[200px] text-center tabular-nums" : ""
 
   return (
     <div className={`${widthClass} ${className}`}>
       {label && (
-        <label className="block text-sm font-medium text-page-text mb-1 px-1 bg-card">{label}</label>
+        <label className="block text-sm font-medium text-page-text mb-1 px-1 bg-card">
+          {label}
+        </label>
       )}
       <input
         type={type}
@@ -295,7 +299,9 @@ function TextField({
         {...props}
       />
       {helperText && (
-        <p className={`text-xs mt-1 ${error ? "text-red-500" : "text-page-text/60"}`}>{helperText}</p>
+        <p className={`text-xs mt-1 ${error ? "text-red-500" : "text-page-text/60"}`}>
+          {helperText}
+        </p>
       )}
     </div>
   )
@@ -315,7 +321,11 @@ function RadioGroup({
   "aria-label"?: string
 }) {
   return (
-    <div className={`${row ? "flex flex-wrap gap-4" : "flex flex-col gap-2"}`} role="radiogroup" aria-label={ariaLabel}>
+    <div
+      className={`${row ? "flex flex-wrap gap-4" : "flex flex-col gap-2"}`}
+      role="radiogroup"
+      aria-label={ariaLabel}
+    >
       {children}
     </div>
   )
@@ -376,7 +386,8 @@ function Alert({
   const severityClasses = {
     info: variant === "outlined" ? "border-blue-500 text-blue-500" : "bg-blue-500 text-white",
     error: variant === "outlined" ? "border-red-500 text-red-500" : "bg-red-500 text-white",
-    warning: variant === "outlined" ? "border-yellow-500 text-yellow-500" : "bg-yellow-500 text-black",
+    warning:
+      variant === "outlined" ? "border-yellow-500 text-yellow-500" : "bg-yellow-500 text-black",
     success: variant === "outlined" ? "border-green-500 text-green-500" : "bg-green-500 text-white",
   }
 
@@ -433,15 +444,29 @@ function Chip({
   }
 
   return (
-    <span className={`inline-flex items-center rounded-full font-semibold ${sizeClasses} ${colorClasses} ${className}`}>
+    <span
+      className={`inline-flex items-center rounded-full font-semibold ${sizeClasses} ${colorClasses} ${className}`}
+    >
       {label}
     </span>
   )
 }
 
-function Divider({ className = "", flexItem, component }: { className?: string; flexItem?: boolean; component?: string }) {
+function Divider({
+  className = "",
+  flexItem,
+  component,
+}: {
+  className?: string
+  flexItem?: boolean
+  component?: string
+}) {
   const Component = (component || "hr") as keyof JSX.IntrinsicElements
-  return <Component className={`border-t border-glass-border ${flexItem ? "self-stretch" : ""} ${className}`} />
+  return (
+    <Component
+      className={`border-t border-glass-border ${flexItem ? "self-stretch" : ""} ${className}`}
+    />
+  )
 }
 
 function Avatar({
@@ -480,14 +505,7 @@ function CircularProgress({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-75"
         fill="currentColor"
@@ -512,16 +530,21 @@ function Dialog({
 }) {
   if (!open) return null
 
-  const maxWidthClasses = {
-    xs: "max-w-xs",
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
-  }[maxWidth] || "max-w-md"
+  const maxWidthClasses =
+    {
+      xs: "max-w-xs",
+      sm: "max-w-sm",
+      md: "max-w-md",
+      lg: "max-w-lg",
+      xl: "max-w-xl",
+    }[maxWidth] || "max-w-md"
 
   return (
-    <div role="presentation" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+    <div
+      role="presentation"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      onClick={onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -603,10 +626,13 @@ function Tabs({
     <div className={`flex gap-1 border-b border-glass-border overflow-x-auto ${className}`}>
       {React.Children.map(children, (child, index) => {
         if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<{ selected?: boolean; onClick?: () => void }>, {
-            selected: value === index,
-            onClick: () => onChange(null, index),
-          })
+          return React.cloneElement(
+            child as React.ReactElement<{ selected?: boolean; onClick?: () => void }>,
+            {
+              selected: value === index,
+              onClick: () => onChange(null, index),
+            }
+          )
         }
         return child
       })}
@@ -728,7 +754,7 @@ export default function Settings() {
   const setMode = useCallback((value: ThemeMode) => {
     setTheme(value)
     localStorage.setItem("theme-mode", value)
-    
+
     // Apply theme to document
     const root = document.documentElement
     if (value === "system") {
@@ -1693,7 +1719,12 @@ export default function Settings() {
         </div>
 
         <div className="glass--segmented border border-glass-border rounded-lg mb-6 bg-card">
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            variant="scrollable"
+            scrollButtons="auto"
+          >
             <Tab label={t("settings:tabs.general")} />
             <Tab label={t("settings:tabs.account")} />
             <Tab label={t("settings:tabs.integrations")} />
@@ -1779,13 +1810,17 @@ export default function Settings() {
                       <Alert severity="error" variant="outlined">
                         {t("settings:notifications.blocked.description")}
                       </Alert>
-                      <p className="text-sm text-page-text">{t("settings:notifications.blocked.hint")}</p>
+                      <p className="text-sm text-page-text">
+                        {t("settings:notifications.blocked.hint")}
+                      </p>
                       <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy}
-                          startIcon={pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
+                          startIcon={
+                            pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                          }
                         >
                           {t("settings:notifications.cta.checkPermission")}
                         </Button>
@@ -1796,7 +1831,9 @@ export default function Settings() {
                     </div>
                   ) : notificationPermission === "default" ? (
                     <div className="flex flex-col gap-3">
-                      <p className="text-sm text-page-text">{t("settings:notifications.cta.prompt")}</p>
+                      <p className="text-sm text-page-text">
+                        {t("settings:notifications.cta.prompt")}
+                      </p>
                       <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
                         <Button
                           variant="contained"
@@ -2084,9 +2121,7 @@ export default function Settings() {
                   >
                     {t("settings:security.email.updateButton")}
                   </Button>
-                  <p className="text-sm text-page-text/70">
-                    {t("settings:security.email.helper")}
-                  </p>
+                  <p className="text-sm text-page-text/70">{t("settings:security.email.helper")}</p>
                 </div>
               </form>
 
@@ -2188,26 +2223,20 @@ export default function Settings() {
                 >
                   {t("settings:sessions.revokeAll")}
                 </Button>
-                <p className="text-sm text-page-text/70">
-                  {t("settings:sessions.revokeAllHint")}
-                </p>
+                <p className="text-sm text-page-text/70">{t("settings:sessions.revokeAllHint")}</p>
               </div>
 
               {sessionsFetching ? (
                 <div className="flex flex-row gap-2.5 items-center mt-3">
                   <CircularProgress size={18} />
-                  <p className="text-sm text-page-text">
-                    {t("settings:sessions.loading")}
-                  </p>
+                  <p className="text-sm text-page-text">{t("settings:sessions.loading")}</p>
                 </div>
               ) : sessionsErrorMessage ? (
                 <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
                   {sessionsErrorMessage}
                 </Alert>
               ) : sessions.length === 0 ? (
-                <p className="text-sm text-page-text mt-3">
-                  {t("settings:sessions.empty")}
-                </p>
+                <p className="text-sm text-page-text mt-3">{t("settings:sessions.empty")}</p>
               ) : (
                 <div className="flex flex-col gap-3 mt-3">
                   {sortedSessions.map((session) => {
@@ -2485,9 +2514,7 @@ export default function Settings() {
                       ? t("settings:security.recovery.generating")
                       : t("settings:security.recovery.generate")}
                   </Button>
-                  <p className="text-sm text-page-text/70">
-                    {recoveryStatusText}
-                  </p>
+                  <p className="text-sm text-page-text/70">{recoveryStatusText}</p>
                 </div>
 
                 {generatedRecoveryCodes.length ? (
@@ -2535,11 +2562,7 @@ export default function Settings() {
                 )}
               </div>
               {!spotifyConnected ? (
-                <Button
-                  variant="contained"
-                  onClick={connectSpotify}
-                  className="self-start"
-                >
+                <Button variant="contained" onClick={connectSpotify} className="self-start">
                   {t("settings:integrations.spotify.connect")}
                 </Button>
               ) : (

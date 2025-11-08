@@ -69,7 +69,9 @@ export const RecoveryCodeList = ({ codes, allowCopy = true }: RecoveryCodeListPr
             >
               {entry.code}
             </div>
-            {(index + 1) % 2 === 0 ? <hr className="border-t border-glass-border sm:hidden" /> : null}
+            {(index + 1) % 2 === 0 ? (
+              <hr className="border-t border-glass-border sm:hidden" />
+            ) : null}
           </Fragment>
         ))}
       </div>
