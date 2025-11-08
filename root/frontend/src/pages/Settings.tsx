@@ -97,7 +97,7 @@ function SectionCard({
   component?: React.ElementType
 } & React.HTMLAttributes<HTMLElement>) {
   const Component = component
-  return (
+    return (
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-[24px] px-6 py-6",
@@ -120,7 +120,6 @@ function SectionCard({
     </Component>
   )
 }
-
 function SectionTitle({
   children,
   className = "",
@@ -156,7 +155,6 @@ function SectionTitle({
     </Component>
   )
 }
-
 function SectionSubtitle({
   children,
   className = "",
@@ -213,7 +211,7 @@ function SessionItem({
       {...props}
     >
       {children}
-    </div>
+    </Component>
   )
 }
 
@@ -439,7 +437,7 @@ function TextField({
         </p>
       )}
     </div>
-  )
+    )
 }
 
 function RadioGroup({
@@ -2972,30 +2970,28 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
-      <StepUpDialog
-        open={stepUpOpen}
-        onClose={handleStepUpClose}
-        onCompleted={handleStepUpCompleted}
-        description={t("settings:security.stepUp.description")}
-      />
-
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={2600}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
+        <StepUpDialog
+          open={stepUpOpen}
+          onClose={handleStepUpClose}
+          onCompleted={handleStepUpCompleted}
+          description={t("settings:security.stepUp.description")}
+        />
+        <Snackbar
+          open={!!snack}
+          autoHideDuration={2600}
           onClose={() => setSnack(null)}
-          severity={snack?.sev || "info"}
-          variant="filled"
-          className="w-full"
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         >
-          {snack?.text}
+          <Alert
+            onClose={() => setSnack(null)}
+            severity={snack?.sev || "info"}
+            variant="filled"
+            className="w-full"
+          >
+            {snack?.text}
           </Alert>
         </Snackbar>
       </div>
     </div>
-  </div>
-)
+    )
 }
