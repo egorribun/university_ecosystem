@@ -82,12 +82,7 @@ const renderSettings = () => {
   const utils = render(
     <MemoryRouter initialEntries={["/settings"]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider
-          theme={theme}
-          defaultMode="system"
-          modeStorageKey="theme"
-          colorSchemeSelector="class"
-        >
+        <CssVarsProvider theme={theme} defaultMode="system" modeStorageKey="theme">
           <LanguageProvider>
             <AuthContext.Provider
               value={{
