@@ -170,6 +170,12 @@ stores them as optimized WebP files (PNG when transparency is required).
   cd root/frontend
   npm run lint
   ```
+- Regenerate localized PWA manifests after editing
+  `public/manifest.source.json`:
+  ```bash
+  npm run generate:manifests
+  npm run manifests:check    # CI runs this to ensure the output is committed
+  ```
 - Type-check and run unit tests:
   ```bash
   npm run typecheck

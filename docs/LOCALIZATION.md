@@ -10,7 +10,9 @@ content from the main application locales to keep copy consistent.
 - Offline fallback text matches the messaging used for staying in sync with the
   schedule, news, and campus map inside the app.
 - Manifest names, descriptions, and shortcut captions mirror the wording of the
-  primary navigation sections (Schedule, News, Campus map).
+  primary navigation sections (Schedule, News, Campus map). Edit
+  `public/manifest.source.json` to update these strings so the generator can
+  rebuild `manifest*.webmanifest` consistently.
 
 When shell copy changes, update `public/static-shell-i18n.js` for both `ru` and
 `en` bundles and adjust the default Russian HTML in `index.html` and

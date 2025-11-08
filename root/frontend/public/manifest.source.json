@@ -1,0 +1,120 @@
+{
+  "defaultLocale": "ru",
+  "base": {
+    "id": "/?source=pwa",
+    "lang": null,
+    "name": null,
+    "short_name": null,
+    "description": null,
+    "dir": "ltr",
+    "display": "standalone",
+    "display_override": ["standalone", "browser"],
+    "start_url": "/?source=pwa",
+    "scope": "/",
+    "orientation": "portrait-primary",
+    "theme_color": "#0b63f4",
+    "background_color": "#f4f8fd",
+    "launch_handler": {
+      "client_mode": "navigate-existing"
+    },
+    "categories": ["education", "productivity"],
+    "shortcuts": [
+      {
+        "url": "/schedule",
+        "icons": [
+          {
+            "src": "/maskable-icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+          }
+        ]
+      },
+      {
+        "url": "/news",
+        "icons": [
+          {
+            "src": "/maskable-icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+          }
+        ]
+      },
+      {
+        "url": "/map",
+        "icons": [
+          {
+            "src": "/maskable-icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+          }
+        ]
+      }
+    ],
+    "icons": [
+      {
+        "src": "/guu_logo.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "/maskable-icon-192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "maskable any"
+      },
+      {
+        "src": "/guu_logo.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      },
+      {
+        "src": "/maskable-icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "maskable any"
+      }
+    ]
+  },
+  "locales": {
+    "ru": {
+      "lang": "ru",
+      "name": "Экосистема ГУУ — всё необходимое в одном месте",
+      "short_name": "Экосистема ГУУ",
+      "description": "Профиль, расписание, новости и карта кампуса — доступны даже офлайн.",
+      "shortcuts": [
+        {
+          "name": "Расписание",
+          "description": "Открыть расписание занятий"
+        },
+        {
+          "name": "Новости",
+          "description": "Читать свежие новости кампуса"
+        },
+        {
+          "name": "Карта кампуса",
+          "description": "Найти корпуса и маршруты на карте ГУУ"
+        }
+      ]
+    },
+    "en": {
+      "lang": "en",
+      "name": "GUU Ecosystem — everything in one place",
+      "short_name": "GUU Ecosystem",
+      "description": "Profile, schedule, news, and the campus map stay available even when you're offline.",
+      "shortcuts": [
+        {
+          "name": "Schedule",
+          "description": "Open today's class schedule"
+        },
+        {
+          "name": "News",
+          "description": "Read the latest campus updates"
+        },
+        {
+          "name": "Campus map",
+          "description": "Find buildings and routes on the GUU map"
+        }
+      ]
+    }
+  }
+}

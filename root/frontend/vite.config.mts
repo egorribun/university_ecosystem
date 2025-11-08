@@ -6,9 +6,11 @@ import react from "@vitejs/plugin-react"
 import { VitePWA } from "vite-plugin-pwa"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
+import { generateManifests } from "./scripts/generate-manifests.mjs"
 
 const srcDir = fileURLToPath(new URL("./src", import.meta.url))
 const publicDir = fileURLToPath(new URL("./public", import.meta.url))
+const manifestSourcePath = resolve(publicDir, "manifest.source.json")
 
 const ensureMaskableIcons = () => {
   for (const [filename, base64] of Object.entries(MASKABLE_ICON_BASE64)) {
@@ -28,6 +30,21 @@ const ensureMaskableIcons = () => {
   }
 }
 ensureMaskableIcons()
+generateManifests({ publicDir, sourcePath: manifestSourcePath })
+
+const withGeneratedManifests = (): PluginOption => ({
+  name: "generate-localized-manifests",
+  apply: () => true,
+  buildStart() {
+    generateManifests({ publicDir, sourcePath: manifestSourcePath })
+  },
+  handleHotUpdate(ctx) {
+    if (ctx.file === manifestSourcePath) {
+      generateManifests({ publicDir, sourcePath: manifestSourcePath })
+      ctx.server?.ws.send({ type: "full-reload" })
+    }
+  },
+})
 
 const loadManifest = () => {
   const manifestPath = resolve(publicDir, "manifest.webmanifest")
@@ -79,6 +96,7 @@ export default defineConfig(({ mode, command }) => {
   }
 
   const plugins: PluginOption[] = [
+    withGeneratedManifests(),
     react(),
     VitePWA({
       registerType: "autoUpdate",

@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx \"src\" \"tests\"",
-    "lint:all": "npm run lint",
+    "lint:all": "npm run lint && npm run manifests:check",
     "lint:fix": "npm run lint -- --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\" \"tests/**/*.{ts,tsx,js,jsx}\" vite.config.mts playwright.config.ts vitest.config.ts tsconfig.json pwa-maskable-icons.ts \"scripts/**/*.mjs\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\" \"tests/**/*.{ts,tsx,js,jsx}\" vite.config.mts playwright.config.ts vitest.config.ts tsconfig.json pwa-maskable-icons.ts \"scripts/**/*.mjs\"",
@@ -22,7 +22,9 @@
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
     "prepare": "husky ../.husky",
-    "generate:api": "node ./scripts/generate-api-types.mjs"
+    "generate:api": "node ./scripts/generate-api-types.mjs",
+    "generate:manifests": "node ./scripts/generate-manifests.mjs",
+    "manifests:check": "node ./scripts/generate-manifests.mjs --check"
   },
   "keywords": [],
   "author": "",
