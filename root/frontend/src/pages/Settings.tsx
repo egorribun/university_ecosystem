@@ -2992,8 +2992,10 @@ export default function Settings() {
           className="w-full"
         >
           {snack?.text}
-        </Alert>
-      </Snackbar>
+          </Alert>
+        </Snackbar>
+      </div>
     </div>
-  )
+  </div>
+)
 }
