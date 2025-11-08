@@ -50,6 +50,7 @@ const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import spotifyLogo from "@/assets/spotify_icon.png"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
+import { cn } from "@/utils/cn"
 
 type ThemeMode = "system" | "light" | "dark"
 
@@ -98,7 +99,21 @@ function SectionCard({
   const Component = component
   return (
     <Component
-      className={`bg-card rounded-[20px] px-6 py-[22px] border border-glass-border flex flex-col gap-3 ${className}`}
+      className={cn(
+        "relative flex flex-col gap-3 overflow-hidden rounded-[24px] px-6 py-6",
+        "border border-[color:var(--glass-border)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.94)_4%)] text-[var(--page-text)]",
+        "shadow-[0_28px_64px_rgba(15,40,85,0.08)] transition-colors duration-300",
+        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-70 before:mix-blend-screen",
+        'before:content-[""] before:bg-[radial-gradient(circle_at_0%_0%,rgba(15,79,170,0.12),transparent_60%)]',
+        "after:pointer-events-none after:absolute after:-top-16 after:-left-16 after:h-40 after:w-40 after:rounded-full after:opacity-70 after:blur-[2px]",
+        'after:content-[""] after:bg-[radial-gradient(circle,rgba(255,255,255,0.42),transparent_62%)]',
+        "dark:border-[rgba(148,163,184,0.22)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:text-[var(--page-text)]",
+        "dark:shadow-[0_28px_80px_rgba(5,9,17,0.62)]",
+        "dark:before:bg-[radial-gradient(circle_at_0%_0%,rgba(127,182,230,0.2),transparent_60%)]",
+        "dark:after:bg-[radial-gradient(circle,rgba(127,182,230,0.28),transparent_60%)]",
+        className
+      )}
       {...props}
     >
       {children}
@@ -128,7 +143,15 @@ function SectionTitle({
           ? "text-lg"
           : "text-base"
   return (
-    <Component className={`font-semibold text-page-text ${sizeClasses} ${className}`} {...props}>
+    <Component
+      className={cn(
+        "font-semibold tracking-tight text-[color:color-mix(in_srgb,var(--page-text)_92%,rgba(15,79,170,0.08)_8%)]",
+        "dark:text-[color:color-mix(in_srgb,var(--page-text)_96%,rgba(127,182,230,0.16)_4%)]",
+        sizeClasses,
+        className
+      )}
+      {...props}
+    >
       {children}
     </Component>
   )
@@ -147,7 +170,16 @@ function SectionSubtitle({
   const sizeClasses =
     variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
   return (
-    <p className={`text-page-text/70 ${sizeClasses} ${className}`} {...props}>
+    <p
+      className={cn(
+        "text-[color:color-mix(in_srgb,var(--secondary-text)_82%,white_18%)]",
+        "dark:text-[color:color-mix(in_srgb,var(--page-text)_82%,rgba(148,163,184,0.55)_18%)]",
+        "leading-relaxed",
+        sizeClasses,
+        className
+      )}
+      {...props}
+    >
       {children}
     </p>
   )
@@ -163,18 +195,21 @@ function SessionItem({
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={`
-        flex items-stretch justify-between gap-3 p-3 rounded-[18px]
-        border border-glass-border bg-black/[0.03] dark:bg-white/[0.04]
-        transition-all duration-200 ease-in-out
-        max-sm:flex-col max-sm:items-start
-        hover:border-primary/35 hover:shadow-card-hover hover:bg-primary/8 dark:hover:bg-primary/18
-        data-[revoked=true]:opacity-70 data-[revoked=true]:border-dashed
-        data-[revoked=true]:border-page-text/20 data-[revoked=true]:bg-page-text/[0.04] dark:data-[revoked=true]:bg-page-text/[0.06]
-        data-[revoked=true]:hover:shadow-none data-[revoked=true]:hover:border-page-text/20
-        data-[revoked=true]:hover:bg-page-text/[0.04] dark:data-[revoked=true]:hover:bg-page-text/[0.06]
-        ${className}
-      `}
+      className={cn(
+        "group relative flex items-stretch justify-between gap-4 rounded-[20px] px-4 py-3",
+        "border border-[color:color-mix(in_srgb,var(--glass-border)_90%,transparent)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,79,170,0.08)_6%)] text-[var(--page-text)]",
+        "transition-all duration-300 ease-out",
+        "hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--nav-link)_34%,transparent)] hover:shadow-[0_20px_48px_rgba(15,40,85,0.12)]",
+        "max-sm:flex-col max-sm:items-start",
+        "dark:border-[rgba(148,163,184,0.26)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,rgba(10,18,32,0.94)_12%)]",
+        "dark:hover:border-[color:rgba(127,182,230,0.5)] dark:hover:shadow-[0_24px_60px_rgba(5,9,17,0.65)]",
+        "data-[revoked=true]:border-dashed data-[revoked=true]:border-[color:color-mix(in_srgb,var(--secondary-text)_38%,transparent)]",
+        "data-[revoked=true]:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(59,73,92,0.15)_6%)] data-[revoked=true]:shadow-none",
+        "dark:data-[revoked=true]:border-[rgba(148,163,184,0.24)] dark:data-[revoked=true]:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,rgba(59,73,92,0.32)_12%)]",
+        "data-[revoked=true]:hover:translate-y-0 data-[revoked=true]:hover:shadow-none data-[revoked=true]:hover:border-[color:color-mix(in_srgb,var(--secondary-text)_45%,transparent)]",
+        className
+      )}
       {...props}
     >
       {children}
@@ -206,29 +241,95 @@ function Button({
   type?: "button" | "submit"
   className?: string
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const baseClasses =
-    "inline-flex items-center justify-center gap-2 font-bold rounded-lg transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-  const sizeClasses = size === "small" ? "px-3 py-1.5 text-sm" : "px-4 py-2 text-base"
+  const baseClasses = cn(
+    "relative inline-flex items-center justify-center gap-2 font-semibold tracking-tight",
+    "rounded-xl transition-all duration-200",
+    "focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+    "disabled:pointer-events-none disabled:opacity-55",
+    "active:translate-y-[1px]"
+  )
+  const sizeClasses =
+    size === "small"
+      ? "px-3.5 py-2 text-sm"
+      : "px-4.5 py-2.5 text-[calc(theme(fontSize.base)*0.98)] sm:text-base"
 
   let variantClasses = ""
   if (variant === "contained") {
     if (color === "primary") {
-      variantClasses = "bg-primary text-white hover:bg-primary/90 shadow-md hover:shadow-lg"
+      variantClasses = cn(
+        "bg-[color:var(--nav-link)] text-white shadow-[0_14px_34px_rgba(15,79,170,0.26)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_94%,white_6%)] hover:shadow-[0_18px_44px_rgba(15,79,170,0.32)]",
+        "dark:bg-[color:color-mix(in_srgb,var(--nav-link)_88%,rgba(10,18,32,0.9)_12%)]",
+        "dark:hover:bg-[color:color-mix(in_srgb,var(--nav-link)_92%,rgba(10,18,32,0.9)_8%)]",
+        "dark:hover:shadow-[0_20px_48px_rgba(8,12,20,0.62)]"
+      )
     } else if (color === "error") {
-      variantClasses = "bg-red-500 text-white hover:bg-red-600 shadow-md hover:shadow-lg"
+      variantClasses = cn(
+        "bg-[#D14343] text-white shadow-[0_14px_32px_rgba(209,67,67,0.24)]",
+        "hover:bg-[#c03838] hover:shadow-[0_18px_40px_rgba(192,56,56,0.28)]"
+      )
+    } else if (color === "success") {
+      variantClasses = cn(
+        "bg-[#2E7D32] text-white shadow-[0_14px_32px_rgba(46,125,50,0.24)]",
+        "hover:bg-[#276b2b] hover:shadow-[0_18px_40px_rgba(39,107,43,0.28)]"
+      )
+    } else {
+      variantClasses = cn(
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,79,170,0.18)_6%)]",
+        "text-[var(--page-text)] shadow-[0_12px_28px_rgba(15,40,85,0.12)]",
+        "hover:shadow-[0_16px_38px_rgba(15,40,85,0.18)]"
+      )
     }
   } else if (variant === "outlined") {
     if (color === "primary") {
-      variantClasses =
-        "border-2 border-primary text-primary hover:bg-primary/10 dark:hover:bg-primary/20"
+      variantClasses = cn(
+        "border border-[color:color-mix(in_srgb,var(--nav-link)_30%,transparent)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(15,79,170,0.08)_3%)] text-[color:var(--nav-link)]",
+        "shadow-[0_8px_24px_rgba(15,40,85,0.08)]",
+        "hover:border-[color:color-mix(in_srgb,var(--nav-link)_45%,transparent)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,white_88%)]",
+        "hover:text-[color:color-mix(in_srgb,var(--nav-link)_88%,rgba(15,40,85,0.25)_12%)]"
+      )
     } else if (color === "error") {
-      variantClasses = "border-2 border-red-500 text-red-500 hover:bg-red-500/10"
+      variantClasses = cn(
+        "border border-[#D14343] text-[#D14343]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(209,67,67,0.08)_4%)]",
+        "hover:bg-[color:color-mix(in_srgb,rgba(209,67,67,0.12)_16%,white_84%)]"
+      )
+    } else if (color === "success") {
+      variantClasses = cn(
+        "border border-[#358E39] text-[#276b2b]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(46,125,50,0.08)_3%)]",
+        "hover:bg-[color:color-mix(in_srgb,rgba(46,125,50,0.12)_16%,white_84%)]"
+      )
+    } else {
+      variantClasses = cn(
+        "border border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(15,40,85,0.04)_3%)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,40,85,0.08)_6%)]"
+      )
     }
   } else if (variant === "text") {
     if (color === "error") {
-      variantClasses = "text-red-500 hover:bg-red-500/10"
+      variantClasses = cn(
+        "text-[#C13B3B]",
+        "hover:bg-[color:color-mix(in_srgb,rgba(209,67,67,0.12)_32%,white_68%)]"
+      )
     } else if (color === "inherit") {
-      variantClasses = "text-page-text hover:bg-page-text/10"
+      variantClasses = cn(
+        "text-[var(--page-text)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)]"
+      )
+    } else if (color === "primary") {
+      variantClasses = cn(
+        "text-[color:var(--nav-link)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)]"
+      )
+    } else {
+      variantClasses = cn(
+        "text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--secondary-text)_12%)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)]"
+      )
     }
   }
 
@@ -237,10 +338,10 @@ function Button({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`${baseClasses} ${sizeClasses} ${variantClasses} ${className}`}
+      className={cn(baseClasses, sizeClasses, variantClasses, className)}
       {...props}
     >
-      {startIcon && <span className="flex items-center">{startIcon}</span>}
+      {startIcon && <span className="flex items-center text-inherit">{startIcon}</span>}
       {children}
     </button>
   )
@@ -282,9 +383,15 @@ function TextField({
     type === "time" ? "max-w-full sm:max-w-[200px] text-center tabular-nums" : ""
 
   return (
-    <div className={`${widthClass} ${className}`}>
+    <div className={cn("flex flex-col gap-1", widthClass, className)}>
       {label && (
-        <label className="block text-sm font-medium text-page-text mb-1 px-1 bg-card">
+        <label
+          className={cn(
+            "mb-1 block px-1 text-xs font-semibold uppercase tracking-[0.2em]",
+            "text-[color:color-mix(in_srgb,var(--secondary-text)_78%,var(--nav-link)_22%)]",
+            "dark:text-[color:color-mix(in_srgb,var(--page-text)_82%,rgba(127,182,230,0.55)_18%)]"
+          )}
+        >
           {label}
         </label>
       )}
@@ -296,19 +403,38 @@ function TextField({
         disabled={disabled}
         placeholder={placeholder}
         autoComplete={autoComplete}
-        className={`
-          ${widthClass} ${sizeClasses} ${timeInputClasses}
-          rounded-lg border bg-card text-page-text
-          ${error ? "border-red-500" : "border-page-text/25"}
-          hover:border-page-text/35
-          focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary
-          disabled:bg-page-text/[0.06] disabled:border-page-text/20 disabled:cursor-not-allowed
-          transition-all duration-200
-        `}
+        className={cn(
+          widthClass,
+          sizeClasses,
+          timeInputClasses,
+          "rounded-xl border text-[var(--page-text)] transition-all duration-200",
+          "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.88)_4%)]",
+          "border-[color:color-mix(in_srgb,var(--glass-border)_90%,transparent)]",
+          "shadow-[0_10px_26px_rgba(15,40,85,0.08)]",
+          "placeholder:text-[color:var(--placeholder-fg)]",
+          "hover:border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)]",
+          "focus:outline-none focus:border-[color:var(--nav-link)] focus:shadow-[0_0_0_4px_rgba(15,79,170,0.14)]",
+          "disabled:cursor-not-allowed disabled:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(148,163,184,0.28)_8%)]",
+          "disabled:border-[color:color-mix(in_srgb,var(--glass-border)_68%,transparent)] disabled:text-[color:rgba(59,73,92,0.58)] disabled:shadow-none",
+          error
+            ? [
+                "border-[#D14343] hover:border-[#C13B3B]",
+                "focus:border-[#D14343] focus:shadow-[0_0_0_4px_rgba(209,67,67,0.18)]",
+                "shadow-[0_0_0_1px_rgba(209,67,67,0.4)]"
+              ]
+            : null
+        )}
         {...props}
       />
       {helperText && (
-        <p className={`text-xs mt-1 ${error ? "text-red-500" : "text-page-text/60"}`}>
+        <p
+          className={cn(
+            "mt-1 text-xs",
+            error
+              ? "text-[#D14343]"
+              : "text-[color:color-mix(in_srgb,var(--secondary-text)_74%,white_26%)]"
+          )}
+        >
           {helperText}
         </p>
       )}
@@ -377,11 +503,21 @@ function FormControlLabel({
     () => `radio-${value}-${Math.random().toString(36).substr(2, 9)}`,
     [value]
   )
+  const selected = groupValue === value
 
   return (
     <label
       htmlFor={inputId}
-      className={`inline-flex items-center gap-2 cursor-pointer ${className}`}
+      className={cn(
+        "group inline-flex items-center gap-2.5 rounded-full px-2.5 py-1.5",
+        "cursor-pointer transition-colors duration-200",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)]",
+        "dark:hover:bg-[rgba(255,255,255,0.06)]",
+        selected
+          ? "bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)]"
+          : "bg-transparent",
+        className
+      )}
     >
       {React.isValidElement(control)
         ? React.cloneElement(
@@ -401,7 +537,16 @@ function FormControlLabel({
             }
           )
         : control}
-      <span className="text-page-text">{label}</span>
+      <span
+        className={cn(
+          "text-sm font-semibold tracking-tight transition-colors duration-200",
+          selected
+            ? "text-[color:var(--nav-link)]"
+            : "text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]"
+        )}
+      >
+        {label}
+      </span>
     </label>
   )
 }
@@ -427,7 +572,13 @@ function Radio({
       value={value}
       name={name}
       id={id}
-      className="w-4 h-4 text-primary border-page-text/30 focus:ring-2 focus:ring-primary/30 cursor-pointer"
+      className={cn(
+        "h-4 w-4 cursor-pointer border transition-all duration-200",
+        "accent-[color:var(--nav-link)]",
+        "border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)]",
+        "focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "dark:border-[rgba(148,163,184,0.32)]"
+      )}
     />
   )
 }
@@ -445,26 +596,52 @@ function Alert({
   onClose?: () => void
   className?: string
 }) {
-  const severityClasses = {
-    info: variant === "outlined" ? "border-blue-500 text-blue-500" : "bg-blue-500 text-white",
-    error: variant === "outlined" ? "border-red-500 text-red-500" : "bg-red-500 text-white",
-    warning:
-      variant === "outlined" ? "border-yellow-500 text-yellow-500" : "bg-yellow-500 text-black",
-    success: variant === "outlined" ? "border-green-500 text-green-500" : "bg-green-500 text-white",
-  }
+  const palette = {
+    info: {
+      filled:
+        "bg-[linear-gradient(132deg,#0F4FAA,#123F84)] text-white shadow-[0_18px_40px_rgba(15,79,170,0.22)]",
+      outlined:
+        "border-[color:color-mix(in_srgb,var(--nav-link)_36%,transparent)] text-[color:var(--nav-link)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.08)_4%)]",
+    },
+    error: {
+      filled:
+        "bg-[linear-gradient(132deg,#D14343,#B23131)] text-white shadow-[0_18px_40px_rgba(209,67,67,0.22)]",
+      outlined:
+        "border-[#D14343] text-[#C13B3B] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(209,67,67,0.08)_4%)]",
+    },
+    warning: {
+      filled:
+        "bg-[linear-gradient(132deg,#F59E0B,#B7791F)] text-[color:color-mix(in_srgb,#102033_82%,white_18%)] shadow-[0_18px_40px_rgba(183,121,31,0.22)]",
+      outlined:
+        "border-[color:color-mix(in_srgb,#B7791F_40%,transparent)] text-[#8A5F16] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(183,121,31,0.08)_4%)]",
+    },
+    success: {
+      filled:
+        "bg-[linear-gradient(132deg,#2E7D32,#1B5E20)] text-white shadow-[0_18px_40px_rgba(46,125,50,0.22)]",
+      outlined:
+        "border-[color:color-mix(in_srgb,#2E7D32_36%,transparent)] text-[#276b2b] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(46,125,50,0.08)_4%)]",
+    },
+  } satisfies Record<NonNullable<AlertProps["severity"]>, { filled: string; outlined: string }>
+
+  const styleSet = palette[severity][variant === "outlined" ? "outlined" : "filled"]
 
   return (
     <div
-      className={`
-        flex items-center gap-2 px-4 py-2 rounded-lg
-        ${variant === "outlined" ? "border-2 bg-transparent" : ""}
-        ${severityClasses[severity]}
-        ${className}
-      `}
+      className={cn(
+        "flex items-center gap-2 rounded-[16px] px-4 py-2.5 transition-colors duration-300",
+        variant === "outlined"
+          ? "border bg-[color:color-mix(in_srgb,var(--card-bg)_97%,white_3%)]"
+          : "",
+        styleSet,
+        className
+      )}
     >
       <span className="flex-1">{children}</span>
       {onClose && (
-        <button onClick={onClose} className="ml-2 hover:opacity-70 transition-opacity">
+        <button
+          onClick={onClose}
+          className="ml-2 rounded-full p-1 text-current/80 transition hover:text-current/95 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
           ×
         </button>
       )}
@@ -485,30 +662,32 @@ function Chip({
   variant?: "filled" | "outlined"
   className?: string
 }) {
-  const sizeClasses = size === "small" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm"
-  let colorClasses = ""
+  const baseClasses = cn(
+    "inline-flex items-center rounded-full font-semibold tracking-tight",
+    "transition-colors duration-200"
+  )
+  const sizeClasses = size === "small" ? "px-3 py-1 text-xs" : "px-3.5 py-1.5 text-sm"
+  let toneClasses = ""
 
   if (color === "success") {
-    colorClasses =
+    toneClasses =
       variant === "outlined"
-        ? "border border-green-500 text-green-500"
-        : "bg-green-500/20 text-green-500 border border-green-500/30"
+        ? "border-[color:color-mix(in_srgb,#2E7D32_45%,transparent)] text-[#276b2b] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(46,125,50,0.08)_4%)]"
+        : "border border-transparent text-[#1f5423] bg-[color:color-mix(in_srgb,#9FDEB0_32%,white_68%)] shadow-[0_8px_20px_rgba(46,125,50,0.18)]"
   } else if (color === "primary") {
-    colorClasses =
+    toneClasses =
       variant === "outlined"
-        ? "border border-primary text-primary"
-        : "bg-primary/20 text-primary border border-primary/30"
+        ? "border-[color:color-mix(in_srgb,var(--nav-link)_34%,transparent)] text-[color:var(--nav-link)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.08)_4%)]"
+        : "border border-transparent text-[color:color-mix(in_srgb,var(--nav-link)_85%,var(--nav-text)_15%)] bg-[color:color-mix(in_srgb,var(--nav-link)_14%,white_86%)] shadow-[0_10px_22px_rgba(15,79,170,0.18)]"
   } else {
-    colorClasses =
+    toneClasses =
       variant === "outlined"
-        ? "border border-page-text/30 text-page-text/70"
-        : "bg-page-text/10 text-page-text/70 border border-page-text/20"
+        ? "border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)] bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(15,40,85,0.05)_3%)]"
+        : "border border-transparent text-[color:color-mix(in_srgb,var(--page-text)_85%,var(--secondary-text)_15%)] bg-[color:color-mix(in_srgb,var(--nav-link)_8%,white_92%)] shadow-[0_8px_20px_rgba(15,40,85,0.12)]"
   }
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full font-semibold ${sizeClasses} ${colorClasses} ${className}`}
-    >
+    <span className={cn(baseClasses, sizeClasses, toneClasses, className)}>
       {label}
     </span>
   )
@@ -526,7 +705,13 @@ function Divider({
   const Component = component || "hr"
   return (
     <Component
-      className={`border-t border-glass-border ${flexItem ? "self-stretch" : ""} ${className}`}
+      className={cn(
+        "h-px w-full border-0",
+        "bg-[linear-gradient(90deg,rgba(15,79,170,0.22)_0%,rgba(15,79,170,0.06)_50%,rgba(15,79,170,0.22)_100%)]",
+        "dark:bg-[linear-gradient(90deg,rgba(127,182,230,0.24)_0%,rgba(127,182,230,0.08)_50%,rgba(127,182,230,0.24)_100%)]",
+        flexItem ? "self-stretch" : "",
+        className
+      )}
     />
   )
 }
@@ -543,8 +728,20 @@ function Avatar({
   className?: string
 }) {
   return (
-    <div className={`rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 ${className}`}>
-      <img src={src} alt={alt} className="w-full h-full object-cover" {...imgProps} />
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-full p-[2px]",
+        "bg-[conic-gradient(from_210deg_at_50%_50%,rgba(15,79,170,0.42),rgba(15,79,170,0.08),rgba(15,79,170,0.42))]",
+        "shadow-[0_12px_28px_rgba(15,40,85,0.18)]",
+        "dark:bg-[conic-gradient(from_210deg_at_50%_50%,rgba(127,182,230,0.36),rgba(39,53,72,0.2),rgba(127,182,230,0.36))]",
+        className
+      )}
+    >
+      <div
+        className="relative h-full w-full overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,40,85,0.08)_6%)]"
+      >
+        <img src={src} alt={alt} className="h-full w-full object-cover" {...imgProps} />
+      </div>
     </div>
   )
 }
@@ -560,16 +757,24 @@ function CircularProgress({
 }) {
   return (
     <svg
-      className={`animate-spin ${className}`}
+      className={cn("animate-spin text-[color:var(--nav-link)]", className)}
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      style={color ? { color } : undefined}
     >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
       <path
-        className="opacity-75"
+        className="opacity-90"
         fill="currentColor"
         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
       />
@@ -604,13 +809,21 @@ function Dialog({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-center justify-center bg-[color:rgba(12,21,34,0.38)]/90 backdrop-blur-[14px] p-4"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className={`bg-card rounded-2xl shadow-2xl ${fullWidth ? "w-full" : ""} ${maxWidthClasses}`}
+        className={cn(
+          "glass glass--panel glass--sheen relative overflow-hidden rounded-[24px]",
+          "border border-[color:var(--glass-border)]",
+          "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
+          "shadow-[0_34px_88px_rgba(15,40,85,0.18)]",
+          "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_40px_96px_rgba(5,9,17,0.7)]",
+          fullWidth ? "w-full" : "",
+          maxWidthClasses
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -620,15 +833,29 @@ function Dialog({
 }
 
 function DialogTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-xl font-bold text-page-text px-6 pt-6 pb-2">{children}</h2>
+  return (
+    <h2
+      className="px-6 pt-6 pb-2 text-[1.35rem] font-extrabold leading-tight tracking-tight text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
+    >
+      {children}
+    </h2>
+  )
 }
 
 function DialogContent({ children }: { children: React.ReactNode }) {
-  return <div className="px-6 py-4 text-page-text/80">{children}</div>
+  return (
+    <div className="px-6 py-4 text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)] leading-relaxed">
+      {children}
+    </div>
+  )
 }
 
 function DialogActions({ children }: { children: React.ReactNode }) {
-  return <div className="flex gap-2 justify-end px-6 pb-6 pt-2">{children}</div>
+  return (
+    <div className="flex justify-end gap-2 px-6 pb-6 pt-2">
+      {children}
+    </div>
+  )
 }
 
 function Snackbar({
@@ -666,7 +893,17 @@ function Snackbar({
         ? "right-4"
         : "left-4"
 
-  return <div className={`fixed z-50 ${positionClasses} ${horizontalClasses}`}>{children}</div>
+    return (
+      <div
+        className={cn(
+          "fixed z-[calc(var(--ue-z-index-toast))] pointer-events-none",
+          positionClasses,
+          horizontalClasses
+        )}
+      >
+        <div className="pointer-events-auto">{children}</div>
+      </div>
+    )
 }
 
 function Tabs({
@@ -687,7 +924,18 @@ function Tabs({
   return (
     <div
       role="tablist"
-      className={`flex gap-1 border-b border-glass-border overflow-x-auto ${className}`}
+      className={cn(
+        "relative flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-[16px] px-1.5 py-1.5",
+        "border border-[color:color-mix(in_srgb,var(--glass-border)_92%,transparent)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.9)_4%)]",
+        "shadow-[0_20px_48px_rgba(15,40,85,0.12)]",
+        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-60",
+        'before:content-[""] before:bg-[radial-gradient(circle_at_0%_0%,rgba(15,79,170,0.12),transparent_60%)]',
+        "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.94)_10%)]",
+        "dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_24px_56px_rgba(5,9,17,0.68)]",
+        "dark:before:bg-[radial-gradient(circle_at_0%_0%,rgba(127,182,230,0.18),transparent_60%)]",
+        className
+      )}
     >
       {React.Children.map(children, (child, index) => {
         if (React.isValidElement(child)) {
@@ -716,15 +964,24 @@ function Tab({
 }) {
   return (
     <button
+      type="button"
       role="tab"
       aria-selected={selected}
       onClick={onClick}
-      className={`
-        px-4 py-2.5 text-sm font-bold transition-colors min-h-[42px]
-        ${selected ? "text-primary border-b-2 border-primary" : "text-page-text hover:text-primary"}
-      `}
+      className={cn(
+        "relative min-h-[44px] whitespace-nowrap rounded-[14px] px-4 py-2 text-sm font-semibold tracking-tight",
+        "transition-all duration-200 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        selected
+          ? "bg-[color:color-mix(in_srgb,var(--nav-link)_18%,white_82%)] text-[color:color-mix(in_srgb,var(--nav-link)_90%,var(--nav-text)_10%)] shadow-[0_12px_28px_rgba(15,79,170,0.22)]"
+          : "text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_10%,white_90%)] hover:text-[color:var(--nav-link)]"
+      )}
     >
-      {label}
+      <span className="flex items-center gap-1.5">
+        {selected && (
+          <span className="h-2 w-2 rounded-full bg-[color:var(--nav-link)] shadow-[0_0_0_3px_rgba(15,79,170,0.2)]" />
+        )}
+        {label}
+      </span>
     </button>
   )
 }
@@ -747,43 +1004,60 @@ function SwitchControl({
 
   return (
     <span
-      className={`
-        relative inline-flex items-center w-[52px] h-7 p-0.5 rounded-full cursor-pointer
-        touch-manipulation select-none
-        ${disabled ? "opacity-60 cursor-not-allowed" : ""}
-      `}
+      className={cn(
+        "relative inline-flex h-[28px] w-[56px] cursor-pointer items-center rounded-full p-[3px]",
+        "touch-manipulation select-none transition-transform duration-200",
+        disabled ? "cursor-not-allowed opacity-60" : "hover:scale-[1.01]"
+      )}
       onMouseEnter={() => !disabled && setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
       {/* Focus ring */}
       <span
-        className={`
-          absolute -inset-0.5 rounded-full pointer-events-none transition-all duration-200
-          ${focus && !disabled ? "shadow-[0_0_0_3px_rgba(var(--primary-rgb),0.35)] opacity-100 scale-100" : "opacity-0 scale-95"}
-        `}
+        className={cn(
+          "pointer-events-none absolute -inset-1 rounded-full transition-all duration-200",
+          focus && !disabled
+            ? "scale-100 opacity-100 shadow-[0_0_0_4px_rgba(15,79,170,0.25)]"
+            : "scale-90 opacity-0"
+        )}
       />
       {/* Track */}
       <span
-        className={`
-          absolute inset-0 rounded-full border transition-all duration-200
-          ${
-            checked
-              ? "bg-primary/20 dark:bg-primary/55 border-primary/60"
-              : hover && !disabled
-                ? "bg-black/10 dark:bg-white/16 border-black/12 dark:border-white/24"
-                : "bg-black/8 dark:bg-white/12 border-black/12 dark:border-white/24"
-          }
-        `}
+        className={cn(
+          "absolute inset-0 rounded-full border transition-all duration-200",
+          checked
+            ? [
+                "border-[color:color-mix(in_srgb,var(--nav-link)_36%,transparent)]",
+                "bg-[color:color-mix(in_srgb,var(--nav-link)_24%,white_76%)]",
+                "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+              ]
+            : hover && !disabled
+              ? [
+                  "border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)]",
+                  "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.12)_5%)]"
+                ]
+              : [
+                  "border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
+                  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,40,85,0.06)_4%)]"
+                ],
+          "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
+          checked
+            ? "dark:border-[rgba(127,182,230,0.55)] dark:bg-[color:color-mix(in_srgb,rgba(127,182,230,0.55),rgba(17,24,32,0.45))]"
+            : hover && !disabled
+              ? "dark:border-[rgba(127,182,230,0.35)] dark:bg-[color:color-mix(in_srgb,rgba(127,182,230,0.15),rgba(10,16,24,0.85))]"
+              : "dark:border-[rgba(148,163,184,0.28)] dark:bg-[color:color-mix(in_srgb,rgba(16,24,38,0.92),rgba(127,182,230,0.12))]"
+        )}
       />
       {/* Thumb */}
       <span
-        className={`
-          relative z-10 w-[22px] h-[22px] rounded-full bg-white
-          shadow-[0_1px_2px_rgba(0,0,0,0.25),0_0_0_1px_rgba(0,0,0,0.06)_inset]
-          dark:shadow-[0_1px_2px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.08)_inset]
-          transition-transform duration-200 ease-[cubic-bezier(0.2,0.9,0.22,1)]
-          ${checked ? "translate-x-6" : "translate-x-0"}
-        `}
+        className={cn(
+          "relative z-10 h-[22px] w-[22px] rounded-full bg-white",
+          "transition-transform duration-200 ease-[cubic-bezier(0.2,0.9,0.22,1)]",
+          "shadow-[0_2px_8px_rgba(15,40,85,0.18),0_0_0_1px_rgba(15,40,85,0.1)_inset]",
+          "dark:bg-[color:color-mix(in_srgb,#0F1623,rgba(255,255,255,0.85))]",
+          "dark:shadow-[0_2px_10px_rgba(5,9,17,0.65),0_0_0_1px_rgba(127,182,230,0.2)_inset]",
+          checked ? "translate-x-[26px]" : "translate-x-0"
+        )}
       />
       <input
         id={inputId}
@@ -813,10 +1087,14 @@ export default function Settings() {
   const { t } = useTranslation(["settings", "common", "notifications", "profile"])
 
   // Theme management using MUI's useColorScheme
-  const { mode, setMode: muiSetMode } = useColorScheme()
+  const { mode, systemMode, setMode: muiSetMode } = useColorScheme()
 
   // Map MUI mode to our ThemeMode type
   const theme: ThemeMode = (mode as ThemeMode) || "system"
+  const resolvedColorScheme = useMemo<"light" | "dark">(
+    () => (theme === "system" ? ((systemMode as "light" | "dark" | undefined) ?? "light") : theme),
+    [systemMode, theme]
+  )
 
   const setMode = useCallback(
     (value: ThemeMode) => {
@@ -1770,40 +2048,62 @@ export default function Settings() {
 
   const [confirmLogout, setConfirmLogout] = useState(false)
 
-  return (
-    <div className="max-w-full w-full min-h-screen mx-0 mt-0 px-0">
-      <div className="glass glass--panel p-4 md:p-8 lg:p-12 rounded-none w-full min-h-screen text-page-text bg-card">
-        <div className="flex flex-row items-center gap-3 mb-3 md:mb-4">
-          <SettingsIcon className="w-6 h-6" />
-          <h1 className="text-3xl font-extrabold text-page-text">{t("settings:page.title")}</h1>
-        </div>
+  const ambientBackground =
+    resolvedColorScheme === "dark"
+      ? "radial-gradient(120% 140% at 12% -10%, rgba(127, 182, 230, 0.18), transparent 62%), radial-gradient(150% 120% at 92% 8%, rgba(10, 18, 34, 0.78), transparent 70%), var(--page-bg)"
+      : "radial-gradient(120% 140% at 12% -10%, rgba(79, 179, 255, 0.22), transparent 64%), radial-gradient(150% 120% at 92% 8%, rgba(15, 79, 170, 0.16), transparent 72%), var(--page-bg)"
 
-        <div className="glass--segmented border border-glass-border rounded-lg mb-6 bg-card">
-          <Tabs
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            <Tab label={t("settings:tabs.general")} />
-            <Tab label={t("settings:tabs.account")} />
-            <Tab label={t("settings:tabs.integrations")} />
-          </Tabs>
-        </div>
+  return (
+    <div
+      className="relative mx-0 mt-0 min-h-screen w-full overflow-hidden px-0"
+      style={{ background: ambientBackground }}
+    >
+      <div className="pointer-events-none absolute -top-40 -left-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(15,79,170,0.22),transparent_70%)] blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-48 right-[-18%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(79,179,255,0.18),transparent_72%)] blur-[140px]" />
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 pb-12 pt-10 sm:px-6 lg:px-10 lg:pt-16">
+        <div
+          className={cn(
+            "glass glass--panel glass--sheen relative w-full overflow-hidden rounded-[28px]",
+            "border border-[color:var(--glass-border)]",
+            "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
+            "shadow-[0_32px_90px_rgba(15,40,85,0.16)]",
+            "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_36px_110px_rgba(5,9,17,0.7)]",
+            "p-4 md:p-8 lg:p-12"
+          )}
+        >
+          <div className="flex flex-row items-center gap-3 pb-4 md:pb-6">
+            <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color:color-mix(in_srgb,var(--nav-link)_14%,white_86%)] text-[color:var(--nav-link)] shadow-[0_10px_22px_rgba(15,79,170,0.16)]">
+              <SettingsIcon className="h-5 w-5" />
+            </div>
+            <h1 className="text-[clamp(1.85rem,1.45rem+1.2vw,2.4rem)] font-black tracking-tight text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]">
+              {t("settings:page.title")}
+            </h1>
+          </div>
+
+          <div className="mb-8">
+            <Tabs
+              value={tab}
+              onChange={(_, v) => setTab(v)}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              <Tab label={t("settings:tabs.general")} />
+              <Tab label={t("settings:tabs.account")} />
+              <Tab label={t("settings:tabs.integrations")} />
+            </Tabs>
+          </div>
 
         {tab === 0 && (
-          <div className="flex flex-col gap-6">
-            <div>
-              <h2 className="text-lg font-semibold text-page-text mb-2.5">
-                {t("settings:appearance.theme.title")}
-              </h2>
+          <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-3">
+              <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
               <RadioGroup row value={theme} onChange={handleThemeChange}>
                 <FormControlLabel
                   value="system"
                   control={<Radio />}
                   label={
-                    <span className="flex flex-row items-center gap-2 text-page-text">
-                      <Monitor className="w-5 h-5" />
+                    <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                      <Monitor className="h-5 w-5" />
                       <span>{t("settings:appearance.theme.options.system")}</span>
                     </span>
                   }
@@ -1812,8 +2112,8 @@ export default function Settings() {
                   value="light"
                   control={<Radio />}
                   label={
-                    <span className="flex flex-row items-center gap-2 text-page-text">
-                      <Sun className="w-5 h-5" />
+                    <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                      <Sun className="h-5 w-5" />
                       <span>{t("settings:appearance.theme.options.light")}</span>
                     </span>
                   }
@@ -1822,8 +2122,8 @@ export default function Settings() {
                   value="dark"
                   control={<Radio />}
                   label={
-                    <span className="flex flex-row items-center gap-2 text-page-text">
-                      <Moon className="w-5 h-5" />
+                    <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                      <Moon className="h-5 w-5" />
                       <span>{t("settings:appearance.theme.options.dark")}</span>
                     </span>
                   }
@@ -1831,10 +2131,8 @@ export default function Settings() {
               </RadioGroup>
             </div>
 
-            <div>
-              <h2 className="text-lg font-semibold text-page-text mb-2.5">
-                {t("settings:language.title")}
-              </h2>
+            <div className="flex flex-col gap-3">
+              <SectionTitle variant="h6">{t("settings:language.title")}</SectionTitle>
               <RadioGroup
                 row
                 value={language}
@@ -1846,19 +2144,23 @@ export default function Settings() {
                     key={code}
                     value={code}
                     control={<Radio />}
-                    label={t(`settings:language.options.${code}`)}
+                    label={
+                      <span className="text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
+                        {t(`settings:language.options.${code}`)}
+                      </span>
+                    }
                   />
                 ))}
               </RadioGroup>
-              <p className="text-sm text-page-text mt-1">{t("settings:language.description")}</p>
+              <SectionSubtitle className="mt-1">
+                {t("settings:language.description")}
+              </SectionSubtitle>
             </div>
 
             <Divider />
 
-            <div>
-              <h2 className="text-lg font-semibold text-page-text mb-2.5">
-                {t("settings:notifications.title")}
-              </h2>
+            <div className="flex flex-col gap-4">
+              <SectionTitle variant="h6">{t("settings:notifications.title")}</SectionTitle>
               {!pushSupported ? (
                 <Alert severity="warning" variant="outlined">
                   {t("settings:notifications.unsupported")}
@@ -1870,10 +2172,10 @@ export default function Settings() {
                       <Alert severity="error" variant="outlined">
                         {t("settings:notifications.blocked.description")}
                       </Alert>
-                      <p className="text-sm text-page-text">
+                      <SectionSubtitle>
                         {t("settings:notifications.blocked.hint")}
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
+                      </SectionSubtitle>
+                      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
@@ -1884,17 +2186,17 @@ export default function Settings() {
                         >
                           {t("settings:notifications.cta.checkPermission")}
                         </Button>
-                        <p className="text-sm text-page-text">
+                        <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
                           {t("settings:notifications.status", { status: permissionText })}
                         </p>
                       </div>
                     </div>
                   ) : notificationPermission === "default" ? (
                     <div className="flex flex-col gap-3">
-                      <p className="text-sm text-page-text">
+                      <SectionSubtitle>
                         {t("settings:notifications.cta.prompt")}
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
+                      </SectionSubtitle>
+                      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
@@ -1907,38 +2209,38 @@ export default function Settings() {
                         >
                           {t("settings:notifications.cta.allow")}
                         </Button>
-                        <p className="text-sm text-page-text">
+                        <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
                           {t("settings:notifications.status", { status: permissionText })}
                         </p>
                       </div>
                     </div>
                   ) : (
                     <>
-                      <label className="min-h-[44px] flex items-center gap-2.5 m-0 cursor-pointer">
+                      <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
                         <SwitchControl
                           checked={notificationsEnabled}
                           onChange={handleNotificationsToggle}
                           disabled={pushBusy || pushInitializing}
                           aria-label={t("settings:notifications.toggles.notifications.aria")}
                         />
-                        <span className="text-page-text font-bold">
+                        <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
                           {t("settings:notifications.toggles.notifications.label")}
                         </span>
                       </label>
 
-                      <label className="min-h-[44px] flex items-center gap-2.5 m-0 cursor-pointer">
+                      <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
                         <SwitchControl
                           checked={dndEnabled}
                           onChange={handleDndToggle}
                           disabled={dndSaving}
                           aria-label={t("settings:notifications.toggles.dnd.aria")}
                         />
-                        <span className="text-page-text font-bold">
+                        <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
                           {t("settings:notifications.toggles.dnd.label")}
                         </span>
                       </label>
 
-                      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <TextField
                           type="time"
                           label={t("settings:dnd.start")}
@@ -2012,19 +2314,20 @@ export default function Settings() {
                   </div>
                 </li>
 
-                <Divider component="li" flexItem className="border-glass-border list-none" />
+                <Divider component="li" flexItem className="list-none" />
 
                 <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
                   <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
-                    <div
-                      data-testid="settings-cover-preview"
-                      className="w-40 h-[72px] rounded-xl border border-glass-border"
-                      style={{
-                        background: coverSrc
-                          ? `url(${coverSrc}) center/cover no-repeat`
-                          : "color-mix(in srgb, var(--page-text) 6%, transparent)",
-                      }}
-                    />
+                      <div
+                        data-testid="settings-cover-preview"
+                        className="h-[72px] w-40 rounded-xl border"
+                        style={{
+                          background: coverSrc
+                            ? `url(${coverSrc}) center/cover no-repeat`
+                            : "color-mix(in srgb, var(--page-text) 6%, transparent)",
+                          borderColor: "color-mix(in srgb, var(--glass-border) 88%, transparent)",
+                        }}
+                      />
                     <SectionTitle variant="subtitle1">
                       {t("settings:media.cover.title")}
                     </SectionTitle>
@@ -2170,7 +2473,7 @@ export default function Settings() {
                     autoComplete="current-password"
                   />
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+                <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center">
                   <Button
                     type="submit"
                     variant="contained"
@@ -2181,7 +2484,9 @@ export default function Settings() {
                   >
                     {t("settings:security.email.updateButton")}
                   </Button>
-                  <p className="text-sm text-page-text/70">{t("settings:security.email.helper")}</p>
+                  <SectionSubtitle className="text-sm">
+                    {t("settings:security.email.helper")}
+                  </SectionSubtitle>
                 </div>
               </form>
 
@@ -2269,35 +2574,41 @@ export default function Settings() {
                 <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center sm:justify-between mt-3">
-                <Button
-                  variant="outlined"
-                  color="error"
-                  disabled={revokeAllSessionsMutation.isPending}
-                  onClick={() => void handleRevokeAllSessions()}
-                  startIcon={
-                    revokeAllSessionsMutation.isPending ? (
-                      <CircularProgress size={18} color="inherit" />
-                    ) : undefined
-                  }
-                >
-                  {t("settings:sessions.revokeAll")}
-                </Button>
-                <p className="text-sm text-page-text/70">{t("settings:sessions.revokeAllHint")}</p>
-              </div>
-
-              {sessionsFetching ? (
-                <div className="flex flex-row gap-2.5 items-center mt-3">
-                  <CircularProgress size={18} />
-                  <p className="text-sm text-page-text">{t("settings:sessions.loading")}</p>
+                <div className="mt-3 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    disabled={revokeAllSessionsMutation.isPending}
+                    onClick={() => void handleRevokeAllSessions()}
+                    startIcon={
+                      revokeAllSessionsMutation.isPending ? (
+                        <CircularProgress size={18} color="inherit" />
+                      ) : undefined
+                    }
+                  >
+                    {t("settings:sessions.revokeAll")}
+                  </Button>
+                  <SectionSubtitle className="text-sm">
+                    {t("settings:sessions.revokeAllHint")}
+                  </SectionSubtitle>
                 </div>
-              ) : sessionsErrorMessage ? (
-                <Alert severity="error" variant="outlined" className="mt-3">
-                  {sessionsErrorMessage}
-                </Alert>
-              ) : sessions.length === 0 ? (
-                <p className="text-sm text-page-text mt-3">{t("settings:sessions.empty")}</p>
-              ) : (
+
+                {sessionsFetching ? (
+                  <div className="mt-3 flex flex-row items-center gap-2.5">
+                    <CircularProgress size={18} />
+                    <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
+                      {t("settings:sessions.loading")}
+                    </p>
+                  </div>
+                ) : sessionsErrorMessage ? (
+                  <Alert severity="error" variant="outlined" className="mt-3">
+                    {sessionsErrorMessage}
+                  </Alert>
+                ) : sessions.length === 0 ? (
+                  <SectionSubtitle className="mt-3 text-sm">
+                    {t("settings:sessions.empty")}
+                  </SectionSubtitle>
+                ) : (
                 <div className="flex flex-col gap-3 mt-3">
                   {sortedSessions.map((session) => {
                     const isRevoked = Boolean(session.revoked_at)
@@ -2324,32 +2635,34 @@ export default function Settings() {
                       <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
                         <div className="min-w-0">
                           <p
-                            className={`text-sm break-words ${
-                              isRevoked ? "text-page-text/65" : "text-page-text"
-                            } ${session.is_current ? "font-semibold" : "font-medium"}`}
+                            className={cn(
+                              "text-sm break-words transition-colors",
+                              session.is_current ? "font-semibold" : "font-medium",
+                              isRevoked
+                                ? "text-[color:color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
+                                : "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
+                            )}
                           >
                             {session.user_agent || t("settings:sessions.unknownDevice")}
                           </p>
                           <p
-                            className={`text-xs ${
-                              isRevoked ? "text-page-text/60 italic" : "text-page-text/70"
-                            }`}
+                            className={cn(
+                              "text-xs transition-colors",
+                              isRevoked
+                                ? "italic text-[color:color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
+                                : "text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
+                            )}
                           >
                             {details}
                           </p>
                         </div>
-                        <div className="flex flex-row gap-2 items-center justify-start sm:justify-end flex-wrap gap-y-1.5 shrink-0">
+                        <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
                           <Chip
                             size="small"
                             label={statusLabel}
-                            className={`font-semibold ${
-                              session.is_current
-                                ? "text-link-color bg-primary/[0.12] border-primary/[0.32]"
-                                : isRevoked
-                                  ? "text-page-text/60 bg-transparent border-page-text/[0.16]"
-                                  : "text-page-text/[0.72] bg-page-text/[0.06] border-page-text/[0.12]"
-                            }`}
                             variant="outlined"
+                            color={session.is_current ? "primary" : "default"}
+                            className={cn("font-semibold", isRevoked && "opacity-80")}
                           />
                           {!session.is_current && !isRevoked && (
                             <Button
@@ -2391,79 +2704,85 @@ export default function Settings() {
                   </SectionSubtitle>
                 </div>
 
-                {totpDraft ? (
-                  <div className="flex flex-col gap-4">
-                    <h4 className="text-sm font-semibold">
-                      {t("settings:security.totp.pendingTitle")}
-                    </h4>
-                    <p className="text-sm text-page-text/70">
-                      {t("settings:security.totp.pendingDescription")}
-                    </p>
-                    <TotpQrDisplay
-                      otpauthUrl={totpDraft.otpauth_url}
-                      secret={totpDraft.secret}
-                      label={totpDraft.enrollment.label}
-                    />
-                    <OtpEntry
-                      availableMethods={["totp"]}
-                      loading={totpBusy}
-                      error={totpError}
-                      onSubmit={handleConfirmTotp}
-                    />
-                    <Button
-                      variant="text"
-                      color="inherit"
-                      disabled={totpBusy}
-                      onClick={handleCancelTotp}
-                    >
-                      {t("settings:security.totp.cancel")}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {activeTotp.length ? (
-                      <div className="flex flex-col gap-2.5">
-                        {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
-                          <div
-                            key={enrollment.id}
-                            className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between border border-glass-border rounded-lg p-3"
-                          >
-                            <div className="flex flex-col gap-1 min-w-0">
-                              <p className="font-semibold text-page-text">
-                                {enrollment.label ||
-                                  t("settings:security.totp.unnamed", { index: index + 1 })}
-                              </p>
-                              <p className="text-sm text-page-text/70">
-                                {t("settings:security.totp.added", {
-                                  value: formatDateTime(enrollment.created_at) ?? "—",
-                                })}
-                              </p>
-                            </div>
-                            <Button
-                              variant="outlined"
-                              color="error"
-                              size="small"
-                              onClick={() => handleDisableTotp(enrollment.id)}
+                  {totpDraft ? (
+                    <div className="flex flex-col gap-4">
+                      <h4 className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_86%,var(--nav-link)_14%)]">
+                        {t("settings:security.totp.pendingTitle")}
+                      </h4>
+                      <SectionSubtitle className="text-sm">
+                        {t("settings:security.totp.pendingDescription")}
+                      </SectionSubtitle>
+                      <TotpQrDisplay
+                        otpauthUrl={totpDraft.otpauth_url}
+                        secret={totpDraft.secret}
+                        label={totpDraft.enrollment.label}
+                      />
+                      <OtpEntry
+                        availableMethods={["totp"]}
+                        loading={totpBusy}
+                        error={totpError}
+                        onSubmit={handleConfirmTotp}
+                      />
+                      <Button
+                        variant="text"
+                        color="inherit"
+                        disabled={totpBusy}
+                        onClick={handleCancelTotp}
+                      >
+                        {t("settings:security.totp.cancel")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {activeTotp.length ? (
+                        <div className="flex flex-col gap-2.5">
+                          {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
+                            <div
+                              key={enrollment.id}
+                              className={cn(
+                                "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                                "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
+                                "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.05)_4%)]",
+                                "dark:border-[rgba(148,163,184,0.24)]",
+                                "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
+                              )}
                             >
-                              {t("settings:security.totp.remove")}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-page-text/70">
-                        {t("settings:security.totp.empty")}
-                      </p>
-                    )}
-                    <Button
-                      variant="contained"
-                      onClick={() => void handleStartTotp()}
-                      disabled={totpBusy}
-                    >
-                      {t("settings:security.totp.add")}
-                    </Button>
-                  </div>
-                )}
+                              <div className="flex min-w-0 flex-col gap-1">
+                                <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+                                  {enrollment.label ||
+                                    t("settings:security.totp.unnamed", { index: index + 1 })}
+                                </p>
+                                <SectionSubtitle className="text-xs">
+                                  {t("settings:security.totp.added", {
+                                    value: formatDateTime(enrollment.created_at) ?? "—",
+                                  })}
+                                </SectionSubtitle>
+                              </div>
+                              <Button
+                                variant="outlined"
+                                color="error"
+                                size="small"
+                                onClick={() => handleDisableTotp(enrollment.id)}
+                              >
+                                {t("settings:security.totp.remove")}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <SectionSubtitle className="text-sm">
+                          {t("settings:security.totp.empty")}
+                        </SectionSubtitle>
+                      )}
+                      <Button
+                        variant="contained"
+                        onClick={() => void handleStartTotp()}
+                        disabled={totpBusy}
+                      >
+                        {t("settings:security.totp.add")}
+                      </Button>
+                    </div>
+                  )}
 
                 <Divider className="my-2" />
 
@@ -2496,49 +2815,55 @@ export default function Settings() {
                   </Button>
                 </div>
 
-                {activeWebAuthn.length ? (
-                  <div className="flex flex-col gap-2.5">
-                    {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
-                      const added = formatDateTime(credential.created_at)
-                      const lastUsed = formatDateTime(credential.last_used_at ?? null)
-                      return (
-                        <div
-                          key={credential.credential_id}
-                          className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between border border-glass-border rounded-lg p-3"
-                        >
-                          <div className="flex flex-col gap-1 min-w-0">
-                            <p className="font-semibold text-page-text">
-                              {credential.device_name ||
-                                t("settings:security.webauthn.unnamed", { index: index + 1 })}
-                            </p>
-                            <p className="text-sm text-page-text/70">
-                              {added
-                                ? t("settings:security.webauthn.added", { value: added })
-                                : null}
-                            </p>
-                            {lastUsed ? (
-                              <p className="text-sm text-page-text/60">
-                                {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
-                              </p>
-                            ) : null}
-                          </div>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            size="small"
-                            onClick={() => handleRemoveWebAuthn(credential.credential_id)}
+                  {activeWebAuthn.length ? (
+                    <div className="flex flex-col gap-2.5">
+                      {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
+                        const added = formatDateTime(credential.created_at)
+                        const lastUsed = formatDateTime(credential.last_used_at ?? null)
+                        return (
+                          <div
+                            key={credential.credential_id}
+                            className={cn(
+                              "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                              "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
+                              "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.04)_4%)]",
+                              "dark:border-[rgba(148,163,184,0.24)]",
+                              "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
+                            )}
                           >
-                            {t("settings:security.webauthn.remove")}
-                          </Button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-page-text/70">
-                    {t("settings:security.webauthn.empty")}
-                  </p>
-                )}
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+                                {credential.device_name ||
+                                  t("settings:security.webauthn.unnamed", { index: index + 1 })}
+                              </p>
+                              {added ? (
+                                <SectionSubtitle className="text-xs">
+                                  {t("settings:security.webauthn.added", { value: added })}
+                                </SectionSubtitle>
+                              ) : null}
+                              {lastUsed ? (
+                                <SectionSubtitle className="text-xs">
+                                  {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
+                                </SectionSubtitle>
+                              ) : null}
+                            </div>
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              onClick={() => handleRemoveWebAuthn(credential.credential_id)}
+                            >
+                              {t("settings:security.webauthn.remove")}
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <SectionSubtitle className="text-sm">
+                      {t("settings:security.webauthn.empty")}
+                    </SectionSubtitle>
+                  )}
 
                 <Divider className="my-2" />
 
@@ -2551,7 +2876,7 @@ export default function Settings() {
                   </SectionSubtitle>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                   <Button
                     variant="outlined"
                     onClick={handleGenerateRecoveryCodes}
@@ -2561,7 +2886,9 @@ export default function Settings() {
                       ? t("settings:security.recovery.generating")
                       : t("settings:security.recovery.generate")}
                   </Button>
-                  <p className="text-sm text-page-text/70">{recoveryStatusText}</p>
+                    <SectionSubtitle className="text-sm">
+                      {recoveryStatusText}
+                    </SectionSubtitle>
                 </div>
 
                 {generatedRecoveryCodes.length ? (
@@ -2575,56 +2902,55 @@ export default function Settings() {
           </div>
         )}
 
-        {tab === 2 && (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-row items-center gap-2">
-                <img
-                  src={spotifyLogo}
-                  alt={t("settings:integrations.spotify.alt")}
-                  width={22}
-                  height={22}
-                  style={{ display: "block", borderRadius: "50%" }}
-                  loading="lazy"
-                  decoding="async"
-                />
-                <h3 className="text-lg font-semibold text-page-text">
-                  {t("settings:integrations.spotify.title")}
-                </h3>
-              </div>
-              <div className="flex flex-row items-center gap-2.5 flex-wrap">
-                <Chip
-                  size="small"
-                  className="glass--chip"
-                  label={
-                    spotifyConnected
-                      ? t("settings:integrations.spotify.status.connected")
-                      : t("settings:integrations.spotify.status.disconnected")
-                  }
-                  color={spotifyConnected ? "success" : "default"}
-                  variant="outlined"
-                />
-                {spotifyConnected && !!spotifyName && (
-                  <Chip size="small" variant="outlined" label={spotifyName} />
+          {tab === 2 && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={spotifyLogo}
+                    alt={t("settings:integrations.spotify.alt")}
+                    width={22}
+                    height={22}
+                    style={{ display: "block", borderRadius: "50%" }}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <SectionTitle variant="subtitle1" className="text-[1.15rem]">
+                    {t("settings:integrations.spotify.title")}
+                  </SectionTitle>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <Chip
+                    size="small"
+                    label={
+                      spotifyConnected
+                        ? t("settings:integrations.spotify.status.connected")
+                        : t("settings:integrations.spotify.status.disconnected")
+                    }
+                    color={spotifyConnected ? "success" : "default"}
+                    variant="outlined"
+                  />
+                  {spotifyConnected && !!spotifyName && (
+                    <Chip size="small" variant="outlined" label={spotifyName} />
+                  )}
+                </div>
+                {!spotifyConnected ? (
+                  <Button variant="contained" onClick={connectSpotify} className="self-start">
+                    {t("settings:integrations.spotify.connect")}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={disconnectSpotify}
+                    className="self-start"
+                  >
+                    {t("settings:integrations.spotify.disconnect")}
+                  </Button>
                 )}
               </div>
-              {!spotifyConnected ? (
-                <Button variant="contained" onClick={connectSpotify} className="self-start">
-                  {t("settings:integrations.spotify.connect")}
-                </Button>
-              ) : (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={disconnectSpotify}
-                  className="self-start"
-                >
-                  {t("settings:integrations.spotify.disconnect")}
-                </Button>
-              )}
             </div>
-          </div>
-        )}
+          )}
       </div>
 
       <Dialog open={confirmLogout} onClose={() => setConfirmLogout(false)} maxWidth="xs" fullWidth>
