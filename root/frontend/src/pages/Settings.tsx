@@ -2040,15 +2040,18 @@ export default function Settings() {
     >
       <div className="pointer-events-none absolute -top-40 -left-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(15,79,170,0.22),transparent_70%)] blur-[120px]" />
       <div className="pointer-events-none absolute -bottom-48 right-[-18%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(79,179,255,0.18),transparent_72%)] blur-[140px]" />
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 pb-12 pt-10 sm:px-6 lg:px-10 lg:pt-16">
+      <div className="relative z-10 flex min-h-screen w-full flex-col gap-8 px-4 pb-12 pt-10 sm:px-6 md:px-8 lg:px-12 lg:pb-16 lg:pt-16 xl:px-16 2xl:px-20">
         <div
           className={cn(
             "glass glass--panel glass--sheen relative w-full overflow-hidden rounded-[28px]",
+            "lg:rounded-[32px]",
             "border border-[color:var(--glass-border)]",
             "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
             "shadow-[0_32px_90px_rgba(15,40,85,0.16)]",
             "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_36px_110px_rgba(5,9,17,0.7)]",
-            "p-4 md:p-8 lg:p-12"
+            "w-full max-w-full sm:max-w-[720px] md:max-w-[820px] lg:max-w-[960px] xl:max-w-[1120px] 2xl:max-w-[1240px]",
+            "lg:ml-0 lg:mr-auto",
+            "p-4 md:p-8 lg:p-12 xl:p-14 2xl:p-16"
           )}
         >
           <div className="flex flex-row items-center gap-3 pb-4 md:pb-6">
@@ -2074,7 +2077,7 @@ export default function Settings() {
           </div>
 
           {tab === 0 && (
-            <div className="flex flex-col gap-8">
+            <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
               <div className="flex flex-col gap-3">
                 <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
                 <RadioGroup row value={theme} onChange={handleThemeChange}>
@@ -2247,7 +2250,7 @@ export default function Settings() {
           )}
 
           {tab === 1 && (
-            <div className="flex flex-col gap-5 w-full max-w-full sm:max-w-[640px] md:max-w-[760px] lg:max-w-[880px]">
+            <div className="flex w-full flex-col gap-5 sm:gap-6 xl:max-w-[min(100%,1080px)] 2xl:max-w-[min(100%,1240px)]">
               <SectionCard component="section">
                 <ul className="flex flex-col gap-5 w-full list-none p-0 m-0">
                   <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
@@ -2391,6 +2394,7 @@ export default function Settings() {
                   {t("settings:account.logout.button")}
                 </Button>
               </SectionCard>
+
               <SectionCard component="section">
                 <div className="flex flex-col gap-2">
                   <SectionTitle variant="subtitle1">
@@ -2883,7 +2887,7 @@ export default function Settings() {
           )}
 
           {tab === 2 && (
-            <div className="flex flex-col gap-6">
+            <div className="flex w-full flex-col gap-6 sm:gap-7 xl:max-w-[min(100%,820px)]">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <img
