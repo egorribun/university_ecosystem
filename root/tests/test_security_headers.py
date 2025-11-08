@@ -16,6 +16,8 @@ async def test_security_headers_production_mode(monkeypatch):
     monkeypatch.setenv("ENABLE_COOP", "true")
     monkeypatch.setenv("ENABLE_COEP", "true")
     monkeypatch.setenv("COEP_VALUE", "require-corp")
+    monkeypatch.setenv("ENABLE_CORP", "true")
+    monkeypatch.setenv("CORP_VALUE", "same-site")
     monkeypatch.setenv("SECURITY_CSP_REPORT_ONLY", "false")
     settings = Settings()
     assert settings.strict_security_headers_enabled
@@ -54,6 +56,7 @@ async def test_security_headers_production_mode(monkeypatch):
     )
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
+    assert headers.get("Cross-Origin-Resource-Policy") == "same-site"
     csp = headers.get("Content-Security-Policy", "")
     assert "default-src 'self'" in csp
     assert "frame-ancestors 'self'" in csp
@@ -117,6 +120,7 @@ async def test_security_headers_development_report_only(monkeypatch):
     assert "ws://localhost:5173" in report_only
     assert "Cross-Origin-Opener-Policy" not in headers
     assert "Cross-Origin-Embedder-Policy" not in headers
+    assert "Cross-Origin-Resource-Policy" not in headers
 
 
 @pytest.mark.anyio
@@ -126,6 +130,8 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
     monkeypatch.setenv("ENABLE_COEP", "true")
     monkeypatch.setenv("COEP_VALUE", "credentialless")
+    monkeypatch.setenv("ENABLE_CORP", "true")
+    monkeypatch.setenv("CORP_VALUE", "cross-origin")
     settings = Settings()
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
@@ -151,6 +157,7 @@ async def test_security_headers_credentialless_coep(monkeypatch):
 
     headers = response.headers
     assert headers.get("Cross-Origin-Embedder-Policy") == "credentialless"
+    assert headers.get("Cross-Origin-Resource-Policy") == "cross-origin"
 
 
 def _reset_security_env(monkeypatch):
@@ -162,6 +169,8 @@ def _reset_security_env(monkeypatch):
         "ENABLE_COOP",
         "ENABLE_COEP",
         "COEP_VALUE",
+        "ENABLE_CORP",
+        "CORP_VALUE",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("FRONTEND_ORIGIN", "")
