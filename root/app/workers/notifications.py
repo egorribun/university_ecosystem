@@ -58,19 +58,20 @@ class NotificationsScheduler:
                     raise
                 except Exception:
                     consecutive_failures += 1
-                    sleep_for = min(
+                    backoff_seconds = min(
                         self.poll_seconds * (2 ** min(consecutive_failures, 5)),
                         self.max_backoff_seconds,
                     )
+                    sleep_for = backoff_seconds
                     if self.metrics is not None:
                         self.metrics.record_failure()
-                    logger.exception(
-                        "Failed to generate schedule reminders (attempt %s)",
-                        consecutive_failures,
-                    )
-                    logging.getLogger().error(
-                        "Failed to generate schedule reminders (attempt %s)",
-                        consecutive_failures,
+                    logger.error(
+                        "Failed to generate schedule reminders",
+                        exc_info=True,
+                        extra={
+                            "attempt": consecutive_failures,
+                            "backoff_seconds": backoff_seconds,
+                        },
                     )
                 else:
                     consecutive_failures = 0

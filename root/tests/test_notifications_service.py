@@ -419,6 +419,8 @@ async def test_generate_schedule_reminders_skips_inactive_users(
 
 @pytest.mark.anyio
 async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, caplog):
+    from app.workers import notifications as worker_module
+
     class _DummySession:
         async def __aenter__(self):
             return object()
@@ -432,22 +434,45 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
     async def _cancel_sleep(_seconds: float):
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr(notifications_module, "async_session", lambda: _DummySession())
-    monkeypatch.setattr(
-        notifications_module,
-        "generate_schedule_reminders",
-        _failing_generate,
+    class _DummyMetrics:
+        def __init__(self) -> None:
+            self.failures = 0
+
+        def record_failure(self) -> None:
+            self.failures += 1
+
+        def record_success(self, _created: int) -> None:
+            raise AssertionError("success should not be recorded")
+
+    metrics = _DummyMetrics()
+
+    monkeypatch.setattr(worker_module, "async_session", lambda: _DummySession())
+    monkeypatch.setattr(worker_module, "generate_schedule_reminders", _failing_generate)
+    monkeypatch.setattr(worker_module.asyncio, "sleep", _cancel_sleep)
+
+    scheduler = worker_module.NotificationsScheduler(
+        poll_seconds=3,
+        window_minutes=1,
+        max_backoff_seconds=30,
+        metrics=metrics,
     )
-    monkeypatch.setattr(notifications_module.asyncio, "sleep", _cancel_sleep)
 
-    caplog.set_level(logging.ERROR, logger=notifications_module.logger.name)
+    caplog.set_level(logging.ERROR, logger=worker_module.logger.name)
 
-    await notifications_module._scheduler_loop(poll_seconds=1, window_minutes=1)
+    with pytest.raises(asyncio.CancelledError):
+        await scheduler.run_forever()
 
-    assert any(
-        "Failed to generate schedule reminders" in record.getMessage()
+    failure_logs = [
+        record
         for record in caplog.records
-    )
+        if "Failed to generate schedule reminders" in record.getMessage()
+    ]
+
+    assert len(failure_logs) == 1
+    record = failure_logs[0]
+    assert getattr(record, "attempt", None) == 1
+    assert getattr(record, "backoff_seconds", None) == 6
+    assert metrics.failures == 1
 
 
 @pytest.mark.anyio
