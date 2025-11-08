@@ -211,7 +211,7 @@ function SessionItem({
       {...props}
     >
       {children}
-    </Component>
+    </div>
   )
 }
 
@@ -2993,5 +2993,6 @@ export default function Settings() {
         </Snackbar>
       </div>
     </div>
-    )
+  </div>
+)
 }
