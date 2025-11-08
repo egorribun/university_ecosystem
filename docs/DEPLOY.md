@@ -41,6 +41,11 @@ cp .env.production .env.local      # при необходимости
 VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
+- Локализованные PWA-манифесты собираются из
+  `public/manifest.source.json`. Выполните `npm run generate:manifests`
+  перед сборкой или запустите `npm run manifests:check`, чтобы убедиться, что
+  сгенерированные файлы в `public/` не устарели.
+
 ### Spotify токены
 
 - Backend шифрует Spotify access/refresh токены с помощью Fernet. Перед включением интеграции задайте `SPOTIFY_TOKEN_SECRET` — это base64-строка из `Fernet.generate_key()`.

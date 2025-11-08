@@ -1,12 +1,15 @@
 {
   "id": "/?source=pwa",
+  "lang": "en",
   "name": "GUU Ecosystem — everything in one place",
   "short_name": "GUU Ecosystem",
   "description": "Profile, schedule, news, and the campus map stay available even when you're offline.",
-  "lang": "en",
   "dir": "ltr",
   "display": "standalone",
-  "display_override": ["standalone", "browser"],
+  "display_override": [
+    "standalone",
+    "browser"
+  ],
   "start_url": "/?source=pwa",
   "scope": "/",
   "orientation": "portrait-primary",
@@ -15,11 +18,12 @@
   "launch_handler": {
     "client_mode": "navigate-existing"
   },
-  "categories": ["education", "productivity"],
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "shortcuts": [
     {
-      "name": "Schedule",
-      "description": "Open today's class schedule",
       "url": "/schedule",
       "icons": [
         {
@@ -27,11 +31,11 @@
           "sizes": "192x192",
           "type": "image/png"
         }
-      ]
+      ],
+      "name": "Schedule",
+      "description": "Open today's class schedule"
     },
     {
-      "name": "News",
-      "description": "Read the latest campus updates",
       "url": "/news",
       "icons": [
         {
@@ -39,11 +43,11 @@
           "sizes": "192x192",
           "type": "image/png"
         }
-      ]
+      ],
+      "name": "News",
+      "description": "Read the latest campus updates"
     },
     {
-      "name": "Campus map",
-      "description": "Find buildings and routes on the GUU map",
       "url": "/map",
       "icons": [
         {
@@ -51,7 +55,9 @@
           "sizes": "192x192",
           "type": "image/png"
         }
-      ]
+      ],
+      "name": "Campus map",
+      "description": "Find buildings and routes on the GUU map"
     }
   ],
   "icons": [
