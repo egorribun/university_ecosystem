@@ -3,7 +3,7 @@ import { Box, Button, Chip, Stack, Typography } from "@mui/material"
 import { alpha, useTheme } from "@mui/material/styles"
 import { useTranslation } from "react-i18next"
 
-type MapFallbackReason = "load-error" | "preferences"
+type MapFallbackReason = "load-error" | "preferences" | "config"
 
 interface MapFallbackProps {
   reason: MapFallbackReason
@@ -99,6 +99,9 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
     [activeIndex, focusIndex, points.length]
   )
 
+  const descriptionKey =
+    reason === "load-error" ? "load" : reason === "config" ? "config" : "preferences"
+
   return (
     <Box
       role="region"
@@ -122,7 +125,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
             {t("map.fallback.title")}
           </Typography>
           <Typography component="p" variant="body1">
-            {t(`map.fallback.description.${reason === "load-error" ? "load" : "preferences"}`)}
+            {t(`map.fallback.description.${descriptionKey}`)}
           </Typography>
           <Typography
             id={instructionsId}

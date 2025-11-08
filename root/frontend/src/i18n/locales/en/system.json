@@ -41,7 +41,8 @@
       "title": "Campus overview",
       "description": {
         "preferences": "Interactive maps are disabled to respect your privacy or reduced motion settings.",
-        "load": "We couldn't load the interactive map. Browse the campus highlights below while you're offline."
+        "load": "We couldn't load the interactive map. Browse the campus highlights below while you're offline.",
+        "config": "The interactive map is unavailable because the campus map ID isn't configured."
       },
       "instructions": "Use Tab or the arrow keys to move between campus points and hear details.",
       "offlineNotice": "The interactive map requires third-party embeds and a live connection, but this list stays available offline.",
