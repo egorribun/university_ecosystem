@@ -142,9 +142,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             except KeyError:
                 pass
         if self._settings.corp_enabled:
-            headers["Cross-Origin-Resource-Policy"] = (
-                self._settings.corp_header_value
-            )
+            headers["Cross-Origin-Resource-Policy"] = self._settings.corp_header_value
         else:
             try:
                 del headers["Cross-Origin-Resource-Policy"]
