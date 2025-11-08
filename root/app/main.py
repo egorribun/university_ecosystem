@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import OperationalError
 
 from app.api.events import router as events_router
 from app.api.news import router as news_router
@@ -18,13 +21,14 @@ from app.api.stories import router as stories_router
 from app.api.users import router as users_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
-from app.core.database import Base, engine, wait_db
+from app.core.database import Base, async_session, engine, wait_db
 from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability, shutdown_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.schema_upgrade import ensure_webauthn_attestation_columns
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.deps.cache import shutdown_cache
+from app.deps.cache import get_cache, shutdown_cache
+from app.models.models import NotificationQueueJob
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
@@ -34,6 +38,7 @@ from app.services.email_change_cleanup import (
     cleanup_stale_email_change_tokens,
     start_email_change_cleanup_scheduler,
 )
+from app.services.file_scanner import scan_for_malware
 from app.services.notification_queue import (
     DeadLetterCleanupConfig,
     start_dead_letter_cleanup_scheduler,
@@ -61,6 +66,7 @@ from app.services.story_cleanup import (
     cleanup_expired_stories,
     start_story_cleanup_scheduler,
 )
+from app.utils.files import _get_storage_backend
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -266,9 +272,89 @@ async def root():
 
 @app.get("/healthz")
 async def healthz():
-    async with engine.connect() as conn:
-        await conn.execute(text("SELECT 1"))
-    return {"status": "ok"}
+    statuses: dict[str, str] = {}
+
+    db_status = "ok"
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        db_status = "error"
+    statuses["db"] = db_status
+
+    cache_status = "disabled"
+    try:
+        cache_backend = get_cache()
+        if getattr(cache_backend, "enabled", False):
+            probe_key = f"healthz:{uuid.uuid4().hex}"
+            try:
+                await cache_backend.set(probe_key, {"status": "ok"}, ttl=5)
+                cache_status = "ok"
+            except Exception:
+                cache_status = "error"
+            finally:
+                try:
+                    await cache_backend.invalidate(probe_key)
+                except Exception:
+                    cache_status = "error"
+        else:
+            cache_status = "disabled"
+    except Exception:
+        cache_status = "error"
+    statuses["cache"] = cache_status
+
+    storage_status = "ok"
+    try:
+        backend = _get_storage_backend()
+        probe_name = f"healthz/{uuid.uuid4().hex}.txt"
+        try:
+            probe_url = await backend.save_file(
+                probe_name, b"", content_type="text/plain"
+            )
+        except Exception:
+            storage_status = "error"
+        else:
+            try:
+                await backend.delete_file(probe_url)
+            except Exception:
+                storage_status = "error"
+    except Exception:
+        storage_status = "error"
+    statuses["storage"] = storage_status
+
+    queue_status = "ok"
+    if getattr(settings, "notifications_queue_in_memory_only", False):
+        queue_status = "ok"
+    else:
+        try:
+            async with async_session() as session:
+                await session.execute(
+                    select(func.count()).select_from(NotificationQueueJob)
+                )
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "no such table" not in message:
+                queue_status = "error"
+        except Exception:
+            queue_status = "error"
+    statuses["notification_queue"] = queue_status
+
+    if getattr(settings, "event_file_scanner_enabled", False):
+        scanner_status = "ok"
+        try:
+            await scan_for_malware(b"healthz-probe")
+        except Exception:
+            scanner_status = "error"
+        statuses["file_scanner"] = scanner_status
+    else:
+        statuses["file_scanner"] = "disabled"
+
+    overall_ok = all(value != "error" for value in statuses.values())
+    http_status = (
+        status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
+    )
+    payload = {"status": "ok" if overall_ok else "error", **statuses}
+    return JSONResponse(status_code=http_status, content=payload)
 
 
 @app.get("/ready")
