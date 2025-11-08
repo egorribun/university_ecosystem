@@ -117,60 +117,69 @@ beforeEach(() => {
 
 describe("Settings radio buttons", () => {
   it("should change theme when radio button is clicked", async () => {
-    renderSettings()
+    const { container } = renderSettings()
 
-    // Find theme radio buttons
-    const systemRadio = screen.getByLabelText(
-      new RegExp(tSettings("appearance.theme.options.system"), "i")
+    // Find theme radio buttons by value since labels have complex structure with icons
+    const allRadios = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type="radio"]')
     )
-    const lightRadio = screen.getByLabelText(
-      new RegExp(tSettings("appearance.theme.options.light"), "i")
-    )
-    const darkRadio = screen.getByLabelText(
-      new RegExp(tSettings("appearance.theme.options.dark"), "i")
-    )
+    const systemRadio = allRadios.find((r) => r.value === "system")!
+    const lightRadio = allRadios.find((r) => r.value === "light")!
+    const darkRadio = allRadios.find((r) => r.value === "dark")!
+
+    expect(systemRadio).toBeTruthy()
+    expect(lightRadio).toBeTruthy()
+    expect(darkRadio).toBeTruthy()
 
     // System should be selected by default
-    expect(systemRadio).toBeChecked()
-    expect(lightRadio).not.toBeChecked()
-    expect(darkRadio).not.toBeChecked()
+    expect(systemRadio.checked).toBe(true)
+    expect(lightRadio.checked).toBe(false)
+    expect(darkRadio.checked).toBe(false)
 
     // Click light theme
     fireEvent.click(lightRadio)
-    await waitFor(() => expect(lightRadio).toBeChecked())
-    expect(systemRadio).not.toBeChecked()
-    expect(darkRadio).not.toBeChecked()
+    await waitFor(() => expect(lightRadio.checked).toBe(true))
+    expect(systemRadio.checked).toBe(false)
+    expect(darkRadio.checked).toBe(false)
+
+    // Verify localStorage was updated
+    expect(localStorage.getItem("theme-mode")).toBe("light")
 
     // Click dark theme
     fireEvent.click(darkRadio)
-    await waitFor(() => expect(darkRadio).toBeChecked())
-    expect(systemRadio).not.toBeChecked()
-    expect(lightRadio).not.toBeChecked()
+    await waitFor(() => expect(darkRadio.checked).toBe(true))
+    expect(systemRadio.checked).toBe(false)
+    expect(lightRadio.checked).toBe(false)
+
+    // Verify localStorage was updated
+    expect(localStorage.getItem("theme-mode")).toBe("dark")
   })
 
   it("should change language when radio button is clicked", async () => {
-    renderSettings()
+    const { container } = renderSettings()
 
-    // Find language radio buttons - ru should be selected by default
-    const ruRadio = screen.getByLabelText(
-      new RegExp(tSettings("language.options.ru"), "i")
-    ) as HTMLInputElement
-    const enRadio = screen.getByLabelText(
-      new RegExp(tSettings("language.options.en"), "i")
-    ) as HTMLInputElement
+    // Find language radio buttons by value
+    const allRadios = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type="radio"]')
+    )
+    const ruRadio = allRadios.find((r) => r.value === "ru")!
+    const enRadio = allRadios.find((r) => r.value === "en")!
+
+    expect(ruRadio).toBeTruthy()
+    expect(enRadio).toBeTruthy()
 
     // Check initial state (should be ru)
-    expect(ruRadio).toBeChecked()
-    expect(enRadio).not.toBeChecked()
+    expect(ruRadio.checked).toBe(true)
+    expect(enRadio.checked).toBe(false)
 
     // Click English
     fireEvent.click(enRadio)
-    await waitFor(() => expect(enRadio).toBeChecked())
-    expect(ruRadio).not.toBeChecked()
+    await waitFor(() => expect(enRadio.checked).toBe(true))
+    expect(ruRadio.checked).toBe(false)
 
     // Click Russian
     fireEvent.click(ruRadio)
-    await waitFor(() => expect(ruRadio).toBeChecked())
-    expect(enRadio).not.toBeChecked()
+    await waitFor(() => expect(ruRadio.checked).toBe(true))
+    expect(enRadio.checked).toBe(false)
   })
 })
