@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react"
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  ChangeEvent,
+  FocusEvent,
+} from "react"
 import { isAxiosError } from "axios"
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
 import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
@@ -34,37 +42,8 @@ import type {
   TotpEnrollmentStartResponse,
 } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
-import {
-  Box,
-  Paper,
-  Tabs,
-  Tab,
-  Stack,
-  Typography,
-  Button,
-  Chip,
-  Snackbar,
-  Alert,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Divider,
-  Avatar,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  CircularProgress,
-} from "@mui/material"
 import dayjs from "dayjs"
-import { useColorScheme, styled, alpha } from "@mui/material/styles"
-import type { PaperProps } from "@mui/material/Paper"
-import type { TypographyProps } from "@mui/material/Typography"
-import SettingsIcon from "@mui/icons-material/Settings"
-import DarkModeIcon from "@mui/icons-material/DarkMode"
-import LightModeIcon from "@mui/icons-material/LightMode"
-import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows"
+import { Settings as SettingsIcon, Moon, Sun, Monitor } from "lucide-react"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import spotifyLogo from "@/assets/spotify_icon.png"
@@ -103,153 +82,598 @@ const toServerTime = (value: string | null): string | null => {
   return trimmed
 }
 
-const ModernSwitch = styled("span")(({ theme }) => {
-  const on = theme.palette.primary.main
-  const trackBg = theme.palette.mode === "dark" ? alpha("#fff", 0.12) : alpha("#000", 0.08)
-  const trackBorder = theme.palette.mode === "dark" ? alpha("#fff", 0.24) : alpha("#000", 0.12)
-  const ring = alpha(on, 0.35)
+// Tailwind CSS components
 
-  return {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    width: 52,
-    height: 28,
-    padding: 2,
-    borderRadius: 999,
-    cursor: "pointer",
-    touchAction: "manipulation",
-    WebkitTapHighlightColor: "transparent",
-    "& input": {
-      opacity: 0,
-      width: 0,
-      height: 0,
-      position: "absolute",
-    },
-    "& .ms-track": {
-      position: "absolute",
-      inset: 0,
-      borderRadius: 999,
-      background: trackBg,
-      border: `1px solid ${trackBorder}`,
-      transition: "background-color .2s ease, border-color .2s ease",
-      boxSizing: "border-box",
-    },
-    "& .ms-thumb": {
-      position: "relative",
-      zIndex: 1,
-      width: 22,
-      height: 22,
-      borderRadius: "50%",
-      background: theme.palette.common.white,
-      boxShadow:
-        theme.palette.mode === "dark"
-          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
-          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
-      transform: "translateX(0)",
-      transition: "transform .18s cubic-bezier(.2,.9,.22,1), box-shadow .18s ease",
-    },
-    "&.ms-checked .ms-track": {
-      background: alpha(on, theme.palette.mode === "dark" ? 0.55 : 0.2),
-      borderColor: alpha(on, 0.6),
-    },
-    "&.ms-checked .ms-thumb": {
-      transform: "translateX(24px)",
-      boxShadow:
-        theme.palette.mode === "dark"
-          ? "0 1px 2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08) inset"
-          : "0 1px 2px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06) inset",
-    },
-    "&.ms-hover .ms-track": {
-      background: theme.palette.mode === "dark" ? alpha("#fff", 0.16) : alpha("#000", 0.1),
-    },
-    "&.ms-focus .ms-ring": {
-      boxShadow: `0 0 0 3px ${ring}`,
-      opacity: 1,
-      transform: "scale(1)",
-    },
-    "& .ms-ring": {
-      position: "absolute",
-      inset: -2,
-      borderRadius: 999,
-      boxShadow: "0 0 0 0px transparent",
-      transition: "box-shadow .18s ease, transform .18s ease, opacity .18s ease",
-      pointerEvents: "none",
-      opacity: 0,
-      transform: "scale(.98)",
-    },
-    "&.ms-disabled": {
-      cursor: "not-allowed",
-      opacity: 0.6,
-    },
+function SectionCard({
+  children,
+  className = "",
+  component = "div",
+  ...props
+}: {
+  children: React.ReactNode
+  className?: string
+  component?: React.ElementType
+} & React.HTMLAttributes<HTMLElement>) {
+  const Component = component
+  return (
+    <Component
+      className={`bg-card rounded-[20px] px-6 py-[22px] border border-glass-border flex flex-col gap-3 ${className}`}
+      {...props}
+    >
+      {children}
+    </Component>
+  )
+}
+
+function SectionTitle({
+  children,
+  className = "",
+  component = "h2",
+  variant = "subtitle1",
+  ...props
+}: {
+  children: React.ReactNode
+  className?: string
+  component?: React.ElementType
+  variant?: string
+} & React.HTMLAttributes<HTMLElement>) {
+  const Component = component
+  const sizeClasses =
+    variant === "subtitle1"
+      ? "text-base"
+      : variant === "subtitle2"
+        ? "text-sm"
+        : variant === "h6"
+          ? "text-lg"
+          : "text-base"
+  return (
+    <Component className={`font-semibold text-page-text ${sizeClasses} ${className}`} {...props}>
+      {children}
+    </Component>
+  )
+}
+
+function SectionSubtitle({
+  children,
+  className = "",
+  variant = "body2",
+  ...props
+}: {
+  children: React.ReactNode
+  className?: string
+  variant?: string
+} & React.HTMLAttributes<HTMLParagraphElement>) {
+  const sizeClasses =
+    variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
+  return (
+    <p className={`text-page-text/70 ${sizeClasses} ${className}`} {...props}>
+      {children}
+    </p>
+  )
+}
+
+function SessionItem({
+  children,
+  className = "",
+  ...props
+}: {
+  children: React.ReactNode
+  className?: string
+} & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={`
+        flex items-stretch justify-between gap-3 p-3 rounded-[18px]
+        border border-glass-border bg-black/[0.03] dark:bg-white/[0.04]
+        transition-all duration-200 ease-in-out
+        max-sm:flex-col max-sm:items-start
+        hover:border-primary/35 hover:shadow-card-hover hover:bg-primary/8 dark:hover:bg-primary/18
+        data-[revoked=true]:opacity-70 data-[revoked=true]:border-dashed
+        data-[revoked=true]:border-page-text/20 data-[revoked=true]:bg-page-text/[0.04] dark:data-[revoked=true]:bg-page-text/[0.06]
+        data-[revoked=true]:hover:shadow-none data-[revoked=true]:hover:border-page-text/20
+        data-[revoked=true]:hover:bg-page-text/[0.04] dark:data-[revoked=true]:hover:bg-page-text/[0.06]
+        ${className}
+      `}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
+
+// Additional Tailwind helper components
+
+function Button({
+  children,
+  variant = "contained",
+  color = "primary",
+  size = "medium",
+  disabled = false,
+  startIcon,
+  onClick,
+  type = "button",
+  className = "",
+  ...props
+}: {
+  children: React.ReactNode
+  variant?: "contained" | "outlined" | "text"
+  color?: "primary" | "error" | "inherit" | "success"
+  size?: "small" | "medium"
+  disabled?: boolean
+  startIcon?: React.ReactNode
+  onClick?: () => void
+  type?: "button" | "submit"
+  className?: string
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const baseClasses =
+    "inline-flex items-center justify-center gap-2 font-bold rounded-lg transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+  const sizeClasses = size === "small" ? "px-3 py-1.5 text-sm" : "px-4 py-2 text-base"
+
+  let variantClasses = ""
+  if (variant === "contained") {
+    if (color === "primary") {
+      variantClasses = "bg-primary text-white hover:bg-primary/90 shadow-md hover:shadow-lg"
+    } else if (color === "error") {
+      variantClasses = "bg-red-500 text-white hover:bg-red-600 shadow-md hover:shadow-lg"
+    }
+  } else if (variant === "outlined") {
+    if (color === "primary") {
+      variantClasses =
+        "border-2 border-primary text-primary hover:bg-primary/10 dark:hover:bg-primary/20"
+    } else if (color === "error") {
+      variantClasses = "border-2 border-red-500 text-red-500 hover:bg-red-500/10"
+    }
+  } else if (variant === "text") {
+    if (color === "error") {
+      variantClasses = "text-red-500 hover:bg-red-500/10"
+    } else if (color === "inherit") {
+      variantClasses = "text-page-text hover:bg-page-text/10"
+    }
   }
-})
 
-const SectionCard = styled((props: PaperProps) => <Paper {...props} />)(({ theme }) => ({
-  backgroundColor: "var(--card-bg)",
-  borderRadius: 20,
-  padding: theme.spacing(2.75, 3),
-  border: "1px solid var(--glass-border)",
-  boxShadow: "none",
-  display: "flex",
-  flexDirection: "column",
-  gap: theme.spacing(1.5),
-}))
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${baseClasses} ${sizeClasses} ${variantClasses} ${className}`}
+      {...props}
+    >
+      {startIcon && <span className="flex items-center">{startIcon}</span>}
+      {children}
+    </button>
+  )
+}
 
-const SectionTitle = styled(({ component = "h2", ...props }: TypographyProps) => (
-  <Typography {...props} component={component} />
-))({
-  fontWeight: 600,
-  color: "var(--page-text)",
-})
+function TextField({
+  label,
+  value,
+  onChange,
+  onBlur,
+  type = "text",
+  disabled = false,
+  error = false,
+  helperText,
+  placeholder,
+  size = "medium",
+  fullWidth = false,
+  autoComplete,
+  className = "",
+  ...props
+}: {
+  label?: string
+  value: string
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onBlur?: (e: FocusEvent<HTMLInputElement>) => void
+  type?: string
+  disabled?: boolean
+  error?: boolean
+  helperText?: string
+  placeholder?: string
+  size?: "small" | "medium"
+  fullWidth?: boolean
+  autoComplete?: string
+  className?: string
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "size" | "onChange" | "onBlur">) {
+  const sizeClasses = size === "small" ? "px-3 py-1.5 text-sm" : "px-4 py-2"
+  const widthClass = fullWidth ? "w-full" : ""
+  const timeInputClasses =
+    type === "time" ? "max-w-full sm:max-w-[200px] text-center tabular-nums" : ""
 
-const SectionSubtitle = styled(Typography)({
-  color: "color-mix(in srgb, var(--page-text) 72%, transparent)",
-})
+  return (
+    <div className={`${widthClass} ${className}`}>
+      {label && (
+        <label className="block text-sm font-medium text-page-text mb-1 px-1 bg-card">
+          {label}
+        </label>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={`
+          ${widthClass} ${sizeClasses} ${timeInputClasses}
+          rounded-lg border bg-card text-page-text
+          ${error ? "border-red-500" : "border-page-text/25"}
+          hover:border-page-text/35
+          focus:outline-none focus:ring-3 focus:ring-primary/25 focus:border-primary
+          disabled:bg-page-text/[0.06] disabled:border-page-text/20 disabled:cursor-not-allowed
+          transition-all duration-200
+        `}
+        {...props}
+      />
+      {helperText && (
+        <p className={`text-xs mt-1 ${error ? "text-red-500" : "text-page-text/60"}`}>
+          {helperText}
+        </p>
+      )}
+    </div>
+  )
+}
 
-const SessionItem = styled("div")(({ theme }) => ({
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "space-between",
-  gap: theme.spacing(1.5),
-  padding: theme.spacing(1.5),
-  borderRadius: 18,
-  border: "1px solid var(--glass-border)",
-  backgroundColor: theme.palette.mode === "dark" ? alpha("#fff", 0.04) : alpha("#000", 0.03),
-  transition: "border-color .2s ease, box-shadow .2s ease, background-color .2s ease",
-  [theme.breakpoints.down("sm")]: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  "&:hover": {
-    borderColor: alpha(theme.palette.primary.main, 0.35),
-    boxShadow:
-      theme.palette.mode === "dark"
-        ? "0 12px 28px rgba(0,0,0,.35)"
-        : "0 12px 24px rgba(15,23,42,.12)",
-    backgroundColor:
-      theme.palette.mode === "dark"
-        ? alpha(theme.palette.primary.main, 0.18)
-        : alpha(theme.palette.primary.main, 0.08),
-  },
-  '&[data-revoked="true"]': {
-    opacity: 0.72,
-    borderStyle: "dashed",
-    borderColor: alpha(theme.palette.text.primary, 0.18),
-    backgroundColor:
-      theme.palette.mode === "dark"
-        ? alpha(theme.palette.text.primary, 0.06)
-        : alpha(theme.palette.text.primary, 0.04),
-  },
-  '&[data-revoked="true"]:hover': {
-    boxShadow: "none",
-    borderColor: alpha(theme.palette.text.primary, 0.18),
-    backgroundColor:
-      theme.palette.mode === "dark"
-        ? alpha(theme.palette.text.primary, 0.06)
-        : alpha(theme.palette.text.primary, 0.04),
-  },
-}))
+function RadioGroup({
+  children,
+  value,
+  onChange,
+  row = false,
+  "aria-label": ariaLabel,
+}: {
+  children: React.ReactNode
+  value: string
+  onChange: (e: ChangeEvent<HTMLInputElement>, value: string) => void
+  row?: boolean
+  "aria-label"?: string
+}) {
+  return (
+    <div
+      className={`${row ? "flex flex-wrap gap-4" : "flex flex-col gap-2"}`}
+      role="radiogroup"
+      aria-label={ariaLabel}
+    >
+      {children}
+    </div>
+  )
+}
+
+function FormControlLabel({
+  value,
+  control,
+  label,
+  className = "",
+}: {
+  value: string
+  control: React.ReactNode
+  label: React.ReactNode
+  className?: string
+}) {
+  return (
+    <label className={`inline-flex items-center gap-2 cursor-pointer ${className}`}>
+      {control}
+      <span className="text-page-text">{label}</span>
+    </label>
+  )
+}
+
+function Radio({
+  checked,
+  onChange,
+  value,
+}: {
+  checked?: boolean
+  onChange?: (e: ChangeEvent<HTMLInputElement>) => void
+  value?: string
+}) {
+  return (
+    <input
+      type="radio"
+      checked={checked}
+      onChange={onChange}
+      value={value}
+      className="w-4 h-4 text-primary border-page-text/30 focus:ring-2 focus:ring-primary/30"
+    />
+  )
+}
+
+function Alert({
+  severity = "info",
+  variant = "filled",
+  children,
+  onClose,
+  className = "",
+}: {
+  severity?: "info" | "error" | "warning" | "success"
+  variant?: "filled" | "outlined"
+  children: React.ReactNode
+  onClose?: () => void
+  className?: string
+}) {
+  const severityClasses = {
+    info: variant === "outlined" ? "border-blue-500 text-blue-500" : "bg-blue-500 text-white",
+    error: variant === "outlined" ? "border-red-500 text-red-500" : "bg-red-500 text-white",
+    warning:
+      variant === "outlined" ? "border-yellow-500 text-yellow-500" : "bg-yellow-500 text-black",
+    success: variant === "outlined" ? "border-green-500 text-green-500" : "bg-green-500 text-white",
+  }
+
+  return (
+    <div
+      className={`
+        flex items-center gap-2 px-4 py-2 rounded-lg
+        ${variant === "outlined" ? "border-2 bg-transparent" : ""}
+        ${severityClasses[severity]}
+        ${className}
+      `}
+    >
+      <span className="flex-1">{children}</span>
+      {onClose && (
+        <button onClick={onClose} className="ml-2 hover:opacity-70 transition-opacity">
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
+function Chip({
+  label,
+  size = "medium",
+  color = "default",
+  variant = "filled",
+  className = "",
+}: {
+  label: string
+  size?: "small" | "medium"
+  color?: "default" | "success" | "primary"
+  variant?: "filled" | "outlined"
+  className?: string
+}) {
+  const sizeClasses = size === "small" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm"
+  let colorClasses = ""
+
+  if (color === "success") {
+    colorClasses =
+      variant === "outlined"
+        ? "border border-green-500 text-green-500"
+        : "bg-green-500/20 text-green-500 border border-green-500/30"
+  } else if (color === "primary") {
+    colorClasses =
+      variant === "outlined"
+        ? "border border-primary text-primary"
+        : "bg-primary/20 text-primary border border-primary/30"
+  } else {
+    colorClasses =
+      variant === "outlined"
+        ? "border border-page-text/30 text-page-text/70"
+        : "bg-page-text/10 text-page-text/70 border border-page-text/20"
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full font-semibold ${sizeClasses} ${colorClasses} ${className}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+function Divider({
+  className = "",
+  flexItem,
+  component,
+}: {
+  className?: string
+  flexItem?: boolean
+  component?: React.ElementType
+}) {
+  const Component = component || "hr"
+  return (
+    <Component
+      className={`border-t border-glass-border ${flexItem ? "self-stretch" : ""} ${className}`}
+    />
+  )
+}
+
+function Avatar({
+  src,
+  alt,
+  imgProps,
+  className = "",
+}: {
+  src: string
+  alt: string
+  imgProps?: React.ImgHTMLAttributes<HTMLImageElement>
+  className?: string
+}) {
+  return (
+    <div className={`rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 ${className}`}>
+      <img src={src} alt={alt} className="w-full h-full object-cover" {...imgProps} />
+    </div>
+  )
+}
+
+function CircularProgress({
+  size = 24,
+  color = "primary",
+  className = "",
+}: {
+  size?: number
+  color?: string
+  className?: string
+}) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  )
+}
+
+function Dialog({
+  open,
+  onClose,
+  maxWidth = "md",
+  fullWidth = false,
+  children,
+}: {
+  open: boolean
+  onClose: () => void
+  maxWidth?: string
+  fullWidth?: boolean
+  children: React.ReactNode
+}) {
+  if (!open) return null
+
+  const maxWidthClasses =
+    {
+      xs: "max-w-xs",
+      sm: "max-w-sm",
+      md: "max-w-md",
+      lg: "max-w-lg",
+      xl: "max-w-xl",
+    }[maxWidth] || "max-w-md"
+
+  return (
+    <div
+      role="presentation"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`bg-card rounded-2xl shadow-2xl ${fullWidth ? "w-full" : ""} ${maxWidthClasses}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function DialogTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-xl font-bold text-page-text px-6 pt-6 pb-2">{children}</h2>
+}
+
+function DialogContent({ children }: { children: React.ReactNode }) {
+  return <div className="px-6 py-4 text-page-text/80">{children}</div>
+}
+
+function DialogActions({ children }: { children: React.ReactNode }) {
+  return <div className="flex gap-2 justify-end px-6 pb-6 pt-2">{children}</div>
+}
+
+function Snackbar({
+  open,
+  onClose,
+  autoHideDuration,
+  anchorOrigin,
+  children,
+}: {
+  open: boolean
+  onClose: () => void
+  autoHideDuration?: number
+  anchorOrigin?: { vertical: string; horizontal: string }
+  children: React.ReactNode
+}) {
+  useEffect(() => {
+    if (open && autoHideDuration) {
+      const timer = setTimeout(onClose, autoHideDuration)
+      return () => clearTimeout(timer)
+    }
+  }, [open, autoHideDuration, onClose])
+
+  if (!open) return null
+
+  const positionClasses =
+    anchorOrigin?.vertical === "bottom"
+      ? "bottom-4"
+      : anchorOrigin?.vertical === "top"
+        ? "top-4"
+        : "top-1/2 -translate-y-1/2"
+  const horizontalClasses =
+    anchorOrigin?.horizontal === "center"
+      ? "left-1/2 -translate-x-1/2"
+      : anchorOrigin?.horizontal === "right"
+        ? "right-4"
+        : "left-4"
+
+  return <div className={`fixed z-50 ${positionClasses} ${horizontalClasses}`}>{children}</div>
+}
+
+function Tabs({
+  value,
+  onChange,
+  variant,
+  scrollButtons,
+  children,
+  className = "",
+}: {
+  value: number
+  onChange: (e: unknown, value: number) => void
+  variant?: string
+  scrollButtons?: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      role="tablist"
+      className={`flex gap-1 border-b border-glass-border overflow-x-auto ${className}`}
+    >
+      {React.Children.map(children, (child, index) => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(
+            child as React.ReactElement<{ selected?: boolean; onClick?: () => void }>,
+            {
+              selected: value === index,
+              onClick: () => onChange(null, index),
+            }
+          )
+        }
+        return child
+      })}
+    </div>
+  )
+}
+
+function Tab({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string
+  selected?: boolean
+  onClick?: () => void
+}) {
+  return (
+    <button
+      role="tab"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`
+        px-4 py-2.5 text-sm font-bold transition-colors min-h-[42px]
+        ${selected ? "text-primary border-b-2 border-primary" : "text-page-text hover:text-primary"}
+      `}
+    >
+      {label}
+    </button>
+  )
+}
 
 function SwitchControl({
   checked,
@@ -266,22 +690,47 @@ function SwitchControl({
 }) {
   const [hover, setHover] = useState(false)
   const [focus, setFocus] = useState(false)
+
   return (
-    <ModernSwitch
-      className={[
-        checked ? "ms-checked" : "",
-        disabled ? "ms-disabled" : "",
-        hover ? "ms-hover" : "",
-        focus ? "ms-focus" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      onMouseEnter={() => setHover(true)}
+    <span
+      className={`
+        relative inline-flex items-center w-[52px] h-7 p-0.5 rounded-full cursor-pointer
+        touch-manipulation select-none
+        ${disabled ? "opacity-60 cursor-not-allowed" : ""}
+      `}
+      onMouseEnter={() => !disabled && setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <span className="ms-ring" />
-      <span className="ms-track" />
-      <span className="ms-thumb" />
+      {/* Focus ring */}
+      <span
+        className={`
+          absolute -inset-0.5 rounded-full pointer-events-none transition-all duration-200
+          ${focus && !disabled ? "shadow-[0_0_0_3px_rgba(var(--primary-rgb),0.35)] opacity-100 scale-100" : "opacity-0 scale-95"}
+        `}
+      />
+      {/* Track */}
+      <span
+        className={`
+          absolute inset-0 rounded-full border transition-all duration-200
+          ${
+            checked
+              ? "bg-primary/20 dark:bg-primary/55 border-primary/60"
+              : hover && !disabled
+                ? "bg-black/10 dark:bg-white/16 border-black/12 dark:border-white/24"
+                : "bg-black/8 dark:bg-white/12 border-black/12 dark:border-white/24"
+          }
+        `}
+      />
+      {/* Thumb */}
+      <span
+        className={`
+          relative z-10 w-[22px] h-[22px] rounded-full bg-white
+          shadow-[0_1px_2px_rgba(0,0,0,0.25),0_0_0_1px_rgba(0,0,0,0.06)_inset]
+          dark:shadow-[0_1px_2px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.08)_inset]
+          transition-transform duration-200 ease-[cubic-bezier(0.2,0.9,0.22,1)]
+          ${checked ? "translate-x-6" : "translate-x-0"}
+        `}
+      />
       <input
         id={inputId}
         type="checkbox"
@@ -291,8 +740,9 @@ function SwitchControl({
         onChange={(e) => onChange(e, e.target.checked)}
         onFocus={() => setFocus(true)}
         onBlur={() => setFocus(false)}
+        className="absolute opacity-0 w-0 h-0"
       />
-    </ModernSwitch>
+    </span>
   )
 }
 
@@ -308,48 +758,25 @@ export default function Settings() {
   const { language, setLanguage, available: availableLanguages } = useLanguage()
   const { t } = useTranslation(["settings", "common", "notifications", "profile"])
 
-  const { mode: storedMode, setMode } = useColorScheme()
-  const theme = (storedMode ?? "system") as ThemeMode
+  // Theme management
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem("theme-mode")
+    return (stored as ThemeMode) || "system"
+  })
 
-  const timeFieldSx = useMemo(
-    () => ({
-      maxWidth: { xs: "100%", sm: 200 },
-      "& .MuiOutlinedInput-root": {
-        borderRadius: 2.5,
-        overflow: "hidden",
-        backgroundColor: "var(--card-bg)",
-        "& fieldset": {
-          borderColor: "color-mix(in srgb, var(--page-text) 24%, transparent)",
-          borderWidth: 1,
-        },
-        "&:hover fieldset": {
-          borderColor: "color-mix(in srgb, var(--page-text) 32%, transparent)",
-        },
-        "&.Mui-focused": {
-          boxShadow: "0 0 0 3px color-mix(in srgb, var(--link-color) 22%, transparent)",
-        },
-        "&.Mui-focused fieldset": {
-          borderColor: "var(--link-color)",
-        },
-        "&.Mui-disabled": {
-          backgroundColor: "color-mix(in srgb, var(--page-text) 6%, transparent)",
-        },
-        "&.Mui-disabled fieldset": {
-          borderColor: "color-mix(in srgb, var(--page-text) 18%, transparent)",
-        },
-      },
-      "& .MuiInputBase-input": {
-        textAlign: "center",
-        fontVariantNumeric: "tabular-nums",
-      },
-      "& .MuiInputLabel-root": {
-        px: 0.75,
-        backgroundColor: "var(--card-bg)",
-        color: "var(--page-text)",
-      },
-    }),
-    []
-  )
+  const setMode = useCallback((value: ThemeMode) => {
+    setTheme(value)
+    localStorage.setItem("theme-mode", value)
+
+    // Apply theme to document
+    const root = document.documentElement
+    if (value === "system") {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+      root.classList.toggle("dark", prefersDark)
+    } else {
+      root.classList.toggle("dark", value === "dark")
+    }
+  }, [])
 
   const {
     pushSupported,
@@ -1297,111 +1724,70 @@ export default function Settings() {
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   return (
-    <Box maxWidth="100vw" mx={0} mt={0} width="100vw" minHeight="100svh" px={0}>
-      <Paper
-        className="glass glass--panel"
-        sx={{
-          p: { xs: 2, md: 4, lg: 6 },
-          borderRadius: 0,
-          width: "100%",
-          minHeight: "100svh",
-          color: "var(--page-text)",
-          bgcolor: "var(--card-bg)",
-        }}
-      >
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: { xs: 1.5, md: 2 } }}>
-          <SettingsIcon />
-          <Typography variant="h4" fontWeight={800} sx={{ color: "var(--page-text)" }}>
-            {t("settings:page.title")}
-          </Typography>
-        </Stack>
+    <div className="max-w-full w-full min-h-screen mx-0 mt-0 px-0">
+      <div className="glass glass--panel p-4 md:p-8 lg:p-12 rounded-none w-full min-h-screen text-page-text bg-card">
+        <div className="flex flex-row items-center gap-3 mb-3 md:mb-4">
+          <SettingsIcon className="w-6 h-6" />
+          <h1 className="text-3xl font-extrabold text-page-text">{t("settings:page.title")}</h1>
+        </div>
 
-        <Paper
-          variant="outlined"
-          className="glass--segmented"
-          sx={{ mb: 3, bgcolor: "var(--card-bg)" }}
-        >
+        <div className="glass--segmented border border-glass-border rounded-lg mb-6 bg-card">
           <Tabs
             value={tab}
             onChange={(_, v) => setTab(v)}
             variant="scrollable"
             scrollButtons="auto"
-            sx={{
-              "& .MuiTab-root": {
-                color: "var(--page-text)",
-                textTransform: "none",
-                fontWeight: 700,
-                minHeight: 42,
-              },
-              "& .Mui-selected": { color: "var(--link-color)" },
-            }}
           >
             <Tab label={t("settings:tabs.general")} />
             <Tab label={t("settings:tabs.account")} />
             <Tab label={t("settings:tabs.integrations")} />
           </Tabs>
-        </Paper>
+        </div>
 
         {tab === 0 && (
-          <Stack spacing={3}>
-            <Box>
-              <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
+          <div className="flex flex-col gap-6">
+            <div>
+              <h2 className="text-lg font-semibold text-page-text mb-2.5">
                 {t("settings:appearance.theme.title")}
-              </Typography>
+              </h2>
               <RadioGroup row value={theme} onChange={handleThemeChange}>
                 <FormControlLabel
                   value="system"
-                  control={<Radio />}
+                  control={<Radio checked={theme === "system"} value="system" />}
                   label={
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      sx={{ color: "var(--page-text)" }}
-                    >
-                      <DesktopWindowsIcon />{" "}
+                    <span className="flex flex-row items-center gap-2 text-page-text">
+                      <Monitor className="w-5 h-5" />
                       <span>{t("settings:appearance.theme.options.system")}</span>
-                    </Stack>
+                    </span>
                   }
-                  sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="light"
-                  control={<Radio />}
+                  control={<Radio checked={theme === "light"} value="light" />}
                   label={
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      sx={{ color: "var(--page-text)" }}
-                    >
-                      <LightModeIcon /> <span>{t("settings:appearance.theme.options.light")}</span>
-                    </Stack>
+                    <span className="flex flex-row items-center gap-2 text-page-text">
+                      <Sun className="w-5 h-5" />
+                      <span>{t("settings:appearance.theme.options.light")}</span>
+                    </span>
                   }
-                  sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
                 <FormControlLabel
                   value="dark"
-                  control={<Radio />}
+                  control={<Radio checked={theme === "dark"} value="dark" />}
                   label={
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      sx={{ color: "var(--page-text)" }}
-                    >
-                      <DarkModeIcon /> <span>{t("settings:appearance.theme.options.dark")}</span>
-                    </Stack>
+                    <span className="flex flex-row items-center gap-2 text-page-text">
+                      <Moon className="w-5 h-5" />
+                      <span>{t("settings:appearance.theme.options.dark")}</span>
+                    </span>
                   }
-                  sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                 />
               </RadioGroup>
-            </Box>
+            </div>
 
-            <Box>
-              <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
+            <div>
+              <h2 className="text-lg font-semibold text-page-text mb-2.5">
                 {t("settings:language.title")}
-              </Typography>
+              </h2>
               <RadioGroup
                 row
                 value={language}
@@ -1412,42 +1798,35 @@ export default function Settings() {
                   <FormControlLabel
                     key={code}
                     value={code}
-                    control={<Radio />}
+                    control={<Radio checked={language === code} value={code} />}
                     label={t(`settings:language.options.${code}`)}
-                    sx={{ "& .MuiFormControlLabel-label": { color: "var(--page-text)" } }}
                   />
                 ))}
               </RadioGroup>
-              <Typography variant="body2" sx={{ mt: 0.5, color: "var(--page-text)" }}>
-                {t("settings:language.description")}
-              </Typography>
-            </Box>
+              <p className="text-sm text-page-text mt-1">{t("settings:language.description")}</p>
+            </div>
 
             <Divider />
 
-            <Box>
-              <Typography variant="h6" sx={{ mb: 1.2, color: "var(--page-text)" }}>
+            <div>
+              <h2 className="text-lg font-semibold text-page-text mb-2.5">
                 {t("settings:notifications.title")}
-              </Typography>
+              </h2>
               {!pushSupported ? (
                 <Alert severity="warning" variant="outlined">
                   {t("settings:notifications.unsupported")}
                 </Alert>
               ) : (
-                <Stack spacing={1.8}>
+                <div className="flex flex-col gap-4">
                   {notificationPermission === "denied" ? (
-                    <Stack spacing={1.5}>
+                    <div className="flex flex-col gap-3">
                       <Alert severity="error" variant="outlined">
                         {t("settings:notifications.blocked.description")}
                       </Alert>
-                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                      <p className="text-sm text-page-text">
                         {t("settings:notifications.blocked.hint")}
-                      </Typography>
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={1.2}
-                        alignItems={{ sm: "center" }}
-                      >
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
@@ -1458,21 +1837,17 @@ export default function Settings() {
                         >
                           {t("settings:notifications.cta.checkPermission")}
                         </Button>
-                        <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                        <p className="text-sm text-page-text">
                           {t("settings:notifications.status", { status: permissionText })}
-                        </Typography>
-                      </Stack>
-                    </Stack>
+                        </p>
+                      </div>
+                    </div>
                   ) : notificationPermission === "default" ? (
-                    <Stack spacing={1.5}>
-                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                    <div className="flex flex-col gap-3">
+                      <p className="text-sm text-page-text">
                         {t("settings:notifications.cta.prompt")}
-                      </Typography>
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={1.2}
-                        alignItems={{ sm: "center" }}
-                      >
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
                         <Button
                           variant="contained"
                           onClick={() => void enableNotifications()}
@@ -1485,62 +1860,38 @@ export default function Settings() {
                         >
                           {t("settings:notifications.cta.allow")}
                         </Button>
-                        <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                        <p className="text-sm text-page-text">
                           {t("settings:notifications.status", { status: permissionText })}
-                        </Typography>
-                      </Stack>
-                    </Stack>
+                        </p>
+                      </div>
+                    </div>
                   ) : (
                     <>
-                      <FormControlLabel
-                        sx={{
-                          minHeight: 44,
-                          alignItems: "center",
-                          columnGap: 1.25,
-                          m: 0,
-                        }}
-                        control={
-                          <SwitchControl
-                            checked={notificationsEnabled}
-                            onChange={handleNotificationsToggle}
-                            disabled={pushBusy || pushInitializing}
-                            aria-label={t("settings:notifications.toggles.notifications.aria")}
-                          />
-                        }
-                        label={
-                          <span style={{ color: "var(--page-text)", fontWeight: 700 }}>
-                            {t("settings:notifications.toggles.notifications.label")}
-                          </span>
-                        }
-                      />
+                      <label className="min-h-[44px] flex items-center gap-2.5 m-0 cursor-pointer">
+                        <SwitchControl
+                          checked={notificationsEnabled}
+                          onChange={handleNotificationsToggle}
+                          disabled={pushBusy || pushInitializing}
+                          aria-label={t("settings:notifications.toggles.notifications.aria")}
+                        />
+                        <span className="text-page-text font-bold">
+                          {t("settings:notifications.toggles.notifications.label")}
+                        </span>
+                      </label>
 
-                      <FormControlLabel
-                        sx={{
-                          minHeight: 44,
-                          alignItems: "center",
-                          columnGap: 1.25,
-                          m: 0,
-                        }}
-                        control={
-                          <SwitchControl
-                            checked={dndEnabled}
-                            onChange={handleDndToggle}
-                            disabled={dndSaving}
-                            aria-label={t("settings:notifications.toggles.dnd.aria")}
-                          />
-                        }
-                        label={
-                          <span style={{ color: "var(--page-text)", fontWeight: 700 }}>
-                            {t("settings:notifications.toggles.dnd.label")}
-                          </span>
-                        }
-                      />
+                      <label className="min-h-[44px] flex items-center gap-2.5 m-0 cursor-pointer">
+                        <SwitchControl
+                          checked={dndEnabled}
+                          onChange={handleDndToggle}
+                          disabled={dndSaving}
+                          aria-label={t("settings:notifications.toggles.dnd.aria")}
+                        />
+                        <span className="text-page-text font-bold">
+                          {t("settings:notifications.toggles.dnd.label")}
+                        </span>
+                      </label>
 
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={1.5}
-                        alignItems={{ sm: "center" }}
-                      >
+                      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
                         <TextField
                           type="time"
                           label={t("settings:dnd.start")}
@@ -1549,8 +1900,6 @@ export default function Settings() {
                           onBlur={handleDndStartBlur}
                           disabled={!dndEnabled || dndSaving}
                           size="small"
-                          InputLabelProps={{ shrink: true }}
-                          sx={timeFieldSx}
                         />
                         <TextField
                           type="time"
@@ -1560,47 +1909,26 @@ export default function Settings() {
                           onBlur={handleDndEndBlur}
                           disabled={!dndEnabled || dndSaving}
                           size="small"
-                          InputLabelProps={{ shrink: true }}
-                          sx={timeFieldSx}
                         />
-                      </Stack>
+                      </div>
                     </>
                   )}
-                </Stack>
+                </div>
               )}
-            </Box>
-          </Stack>
+            </div>
+          </div>
         )}
 
         {tab === 1 && (
-          <Stack
-            spacing={2.5}
-            sx={{ width: "100%", maxWidth: { xs: "100%", sm: 640, md: 760, lg: 880 } }}
-          >
+          <div className="flex flex-col gap-5 w-full max-w-full sm:max-w-[640px] md:max-w-[760px] lg:max-w-[880px]">
             <SectionCard component="section">
-              <Stack
-                component="ul"
-                spacing={2.5}
-                sx={{ width: "100%", listStyle: "none", p: 0, m: 0 }}
-              >
-                <Stack
-                  component="li"
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={{ xs: 1.5, sm: 2.5 }}
-                  alignItems={{ xs: "flex-start", sm: "center" }}
-                  justifyContent="space-between"
-                  sx={{ listStyle: "none" }}
-                >
-                  <Stack
-                    direction="row"
-                    spacing={{ xs: 1.5, sm: 2.5 }}
-                    alignItems="center"
-                    sx={{ minWidth: 0, flex: 1 }}
-                  >
+              <ul className="flex flex-col gap-5 w-full list-none p-0 m-0">
+                <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
+                  <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
                     <Avatar
                       src={avatarSrc}
                       alt={user?.full_name || "avatar"}
-                      sx={{ width: 72, height: 72 }}
+                      className="w-[72px] h-[72px]"
                       imgProps={{
                         onError: handleAvatarError,
                         loading: "lazy",
@@ -1608,29 +1936,19 @@ export default function Settings() {
                         referrerPolicy: "no-referrer",
                       }}
                     />
-                    <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                    <div className="flex flex-col gap-1 min-w-0">
                       <SectionTitle variant="subtitle1">
                         {t("settings:media.avatar.title")}
                       </SectionTitle>
-                    </Stack>
-                  </Stack>
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1}
-                    alignItems={{ sm: "center" }}
-                    justifyContent={{ xs: "flex-start", sm: "flex-end" }}
-                    flexWrap="wrap"
-                    sx={{ width: { xs: "100%", sm: "auto" } }}
-                  >
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
                     <Button
                       size="small"
                       variant="contained"
                       onClick={triggerAvatarPick}
                       disabled={avatarBusy}
-                      sx={{
-                        minWidth: { sm: 140 },
-                        width: { xs: "100%", sm: "auto" },
-                      }}
+                      className="sm:min-w-[140px] w-full sm:w-auto"
                     >
                       {t("settings:media.avatar.change")}
                     </Button>
@@ -1640,43 +1958,21 @@ export default function Settings() {
                       color="error"
                       onClick={removeAvatar}
                       disabled={avatarBusy}
-                      sx={{
-                        minWidth: { sm: 140 },
-                        width: { xs: "100%", sm: "auto" },
-                      }}
+                      className="sm:min-w-[140px] w-full sm:w-auto"
                     >
                       {t("settings:media.avatar.delete")}
                     </Button>
-                  </Stack>
-                </Stack>
+                  </div>
+                </li>
 
-                <Divider
-                  component="li"
-                  flexItem
-                  sx={{ borderColor: "var(--glass-border)", listStyle: "none" }}
-                />
+                <Divider component="li" flexItem className="border-glass-border list-none" />
 
-                <Stack
-                  component="li"
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={{ xs: 1.5, sm: 2.5 }}
-                  alignItems={{ xs: "flex-start", sm: "center" }}
-                  justifyContent="space-between"
-                  sx={{ listStyle: "none" }}
-                >
-                  <Stack
-                    direction="row"
-                    spacing={{ xs: 1.5, sm: 2.5 }}
-                    alignItems="center"
-                    sx={{ minWidth: 0, flex: 1 }}
-                  >
-                    <Box
+                <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
+                  <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
+                    <div
                       data-testid="settings-cover-preview"
-                      sx={{
-                        width: 160,
-                        height: 72,
-                        borderRadius: 1.5,
-                        border: "1px solid var(--glass-border)",
+                      className="w-40 h-[72px] rounded-xl border border-glass-border"
+                      style={{
                         background: coverSrc
                           ? `url(${coverSrc}) center/cover no-repeat`
                           : "color-mix(in srgb, var(--page-text) 6%, transparent)",
@@ -1685,24 +1981,14 @@ export default function Settings() {
                     <SectionTitle variant="subtitle1">
                       {t("settings:media.cover.title")}
                     </SectionTitle>
-                  </Stack>
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1}
-                    alignItems={{ sm: "center" }}
-                    justifyContent={{ xs: "flex-start", sm: "flex-end" }}
-                    flexWrap="wrap"
-                    sx={{ width: { xs: "100%", sm: "auto" } }}
-                  >
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
                     <Button
                       size="small"
                       variant="contained"
                       onClick={triggerCoverPick}
                       disabled={coverBusy}
-                      sx={{
-                        minWidth: { sm: 140 },
-                        width: { xs: "100%", sm: "auto" },
-                      }}
+                      className="sm:min-w-[140px] w-full sm:w-auto"
                     >
                       {t("settings:media.cover.change")}
                     </Button>
@@ -1713,17 +1999,14 @@ export default function Settings() {
                         color="error"
                         onClick={removeCover}
                         disabled={coverBusy}
-                        sx={{
-                          minWidth: { sm: 140 },
-                          width: { xs: "100%", sm: "auto" },
-                        }}
+                        className="sm:min-w-[140px] w-full sm:w-auto"
                       >
                         {t("settings:media.cover.remove")}
                       </Button>
                     )}
-                  </Stack>
-                </Stack>
-              </Stack>
+                  </div>
+                </li>
+              </ul>
               <input
                 ref={avatarInputRef}
                 type="file"
@@ -1747,13 +2030,8 @@ export default function Settings() {
             </SectionCard>
 
             <SectionCard component="section">
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1.5}
-                alignItems={{ sm: "center" }}
-                justifyContent="space-between"
-              >
-                <SectionTitle variant="subtitle1" sx={{ minWidth: 0 }}>
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                <SectionTitle variant="subtitle1" className="min-w-0">
                   {t("settings:account.profile.title")}
                 </SectionTitle>
                 <Button
@@ -1763,65 +2041,59 @@ export default function Settings() {
                 >
                   {t("common:buttons.edit")}
                 </Button>
-              </Stack>
+              </div>
             </SectionCard>
 
             <SectionCard component="section">
-              <Stack spacing={1}>
+              <div className="flex flex-col gap-2">
                 <SectionTitle variant="subtitle1">
                   {t("settings:account.logout.title")}
                 </SectionTitle>
                 <SectionSubtitle variant="body2">
                   {t("settings:account.logout.subtitle")}
                 </SectionSubtitle>
-              </Stack>
+              </div>
               <Button
                 size="small"
                 variant="outlined"
                 color="error"
                 onClick={() => setConfirmLogout(true)}
-                sx={{ alignSelf: { xs: "flex-start", sm: "flex-end" } }}
+                className="self-start sm:self-end"
               >
                 {t("settings:account.logout.button")}
               </Button>
             </SectionCard>
             <SectionCard component="section">
-              <Stack spacing={1}>
+              <div className="flex flex-col gap-2">
                 <SectionTitle variant="subtitle1">
                   {t("settings:security.account.title")}
                 </SectionTitle>
                 <SectionSubtitle variant="body2">
                   {t("settings:security.account.subtitle")}
                 </SectionSubtitle>
-              </Stack>
+              </div>
 
-              <Stack
-                component="form"
-                spacing={1.5}
+              <form
+                className="flex flex-col gap-3 mt-4"
                 onSubmit={(event) => {
                   event.preventDefault()
                   void handleEmailSubmit()
                 }}
-                sx={{ mt: 2 }}
               >
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.email.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.email.subtitle")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
                 {pendingEmail ? (
                   <Alert severity="info" variant="outlined">
                     {t("settings:security.email.pendingNotice", { email: pendingEmail })}
                   </Alert>
                 ) : null}
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.2}
-                  alignItems={{ sm: "flex-end" }}
-                >
+                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
                   <TextField
                     fullWidth
                     type="email"
@@ -1850,12 +2122,8 @@ export default function Settings() {
                     helperText={emailPasswordError ?? undefined}
                     autoComplete="current-password"
                   />
-                </Stack>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.2}
-                  alignItems={{ sm: "center" }}
-                >
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
                   <Button
                     type="submit"
                     variant="contained"
@@ -1866,34 +2134,28 @@ export default function Settings() {
                   >
                     {t("settings:security.email.updateButton")}
                   </Button>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
-                    {t("settings:security.email.helper")}
-                  </Typography>
-                </Stack>
-              </Stack>
+                  <p className="text-sm text-page-text/70">{t("settings:security.email.helper")}</p>
+                </div>
+              </form>
 
-              <Divider sx={{ my: 2.5 }} />
+              <Divider className="my-5" />
 
-              <Stack
-                component="form"
-                spacing={1.5}
+              <form
+                className="flex flex-col gap-3"
                 onSubmit={(event) => {
                   event.preventDefault()
                   void handlePasswordSubmit()
                 }}
               >
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.password.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.password.subtitle")}
                   </SectionSubtitle>
-                </Stack>
-                <Stack spacing={1.2} direction={{ xs: "column", sm: "row" }}>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5">
                   <TextField
                     fullWidth
                     type="password"
@@ -1922,12 +2184,8 @@ export default function Settings() {
                     helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
                     autoComplete="new-password"
                   />
-                </Stack>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.2}
-                  alignItems={{ sm: "center" }}
-                >
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
                   <TextField
                     fullWidth
                     type="password"
@@ -1954,23 +2212,17 @@ export default function Settings() {
                       ? t("settings:security.password.updating")
                       : t("settings:security.password.updateButton")}
                   </Button>
-                </Stack>
-              </Stack>
+                </div>
+              </form>
             </SectionCard>
 
             <SectionCard component="section">
-              <Stack spacing={1}>
+              <div className="flex flex-col gap-2">
                 <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
                 <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
-              </Stack>
+              </div>
 
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1.2}
-                alignItems={{ sm: "center" }}
-                justifyContent={{ sm: "space-between" }}
-                sx={{ mt: 1.5 }}
-              >
+              <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center sm:justify-between mt-3">
                 <Button
                   variant="outlined"
                   color="error"
@@ -1984,31 +2236,22 @@ export default function Settings() {
                 >
                   {t("settings:sessions.revokeAll")}
                 </Button>
-                <Typography
-                  variant="body2"
-                  sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                >
-                  {t("settings:sessions.revokeAllHint")}
-                </Typography>
-              </Stack>
+                <p className="text-sm text-page-text/70">{t("settings:sessions.revokeAllHint")}</p>
+              </div>
 
               {sessionsFetching ? (
-                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mt: 1.5 }}>
+                <div className="flex flex-row gap-2.5 items-center mt-3">
                   <CircularProgress size={18} />
-                  <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                    {t("settings:sessions.loading")}
-                  </Typography>
-                </Stack>
+                  <p className="text-sm text-page-text">{t("settings:sessions.loading")}</p>
+                </div>
               ) : sessionsErrorMessage ? (
-                <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
+                <Alert severity="error" variant="outlined" className="mt-3">
                   {sessionsErrorMessage}
                 </Alert>
               ) : sessions.length === 0 ? (
-                <Typography variant="body2" sx={{ mt: 1.5, color: "var(--page-text)" }}>
-                  {t("settings:sessions.empty")}
-                </Typography>
+                <p className="text-sm text-page-text mt-3">{t("settings:sessions.empty")}</p>
               ) : (
-                <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                <div className="flex flex-col gap-3 mt-3">
                   {sortedSessions.map((session) => {
                     const isRevoked = Boolean(session.revoked_at)
                     const lastSeen = session.last_seen_at ?? session.created_at
@@ -2032,61 +2275,33 @@ export default function Settings() {
 
                     return (
                       <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              color: isRevoked
-                                ? "color-mix(in srgb, var(--page-text) 65%, transparent)"
-                                : "var(--page-text)",
-                              fontWeight: session.is_current ? 600 : 500,
-                              wordBreak: "break-word",
-                            }}
+                        <div className="min-w-0">
+                          <p
+                            className={`text-sm break-words ${
+                              isRevoked ? "text-page-text/65" : "text-page-text"
+                            } ${session.is_current ? "font-semibold" : "font-medium"}`}
                           >
                             {session.user_agent || t("settings:sessions.unknownDevice")}
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: isRevoked
-                                ? "color-mix(in srgb, var(--page-text) 58%, transparent)"
-                                : "color-mix(in srgb, var(--page-text) 68%, transparent)",
-                              fontStyle: isRevoked ? "italic" : "normal",
-                            }}
+                          </p>
+                          <p
+                            className={`text-xs ${
+                              isRevoked ? "text-page-text/60 italic" : "text-page-text/70"
+                            }`}
                           >
                             {details}
-                          </Typography>
-                        </Box>
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          alignItems="center"
-                          justifyContent={{ xs: "flex-start", sm: "flex-end" }}
-                          sx={{ flexWrap: "wrap", rowGap: 0.75, flexShrink: 0 }}
-                        >
+                          </p>
+                        </div>
+                        <div className="flex flex-row gap-2 items-center justify-start sm:justify-end flex-wrap gap-y-1.5 shrink-0">
                           <Chip
                             size="small"
                             label={statusLabel}
-                            sx={(theme) => ({
-                              borderRadius: 999,
-                              fontWeight: 600,
-                              color: session.is_current
-                                ? "var(--link-color)"
+                            className={`font-semibold ${
+                              session.is_current
+                                ? "text-link-color bg-primary/[0.12] border-primary/[0.32]"
                                 : isRevoked
-                                  ? "color-mix(in srgb, var(--page-text) 60%, transparent)"
-                                  : "color-mix(in srgb, var(--page-text) 72%, transparent)",
-                              backgroundColor: session.is_current
-                                ? alpha(theme.palette.primary.main, 0.12)
-                                : isRevoked
-                                  ? "transparent"
-                                  : alpha(theme.palette.text.primary, 0.06),
-                              border: "1px solid",
-                              borderColor: session.is_current
-                                ? alpha(theme.palette.primary.main, 0.32)
-                                : isRevoked
-                                  ? alpha(theme.palette.text.primary, 0.16)
-                                  : alpha(theme.palette.text.primary, 0.12),
-                            })}
+                                  ? "text-page-text/60 bg-transparent border-page-text/[0.16]"
+                                  : "text-page-text/[0.72] bg-page-text/[0.06] border-page-text/[0.12]"
+                            }`}
                             variant="outlined"
                           />
                           {!session.is_current && !isRevoked && (
@@ -2100,46 +2315,43 @@ export default function Settings() {
                               {t("settings:sessions.revoke")}
                             </Button>
                           )}
-                        </Stack>
+                        </div>
                       </SessionItem>
                     )
                   })}
-                </Stack>
+                </div>
               )}
             </SectionCard>
 
             <SectionCard component="section">
-              <Stack spacing={1} sx={{ mb: 1.5 }}>
+              <div className="flex flex-col gap-2 mb-3">
                 <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
                 <SectionSubtitle variant="body2">{t("settings:security.subtitle")}</SectionSubtitle>
-              </Stack>
+              </div>
 
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
-                <Chip size="small" label={defaultMethodText} sx={{ fontWeight: 600 }} />
-                <Chip size="small" label={lastVerifiedText} sx={{ fontWeight: 600 }} />
-              </Stack>
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <Chip size="small" label={defaultMethodText} className="font-semibold" />
+                <Chip size="small" label={lastVerifiedText} className="font-semibold" />
+              </div>
 
-              <Stack spacing={2.5} sx={{ mt: 1.5 }}>
-                <Stack spacing={1}>
+              <div className="flex flex-col gap-5 mt-3">
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.totp")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.totp.description")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
 
                 {totpDraft ? (
-                  <Stack spacing={2}>
-                    <Typography variant="subtitle2" fontWeight={600}>
+                  <div className="flex flex-col gap-4">
+                    <h4 className="text-sm font-semibold">
                       {t("settings:security.totp.pendingTitle")}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                    >
+                    </h4>
+                    <p className="text-sm text-page-text/70">
                       {t("settings:security.totp.pendingDescription")}
-                    </Typography>
+                    </p>
                     <TotpQrDisplay
                       otpauthUrl={totpDraft.otpauth_url}
                       secret={totpDraft.secret}
@@ -2159,40 +2371,27 @@ export default function Settings() {
                     >
                       {t("settings:security.totp.cancel")}
                     </Button>
-                  </Stack>
+                  </div>
                 ) : (
-                  <Stack spacing={1.5}>
+                  <div className="flex flex-col gap-3">
                     {activeTotp.length ? (
-                      <Stack spacing={1.25}>
+                      <div className="flex flex-col gap-2.5">
                         {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
-                          <Stack
+                          <div
                             key={enrollment.id}
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={1.25}
-                            alignItems={{ sm: "center" }}
-                            justifyContent="space-between"
-                            sx={{
-                              border: "1px solid var(--glass-border)",
-                              borderRadius: 2,
-                              padding: 1.5,
-                            }}
+                            className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between border border-glass-border rounded-lg p-3"
                           >
-                            <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                              <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <p className="font-semibold text-page-text">
                                 {enrollment.label ||
                                   t("settings:security.totp.unnamed", { index: index + 1 })}
-                              </Typography>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: "color-mix(in srgb, var(--page-text) 70%, transparent)",
-                                }}
-                              >
+                              </p>
+                              <p className="text-sm text-page-text/70">
                                 {t("settings:security.totp.added", {
                                   value: formatDateTime(enrollment.created_at) ?? "—",
                                 })}
-                              </Typography>
-                            </Stack>
+                              </p>
+                            </div>
                             <Button
                               variant="outlined"
                               color="error"
@@ -2201,16 +2400,13 @@ export default function Settings() {
                             >
                               {t("settings:security.totp.remove")}
                             </Button>
-                          </Stack>
+                          </div>
                         ))}
-                      </Stack>
+                      </div>
                     ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                      >
+                      <p className="text-sm text-page-text/70">
                         {t("settings:security.totp.empty")}
-                      </Typography>
+                      </p>
                     )}
                     <Button
                       variant="contained"
@@ -2219,26 +2415,21 @@ export default function Settings() {
                     >
                       {t("settings:security.totp.add")}
                     </Button>
-                  </Stack>
+                  </div>
                 )}
 
-                <Divider sx={{ my: 1 }} />
+                <Divider className="my-2" />
 
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.webauthn")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.webauthn.description")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
 
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.5}
-                  alignItems={{ sm: "center" }}
-                  sx={{ maxWidth: 420 }}
-                >
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
                   <TextField
                     fullWidth
                     size="small"
@@ -2256,52 +2447,34 @@ export default function Settings() {
                       ? t("settings:security.webauthn.registering")
                       : t("settings:security.webauthn.cta")}
                   </Button>
-                </Stack>
+                </div>
 
                 {activeWebAuthn.length ? (
-                  <Stack spacing={1.25}>
+                  <div className="flex flex-col gap-2.5">
                     {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
                       const added = formatDateTime(credential.created_at)
                       const lastUsed = formatDateTime(credential.last_used_at ?? null)
                       return (
-                        <Stack
+                        <div
                           key={credential.credential_id}
-                          direction={{ xs: "column", sm: "row" }}
-                          spacing={1.25}
-                          alignItems={{ sm: "center" }}
-                          justifyContent="space-between"
-                          sx={{
-                            border: "1px solid var(--glass-border)",
-                            borderRadius: 2,
-                            padding: 1.5,
-                          }}
+                          className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between border border-glass-border rounded-lg p-3"
                         >
-                          <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                            <Typography fontWeight={600} sx={{ color: "var(--page-text)" }}>
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <p className="font-semibold text-page-text">
                               {credential.device_name ||
                                 t("settings:security.webauthn.unnamed", { index: index + 1 })}
-                            </Typography>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: "color-mix(in srgb, var(--page-text) 70%, transparent)",
-                              }}
-                            >
+                            </p>
+                            <p className="text-sm text-page-text/70">
                               {added
                                 ? t("settings:security.webauthn.added", { value: added })
                                 : null}
-                            </Typography>
+                            </p>
                             {lastUsed ? (
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: "color-mix(in srgb, var(--page-text) 60%, transparent)",
-                                }}
-                              >
+                              <p className="text-sm text-page-text/60">
                                 {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
-                              </Typography>
+                              </p>
                             ) : null}
-                          </Stack>
+                          </div>
                           <Button
                             variant="outlined"
                             color="error"
@@ -2310,35 +2483,28 @@ export default function Settings() {
                           >
                             {t("settings:security.webauthn.remove")}
                           </Button>
-                        </Stack>
+                        </div>
                       )
                     })}
-                  </Stack>
+                  </div>
                 ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
+                  <p className="text-sm text-page-text/70">
                     {t("settings:security.webauthn.empty")}
-                  </Typography>
+                  </p>
                 )}
 
-                <Divider sx={{ my: 1 }} />
+                <Divider className="my-2" />
 
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   <SectionTitle component="h3" variant="subtitle2">
                     {t("settings:security.method.recovery")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
                     {t("settings:security.recovery.description")}
                   </SectionSubtitle>
-                </Stack>
+                </div>
 
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.5}
-                  alignItems={{ sm: "center" }}
-                >
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                   <Button
                     variant="outlined"
                     onClick={handleGenerateRecoveryCodes}
@@ -2348,13 +2514,8 @@ export default function Settings() {
                       ? t("settings:security.recovery.generating")
                       : t("settings:security.recovery.generate")}
                   </Button>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "color-mix(in srgb, var(--page-text) 70%, transparent)" }}
-                  >
-                    {recoveryStatusText}
-                  </Typography>
-                </Stack>
+                  <p className="text-sm text-page-text/70">{recoveryStatusText}</p>
+                </div>
 
                 {generatedRecoveryCodes.length ? (
                   <RecoveryCodeList
@@ -2362,15 +2523,15 @@ export default function Settings() {
                     allowCopy
                   />
                 ) : null}
-              </Stack>
+              </div>
             </SectionCard>
-          </Stack>
+          </div>
         )}
 
         {tab === 2 && (
-          <Stack spacing={3}>
-            <Stack spacing={2}>
-              <Stack direction="row" alignItems="center" spacing={1}>
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-row items-center gap-2">
                 <img
                   src={spotifyLogo}
                   alt={t("settings:integrations.spotify.alt")}
@@ -2380,11 +2541,11 @@ export default function Settings() {
                   loading="lazy"
                   decoding="async"
                 />
-                <Typography variant="h6" sx={{ color: "var(--page-text)" }}>
+                <h3 className="text-lg font-semibold text-page-text">
                   {t("settings:integrations.spotify.title")}
-                </Typography>
-              </Stack>
-              <Stack direction="row" alignItems="center" spacing={1.2} flexWrap="wrap">
+                </h3>
+              </div>
+              <div className="flex flex-row items-center gap-2.5 flex-wrap">
                 <Chip
                   size="small"
                   className="glass--chip"
@@ -2399,13 +2560,9 @@ export default function Settings() {
                 {spotifyConnected && !!spotifyName && (
                   <Chip size="small" variant="outlined" label={spotifyName} />
                 )}
-              </Stack>
+              </div>
               {!spotifyConnected ? (
-                <Button
-                  variant="contained"
-                  onClick={connectSpotify}
-                  sx={{ alignSelf: "flex-start" }}
-                >
+                <Button variant="contained" onClick={connectSpotify} className="self-start">
                   {t("settings:integrations.spotify.connect")}
                 </Button>
               ) : (
@@ -2413,20 +2570,20 @@ export default function Settings() {
                   variant="outlined"
                   color="error"
                   onClick={disconnectSpotify}
-                  sx={{ alignSelf: "flex-start" }}
+                  className="self-start"
                 >
                   {t("settings:integrations.spotify.disconnect")}
                 </Button>
               )}
-            </Stack>
-          </Stack>
+            </div>
+          </div>
         )}
-      </Paper>
+      </div>
 
       <Dialog open={confirmLogout} onClose={() => setConfirmLogout(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t("settings:account.logout.dialogTitle")}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">{t("settings:account.logout.dialogDescription")}</Typography>
+          <p className="text-sm">{t("settings:account.logout.dialogDescription")}</p>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmLogout(false)}>{t("common:buttons.cancel")}</Button>
@@ -2459,11 +2616,11 @@ export default function Settings() {
           onClose={() => setSnack(null)}
           severity={snack?.sev || "info"}
           variant="filled"
-          sx={{ width: "100%" }}
+          className="w-full"
         >
           {snack?.text}
         </Alert>
       </Snackbar>
-    </Box>
+    </div>
   )
 }
