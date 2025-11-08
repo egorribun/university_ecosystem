@@ -144,7 +144,8 @@ describe("Settings radio buttons", () => {
       fireEvent.click(lightRadio)
       // Wait a bit for state update
       await new Promise((resolve) => setTimeout(resolve, 100))
-      expect(localStorage.getItem("theme-mode")).toBe("light")
+      // MUI useColorScheme uses "theme" as storage key (modeStorageKey="theme" in main.tsx)
+      expect(localStorage.getItem("theme")).toBe("light")
     }
   })
 

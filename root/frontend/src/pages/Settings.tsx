@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
+import { useColorScheme } from "@mui/material/styles"
 import api from "../api/client"
 import {
   startTotpEnrollment,
@@ -300,7 +301,7 @@ function TextField({
           rounded-lg border bg-card text-page-text
           ${error ? "border-red-500" : "border-page-text/25"}
           hover:border-page-text/35
-          focus:outline-none focus:ring-3 focus:ring-primary/25 focus:border-primary
+          focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary
           disabled:bg-page-text/[0.06] disabled:border-page-text/20 disabled:cursor-not-allowed
           transition-all duration-200
         `}
@@ -811,25 +812,15 @@ export default function Settings() {
   const { language, setLanguage, available: availableLanguages } = useLanguage()
   const { t } = useTranslation(["settings", "common", "notifications", "profile"])
 
-  // Theme management
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    const stored = localStorage.getItem("theme-mode")
-    return (stored as ThemeMode) || "system"
-  })
-
+  // Theme management using MUI's useColorScheme
+  const { mode, setMode: muiSetMode } = useColorScheme()
+  
+  // Map MUI mode to our ThemeMode type
+  const theme: ThemeMode = (mode as ThemeMode) || "system"
+  
   const setMode = useCallback((value: ThemeMode) => {
-    setTheme(value)
-    localStorage.setItem("theme-mode", value)
-
-    // Apply theme to document
-    const root = document.documentElement
-    if (value === "system") {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-      root.classList.toggle("dark", prefersDark)
-    } else {
-      root.classList.toggle("dark", value === "dark")
-    }
-  }, [])
+    muiSetMode(value)
+  }, [muiSetMode])
 
   const {
     pushSupported,

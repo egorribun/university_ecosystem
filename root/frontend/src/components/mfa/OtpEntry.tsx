@@ -129,7 +129,7 @@ export const OtpEntry = ({
               w-full px-4 py-2.5 rounded-lg border bg-card text-page-text
               ${derivedError ? "border-red-500" : "border-page-text/25"}
               hover:border-page-text/35
-              focus:outline-none focus:ring-3 focus:ring-primary/25 focus:border-primary
+              focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary
               disabled:bg-page-text/[0.06] disabled:border-page-text/20 disabled:cursor-not-allowed
               transition-all duration-200
             `}

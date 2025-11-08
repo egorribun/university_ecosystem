@@ -17,6 +17,7 @@ const attributeSelector = (attribute: "data" | "aria", value: string) => {
 };
 
 const config: Config = {
+  darkMode: 'class',
   content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
     extend: {

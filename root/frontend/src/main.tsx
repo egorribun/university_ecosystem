@@ -81,10 +81,17 @@ async function bootstrap() {
       const { mode, systemMode } = useColorScheme()
       useEffect(() => {
         const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
-        document.body.dataset.colorScheme = resolved
+        // Apply dark class to both html and body elements
+        // html for Tailwind CSS, body for themes.css compatibility
+        document.documentElement.classList.toggle("dark", resolved === "dark")
         document.body.classList.toggle("dark", resolved === "dark")
+        // Also set data attribute for consistency
+        document.documentElement.dataset.colorScheme = resolved
+        document.body.dataset.colorScheme = resolved
         return () => {
+          document.documentElement.classList.remove("dark")
           document.body.classList.remove("dark")
+          document.documentElement.removeAttribute("data-color-scheme")
           document.body.removeAttribute("data-color-scheme")
         }
       }, [mode, systemMode])
