@@ -427,6 +427,7 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+  vi.stubEnv("VITE_MAP_CONSTRUCTOR_ID", "test-map-id")
   localStorage.clear()
   localStorage.setItem("ue:language", "en")
   document.documentElement.setAttribute("lang", "en")
@@ -443,6 +444,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   while (clients.length) {
     const client = clients.pop()
     client?.clear()
