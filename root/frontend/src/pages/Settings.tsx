@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react"
+import React, { useEffect, useRef, useState, useCallback, useMemo, ChangeEvent, FocusEvent } from "react"
 import { isAxiosError } from "axios"
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
 import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
@@ -84,9 +84,9 @@ function SectionCard({
 }: {
   children: React.ReactNode
   className?: string
-  component?: keyof JSX.IntrinsicElements
+  component?: React.ElementType
 } & React.HTMLAttributes<HTMLElement>) {
-  const Component = component as keyof JSX.IntrinsicElements
+  const Component = component
   return (
     <Component
       className={`bg-card rounded-[20px] px-6 py-[22px] border border-glass-border flex flex-col gap-3 ${className}`}
@@ -106,10 +106,10 @@ function SectionTitle({
 }: {
   children: React.ReactNode
   className?: string
-  component?: keyof JSX.IntrinsicElements
+  component?: React.ElementType
   variant?: string
 } & React.HTMLAttributes<HTMLElement>) {
-  const Component = component as keyof JSX.IntrinsicElements
+  const Component = component
   const sizeClasses =
     variant === "subtitle1"
       ? "text-base"
@@ -459,9 +459,9 @@ function Divider({
 }: {
   className?: string
   flexItem?: boolean
-  component?: string
+  component?: React.ElementType
 }) {
-  const Component = (component || "hr") as keyof JSX.IntrinsicElements
+  const Component = component || "hr"
   return (
     <Component
       className={`border-t border-glass-border ${flexItem ? "self-stretch" : ""} ${className}`}
@@ -2232,7 +2232,7 @@ export default function Settings() {
                   <p className="text-sm text-page-text">{t("settings:sessions.loading")}</p>
                 </div>
               ) : sessionsErrorMessage ? (
-                <Alert severity="error" variant="outlined" sx={{ mt: 1.5 }}>
+                <Alert severity="error" variant="outlined" className="mt-3">
                   {sessionsErrorMessage}
                 </Alert>
               ) : sessions.length === 0 ? (
@@ -2282,26 +2282,13 @@ export default function Settings() {
                           <Chip
                             size="small"
                             label={statusLabel}
-                            sx={(theme) => ({
-                              borderRadius: 999,
-                              fontWeight: 600,
-                              color: session.is_current
-                                ? "var(--link-color)"
+                            className={`font-semibold ${
+                              session.is_current
+                                ? "text-link-color bg-primary/[0.12] border-primary/[0.32]"
                                 : isRevoked
-                                  ? "color-mix(in srgb, var(--page-text) 60%, transparent)"
-                                  : "color-mix(in srgb, var(--page-text) 72%, transparent)",
-                              backgroundColor: session.is_current
-                                ? alpha(theme.palette.primary.main, 0.12)
-                                : isRevoked
-                                  ? "transparent"
-                                  : alpha(theme.palette.text.primary, 0.06),
-                              border: "1px solid",
-                              borderColor: session.is_current
-                                ? alpha(theme.palette.primary.main, 0.32)
-                                : isRevoked
-                                  ? alpha(theme.palette.text.primary, 0.16)
-                                  : alpha(theme.palette.text.primary, 0.12),
-                            })}
+                                  ? "text-page-text/60 bg-transparent border-page-text/[0.16]"
+                                  : "text-page-text/[0.72] bg-page-text/[0.06] border-page-text/[0.12]"
+                            }`}
                             variant="outlined"
                           />
                           {!session.is_current && !isRevoked && (
@@ -2330,7 +2317,7 @@ export default function Settings() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                <Chip size="small" label={defaultMethodText} sx={{ fontWeight: 600 }} />
+                <Chip size="small" label={defaultMethodText} className="font-semibold" />
                 <Chip size="small" label={lastVerifiedText} className="font-semibold" />
               </div>
 
