@@ -35,22 +35,16 @@ describe("MapFallback", () => {
   it("renders localized campus points for english", async () => {
     renderWithLanguage("en")
 
+    expect(await screen.findByRole("heading", { name: "Main building" })).toBeInTheDocument()
     expect(
-      await screen.findByRole("heading", { name: "Main building" })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Admissions, student services, and major lecture halls are located here."
-      )
+      screen.getByText("Admissions, student services, and major lecture halls are located here.")
     ).toBeInTheDocument()
   })
 
   it("renders localized campus points for russian", async () => {
     renderWithLanguage("ru")
 
-    expect(
-      await screen.findByRole("heading", { name: "Главный корпус" })
-    ).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Главный корпус" })).toBeInTheDocument()
     expect(
       screen.getByText(
         "Здесь находятся приёмная комиссия, студенческие сервисы и основные лекционные аудитории."
