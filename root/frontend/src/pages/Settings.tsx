@@ -631,7 +631,10 @@ function Tabs({
   className?: string
 }) {
   return (
-    <div className={`flex gap-1 border-b border-glass-border overflow-x-auto ${className}`}>
+    <div
+      role="tablist"
+      className={`flex gap-1 border-b border-glass-border overflow-x-auto ${className}`}
+    >
       {React.Children.map(children, (child, index) => {
         if (React.isValidElement(child)) {
           return React.cloneElement(
@@ -659,6 +662,8 @@ function Tab({
 }) {
   return (
     <button
+      role="tab"
+      aria-selected={selected}
       onClick={onClick}
       className={`
         px-4 py-2.5 text-sm font-bold transition-colors min-h-[42px]

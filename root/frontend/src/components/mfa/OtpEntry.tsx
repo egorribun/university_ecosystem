@@ -110,10 +110,14 @@ export const OtpEntry = ({
         <p className="text-sm text-page-text/70">{description}</p>
 
         <div>
-          <label className="block text-sm font-medium text-page-text mb-1 px-1 bg-card">
+          <label
+            htmlFor="otp-input"
+            className="block text-sm font-medium text-page-text mb-1 px-1 bg-card"
+          >
             {titles[activeMethod]}
           </label>
           <input
+            id="otp-input"
             autoFocus
             type="text"
             value={code}
