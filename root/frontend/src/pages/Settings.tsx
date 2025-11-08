@@ -97,7 +97,7 @@ function SectionCard({
   component?: React.ElementType
 } & React.HTMLAttributes<HTMLElement>) {
   const Component = component
-    return (
+  return (
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-[24px] px-6 py-6",
@@ -418,7 +418,7 @@ function TextField({
             ? [
                 "border-[#D14343] hover:border-[#C13B3B]",
                 "focus:border-[#D14343] focus:shadow-[0_0_0_4px_rgba(209,67,67,0.18)]",
-                "shadow-[0_0_0_1px_rgba(209,67,67,0.4)]"
+                "shadow-[0_0_0_1px_rgba(209,67,67,0.4)]",
               ]
             : null
         )}
@@ -437,7 +437,7 @@ function TextField({
         </p>
       )}
     </div>
-    )
+  )
 }
 
 function RadioGroup({
@@ -684,11 +684,7 @@ function Chip({
         : "border border-transparent text-[color:color-mix(in_srgb,var(--page-text)_85%,var(--secondary-text)_15%)] bg-[color:color-mix(in_srgb,var(--nav-link)_8%,white_92%)] shadow-[0_8px_20px_rgba(15,40,85,0.12)]"
   }
 
-  return (
-    <span className={cn(baseClasses, sizeClasses, toneClasses, className)}>
-      {label}
-    </span>
-  )
+  return <span className={cn(baseClasses, sizeClasses, toneClasses, className)}>{label}</span>
 }
 
 function Divider({
@@ -735,9 +731,7 @@ function Avatar({
         className
       )}
     >
-      <div
-        className="relative h-full w-full overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,40,85,0.08)_6%)]"
-      >
+      <div className="relative h-full w-full overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,40,85,0.08)_6%)]">
         <img src={src} alt={alt} className="h-full w-full object-cover" {...imgProps} />
       </div>
     </div>
@@ -763,14 +757,7 @@ function CircularProgress({
       xmlns="http://www.w3.org/2000/svg"
       style={color ? { color } : undefined}
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-90"
         fill="currentColor"
@@ -832,9 +819,7 @@ function Dialog({
 
 function DialogTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2
-      className="px-6 pt-6 pb-2 text-[1.35rem] font-extrabold leading-tight tracking-tight text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
-    >
+    <h2 className="px-6 pt-6 pb-2 text-[1.35rem] font-extrabold leading-tight tracking-tight text-[color:color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]">
       {children}
     </h2>
   )
@@ -849,11 +834,7 @@ function DialogContent({ children }: { children: React.ReactNode }) {
 }
 
 function DialogActions({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex justify-end gap-2 px-6 pb-6 pt-2">
-      {children}
-    </div>
-  )
+  return <div className="flex justify-end gap-2 px-6 pb-6 pt-2">{children}</div>
 }
 
 function Snackbar({
@@ -891,17 +872,17 @@ function Snackbar({
         ? "right-4"
         : "left-4"
 
-    return (
-      <div
-        className={cn(
-          "fixed z-[calc(var(--ue-z-index-toast))] pointer-events-none",
-          positionClasses,
-          horizontalClasses
-        )}
-      >
-        <div className="pointer-events-auto">{children}</div>
-      </div>
-    )
+  return (
+    <div
+      className={cn(
+        "fixed z-[calc(var(--ue-z-index-toast))] pointer-events-none",
+        positionClasses,
+        horizontalClasses
+      )}
+    >
+      <div className="pointer-events-auto">{children}</div>
+    </div>
+  )
 }
 
 function Tabs({
@@ -1027,16 +1008,16 @@ function SwitchControl({
             ? [
                 "border-[color:color-mix(in_srgb,var(--nav-link)_36%,transparent)]",
                 "bg-[color:color-mix(in_srgb,var(--nav-link)_24%,white_76%)]",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
               ]
             : hover && !disabled
               ? [
                   "border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)]",
-                  "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.12)_5%)]"
+                  "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.12)_5%)]",
                 ]
               : [
                   "border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
-                  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,40,85,0.06)_4%)]"
+                  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,40,85,0.06)_4%)]",
                 ],
           "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
           checked
@@ -2091,231 +2072,229 @@ export default function Settings() {
             </Tabs>
           </div>
 
-        {tab === 0 && (
-          <div className="flex flex-col gap-8">
-            <div className="flex flex-col gap-3">
-              <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
-              <RadioGroup row value={theme} onChange={handleThemeChange}>
-                <FormControlLabel
-                  value="system"
-                  control={<Radio />}
-                  label={
-                    <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
-                      <Monitor className="h-5 w-5" />
-                      <span>{t("settings:appearance.theme.options.system")}</span>
-                    </span>
-                  }
-                />
-                <FormControlLabel
-                  value="light"
-                  control={<Radio />}
-                  label={
-                    <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
-                      <Sun className="h-5 w-5" />
-                      <span>{t("settings:appearance.theme.options.light")}</span>
-                    </span>
-                  }
-                />
-                <FormControlLabel
-                  value="dark"
-                  control={<Radio />}
-                  label={
-                    <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
-                      <Moon className="h-5 w-5" />
-                      <span>{t("settings:appearance.theme.options.dark")}</span>
-                    </span>
-                  }
-                />
-              </RadioGroup>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <SectionTitle variant="h6">{t("settings:language.title")}</SectionTitle>
-              <RadioGroup
-                row
-                value={language}
-                onChange={(_, value) => setLanguage(value as SupportedLanguage)}
-                aria-label={t("settings:language.aria")}
-              >
-                {availableLanguages.map((code) => (
+          {tab === 0 && (
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-3">
+                <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
+                <RadioGroup row value={theme} onChange={handleThemeChange}>
                   <FormControlLabel
-                    key={code}
-                    value={code}
+                    value="system"
                     control={<Radio />}
                     label={
-                      <span className="text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
-                        {t(`settings:language.options.${code}`)}
+                      <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                        <Monitor className="h-5 w-5" />
+                        <span>{t("settings:appearance.theme.options.system")}</span>
                       </span>
                     }
                   />
-                ))}
-              </RadioGroup>
-              <SectionSubtitle className="mt-1">
-                {t("settings:language.description")}
-              </SectionSubtitle>
-            </div>
+                  <FormControlLabel
+                    value="light"
+                    control={<Radio />}
+                    label={
+                      <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                        <Sun className="h-5 w-5" />
+                        <span>{t("settings:appearance.theme.options.light")}</span>
+                      </span>
+                    }
+                  />
+                  <FormControlLabel
+                    value="dark"
+                    control={<Radio />}
+                    label={
+                      <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                        <Moon className="h-5 w-5" />
+                        <span>{t("settings:appearance.theme.options.dark")}</span>
+                      </span>
+                    }
+                  />
+                </RadioGroup>
+              </div>
 
-            <Divider />
-
-            <div className="flex flex-col gap-4">
-              <SectionTitle variant="h6">{t("settings:notifications.title")}</SectionTitle>
-              {!pushSupported ? (
-                <Alert severity="warning" variant="outlined">
-                  {t("settings:notifications.unsupported")}
-                </Alert>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {notificationPermission === "denied" ? (
-                    <div className="flex flex-col gap-3">
-                      <Alert severity="error" variant="outlined">
-                        {t("settings:notifications.blocked.description")}
-                      </Alert>
-                      <SectionSubtitle>
-                        {t("settings:notifications.blocked.hint")}
-                      </SectionSubtitle>
-                      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-                        <Button
-                          variant="contained"
-                          onClick={() => void enableNotifications()}
-                          disabled={pushBusy}
-                          startIcon={
-                            pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                          }
-                        >
-                          {t("settings:notifications.cta.checkPermission")}
-                        </Button>
-                        <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
-                          {t("settings:notifications.status", { status: permissionText })}
-                        </p>
-                      </div>
-                    </div>
-                  ) : notificationPermission === "default" ? (
-                    <div className="flex flex-col gap-3">
-                      <SectionSubtitle>
-                        {t("settings:notifications.cta.prompt")}
-                      </SectionSubtitle>
-                      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-                        <Button
-                          variant="contained"
-                          onClick={() => void enableNotifications()}
-                          disabled={pushBusy || pushInitializing}
-                          startIcon={
-                            pushBusy || pushInitializing ? (
-                              <CircularProgress size={18} color="inherit" />
-                            ) : undefined
-                          }
-                        >
-                          {t("settings:notifications.cta.allow")}
-                        </Button>
-                        <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
-                          {t("settings:notifications.status", { status: permissionText })}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
-                        <SwitchControl
-                          checked={notificationsEnabled}
-                          onChange={handleNotificationsToggle}
-                          disabled={pushBusy || pushInitializing}
-                          aria-label={t("settings:notifications.toggles.notifications.aria")}
-                        />
-                        <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
-                          {t("settings:notifications.toggles.notifications.label")}
+              <div className="flex flex-col gap-3">
+                <SectionTitle variant="h6">{t("settings:language.title")}</SectionTitle>
+                <RadioGroup
+                  row
+                  value={language}
+                  onChange={(_, value) => setLanguage(value as SupportedLanguage)}
+                  aria-label={t("settings:language.aria")}
+                >
+                  {availableLanguages.map((code) => (
+                    <FormControlLabel
+                      key={code}
+                      value={code}
+                      control={<Radio />}
+                      label={
+                        <span className="text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
+                          {t(`settings:language.options.${code}`)}
                         </span>
-                      </label>
-
-                      <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
-                        <SwitchControl
-                          checked={dndEnabled}
-                          onChange={handleDndToggle}
-                          disabled={dndSaving}
-                          aria-label={t("settings:notifications.toggles.dnd.aria")}
-                        />
-                        <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
-                          {t("settings:notifications.toggles.dnd.label")}
-                        </span>
-                      </label>
-
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <TextField
-                          type="time"
-                          label={t("settings:dnd.start")}
-                          value={dndStart}
-                          onChange={handleDndStartChange}
-                          onBlur={handleDndStartBlur}
-                          disabled={!dndEnabled || dndSaving}
-                          size="small"
-                        />
-                        <TextField
-                          type="time"
-                          label={t("settings:dnd.end")}
-                          value={dndEnd}
-                          onChange={handleDndEndChange}
-                          onBlur={handleDndEndBlur}
-                          disabled={!dndEnabled || dndSaving}
-                          size="small"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {tab === 1 && (
-          <div className="flex flex-col gap-5 w-full max-w-full sm:max-w-[640px] md:max-w-[760px] lg:max-w-[880px]">
-            <SectionCard component="section">
-              <ul className="flex flex-col gap-5 w-full list-none p-0 m-0">
-                <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
-                  <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
-                    <Avatar
-                      src={avatarSrc}
-                      alt={user?.full_name || "avatar"}
-                      className="w-[72px] h-[72px]"
-                      imgProps={{
-                        onError: handleAvatarError,
-                        loading: "lazy",
-                        decoding: "async",
-                        referrerPolicy: "no-referrer",
-                      }}
+                      }
                     />
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <SectionTitle variant="subtitle1">
-                        {t("settings:media.avatar.title")}
-                      </SectionTitle>
+                  ))}
+                </RadioGroup>
+                <SectionSubtitle className="mt-1">
+                  {t("settings:language.description")}
+                </SectionSubtitle>
+              </div>
+
+              <Divider />
+
+              <div className="flex flex-col gap-4">
+                <SectionTitle variant="h6">{t("settings:notifications.title")}</SectionTitle>
+                {!pushSupported ? (
+                  <Alert severity="warning" variant="outlined">
+                    {t("settings:notifications.unsupported")}
+                  </Alert>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {notificationPermission === "denied" ? (
+                      <div className="flex flex-col gap-3">
+                        <Alert severity="error" variant="outlined">
+                          {t("settings:notifications.blocked.description")}
+                        </Alert>
+                        <SectionSubtitle>
+                          {t("settings:notifications.blocked.hint")}
+                        </SectionSubtitle>
+                        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                          <Button
+                            variant="contained"
+                            onClick={() => void enableNotifications()}
+                            disabled={pushBusy}
+                            startIcon={
+                              pushBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                            }
+                          >
+                            {t("settings:notifications.cta.checkPermission")}
+                          </Button>
+                          <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
+                            {t("settings:notifications.status", { status: permissionText })}
+                          </p>
+                        </div>
+                      </div>
+                    ) : notificationPermission === "default" ? (
+                      <div className="flex flex-col gap-3">
+                        <SectionSubtitle>{t("settings:notifications.cta.prompt")}</SectionSubtitle>
+                        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                          <Button
+                            variant="contained"
+                            onClick={() => void enableNotifications()}
+                            disabled={pushBusy || pushInitializing}
+                            startIcon={
+                              pushBusy || pushInitializing ? (
+                                <CircularProgress size={18} color="inherit" />
+                              ) : undefined
+                            }
+                          >
+                            {t("settings:notifications.cta.allow")}
+                          </Button>
+                          <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
+                            {t("settings:notifications.status", { status: permissionText })}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
+                          <SwitchControl
+                            checked={notificationsEnabled}
+                            onChange={handleNotificationsToggle}
+                            disabled={pushBusy || pushInitializing}
+                            aria-label={t("settings:notifications.toggles.notifications.aria")}
+                          />
+                          <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
+                            {t("settings:notifications.toggles.notifications.label")}
+                          </span>
+                        </label>
+
+                        <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
+                          <SwitchControl
+                            checked={dndEnabled}
+                            onChange={handleDndToggle}
+                            disabled={dndSaving}
+                            aria-label={t("settings:notifications.toggles.dnd.aria")}
+                          />
+                          <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
+                            {t("settings:notifications.toggles.dnd.label")}
+                          </span>
+                        </label>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <TextField
+                            type="time"
+                            label={t("settings:dnd.start")}
+                            value={dndStart}
+                            onChange={handleDndStartChange}
+                            onBlur={handleDndStartBlur}
+                            disabled={!dndEnabled || dndSaving}
+                            size="small"
+                          />
+                          <TextField
+                            type="time"
+                            label={t("settings:dnd.end")}
+                            value={dndEnd}
+                            onChange={handleDndEndChange}
+                            onBlur={handleDndEndBlur}
+                            disabled={!dndEnabled || dndSaving}
+                            size="small"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab === 1 && (
+            <div className="flex flex-col gap-5 w-full max-w-full sm:max-w-[640px] md:max-w-[760px] lg:max-w-[880px]">
+              <SectionCard component="section">
+                <ul className="flex flex-col gap-5 w-full list-none p-0 m-0">
+                  <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
+                    <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
+                      <Avatar
+                        src={avatarSrc}
+                        alt={user?.full_name || "avatar"}
+                        className="w-[72px] h-[72px]"
+                        imgProps={{
+                          onError: handleAvatarError,
+                          loading: "lazy",
+                          decoding: "async",
+                          referrerPolicy: "no-referrer",
+                        }}
+                      />
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <SectionTitle variant="subtitle1">
+                          {t("settings:media.avatar.title")}
+                        </SectionTitle>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={triggerAvatarPick}
-                      disabled={avatarBusy}
-                      className="sm:min-w-[140px] w-full sm:w-auto"
-                    >
-                      {t("settings:media.avatar.change")}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      onClick={removeAvatar}
-                      disabled={avatarBusy}
-                      className="sm:min-w-[140px] w-full sm:w-auto"
-                    >
-                      {t("settings:media.avatar.delete")}
-                    </Button>
-                  </div>
-                </li>
+                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={triggerAvatarPick}
+                        disabled={avatarBusy}
+                        className="sm:min-w-[140px] w-full sm:w-auto"
+                      >
+                        {t("settings:media.avatar.change")}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        onClick={removeAvatar}
+                        disabled={avatarBusy}
+                        className="sm:min-w-[140px] w-full sm:w-auto"
+                      >
+                        {t("settings:media.avatar.delete")}
+                      </Button>
+                    </div>
+                  </li>
 
-                <Divider component="li" flexItem className="list-none" />
+                  <Divider component="li" flexItem className="list-none" />
 
-                <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
-                  <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
+                  <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
+                    <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
                       <div
                         data-testid="settings-cover-preview"
                         className="h-[72px] w-40 rounded-xl border"
@@ -2326,251 +2305,253 @@ export default function Settings() {
                           borderColor: "color-mix(in srgb, var(--glass-border) 88%, transparent)",
                         }}
                       />
-                    <SectionTitle variant="subtitle1">
-                      {t("settings:media.cover.title")}
-                    </SectionTitle>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={triggerCoverPick}
-                      disabled={coverBusy}
-                      className="sm:min-w-[140px] w-full sm:w-auto"
-                    >
-                      {t("settings:media.cover.change")}
-                    </Button>
-                    {coverUrl && (
+                      <SectionTitle variant="subtitle1">
+                        {t("settings:media.cover.title")}
+                      </SectionTitle>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
                       <Button
                         size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={removeCover}
+                        variant="contained"
+                        onClick={triggerCoverPick}
                         disabled={coverBusy}
                         className="sm:min-w-[140px] w-full sm:w-auto"
                       >
-                        {t("settings:media.cover.remove")}
+                        {t("settings:media.cover.change")}
                       </Button>
-                    )}
-                  </div>
-                </li>
-              </ul>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => {
-                  const f = e.currentTarget.files?.[0]
-                  if (f) uploadAvatar(f)
-                }}
-              />
-              <input
-                ref={coverInputRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => {
-                  const f = e.currentTarget.files?.[0]
-                  if (f) uploadCover(f)
-                }}
-              />
-            </SectionCard>
+                      {coverUrl && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={removeCover}
+                          disabled={coverBusy}
+                          className="sm:min-w-[140px] w-full sm:w-auto"
+                        >
+                          {t("settings:media.cover.remove")}
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                </ul>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0]
+                    if (f) uploadAvatar(f)
+                  }}
+                />
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0]
+                    if (f) uploadCover(f)
+                  }}
+                />
+              </SectionCard>
 
-            <SectionCard component="section">
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                <SectionTitle variant="subtitle1" className="min-w-0">
-                  {t("settings:account.profile.title")}
-                </SectionTitle>
+              <SectionCard component="section">
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                  <SectionTitle variant="subtitle1" className="min-w-0">
+                    {t("settings:account.profile.title")}
+                  </SectionTitle>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
+                  >
+                    {t("common:buttons.edit")}
+                  </Button>
+                </div>
+              </SectionCard>
+
+              <SectionCard component="section">
+                <div className="flex flex-col gap-2">
+                  <SectionTitle variant="subtitle1">
+                    {t("settings:account.logout.title")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:account.logout.subtitle")}
+                  </SectionSubtitle>
+                </div>
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
+                  color="error"
+                  onClick={() => setConfirmLogout(true)}
+                  className="self-start sm:self-end"
                 >
-                  {t("common:buttons.edit")}
+                  {t("settings:account.logout.button")}
                 </Button>
-              </div>
-            </SectionCard>
-
-            <SectionCard component="section">
-              <div className="flex flex-col gap-2">
-                <SectionTitle variant="subtitle1">
-                  {t("settings:account.logout.title")}
-                </SectionTitle>
-                <SectionSubtitle variant="body2">
-                  {t("settings:account.logout.subtitle")}
-                </SectionSubtitle>
-              </div>
-              <Button
-                size="small"
-                variant="outlined"
-                color="error"
-                onClick={() => setConfirmLogout(true)}
-                className="self-start sm:self-end"
-              >
-                {t("settings:account.logout.button")}
-              </Button>
-            </SectionCard>
-            <SectionCard component="section">
-              <div className="flex flex-col gap-2">
-                <SectionTitle variant="subtitle1">
-                  {t("settings:security.account.title")}
-                </SectionTitle>
-                <SectionSubtitle variant="body2">
-                  {t("settings:security.account.subtitle")}
-                </SectionSubtitle>
-              </div>
-
-              <form
-                className="flex flex-col gap-3 mt-4"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void handleEmailSubmit()
-                }}
-              >
+              </SectionCard>
+              <SectionCard component="section">
                 <div className="flex flex-col gap-2">
-                  <SectionTitle component="h3" variant="subtitle2">
-                    {t("settings:security.email.title")}
+                  <SectionTitle variant="subtitle1">
+                    {t("settings:security.account.title")}
                   </SectionTitle>
                   <SectionSubtitle variant="body2">
-                    {t("settings:security.email.subtitle")}
+                    {t("settings:security.account.subtitle")}
                   </SectionSubtitle>
                 </div>
-                {pendingEmail ? (
-                  <Alert severity="info" variant="outlined">
-                    {t("settings:security.email.pendingNotice", { email: pendingEmail })}
-                  </Alert>
-                ) : null}
-                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
-                  <TextField
-                    fullWidth
-                    type="email"
-                    size="small"
-                    label={t("settings:security.email.label")}
-                    value={emailValue}
-                    onChange={(event) => {
-                      setEmailValue(event.target.value)
-                      setEmailError(null)
-                    }}
-                    error={Boolean(emailError)}
-                    helperText={emailError ?? undefined}
-                    autoComplete="email"
-                  />
-                  <TextField
-                    fullWidth
-                    type="password"
-                    size="small"
-                    label={t("settings:security.email.passwordLabel")}
-                    value={emailPassword}
-                    onChange={(event) => {
-                      setEmailPassword(event.target.value)
-                      setEmailPasswordError(null)
-                    }}
-                    error={Boolean(emailPasswordError)}
-                    helperText={emailPasswordError ?? undefined}
-                    autoComplete="current-password"
-                  />
-                </div>
-                <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center">
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={emailBusy}
-                    startIcon={
-                      emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                    }
-                  >
-                    {t("settings:security.email.updateButton")}
-                  </Button>
-                  <SectionSubtitle className="text-sm">
-                    {t("settings:security.email.helper")}
-                  </SectionSubtitle>
-                </div>
-              </form>
 
-              <Divider className="my-5" />
+                <form
+                  className="flex flex-col gap-3 mt-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handleEmailSubmit()
+                  }}
+                >
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.email.title")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.email.subtitle")}
+                    </SectionSubtitle>
+                  </div>
+                  {pendingEmail ? (
+                    <Alert severity="info" variant="outlined">
+                      {t("settings:security.email.pendingNotice", { email: pendingEmail })}
+                    </Alert>
+                  ) : null}
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
+                    <TextField
+                      fullWidth
+                      type="email"
+                      size="small"
+                      label={t("settings:security.email.label")}
+                      value={emailValue}
+                      onChange={(event) => {
+                        setEmailValue(event.target.value)
+                        setEmailError(null)
+                      }}
+                      error={Boolean(emailError)}
+                      helperText={emailError ?? undefined}
+                      autoComplete="email"
+                    />
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.email.passwordLabel")}
+                      value={emailPassword}
+                      onChange={(event) => {
+                        setEmailPassword(event.target.value)
+                        setEmailPasswordError(null)
+                      }}
+                      error={Boolean(emailPasswordError)}
+                      helperText={emailPasswordError ?? undefined}
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center">
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      disabled={emailBusy}
+                      startIcon={
+                        emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                      }
+                    >
+                      {t("settings:security.email.updateButton")}
+                    </Button>
+                    <SectionSubtitle className="text-sm">
+                      {t("settings:security.email.helper")}
+                    </SectionSubtitle>
+                  </div>
+                </form>
 
-              <form
-                className="flex flex-col gap-3"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void handlePasswordSubmit()
-                }}
-              >
+                <Divider className="my-5" />
+
+                <form
+                  className="flex flex-col gap-3"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handlePasswordSubmit()
+                  }}
+                >
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.password.title")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.password.subtitle")}
+                    </SectionSubtitle>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.password.currentLabel")}
+                      value={currentPasswordValue}
+                      onChange={(event) => {
+                        setCurrentPasswordValue(event.target.value)
+                        setCurrentPasswordError(null)
+                      }}
+                      error={Boolean(currentPasswordError)}
+                      helperText={currentPasswordError ?? undefined}
+                      autoComplete="current-password"
+                    />
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.password.newLabel")}
+                      value={newPasswordValue}
+                      onChange={(event) => {
+                        setNewPasswordValue(event.target.value)
+                        if (passwordError) setPasswordError(null)
+                      }}
+                      error={isNewPasswordError}
+                      helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.password.confirmLabel")}
+                      value={confirmPasswordValue}
+                      onChange={(event) => {
+                        setConfirmPasswordValue(event.target.value)
+                        if (passwordError) setPasswordError(null)
+                      }}
+                      error={Boolean(confirmPasswordMessage)}
+                      helperText={confirmPasswordMessage ?? undefined}
+                      autoComplete="new-password"
+                    />
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      disabled={passwordBusy}
+                      startIcon={
+                        passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                      }
+                    >
+                      {passwordBusy
+                        ? t("settings:security.password.updating")
+                        : t("settings:security.password.updateButton")}
+                    </Button>
+                  </div>
+                </form>
+              </SectionCard>
+
+              <SectionCard component="section">
                 <div className="flex flex-col gap-2">
-                  <SectionTitle component="h3" variant="subtitle2">
-                    {t("settings:security.password.title")}
-                  </SectionTitle>
+                  <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
                   <SectionSubtitle variant="body2">
-                    {t("settings:security.password.subtitle")}
+                    {t("settings:sessions.subtitle")}
                   </SectionSubtitle>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2.5">
-                  <TextField
-                    fullWidth
-                    type="password"
-                    size="small"
-                    label={t("settings:security.password.currentLabel")}
-                    value={currentPasswordValue}
-                    onChange={(event) => {
-                      setCurrentPasswordValue(event.target.value)
-                      setCurrentPasswordError(null)
-                    }}
-                    error={Boolean(currentPasswordError)}
-                    helperText={currentPasswordError ?? undefined}
-                    autoComplete="current-password"
-                  />
-                  <TextField
-                    fullWidth
-                    type="password"
-                    size="small"
-                    label={t("settings:security.password.newLabel")}
-                    value={newPasswordValue}
-                    onChange={(event) => {
-                      setNewPasswordValue(event.target.value)
-                      if (passwordError) setPasswordError(null)
-                    }}
-                    error={isNewPasswordError}
-                    helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
-                    autoComplete="new-password"
-                  />
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
-                  <TextField
-                    fullWidth
-                    type="password"
-                    size="small"
-                    label={t("settings:security.password.confirmLabel")}
-                    value={confirmPasswordValue}
-                    onChange={(event) => {
-                      setConfirmPasswordValue(event.target.value)
-                      if (passwordError) setPasswordError(null)
-                    }}
-                    error={Boolean(confirmPasswordMessage)}
-                    helperText={confirmPasswordMessage ?? undefined}
-                    autoComplete="new-password"
-                  />
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={passwordBusy}
-                    startIcon={
-                      passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                    }
-                  >
-                    {passwordBusy
-                      ? t("settings:security.password.updating")
-                      : t("settings:security.password.updateButton")}
-                  </Button>
-                </div>
-              </form>
-            </SectionCard>
-
-            <SectionCard component="section">
-              <div className="flex flex-col gap-2">
-                <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
-                <SectionSubtitle variant="body2">{t("settings:sessions.subtitle")}</SectionSubtitle>
-              </div>
 
                 <div className="mt-3 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <Button
@@ -2607,100 +2588,102 @@ export default function Settings() {
                     {t("settings:sessions.empty")}
                   </SectionSubtitle>
                 ) : (
-                <div className="flex flex-col gap-3 mt-3">
-                  {sortedSessions.map((session) => {
-                    const isRevoked = Boolean(session.revoked_at)
-                    const lastSeen = session.last_seen_at ?? session.created_at
-                    const timelineSource = session.revoked_at ?? lastSeen
-                    const timeline = t("settings:sessions.lastSeen.value", {
-                      value: formatSessionTimestamp(timelineSource),
-                    })
-                    const ipLabel = session.ip_address
-                      ? t("settings:sessions.ipAddress", { ip: session.ip_address })
-                      : t("settings:sessions.ipUnknown")
-                    const meta = [ipLabel, timeline]
-                    if (isRevoked) meta.push(t("settings:sessions.status.revoked"))
-                    const details = meta.join(" • ")
-                    const statusLabel = session.is_current
-                      ? t("settings:sessions.status.current")
-                      : isRevoked
-                        ? t("settings:sessions.status.revoked")
-                        : t("settings:sessions.status.active")
-                    const disableRevoke =
-                      session.is_current || isRevoked || revokeSessionMutation.isPending
+                  <div className="flex flex-col gap-3 mt-3">
+                    {sortedSessions.map((session) => {
+                      const isRevoked = Boolean(session.revoked_at)
+                      const lastSeen = session.last_seen_at ?? session.created_at
+                      const timelineSource = session.revoked_at ?? lastSeen
+                      const timeline = t("settings:sessions.lastSeen.value", {
+                        value: formatSessionTimestamp(timelineSource),
+                      })
+                      const ipLabel = session.ip_address
+                        ? t("settings:sessions.ipAddress", { ip: session.ip_address })
+                        : t("settings:sessions.ipUnknown")
+                      const meta = [ipLabel, timeline]
+                      if (isRevoked) meta.push(t("settings:sessions.status.revoked"))
+                      const details = meta.join(" • ")
+                      const statusLabel = session.is_current
+                        ? t("settings:sessions.status.current")
+                        : isRevoked
+                          ? t("settings:sessions.status.revoked")
+                          : t("settings:sessions.status.active")
+                      const disableRevoke =
+                        session.is_current || isRevoked || revokeSessionMutation.isPending
 
-                    return (
-                      <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
-                        <div className="min-w-0">
-                          <p
-                            className={cn(
-                              "text-sm break-words transition-colors",
-                              session.is_current ? "font-semibold" : "font-medium",
-                              isRevoked
-                                ? "text-[color:color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
-                                : "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
-                            )}
-                          >
-                            {session.user_agent || t("settings:sessions.unknownDevice")}
-                          </p>
-                          <p
-                            className={cn(
-                              "text-xs transition-colors",
-                              isRevoked
-                                ? "italic text-[color:color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
-                                : "text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
-                            )}
-                          >
-                            {details}
-                          </p>
-                        </div>
-                        <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
-                          <Chip
-                            size="small"
-                            label={statusLabel}
-                            variant="outlined"
-                            color={session.is_current ? "primary" : "default"}
-                            className={cn("font-semibold", isRevoked && "opacity-80")}
-                          />
-                          {!session.is_current && !isRevoked && (
-                            <Button
-                              size="small"
-                              variant="text"
-                              color="error"
-                              disabled={disableRevoke}
-                              onClick={() => void handleRevokeSession(session.id)}
+                      return (
+                        <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
+                          <div className="min-w-0">
+                            <p
+                              className={cn(
+                                "text-sm break-words transition-colors",
+                                session.is_current ? "font-semibold" : "font-medium",
+                                isRevoked
+                                  ? "text-[color:color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
+                                  : "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
+                              )}
                             >
-                              {t("settings:sessions.revoke")}
-                            </Button>
-                          )}
-                        </div>
-                      </SessionItem>
-                    )
-                  })}
-                </div>
-              )}
-            </SectionCard>
+                              {session.user_agent || t("settings:sessions.unknownDevice")}
+                            </p>
+                            <p
+                              className={cn(
+                                "text-xs transition-colors",
+                                isRevoked
+                                  ? "italic text-[color:color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
+                                  : "text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
+                              )}
+                            >
+                              {details}
+                            </p>
+                          </div>
+                          <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
+                            <Chip
+                              size="small"
+                              label={statusLabel}
+                              variant="outlined"
+                              color={session.is_current ? "primary" : "default"}
+                              className={cn("font-semibold", isRevoked && "opacity-80")}
+                            />
+                            {!session.is_current && !isRevoked && (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="error"
+                                disabled={disableRevoke}
+                                onClick={() => void handleRevokeSession(session.id)}
+                              >
+                                {t("settings:sessions.revoke")}
+                              </Button>
+                            )}
+                          </div>
+                        </SessionItem>
+                      )
+                    })}
+                  </div>
+                )}
+              </SectionCard>
 
-            <SectionCard component="section">
-              <div className="flex flex-col gap-2 mb-3">
-                <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
-                <SectionSubtitle variant="body2">{t("settings:security.subtitle")}</SectionSubtitle>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                <Chip size="small" label={defaultMethodText} className="font-semibold" />
-                <Chip size="small" label={lastVerifiedText} className="font-semibold" />
-              </div>
-
-              <div className="flex flex-col gap-5 mt-3">
-                <div className="flex flex-col gap-2">
-                  <SectionTitle component="h3" variant="subtitle2">
-                    {t("settings:security.method.totp")}
-                  </SectionTitle>
+              <SectionCard component="section">
+                <div className="flex flex-col gap-2 mb-3">
+                  <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
                   <SectionSubtitle variant="body2">
-                    {t("settings:security.totp.description")}
+                    {t("settings:security.subtitle")}
                   </SectionSubtitle>
                 </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <Chip size="small" label={defaultMethodText} className="font-semibold" />
+                  <Chip size="small" label={lastVerifiedText} className="font-semibold" />
+                </div>
+
+                <div className="flex flex-col gap-5 mt-3">
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.method.totp")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.totp.description")}
+                    </SectionSubtitle>
+                  </div>
 
                   {totpDraft ? (
                     <div className="flex flex-col gap-4">
@@ -2782,36 +2765,36 @@ export default function Settings() {
                     </div>
                   )}
 
-                <Divider className="my-2" />
+                  <Divider className="my-2" />
 
-                <div className="flex flex-col gap-2">
-                  <SectionTitle component="h3" variant="subtitle2">
-                    {t("settings:security.method.webauthn")}
-                  </SectionTitle>
-                  <SectionSubtitle variant="body2">
-                    {t("settings:security.webauthn.description")}
-                  </SectionSubtitle>
-                </div>
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.method.webauthn")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.webauthn.description")}
+                    </SectionSubtitle>
+                  </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label={t("settings:security.webauthn.nameLabel")}
-                    placeholder={t("settings:security.webauthn.namePlaceholder")}
-                    value={webAuthnName}
-                    onChange={(event) => setWebAuthnName(event.target.value)}
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={() => void handleRegisterWebAuthn()}
-                    disabled={webAuthnBusy}
-                  >
-                    {webAuthnBusy
-                      ? t("settings:security.webauthn.registering")
-                      : t("settings:security.webauthn.cta")}
-                  </Button>
-                </div>
+                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={t("settings:security.webauthn.nameLabel")}
+                      placeholder={t("settings:security.webauthn.namePlaceholder")}
+                      value={webAuthnName}
+                      onChange={(event) => setWebAuthnName(event.target.value)}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={() => void handleRegisterWebAuthn()}
+                      disabled={webAuthnBusy}
+                    >
+                      {webAuthnBusy
+                        ? t("settings:security.webauthn.registering")
+                        : t("settings:security.webauthn.cta")}
+                    </Button>
+                  </div>
 
                   {activeWebAuthn.length ? (
                     <div className="flex flex-col gap-2.5">
@@ -2863,112 +2846,115 @@ export default function Settings() {
                     </SectionSubtitle>
                   )}
 
-                <Divider className="my-2" />
+                  <Divider className="my-2" />
 
-                <div className="flex flex-col gap-2">
-                  <SectionTitle component="h3" variant="subtitle2">
-                    {t("settings:security.method.recovery")}
-                  </SectionTitle>
-                  <SectionSubtitle variant="body2">
-                    {t("settings:security.recovery.description")}
-                  </SectionSubtitle>
-                </div>
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.method.recovery")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.recovery.description")}
+                    </SectionSubtitle>
+                  </div>
 
                   <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                    <Button
+                      variant="outlined"
+                      onClick={handleGenerateRecoveryCodes}
+                      disabled={recoveryBusy}
+                    >
+                      {recoveryBusy
+                        ? t("settings:security.recovery.generating")
+                        : t("settings:security.recovery.generate")}
+                    </Button>
+                    <SectionSubtitle className="text-sm">{recoveryStatusText}</SectionSubtitle>
+                  </div>
+
+                  {generatedRecoveryCodes.length ? (
+                    <RecoveryCodeList
+                      codes={generatedRecoveryCodes.map((code) => ({ code }))}
+                      allowCopy
+                    />
+                  ) : null}
+                </div>
+              </SectionCard>
+            </div>
+          )}
+
+          {tab === 2 && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={spotifyLogo}
+                    alt={t("settings:integrations.spotify.alt")}
+                    width={22}
+                    height={22}
+                    style={{ display: "block", borderRadius: "50%" }}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <SectionTitle variant="subtitle1" className="text-[1.15rem]">
+                    {t("settings:integrations.spotify.title")}
+                  </SectionTitle>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <Chip
+                    size="small"
+                    label={
+                      spotifyConnected
+                        ? t("settings:integrations.spotify.status.connected")
+                        : t("settings:integrations.spotify.status.disconnected")
+                    }
+                    color={spotifyConnected ? "success" : "default"}
+                    variant="outlined"
+                  />
+                  {spotifyConnected && !!spotifyName && (
+                    <Chip size="small" variant="outlined" label={spotifyName} />
+                  )}
+                </div>
+                {!spotifyConnected ? (
+                  <Button variant="contained" onClick={connectSpotify} className="self-start">
+                    {t("settings:integrations.spotify.connect")}
+                  </Button>
+                ) : (
                   <Button
                     variant="outlined"
-                    onClick={handleGenerateRecoveryCodes}
-                    disabled={recoveryBusy}
+                    color="error"
+                    onClick={disconnectSpotify}
+                    className="self-start"
                   >
-                    {recoveryBusy
-                      ? t("settings:security.recovery.generating")
-                      : t("settings:security.recovery.generate")}
+                    {t("settings:integrations.spotify.disconnect")}
                   </Button>
-                    <SectionSubtitle className="text-sm">
-                      {recoveryStatusText}
-                    </SectionSubtitle>
-                </div>
-
-                {generatedRecoveryCodes.length ? (
-                  <RecoveryCodeList
-                    codes={generatedRecoveryCodes.map((code) => ({ code }))}
-                    allowCopy
-                  />
-                ) : null}
-              </div>
-            </SectionCard>
-          </div>
-        )}
-
-        {tab === 2 && (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <img
-                  src={spotifyLogo}
-                  alt={t("settings:integrations.spotify.alt")}
-                  width={22}
-                  height={22}
-                  style={{ display: "block", borderRadius: "50%" }}
-                  loading="lazy"
-                  decoding="async"
-                />
-                <SectionTitle variant="subtitle1" className="text-[1.15rem]">
-                  {t("settings:integrations.spotify.title")}
-                </SectionTitle>
-              </div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <Chip
-                  size="small"
-                  label={
-                    spotifyConnected
-                      ? t("settings:integrations.spotify.status.connected")
-                      : t("settings:integrations.spotify.status.disconnected")
-                  }
-                  color={spotifyConnected ? "success" : "default"}
-                  variant="outlined"
-                />
-                {spotifyConnected && !!spotifyName && (
-                  <Chip size="small" variant="outlined" label={spotifyName} />
                 )}
               </div>
-              {!spotifyConnected ? (
-                <Button variant="contained" onClick={connectSpotify} className="self-start">
-                  {t("settings:integrations.spotify.connect")}
-                </Button>
-              ) : (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={disconnectSpotify}
-                  className="self-start"
-                >
-                  {t("settings:integrations.spotify.disconnect")}
-                </Button>
-              )}
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <Dialog open={confirmLogout} onClose={() => setConfirmLogout(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>{t("settings:account.logout.dialogTitle")}</DialogTitle>
-        <DialogContent>
-          <p className="text-sm">{t("settings:account.logout.dialogDescription")}</p>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmLogout(false)}>{t("common:buttons.cancel")}</Button>
-          <Button
-            color="error"
-            onClick={async () => {
-              setConfirmLogout(false)
-              await logout()
-            }}
-          >
-            {t("settings:account.logout.confirm")}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <Dialog
+          open={confirmLogout}
+          onClose={() => setConfirmLogout(false)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>{t("settings:account.logout.dialogTitle")}</DialogTitle>
+          <DialogContent>
+            <p className="text-sm">{t("settings:account.logout.dialogDescription")}</p>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmLogout(false)}>{t("common:buttons.cancel")}</Button>
+            <Button
+              color="error"
+              onClick={async () => {
+                setConfirmLogout(false)
+                await logout()
+              }}
+            >
+              {t("settings:account.logout.confirm")}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <StepUpDialog
           open={stepUpOpen}
