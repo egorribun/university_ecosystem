@@ -2038,22 +2038,22 @@ export default function Settings() {
       className="relative mx-0 mt-0 min-h-screen w-full overflow-hidden px-0"
       style={{ background: ambientBackground }}
     >
-        <div className="pointer-events-none absolute -top-40 -left-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(15,79,170,0.22),transparent_70%)] blur-[120px]" />
-        <div className="pointer-events-none absolute -bottom-48 right-[-18%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(79,179,255,0.18),transparent_72%)] blur-[140px]" />
-        <div className="relative z-10 flex min-h-screen w-full flex-col gap-8 px-4 pb-12 pt-10 sm:px-6 md:px-8 lg:px-12 lg:pb-16 lg:pt-16 xl:px-16 2xl:px-20">
-          <div
-            className={cn(
-              "glass glass--panel glass--sheen relative w-full overflow-hidden rounded-[28px]",
-              "lg:rounded-[32px]",
-              "border border-[color:var(--glass-border)]",
-              "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
-              "shadow-[0_32px_90px_rgba(15,40,85,0.16)]",
-              "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_36px_110px_rgba(5,9,17,0.7)]",
-              "w-full max-w-full sm:max-w-[720px] md:max-w-[820px] lg:max-w-[960px] xl:max-w-[1120px] 2xl:max-w-[1240px]",
-              "lg:ml-0 lg:mr-auto",
-              "p-4 md:p-8 lg:p-12 xl:p-14 2xl:p-16"
-            )}
-          >
+      <div className="pointer-events-none absolute -top-40 -left-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(15,79,170,0.22),transparent_70%)] blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-48 right-[-18%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(79,179,255,0.18),transparent_72%)] blur-[140px]" />
+      <div className="relative z-10 flex min-h-screen w-full flex-col gap-8 px-4 pb-12 pt-10 sm:px-6 md:px-8 lg:px-12 lg:pb-16 lg:pt-16 xl:px-16 2xl:px-20">
+        <div
+          className={cn(
+            "glass glass--panel glass--sheen relative w-full overflow-hidden rounded-[28px]",
+            "lg:rounded-[32px]",
+            "border border-[color:var(--glass-border)]",
+            "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
+            "shadow-[0_32px_90px_rgba(15,40,85,0.16)]",
+            "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_36px_110px_rgba(5,9,17,0.7)]",
+            "w-full max-w-full sm:max-w-[720px] md:max-w-[820px] lg:max-w-[960px] xl:max-w-[1120px] 2xl:max-w-[1240px]",
+            "lg:ml-0 lg:mr-auto",
+            "p-4 md:p-8 lg:p-12 xl:p-14 2xl:p-16"
+          )}
+        >
           <div className="flex flex-row items-center gap-3 pb-4 md:pb-6">
             <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color:color-mix(in_srgb,var(--nav-link)_14%,white_86%)] text-[color:var(--nav-link)] shadow-[0_10px_22px_rgba(15,79,170,0.16)]">
               <SettingsIcon className="h-5 w-5" />
@@ -2076,8 +2076,8 @@ export default function Settings() {
             </Tabs>
           </div>
 
-            {tab === 0 && (
-              <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
+          {tab === 0 && (
+            <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
               <div className="flex flex-col gap-3">
                 <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
                 <RadioGroup row value={theme} onChange={handleThemeChange}>
@@ -2249,645 +2249,645 @@ export default function Settings() {
             </div>
           )}
 
-            {tab === 1 && (
-              <div className="flex w-full flex-col gap-5 sm:gap-6 xl:max-w-[min(100%,1080px)] 2xl:max-w-[min(100%,1240px)]">
-                <SectionCard component="section">
-                  <ul className="flex flex-col gap-5 w-full list-none p-0 m-0">
-                    <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
-                      <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
-                        <Avatar
-                          src={avatarSrc}
-                          alt={user?.full_name || "avatar"}
-                          className="w-[72px] h-[72px]"
-                          imgProps={{
-                            onError: handleAvatarError,
-                            loading: "lazy",
-                            decoding: "async",
-                            referrerPolicy: "no-referrer",
-                          }}
-                        />
-                        <div className="flex flex-col gap-1 min-w-0">
-                          <SectionTitle variant="subtitle1">
-                            {t("settings:media.avatar.title")}
-                          </SectionTitle>
-                        </div>
+          {tab === 1 && (
+            <div className="flex w-full flex-col gap-5 sm:gap-6 xl:max-w-[min(100%,1080px)] 2xl:max-w-[min(100%,1240px)]">
+              <SectionCard component="section">
+                <ul className="flex flex-col gap-5 w-full list-none p-0 m-0">
+                  <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
+                    <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
+                      <Avatar
+                        src={avatarSrc}
+                        alt={user?.full_name || "avatar"}
+                        className="w-[72px] h-[72px]"
+                        imgProps={{
+                          onError: handleAvatarError,
+                          loading: "lazy",
+                          decoding: "async",
+                          referrerPolicy: "no-referrer",
+                        }}
+                      />
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <SectionTitle variant="subtitle1">
+                          {t("settings:media.avatar.title")}
+                        </SectionTitle>
                       </div>
-                      <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={triggerAvatarPick}
-                          disabled={avatarBusy}
-                          className="sm:min-w-[140px] w-full sm:w-auto"
-                        >
-                          {t("settings:media.avatar.change")}
-                        </Button>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={triggerAvatarPick}
+                        disabled={avatarBusy}
+                        className="sm:min-w-[140px] w-full sm:w-auto"
+                      >
+                        {t("settings:media.avatar.change")}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        onClick={removeAvatar}
+                        disabled={avatarBusy}
+                        className="sm:min-w-[140px] w-full sm:w-auto"
+                      >
+                        {t("settings:media.avatar.delete")}
+                      </Button>
+                    </div>
+                  </li>
+
+                  <Divider component="li" flexItem className="list-none" />
+
+                  <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
+                    <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
+                      <div
+                        data-testid="settings-cover-preview"
+                        className="h-[72px] w-40 rounded-xl border"
+                        style={{
+                          background: coverSrc
+                            ? `url(${coverSrc}) center/cover no-repeat`
+                            : "color-mix(in srgb, var(--page-text) 6%, transparent)",
+                          borderColor: "color-mix(in srgb, var(--glass-border) 88%, transparent)",
+                        }}
+                      />
+                      <SectionTitle variant="subtitle1">
+                        {t("settings:media.cover.title")}
+                      </SectionTitle>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={triggerCoverPick}
+                        disabled={coverBusy}
+                        className="sm:min-w-[140px] w-full sm:w-auto"
+                      >
+                        {t("settings:media.cover.change")}
+                      </Button>
+                      {coverUrl && (
                         <Button
                           size="small"
                           variant="outlined"
                           color="error"
-                          onClick={removeAvatar}
-                          disabled={avatarBusy}
-                          className="sm:min-w-[140px] w-full sm:w-auto"
-                        >
-                          {t("settings:media.avatar.delete")}
-                        </Button>
-                      </div>
-                    </li>
-
-                    <Divider component="li" flexItem className="list-none" />
-
-                    <li className="flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center justify-between list-none">
-                      <div className="flex flex-row gap-3 sm:gap-5 items-center min-w-0 flex-1">
-                        <div
-                          data-testid="settings-cover-preview"
-                          className="h-[72px] w-40 rounded-xl border"
-                          style={{
-                            background: coverSrc
-                              ? `url(${coverSrc}) center/cover no-repeat`
-                              : "color-mix(in srgb, var(--page-text) 6%, transparent)",
-                            borderColor: "color-mix(in srgb, var(--glass-border) 88%, transparent)",
-                          }}
-                        />
-                        <SectionTitle variant="subtitle1">
-                          {t("settings:media.cover.title")}
-                        </SectionTitle>
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-start sm:justify-end flex-wrap w-full sm:w-auto">
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={triggerCoverPick}
+                          onClick={removeCover}
                           disabled={coverBusy}
                           className="sm:min-w-[140px] w-full sm:w-auto"
                         >
-                          {t("settings:media.cover.change")}
+                          {t("settings:media.cover.remove")}
                         </Button>
-                        {coverUrl && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            onClick={removeCover}
-                            disabled={coverBusy}
-                            className="sm:min-w-[140px] w-full sm:w-auto"
-                          >
-                            {t("settings:media.cover.remove")}
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  </ul>
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => {
-                      const f = e.currentTarget.files?.[0]
-                      if (f) uploadAvatar(f)
-                    }}
-                  />
-                  <input
-                    ref={coverInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => {
-                      const f = e.currentTarget.files?.[0]
-                      if (f) uploadCover(f)
-                    }}
-                  />
-                </SectionCard>
+                      )}
+                    </div>
+                  </li>
+                </ul>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0]
+                    if (f) uploadAvatar(f)
+                  }}
+                />
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0]
+                    if (f) uploadCover(f)
+                  }}
+                />
+              </SectionCard>
 
-                <SectionCard component="section">
-                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                    <SectionTitle variant="subtitle1" className="min-w-0">
-                      {t("settings:account.profile.title")}
-                    </SectionTitle>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
-                    >
-                      {t("common:buttons.edit")}
-                    </Button>
-                  </div>
-                </SectionCard>
-
-                <SectionCard component="section">
-                  <div className="flex flex-col gap-2">
-                    <SectionTitle variant="subtitle1">
-                      {t("settings:account.logout.title")}
-                    </SectionTitle>
-                    <SectionSubtitle variant="body2">
-                      {t("settings:account.logout.subtitle")}
-                    </SectionSubtitle>
-                  </div>
+              <SectionCard component="section">
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                  <SectionTitle variant="subtitle1" className="min-w-0">
+                    {t("settings:account.profile.title")}
+                  </SectionTitle>
                   <Button
                     size="small"
                     variant="outlined"
-                    color="error"
-                    onClick={() => setConfirmLogout(true)}
-                    className="self-start sm:self-end"
+                    onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
                   >
-                    {t("settings:account.logout.button")}
+                    {t("common:buttons.edit")}
                   </Button>
-                </SectionCard>
+                </div>
+              </SectionCard>
 
-                <SectionCard component="section">
+              <SectionCard component="section">
+                <div className="flex flex-col gap-2">
+                  <SectionTitle variant="subtitle1">
+                    {t("settings:account.logout.title")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:account.logout.subtitle")}
+                  </SectionSubtitle>
+                </div>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  onClick={() => setConfirmLogout(true)}
+                  className="self-start sm:self-end"
+                >
+                  {t("settings:account.logout.button")}
+                </Button>
+              </SectionCard>
+
+              <SectionCard component="section">
+                <div className="flex flex-col gap-2">
+                  <SectionTitle variant="subtitle1">
+                    {t("settings:security.account.title")}
+                  </SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.account.subtitle")}
+                  </SectionSubtitle>
+                </div>
+
+                <form
+                  className="flex flex-col gap-3 mt-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handleEmailSubmit()
+                  }}
+                >
                   <div className="flex flex-col gap-2">
-                    <SectionTitle variant="subtitle1">
-                      {t("settings:security.account.title")}
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.email.title")}
                     </SectionTitle>
                     <SectionSubtitle variant="body2">
-                      {t("settings:security.account.subtitle")}
+                      {t("settings:security.email.subtitle")}
                     </SectionSubtitle>
                   </div>
-
-                  <form
-                    className="flex flex-col gap-3 mt-4"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      void handleEmailSubmit()
-                    }}
-                  >
-                    <div className="flex flex-col gap-2">
-                      <SectionTitle component="h3" variant="subtitle2">
-                        {t("settings:security.email.title")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:security.email.subtitle")}
-                      </SectionSubtitle>
-                    </div>
-                    {pendingEmail ? (
-                      <Alert severity="info" variant="outlined">
-                        {t("settings:security.email.pendingNotice", { email: pendingEmail })}
-                      </Alert>
-                    ) : null}
-                    <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
-                      <TextField
-                        fullWidth
-                        type="email"
-                        size="small"
-                        label={t("settings:security.email.label")}
-                        value={emailValue}
-                        onChange={(event) => {
-                          setEmailValue(event.target.value)
-                          setEmailError(null)
-                        }}
-                        error={Boolean(emailError)}
-                        helperText={emailError ?? undefined}
-                        autoComplete="email"
-                      />
-                      <TextField
-                        fullWidth
-                        type="password"
-                        size="small"
-                        label={t("settings:security.email.passwordLabel")}
-                        value={emailPassword}
-                        onChange={(event) => {
-                          setEmailPassword(event.target.value)
-                          setEmailPasswordError(null)
-                        }}
-                        error={Boolean(emailPasswordError)}
-                        helperText={emailPasswordError ?? undefined}
-                        autoComplete="current-password"
-                      />
-                    </div>
-                    <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center">
-                      <Button
-                        type="submit"
-                        variant="contained"
-                        disabled={emailBusy}
-                        startIcon={
-                          emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                        }
-                      >
-                        {t("settings:security.email.updateButton")}
-                      </Button>
-                      <SectionSubtitle className="text-sm">
-                        {t("settings:security.email.helper")}
-                      </SectionSubtitle>
-                    </div>
-                  </form>
-
-                  <Divider className="my-5" />
-
-                  <form
-                    className="flex flex-col gap-3"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      void handlePasswordSubmit()
-                    }}
-                  >
-                    <div className="flex flex-col gap-2">
-                      <SectionTitle component="h3" variant="subtitle2">
-                        {t("settings:security.password.title")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:security.password.subtitle")}
-                      </SectionSubtitle>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2.5">
-                      <TextField
-                        fullWidth
-                        type="password"
-                        size="small"
-                        label={t("settings:security.password.currentLabel")}
-                        value={currentPasswordValue}
-                        onChange={(event) => {
-                          setCurrentPasswordValue(event.target.value)
-                          setCurrentPasswordError(null)
-                        }}
-                        error={Boolean(currentPasswordError)}
-                        helperText={currentPasswordError ?? undefined}
-                        autoComplete="current-password"
-                      />
-                      <TextField
-                        fullWidth
-                        type="password"
-                        size="small"
-                        label={t("settings:security.password.newLabel")}
-                        value={newPasswordValue}
-                        onChange={(event) => {
-                          setNewPasswordValue(event.target.value)
-                          if (passwordError) setPasswordError(null)
-                        }}
-                        error={isNewPasswordError}
-                        helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
-                      <TextField
-                        fullWidth
-                        type="password"
-                        size="small"
-                        label={t("settings:security.password.confirmLabel")}
-                        value={confirmPasswordValue}
-                        onChange={(event) => {
-                          setConfirmPasswordValue(event.target.value)
-                          if (passwordError) setPasswordError(null)
-                        }}
-                        error={Boolean(confirmPasswordMessage)}
-                        helperText={confirmPasswordMessage ?? undefined}
-                        autoComplete="new-password"
-                      />
-                      <Button
-                        type="submit"
-                        variant="contained"
-                        disabled={passwordBusy}
-                        startIcon={
-                          passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                        }
-                      >
-                        {passwordBusy
-                          ? t("settings:security.password.updating")
-                          : t("settings:security.password.updateButton")}
-                      </Button>
-                    </div>
-                  </form>
-                </SectionCard>
-
-                <SectionCard component="section">
-                  <div className="flex flex-col gap-2">
-                    <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
-                    <SectionSubtitle variant="body2">
-                      {t("settings:sessions.subtitle")}
-                    </SectionSubtitle>
+                  {pendingEmail ? (
+                    <Alert severity="info" variant="outlined">
+                      {t("settings:security.email.pendingNotice", { email: pendingEmail })}
+                    </Alert>
+                  ) : null}
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
+                    <TextField
+                      fullWidth
+                      type="email"
+                      size="small"
+                      label={t("settings:security.email.label")}
+                      value={emailValue}
+                      onChange={(event) => {
+                        setEmailValue(event.target.value)
+                        setEmailError(null)
+                      }}
+                      error={Boolean(emailError)}
+                      helperText={emailError ?? undefined}
+                      autoComplete="email"
+                    />
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.email.passwordLabel")}
+                      value={emailPassword}
+                      onChange={(event) => {
+                        setEmailPassword(event.target.value)
+                        setEmailPasswordError(null)
+                      }}
+                      error={Boolean(emailPasswordError)}
+                      helperText={emailPasswordError ?? undefined}
+                      autoComplete="current-password"
+                    />
                   </div>
-
-                  <div className="mt-3 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center">
                     <Button
-                      variant="outlined"
-                      color="error"
-                      disabled={revokeAllSessionsMutation.isPending}
-                      onClick={() => void handleRevokeAllSessions()}
+                      type="submit"
+                      variant="contained"
+                      disabled={emailBusy}
                       startIcon={
-                        revokeAllSessionsMutation.isPending ? (
-                          <CircularProgress size={18} color="inherit" />
-                        ) : undefined
+                        emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined
                       }
                     >
-                      {t("settings:sessions.revokeAll")}
+                      {t("settings:security.email.updateButton")}
                     </Button>
                     <SectionSubtitle className="text-sm">
-                      {t("settings:sessions.revokeAllHint")}
+                      {t("settings:security.email.helper")}
                     </SectionSubtitle>
                   </div>
+                </form>
 
-                  {sessionsFetching ? (
-                    <div className="mt-3 flex flex-row items-center gap-2.5">
-                      <CircularProgress size={18} />
-                      <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
-                        {t("settings:sessions.loading")}
-                      </p>
-                    </div>
-                  ) : sessionsErrorMessage ? (
-                    <Alert severity="error" variant="outlined" className="mt-3">
-                      {sessionsErrorMessage}
-                    </Alert>
-                  ) : sessions.length === 0 ? (
-                    <SectionSubtitle className="mt-3 text-sm">
-                      {t("settings:sessions.empty")}
-                    </SectionSubtitle>
-                  ) : (
-                    <div className="flex flex-col gap-3 mt-3">
-                      {sortedSessions.map((session) => {
-                        const isRevoked = Boolean(session.revoked_at)
-                        const lastSeen = session.last_seen_at ?? session.created_at
-                        const timelineSource = session.revoked_at ?? lastSeen
-                        const timeline = t("settings:sessions.lastSeen.value", {
-                          value: formatSessionTimestamp(timelineSource),
-                        })
-                        const ipLabel = session.ip_address
-                          ? t("settings:sessions.ipAddress", { ip: session.ip_address })
-                          : t("settings:sessions.ipUnknown")
-                        const meta = [ipLabel, timeline]
-                        if (isRevoked) meta.push(t("settings:sessions.status.revoked"))
-                        const details = meta.join(" • ")
-                        const statusLabel = session.is_current
-                          ? t("settings:sessions.status.current")
-                          : isRevoked
-                            ? t("settings:sessions.status.revoked")
-                            : t("settings:sessions.status.active")
-                        const disableRevoke =
-                          session.is_current || isRevoked || revokeSessionMutation.isPending
+                <Divider className="my-5" />
 
-                        return (
-                          <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
-                            <div className="min-w-0">
-                              <p
-                                className={cn(
-                                  "text-sm break-words transition-colors",
-                                  session.is_current ? "font-semibold" : "font-medium",
-                                  isRevoked
-                                    ? "text-[color:color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
-                                    : "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
-                                )}
-                              >
-                                {session.user_agent || t("settings:sessions.unknownDevice")}
-                              </p>
-                              <p
-                                className={cn(
-                                  "text-xs transition-colors",
-                                  isRevoked
-                                    ? "italic text-[color:color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
-                                    : "text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
-                                )}
-                              >
-                                {details}
-                              </p>
-                            </div>
-                            <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
-                              <Chip
-                                size="small"
-                                label={statusLabel}
-                                variant="outlined"
-                                color={session.is_current ? "primary" : "default"}
-                                className={cn("font-semibold", isRevoked && "opacity-80")}
-                              />
-                              {!session.is_current && !isRevoked && (
-                                <Button
-                                  size="small"
-                                  variant="text"
-                                  color="error"
-                                  disabled={disableRevoke}
-                                  onClick={() => void handleRevokeSession(session.id)}
-                                >
-                                  {t("settings:sessions.revoke")}
-                                </Button>
-                              )}
-                            </div>
-                          </SessionItem>
-                        )
-                      })}
-                    </div>
-                  )}
-                </SectionCard>
-
-                <SectionCard component="section">
-                  <div className="flex flex-col gap-2 mb-3">
-                    <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
+                <form
+                  className="flex flex-col gap-3"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handlePasswordSubmit()
+                  }}
+                >
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.password.title")}
+                    </SectionTitle>
                     <SectionSubtitle variant="body2">
-                      {t("settings:security.subtitle")}
+                      {t("settings:security.password.subtitle")}
+                    </SectionSubtitle>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.password.currentLabel")}
+                      value={currentPasswordValue}
+                      onChange={(event) => {
+                        setCurrentPasswordValue(event.target.value)
+                        setCurrentPasswordError(null)
+                      }}
+                      error={Boolean(currentPasswordError)}
+                      helperText={currentPasswordError ?? undefined}
+                      autoComplete="current-password"
+                    />
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.password.newLabel")}
+                      value={newPasswordValue}
+                      onChange={(event) => {
+                        setNewPasswordValue(event.target.value)
+                        if (passwordError) setPasswordError(null)
+                      }}
+                      error={isNewPasswordError}
+                      helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+                    <TextField
+                      fullWidth
+                      type="password"
+                      size="small"
+                      label={t("settings:security.password.confirmLabel")}
+                      value={confirmPasswordValue}
+                      onChange={(event) => {
+                        setConfirmPasswordValue(event.target.value)
+                        if (passwordError) setPasswordError(null)
+                      }}
+                      error={Boolean(confirmPasswordMessage)}
+                      helperText={confirmPasswordMessage ?? undefined}
+                      autoComplete="new-password"
+                    />
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      disabled={passwordBusy}
+                      startIcon={
+                        passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined
+                      }
+                    >
+                      {passwordBusy
+                        ? t("settings:security.password.updating")
+                        : t("settings:security.password.updateButton")}
+                    </Button>
+                  </div>
+                </form>
+              </SectionCard>
+
+              <SectionCard component="section">
+                <div className="flex flex-col gap-2">
+                  <SectionTitle variant="subtitle1">{t("settings:sessions.title")}</SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:sessions.subtitle")}
+                  </SectionSubtitle>
+                </div>
+
+                <div className="mt-3 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    disabled={revokeAllSessionsMutation.isPending}
+                    onClick={() => void handleRevokeAllSessions()}
+                    startIcon={
+                      revokeAllSessionsMutation.isPending ? (
+                        <CircularProgress size={18} color="inherit" />
+                      ) : undefined
+                    }
+                  >
+                    {t("settings:sessions.revokeAll")}
+                  </Button>
+                  <SectionSubtitle className="text-sm">
+                    {t("settings:sessions.revokeAllHint")}
+                  </SectionSubtitle>
+                </div>
+
+                {sessionsFetching ? (
+                  <div className="mt-3 flex flex-row items-center gap-2.5">
+                    <CircularProgress size={18} />
+                    <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
+                      {t("settings:sessions.loading")}
+                    </p>
+                  </div>
+                ) : sessionsErrorMessage ? (
+                  <Alert severity="error" variant="outlined" className="mt-3">
+                    {sessionsErrorMessage}
+                  </Alert>
+                ) : sessions.length === 0 ? (
+                  <SectionSubtitle className="mt-3 text-sm">
+                    {t("settings:sessions.empty")}
+                  </SectionSubtitle>
+                ) : (
+                  <div className="flex flex-col gap-3 mt-3">
+                    {sortedSessions.map((session) => {
+                      const isRevoked = Boolean(session.revoked_at)
+                      const lastSeen = session.last_seen_at ?? session.created_at
+                      const timelineSource = session.revoked_at ?? lastSeen
+                      const timeline = t("settings:sessions.lastSeen.value", {
+                        value: formatSessionTimestamp(timelineSource),
+                      })
+                      const ipLabel = session.ip_address
+                        ? t("settings:sessions.ipAddress", { ip: session.ip_address })
+                        : t("settings:sessions.ipUnknown")
+                      const meta = [ipLabel, timeline]
+                      if (isRevoked) meta.push(t("settings:sessions.status.revoked"))
+                      const details = meta.join(" • ")
+                      const statusLabel = session.is_current
+                        ? t("settings:sessions.status.current")
+                        : isRevoked
+                          ? t("settings:sessions.status.revoked")
+                          : t("settings:sessions.status.active")
+                      const disableRevoke =
+                        session.is_current || isRevoked || revokeSessionMutation.isPending
+
+                      return (
+                        <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
+                          <div className="min-w-0">
+                            <p
+                              className={cn(
+                                "text-sm break-words transition-colors",
+                                session.is_current ? "font-semibold" : "font-medium",
+                                isRevoked
+                                  ? "text-[color:color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
+                                  : "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
+                              )}
+                            >
+                              {session.user_agent || t("settings:sessions.unknownDevice")}
+                            </p>
+                            <p
+                              className={cn(
+                                "text-xs transition-colors",
+                                isRevoked
+                                  ? "italic text-[color:color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
+                                  : "text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
+                              )}
+                            >
+                              {details}
+                            </p>
+                          </div>
+                          <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
+                            <Chip
+                              size="small"
+                              label={statusLabel}
+                              variant="outlined"
+                              color={session.is_current ? "primary" : "default"}
+                              className={cn("font-semibold", isRevoked && "opacity-80")}
+                            />
+                            {!session.is_current && !isRevoked && (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="error"
+                                disabled={disableRevoke}
+                                onClick={() => void handleRevokeSession(session.id)}
+                              >
+                                {t("settings:sessions.revoke")}
+                              </Button>
+                            )}
+                          </div>
+                        </SessionItem>
+                      )
+                    })}
+                  </div>
+                )}
+              </SectionCard>
+
+              <SectionCard component="section">
+                <div className="flex flex-col gap-2 mb-3">
+                  <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
+                  <SectionSubtitle variant="body2">
+                    {t("settings:security.subtitle")}
+                  </SectionSubtitle>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <Chip size="small" label={defaultMethodText} className="font-semibold" />
+                  <Chip size="small" label={lastVerifiedText} className="font-semibold" />
+                </div>
+
+                <div className="flex flex-col gap-5 mt-3">
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.method.totp")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.totp.description")}
                     </SectionSubtitle>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <Chip size="small" label={defaultMethodText} className="font-semibold" />
-                    <Chip size="small" label={lastVerifiedText} className="font-semibold" />
-                  </div>
-
-                  <div className="flex flex-col gap-5 mt-3">
-                    <div className="flex flex-col gap-2">
-                      <SectionTitle component="h3" variant="subtitle2">
-                        {t("settings:security.method.totp")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:security.totp.description")}
+                  {totpDraft ? (
+                    <div className="flex flex-col gap-4">
+                      <h4 className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_86%,var(--nav-link)_14%)]">
+                        {t("settings:security.totp.pendingTitle")}
+                      </h4>
+                      <SectionSubtitle className="text-sm">
+                        {t("settings:security.totp.pendingDescription")}
                       </SectionSubtitle>
-                    </div>
-
-                    {totpDraft ? (
-                      <div className="flex flex-col gap-4">
-                        <h4 className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_86%,var(--nav-link)_14%)]">
-                          {t("settings:security.totp.pendingTitle")}
-                        </h4>
-                        <SectionSubtitle className="text-sm">
-                          {t("settings:security.totp.pendingDescription")}
-                        </SectionSubtitle>
-                        <TotpQrDisplay
-                          otpauthUrl={totpDraft.otpauth_url}
-                          secret={totpDraft.secret}
-                          label={totpDraft.enrollment.label}
-                        />
-                        <OtpEntry
-                          availableMethods={["totp"]}
-                          loading={totpBusy}
-                          error={totpError}
-                          onSubmit={handleConfirmTotp}
-                        />
-                        <Button
-                          variant="text"
-                          color="inherit"
-                          disabled={totpBusy}
-                          onClick={handleCancelTotp}
-                        >
-                          {t("settings:security.totp.cancel")}
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {activeTotp.length ? (
-                          <div className="flex flex-col gap-2.5">
-                            {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
-                              <div
-                                key={enrollment.id}
-                                className={cn(
-                                  "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
-                                  "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
-                                  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.05)_4%)]",
-                                  "dark:border-[rgba(148,163,184,0.24)]",
-                                  "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
-                                )}
-                              >
-                                <div className="flex min-w-0 flex-col gap-1">
-                                  <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
-                                    {enrollment.label ||
-                                      t("settings:security.totp.unnamed", { index: index + 1 })}
-                                  </p>
-                                  <SectionSubtitle className="text-xs">
-                                    {t("settings:security.totp.added", {
-                                      value: formatDateTime(enrollment.created_at) ?? "—",
-                                    })}
-                                  </SectionSubtitle>
-                                </div>
-                                <Button
-                                  variant="outlined"
-                                  color="error"
-                                  size="small"
-                                  onClick={() => handleDisableTotp(enrollment.id)}
-                                >
-                                  {t("settings:security.totp.remove")}
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <SectionSubtitle className="text-sm">
-                            {t("settings:security.totp.empty")}
-                          </SectionSubtitle>
-                        )}
-                        <Button
-                          variant="contained"
-                          onClick={() => void handleStartTotp()}
-                          disabled={totpBusy}
-                        >
-                          {t("settings:security.totp.add")}
-                        </Button>
-                      </div>
-                    )}
-
-                    <Divider className="my-2" />
-
-                    <div className="flex flex-col gap-2">
-                      <SectionTitle component="h3" variant="subtitle2">
-                        {t("settings:security.method.webauthn")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:security.webauthn.description")}
-                      </SectionSubtitle>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label={t("settings:security.webauthn.nameLabel")}
-                        placeholder={t("settings:security.webauthn.namePlaceholder")}
-                        value={webAuthnName}
-                        onChange={(event) => setWebAuthnName(event.target.value)}
+                      <TotpQrDisplay
+                        otpauthUrl={totpDraft.otpauth_url}
+                        secret={totpDraft.secret}
+                        label={totpDraft.enrollment.label}
+                      />
+                      <OtpEntry
+                        availableMethods={["totp"]}
+                        loading={totpBusy}
+                        error={totpError}
+                        onSubmit={handleConfirmTotp}
                       />
                       <Button
-                        variant="contained"
-                        onClick={() => void handleRegisterWebAuthn()}
-                        disabled={webAuthnBusy}
+                        variant="text"
+                        color="inherit"
+                        disabled={totpBusy}
+                        onClick={handleCancelTotp}
                       >
-                        {webAuthnBusy
-                          ? t("settings:security.webauthn.registering")
-                          : t("settings:security.webauthn.cta")}
+                        {t("settings:security.totp.cancel")}
                       </Button>
                     </div>
-
-                    {activeWebAuthn.length ? (
-                      <div className="flex flex-col gap-2.5">
-                        {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
-                          const added = formatDateTime(credential.created_at)
-                          const lastUsed = formatDateTime(credential.last_used_at ?? null)
-                          return (
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {activeTotp.length ? (
+                        <div className="flex flex-col gap-2.5">
+                          {activeTotp.map((enrollment: MfaTotpEnrollment, index: number) => (
                             <div
-                              key={credential.credential_id}
+                              key={enrollment.id}
                               className={cn(
                                 "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
                                 "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
-                                "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.04)_4%)]",
+                                "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.05)_4%)]",
                                 "dark:border-[rgba(148,163,184,0.24)]",
                                 "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
                               )}
                             >
                               <div className="flex min-w-0 flex-col gap-1">
                                 <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
-                                  {credential.device_name ||
-                                    t("settings:security.webauthn.unnamed", { index: index + 1 })}
+                                  {enrollment.label ||
+                                    t("settings:security.totp.unnamed", { index: index + 1 })}
                                 </p>
-                                {added ? (
-                                  <SectionSubtitle className="text-xs">
-                                    {t("settings:security.webauthn.added", { value: added })}
-                                  </SectionSubtitle>
-                                ) : null}
-                                {lastUsed ? (
-                                  <SectionSubtitle className="text-xs">
-                                    {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
-                                  </SectionSubtitle>
-                                ) : null}
+                                <SectionSubtitle className="text-xs">
+                                  {t("settings:security.totp.added", {
+                                    value: formatDateTime(enrollment.created_at) ?? "—",
+                                  })}
+                                </SectionSubtitle>
                               </div>
                               <Button
                                 variant="outlined"
                                 color="error"
                                 size="small"
-                                onClick={() => handleRemoveWebAuthn(credential.credential_id)}
+                                onClick={() => handleDisableTotp(enrollment.id)}
                               >
-                                {t("settings:security.webauthn.remove")}
+                                {t("settings:security.totp.remove")}
                               </Button>
                             </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <SectionSubtitle className="text-sm">
-                        {t("settings:security.webauthn.empty")}
-                      </SectionSubtitle>
-                    )}
-
-                    <Divider className="my-2" />
-
-                    <div className="flex flex-col gap-2">
-                      <SectionTitle component="h3" variant="subtitle2">
-                        {t("settings:security.method.recovery")}
-                      </SectionTitle>
-                      <SectionSubtitle variant="body2">
-                        {t("settings:security.recovery.description")}
-                      </SectionSubtitle>
-                    </div>
-
-                    <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                          ))}
+                        </div>
+                      ) : (
+                        <SectionSubtitle className="text-sm">
+                          {t("settings:security.totp.empty")}
+                        </SectionSubtitle>
+                      )}
                       <Button
-                        variant="outlined"
-                        onClick={handleGenerateRecoveryCodes}
-                        disabled={recoveryBusy}
+                        variant="contained"
+                        onClick={() => void handleStartTotp()}
+                        disabled={totpBusy}
                       >
-                        {recoveryBusy
-                          ? t("settings:security.recovery.generating")
-                          : t("settings:security.recovery.generate")}
+                        {t("settings:security.totp.add")}
                       </Button>
-                      <SectionSubtitle className="text-sm">{recoveryStatusText}</SectionSubtitle>
                     </div>
+                  )}
 
-                    {generatedRecoveryCodes.length ? (
-                      <RecoveryCodeList
-                        codes={generatedRecoveryCodes.map((code) => ({ code }))}
-                        allowCopy
-                      />
-                    ) : null}
+                  <Divider className="my-2" />
+
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.method.webauthn")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.webauthn.description")}
+                    </SectionSubtitle>
                   </div>
-                </SectionCard>
-              </div>
-            )}
 
-            {tab === 2 && (
-              <div className="flex w-full flex-col gap-6 sm:gap-7 xl:max-w-[min(100%,820px)]">
+                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={t("settings:security.webauthn.nameLabel")}
+                      placeholder={t("settings:security.webauthn.namePlaceholder")}
+                      value={webAuthnName}
+                      onChange={(event) => setWebAuthnName(event.target.value)}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={() => void handleRegisterWebAuthn()}
+                      disabled={webAuthnBusy}
+                    >
+                      {webAuthnBusy
+                        ? t("settings:security.webauthn.registering")
+                        : t("settings:security.webauthn.cta")}
+                    </Button>
+                  </div>
+
+                  {activeWebAuthn.length ? (
+                    <div className="flex flex-col gap-2.5">
+                      {activeWebAuthn.map((credential: MfaWebAuthnCredential, index: number) => {
+                        const added = formatDateTime(credential.created_at)
+                        const lastUsed = formatDateTime(credential.last_used_at ?? null)
+                        return (
+                          <div
+                            key={credential.credential_id}
+                            className={cn(
+                              "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                              "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
+                              "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.04)_4%)]",
+                              "dark:border-[rgba(148,163,184,0.24)]",
+                              "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
+                            )}
+                          >
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+                                {credential.device_name ||
+                                  t("settings:security.webauthn.unnamed", { index: index + 1 })}
+                              </p>
+                              {added ? (
+                                <SectionSubtitle className="text-xs">
+                                  {t("settings:security.webauthn.added", { value: added })}
+                                </SectionSubtitle>
+                              ) : null}
+                              {lastUsed ? (
+                                <SectionSubtitle className="text-xs">
+                                  {t("settings:security.webauthn.lastUsed", { value: lastUsed })}
+                                </SectionSubtitle>
+                              ) : null}
+                            </div>
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              onClick={() => handleRemoveWebAuthn(credential.credential_id)}
+                            >
+                              {t("settings:security.webauthn.remove")}
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <SectionSubtitle className="text-sm">
+                      {t("settings:security.webauthn.empty")}
+                    </SectionSubtitle>
+                  )}
+
+                  <Divider className="my-2" />
+
+                  <div className="flex flex-col gap-2">
+                    <SectionTitle component="h3" variant="subtitle2">
+                      {t("settings:security.method.recovery")}
+                    </SectionTitle>
+                    <SectionSubtitle variant="body2">
+                      {t("settings:security.recovery.description")}
+                    </SectionSubtitle>
+                  </div>
+
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                    <Button
+                      variant="outlined"
+                      onClick={handleGenerateRecoveryCodes}
+                      disabled={recoveryBusy}
+                    >
+                      {recoveryBusy
+                        ? t("settings:security.recovery.generating")
+                        : t("settings:security.recovery.generate")}
+                    </Button>
+                    <SectionSubtitle className="text-sm">{recoveryStatusText}</SectionSubtitle>
+                  </div>
+
+                  {generatedRecoveryCodes.length ? (
+                    <RecoveryCodeList
+                      codes={generatedRecoveryCodes.map((code) => ({ code }))}
+                      allowCopy
+                    />
+                  ) : null}
+                </div>
+              </SectionCard>
+            </div>
+          )}
+
+          {tab === 2 && (
+            <div className="flex w-full flex-col gap-6 sm:gap-7 xl:max-w-[min(100%,820px)]">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <img
