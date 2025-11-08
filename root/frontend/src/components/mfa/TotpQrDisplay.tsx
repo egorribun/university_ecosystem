@@ -43,10 +43,14 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       </div>
       <div className="flex flex-row items-center gap-2 w-full max-w-[320px]">
         <div className="relative flex-1">
-          <label className="block text-xs font-medium text-page-text mb-1 px-1 bg-card">
+          <label
+            htmlFor="totp-manual-code"
+            className="block text-xs font-medium text-page-text mb-1 px-1 bg-card"
+          >
             {t("mfa.totp.manualHeading")}
           </label>
           <input
+            id="totp-manual-code"
             type="text"
             value={normalizedSecret}
             readOnly
