@@ -2900,55 +2900,55 @@ export default function Settings() {
           </div>
         )}
 
-          {tab === 2 && (
-            <div className="flex flex-col gap-6">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2">
-                  <img
-                    src={spotifyLogo}
-                    alt={t("settings:integrations.spotify.alt")}
-                    width={22}
-                    height={22}
-                    style={{ display: "block", borderRadius: "50%" }}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <SectionTitle variant="subtitle1" className="text-[1.15rem]">
-                    {t("settings:integrations.spotify.title")}
-                  </SectionTitle>
-                </div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <Chip
-                    size="small"
-                    label={
-                      spotifyConnected
-                        ? t("settings:integrations.spotify.status.connected")
-                        : t("settings:integrations.spotify.status.disconnected")
-                    }
-                    color={spotifyConnected ? "success" : "default"}
-                    variant="outlined"
-                  />
-                  {spotifyConnected && !!spotifyName && (
-                    <Chip size="small" variant="outlined" label={spotifyName} />
-                  )}
-                </div>
-                {!spotifyConnected ? (
-                  <Button variant="contained" onClick={connectSpotify} className="self-start">
-                    {t("settings:integrations.spotify.connect")}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    onClick={disconnectSpotify}
-                    className="self-start"
-                  >
-                    {t("settings:integrations.spotify.disconnect")}
-                  </Button>
+        {tab === 2 && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <img
+                  src={spotifyLogo}
+                  alt={t("settings:integrations.spotify.alt")}
+                  width={22}
+                  height={22}
+                  style={{ display: "block", borderRadius: "50%" }}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <SectionTitle variant="subtitle1" className="text-[1.15rem]">
+                  {t("settings:integrations.spotify.title")}
+                </SectionTitle>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Chip
+                  size="small"
+                  label={
+                    spotifyConnected
+                      ? t("settings:integrations.spotify.status.connected")
+                      : t("settings:integrations.spotify.status.disconnected")
+                  }
+                  color={spotifyConnected ? "success" : "default"}
+                  variant="outlined"
+                />
+                {spotifyConnected && !!spotifyName && (
+                  <Chip size="small" variant="outlined" label={spotifyName} />
                 )}
               </div>
+              {!spotifyConnected ? (
+                <Button variant="contained" onClick={connectSpotify} className="self-start">
+                  {t("settings:integrations.spotify.connect")}
+                </Button>
+              ) : (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={disconnectSpotify}
+                  className="self-start"
+                >
+                  {t("settings:integrations.spotify.disconnect")}
+                </Button>
+              )}
             </div>
-          )}
+          </div>
+        )}
       </div>
 
       <Dialog open={confirmLogout} onClose={() => setConfirmLogout(false)} maxWidth="xs" fullWidth>
