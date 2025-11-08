@@ -117,7 +117,6 @@ Key settings you may want to adjust for local development:
 | `VITE_ENVIRONMENT` | Optional environment label propagated to the frontend observability SDK. | Derived from Vite build mode |
 | `VITE_ENABLE_WEB_VITALS` | Enable Web Vitals collection in the frontend (`true`/`1`/`yes`). | `false` |
 | `VITE_WEB_VITALS_ENDPOINT` | Optional endpoint accepting POSTed Web Vitals metrics (JSON). Logs to the console when unset. | Empty |
-| `VITE_MAP_CONSTRUCTOR_ID` | Yandex Maps constructor ID embedded on the campus map page. | Sample campus map ID |
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. If you create `root/.env` it will be loaded automatically; otherwise the application relies entirely on process environment variables. The sample `root/.env.example` is not loaded automatically.
 
