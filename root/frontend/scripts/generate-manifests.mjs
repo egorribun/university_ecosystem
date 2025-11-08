@@ -82,7 +82,8 @@ export const generateManifests = (options = {}) => {
 
   for (const [locale, overrides] of Object.entries(locales)) {
     const manifest = mergeManifests(base, overrides)
-    const filename = locale === defaultLocale ? "manifest.webmanifest" : `manifest.${locale}.webmanifest`
+    const filename =
+      locale === defaultLocale ? "manifest.webmanifest" : `manifest.${locale}.webmanifest`
     const destination = join(publicDir, filename)
     const contents = formatManifest(manifest)
 
