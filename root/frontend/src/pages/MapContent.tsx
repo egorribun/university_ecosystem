@@ -21,10 +21,10 @@ import "../assets/themes.css"
 import { useTranslation } from "react-i18next"
 import MapFallback from "@/components/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
-import { getMapConstructorId } from "@/constants/env"
 
 type LayerMode = "map" | "hybrid"
 
+const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57"
 const Z_DEFAULT = 16
 const LOAD_TIMEOUT_MS = 12000
 
@@ -52,7 +52,6 @@ export default function MapContent() {
   const theme = useTheme()
   const isMobile = useMediaQuery("(max-width:900px)")
   const { t } = useTranslation("system")
-  const mapConstructorId = getMapConstructorId()
   const [layer, setLayer] = useState<LayerMode>("map")
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [loadError, setLoadError] = useState(false)
@@ -90,27 +89,18 @@ export default function MapContent() {
   }, [layer])
 
   const mapSrc = useMemo(() => {
-    if (!mapConstructorId) return null
     if (layer === "map") {
-      return `https://yandex.ru/map-widget/v1/?um=constructor%3A${mapConstructorId}&source=constructor`
+      return `https://yandex.ru/map-widget/v1/?um=constructor%3A${MAP_ID}&source=constructor`
     }
     const ll = encodeURIComponent(
       `${CAMPUS_COORDINATES.lon.toFixed(6)},${CAMPUS_COORDINATES.lat.toFixed(6)}`
     )
     return `https://yandex.ru/map-widget/v1/?ll=${ll}&z=${Z_DEFAULT}&l=${encodeURIComponent(lParam)}`
-  }, [layer, lParam, mapConstructorId])
+  }, [layer, lParam])
 
-  const configUnavailable = !mapConstructorId
-  const preferenceBlocksEmbeds = prefersReducedMotion || privacyBlocksEmbeds
-  const disableEmbeds = configUnavailable || preferenceBlocksEmbeds
+  const disableEmbeds = prefersReducedMotion || privacyBlocksEmbeds
   const showFallback = loadError || disableEmbeds
-  const fallbackReason = configUnavailable
-    ? "config"
-    : loadError
-      ? "load-error"
-      : preferenceBlocksEmbeds
-        ? "preferences"
-        : null
+  const fallbackReason = loadError ? "load-error" : disableEmbeds ? "preferences" : null
 
   const forceReload = useCallback(() => {
     if (disableEmbeds) return
@@ -173,10 +163,9 @@ export default function MapContent() {
   }, [])
 
   const openInYandex = () => {
-    if (!mapConstructorId) return
     if (layer === "map") {
       window.open(
-        `https://yandex.ru/maps/?um=constructor:${mapConstructorId}&source=constructor`,
+        `https://yandex.ru/maps/?um=constructor:${MAP_ID}&source=constructor`,
         "_blank",
         "noopener,noreferrer"
       )
@@ -235,7 +224,6 @@ export default function MapContent() {
                     aria-label={t("map.openInYandex")}
                     className="glass glass--btn map-btn map-btn--open"
                     onClick={openInYandex}
-                    disabled={configUnavailable}
                     sx={{ touchAction: "manipulation" }}
                   >
                     <OpenInNewIcon />
@@ -246,7 +234,6 @@ export default function MapContent() {
                     aria-label={t("map.reset")}
                     className="glass glass--btn map-btn map-btn--reset"
                     onClick={reset}
-                    disabled={disableEmbeds}
                     sx={{ touchAction: "manipulation" }}
                   >
                     <RestartAltIcon />
@@ -256,7 +243,7 @@ export default function MapContent() {
             </Stack>
           </Box>
 
-          {!disableEmbeds && mapSrc && (
+          {!disableEmbeds && (
             <iframe
               key={`${frameKey}`}
               src={mapSrc}
@@ -283,7 +270,7 @@ export default function MapContent() {
             />
           )}
 
-          {(!iframeLoaded || loadError) && !disableEmbeds && mapSrc && (
+          {(!iframeLoaded || loadError) && !disableEmbeds && (
             <Box
               sx={{
                 position: "absolute",

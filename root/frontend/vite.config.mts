@@ -70,11 +70,10 @@ const withStrictCspNonce = (): PluginOption => ({
   },
 })
 
-export default defineConfig(({ mode, command }) => {
-  const resolvedMode = command === "preview" ? "production" : mode
-  const env = loadEnv(resolvedMode, process.cwd(), "")
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "")
   const target = (env.VITE_BACKEND_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "")
-  const analyze = resolvedMode === "analyze" || process.env.ANALYZE === "1"
+  const analyze = mode === "analyze" || process.env.ANALYZE === "1"
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
