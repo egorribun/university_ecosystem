@@ -51,6 +51,7 @@ import spotifyLogo from "@/assets/spotify_icon.png"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 import { cn } from "@/utils/cn"
+import type { AlertProps } from "@mui/material/Alert"
 
 type ThemeMode = "system" | "light" | "dark"
 
