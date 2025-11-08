@@ -94,7 +94,9 @@ async def test_healthcheck_cache_failure(async_client, monkeypatch):
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_storage_failure(async_client, monkeypatch):
     class _FailingStorage:
-        async def save_file(self, relative_path: str, data: bytes, *, content_type=None):
+        async def save_file(
+            self, relative_path: str, data: bytes, *, content_type=None
+        ):
             raise RuntimeError("storage down")
 
         async def delete_file(self, file_url: str) -> None:
@@ -146,4 +148,3 @@ async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["file_scanner"] == "error"
-

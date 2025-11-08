@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
@@ -28,6 +28,7 @@ from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.schema_upgrade import ensure_webauthn_attestation_columns
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import get_cache, shutdown_cache
+from app.models.models import NotificationQueueJob
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
@@ -37,6 +38,7 @@ from app.services.email_change_cleanup import (
     cleanup_stale_email_change_tokens,
     start_email_change_cleanup_scheduler,
 )
+from app.services.file_scanner import scan_for_malware
 from app.services.notification_queue import (
     DeadLetterCleanupConfig,
     start_dead_letter_cleanup_scheduler,
@@ -64,8 +66,6 @@ from app.services.story_cleanup import (
     cleanup_expired_stories,
     start_story_cleanup_scheduler,
 )
-from app.services.file_scanner import scan_for_malware
-from app.models.models import NotificationQueueJob
 from app.utils.files import _get_storage_backend
 
 try:
