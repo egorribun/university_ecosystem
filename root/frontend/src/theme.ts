@@ -34,6 +34,7 @@ const focusRing = {
 
 const baseTheme = extendTheme({
   cssVarPrefix: "ue",
+  colorSchemeSelector: "class",
   colorSchemes: {
     light: {
       palette: {

@@ -82,7 +82,7 @@ const renderSettings = () => {
   const utils = render(
     <MemoryRouter initialEntries={["/settings"]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme}>
+        <CssVarsProvider theme={theme} defaultMode="system" modeStorageKey="theme">
           <LanguageProvider>
             <AuthContext.Provider
               value={{
@@ -142,9 +142,10 @@ describe("Settings radio buttons", () => {
     const lightRadio = themeRadios.find((r) => r.value === "light")
     if (lightRadio) {
       fireEvent.click(lightRadio)
-      // Wait a bit for state update
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      expect(localStorage.getItem("theme-mode")).toBe("light")
+      // Wait for MUI to update localStorage
+      await waitFor(() => {
+        expect(localStorage.getItem("theme")).toBe("light")
+      })
     }
   })
 
