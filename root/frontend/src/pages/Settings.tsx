@@ -2993,6 +2993,5 @@ export default function Settings() {
         </Snackbar>
       </div>
     </div>
-  </div>
-)
+  )
 }
