@@ -442,23 +442,9 @@ async def get_all_events(
     rank_expr = None
     if search:
         if await _is_postgres_session(db):
-            search_vector = func.to_tsvector(
-                "simple",
-                func.concat_ws(
-                    " ",
-                    models.Event.title,
-                    models.Event.title_en,
-                    models.Event.description,
-                    models.Event.description_en,
-                    models.Event.location,
-                    models.Event.location_en,
-                    models.Event.about,
-                    models.Event.about_en,
-                ),
-            )
             ts_query = func.plainto_tsquery("simple", search)
-            conditions.append(search_vector.op("@@")(ts_query))
-            rank_expr = func.ts_rank(search_vector, ts_query)
+            conditions.append(models.Event.search_vector.op("@@")(ts_query))
+            rank_expr = func.ts_rank(models.Event.search_vector, ts_query)
         else:
             like = f"%{search}%"
             conditions.append(
