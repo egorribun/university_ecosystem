@@ -33,6 +33,25 @@ describe("initObservability", () => {
     )
   })
 
+  it("passes through the release identifier when provided", () => {
+    const result = initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+      VITE_ENVIRONMENT: "production",
+      VITE_APP_RELEASE: "2024.04.15+sha.abcdef",
+    } as unknown as ImportMetaEnv)
+
+    expect(result).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        release: "2024.04.15+sha.abcdef",
+      })
+    )
+  })
+
   it("skips initialization when DSN is missing", () => {
     const result = initObservability({
       DEV: false,

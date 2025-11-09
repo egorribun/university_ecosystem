@@ -26,16 +26,20 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
   }
 
   const environment = env.VITE_ENVIRONMENT ?? (env.PROD ? "production" : "development")
+  const release = env.VITE_APP_RELEASE ?? env.VITE_RELEASE ?? env.VITE_SENTRY_RELEASE ?? undefined
   const tracesSampleRate = parseSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE)
   const profilesSampleRate = parseSampleRate(env.VITE_SENTRY_PROFILES_SAMPLE_RATE)
 
-  Sentry.init({
+  const config = {
     dsn,
     environment,
     enabled: true,
     tracesSampleRate,
     profilesSampleRate,
-  })
+    ...(release ? { release } : {}),
+  }
+
+  Sentry.init(config)
 
   initialized = true
   return true

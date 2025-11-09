@@ -8,7 +8,8 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
 - The `root/.env.example` file is only a template; set your own secrets via `.env` or environment variables in production.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
-- During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`) and Sentry (`release`).
+- During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
+- Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
 - To enable client-side error monitoring, set `VITE_SENTRY_DSN` and, if needed, `VITE_ENVIRONMENT`. The SDK does not activate automatically in dev builds.
 - The frontend logger (`src/app/logger.ts`) automatically sends `logError`/`logWarning` to Sentry and mirrors the output in the console. Unhandled `Promise`/`axios` errors are captured by global handlers (`initGlobalErrorHandlers()` is invoked in `src/main.tsx`).
 - To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.
@@ -61,7 +62,8 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 # example
 cd frontend
 cp .env.production .env.local      # if needed
-VITE_BACKEND_ORIGIN=https://api.example.com npm run build
+VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
+  VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
 - Localized PWA manifests are generated from `public/manifest.source.json`.

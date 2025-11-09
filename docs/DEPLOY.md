@@ -7,7 +7,8 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Перед сборкой фронтенда установите `VITE_BACKEND_ORIGIN` (например, через `frontend/.env.production`).
 - Файл `root/.env.example` служит только шаблоном; на продакшн-средах задайте собственные секреты через `.env` или переменные окружения.
 - Все переменные с префиксом `VITE_` подставляются в код на этапе `npm run build`; изменение значений после сборки эффекта не даст.
-- Во время CI/CD экспортируйте `SERVICE_VERSION` (или `APP_VERSION`) перед запуском контейнеров, чтобы пробросить идентификатор сборки в OpenTelemetry (`service.version`) и Sentry (`release`).
+- Во время CI/CD экспортируйте `SERVICE_VERSION` (или `APP_VERSION`) перед запуском контейнеров, чтобы пробросить идентификатор сборки в OpenTelemetry (`service.version`). Сборка фронтенда автоматически использует эти значения — а также распространённые CI-переменные вроде `SOURCE_VERSION`, `VERCEL_GIT_COMMIT` или `GITHUB_SHA` — если `VITE_APP_RELEASE` не задана явно.
+- Чтобы передать идентификатор релиза в Sentry, задайте `VITE_APP_RELEASE`. Значение подставляется на этапе сборки.
 - Для включения клиентского мониторинга ошибок задайте `VITE_SENTRY_DSN` и, при необходимости, `VITE_ENVIRONMENT`. В дев-сборке SDK автоматически не активируется.
 - Логгер на фронтенде (`src/app/logger.ts`) автоматически отправляет `logError`/`logWarning` в Sentry и дублирует вывод в консоль. Необработанные `Promise`/`axios` ошибки перехватываются глобальными хендлерами (`initGlobalErrorHandlers()` вызывается в `src/main.tsx`).
 - Чтобы собирать Web Vitals, установите `VITE_ENABLE_WEB_VITALS=true`. При необходимости отправляйте метрики на собственный эндпоинт через `VITE_WEB_VITALS_ENDPOINT` (иначе они пишутся в консоль). Флаг игнорируется в dev/test средах, поэтому CI не упадёт даже при включённой переменной.
@@ -60,7 +61,8 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 # пример
 cd frontend
 cp .env.production .env.local      # при необходимости
-VITE_BACKEND_ORIGIN=https://api.example.com npm run build
+VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
+  VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
 - Локализованные PWA-манифесты собираются из
