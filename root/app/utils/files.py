@@ -306,7 +306,9 @@ async def save_attachment(
             if chosen_ext_without_dot not in allowed_exts:
                 raise HTTPException(
                     status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=translate("errors.files.unsupported_extension", locale=locale),
+                    detail=translate(
+                        "errors.files.unsupported_extension", locale=locale
+                    ),
                 )
         else:
             fallback_exts: tuple[str, ...]
@@ -325,7 +327,9 @@ async def save_attachment(
             if not chosen_ext_without_dot:
                 raise HTTPException(
                     status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=translate("errors.files.unsupported_extension", locale=locale),
+                    detail=translate(
+                        "errors.files.unsupported_extension", locale=locale
+                    ),
                 )
     else:
         if not chosen_ext_without_dot:
