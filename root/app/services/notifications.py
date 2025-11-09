@@ -178,20 +178,62 @@ async def cleanup_stale_notifications(
 
     cutoff = now_value - dt.timedelta(days=int(retention_days))
 
-    deliveries_stmt = delete(NotificationDelivery).where(
-        NotificationDelivery.attempted_at < cutoff
-    )
-    notifications_stmt = delete(Notification).where(
-        Notification.created_at < cutoff,
-        or_(Notification.read.is_(True), Notification.read_at.is_not(None)),
-    )
+    batch_size = int(getattr(settings, "notifications_retention_batch_size", 0) or 0)
+    if batch_size <= 0:
+        batch_size = 500
 
-    deliveries_result = await db.execute(deliveries_stmt)
-    notifications_result = await db.execute(notifications_stmt)
+    deliveries_deleted = 0
+    while True:
+        deliveries_ids_stmt = (
+            select(NotificationDelivery.id)
+            .where(NotificationDelivery.attempted_at < cutoff)
+            .order_by(NotificationDelivery.id)
+            .limit(batch_size)
+        )
+        delivery_ids = [
+            int(value)
+            for value in (await db.scalars(deliveries_ids_stmt)).all()
+            if value is not None
+        ]
+        if not delivery_ids:
+            break
+        deliveries_stmt = delete(NotificationDelivery).where(
+            NotificationDelivery.id.in_(delivery_ids)
+        )
+        deliveries_result = await db.execute(deliveries_stmt)
+        deliveries_deleted += int(deliveries_result.rowcount or 0)
+        await db.commit()
+
+    # Commit to close the transaction created by the final select above.
     await db.commit()
 
-    deliveries_deleted = int(deliveries_result.rowcount or 0)
-    notifications_deleted = int(notifications_result.rowcount or 0)
+    notifications_deleted = 0
+    while True:
+        notifications_ids_stmt = (
+            select(Notification.id)
+            .where(
+                Notification.created_at < cutoff,
+                or_(Notification.read.is_(True), Notification.read_at.is_not(None)),
+            )
+            .order_by(Notification.id)
+            .limit(batch_size)
+        )
+        notification_ids = [
+            int(value)
+            for value in (await db.scalars(notifications_ids_stmt)).all()
+            if value is not None
+        ]
+        if not notification_ids:
+            break
+        notifications_stmt = delete(Notification).where(
+            Notification.id.in_(notification_ids)
+        )
+        notifications_result = await db.execute(notifications_stmt)
+        notifications_deleted += int(notifications_result.rowcount or 0)
+        await db.commit()
+
+    # Commit to close the transaction created by the final select above.
+    await db.commit()
 
     if notifications_deleted or deliveries_deleted:
         logger.info(
