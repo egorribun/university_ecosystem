@@ -169,8 +169,8 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     ]
     db_session.add_all(initial_events)
     await db_session.commit()
-    for event in initial_events:
-        await db_session.refresh(event)
+    for event_record in initial_events:
+        await db_session.refresh(event_record)
 
     first_page = await crud.get_all_events(
         db_session,
