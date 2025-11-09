@@ -141,6 +141,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 del headers["Cross-Origin-Embedder-Policy"]
             except KeyError:
                 pass
+        if self._settings.corp_enabled:
+            headers["Cross-Origin-Resource-Policy"] = self._settings.corp_header_value
+        else:
+            try:
+                del headers["Cross-Origin-Resource-Policy"]
+            except KeyError:
+                pass
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers

@@ -14,6 +14,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The value `redis` + a Redis URL (for example, `redis://user:pass@host:6379/0`) enables a shared storage for the middleware and sensitive endpoints. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - To expose Prometheus metrics, set `ENABLE_METRICS_ENDPOINT=true` and configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (docker-compose no longer injects placeholders). The backend refuses to serve `/metrics` if the password equals a known placeholder such as `changeme`.
+- To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
 
 ### Database connection pool
 

@@ -294,6 +294,8 @@ class Settings(BaseSettings):
     enable_coop: bool = False
     enable_coep: bool = False
     coep_value: str = "require-corp"
+    enable_corp: bool = False
+    corp_value: str = "same-site"
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
@@ -382,6 +384,16 @@ class Settings(BaseSettings):
         if normalized not in {"require-corp", "credentialless"}:
             raise ValueError(
                 "COEP_VALUE must be either 'require-corp' or 'credentialless'"
+            )
+        return normalized
+
+    @field_validator("corp_value")
+    @classmethod
+    def _validate_corp_value(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"same-origin", "same-site", "cross-origin"}:
+            raise ValueError(
+                "CORP_VALUE must be one of 'same-origin', 'same-site', or 'cross-origin'"
             )
         return normalized
 
@@ -742,6 +754,14 @@ class Settings(BaseSettings):
     @cached_property
     def coep_header_value(self) -> str:
         return self.coep_value
+
+    @cached_property
+    def corp_enabled(self) -> bool:
+        return bool(self.enable_corp)
+
+    @cached_property
+    def corp_header_value(self) -> str:
+        return self.corp_value
 
     @cached_property
     def security_hsts_enabled_effective(self) -> bool:

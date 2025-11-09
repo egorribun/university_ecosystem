@@ -113,6 +113,8 @@ Key settings you may want to adjust for local development:
 | `ENABLE_METRICS_ENDPOINT` | Expose the Prometheus `/metrics` endpoint on the backend. | `false` |
 | `METRICS_BASIC_AUTH_USERNAME` / `METRICS_BASIC_AUTH_PASSWORD` | Optional HTTP basic auth credentials protecting `/metrics`. | Empty |
 | `METRICS_ALLOWLIST` | Comma-separated list of IPs, CIDR blocks, or hostnames allowed to access `/metrics`. | Empty |
+| `ENABLE_CORP` | Enable the `Cross-Origin-Resource-Policy` response header for static assets/APIs. | `false` |
+| `CORP_VALUE` | Value applied to the CORP header when enabled (`same-origin`, `same-site`, or `cross-origin`). | `same-site` |
 | `VITE_SENTRY_DSN` | Frontend Sentry DSN used to initialize error tracking. | Empty |
 | `VITE_ENVIRONMENT` | Optional environment label propagated to the frontend observability SDK. | Derived from Vite build mode |
 | `VITE_ENABLE_WEB_VITALS` | Enable Web Vitals collection in the frontend (`true`/`1`/`yes`). | `false` |
