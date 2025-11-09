@@ -41,9 +41,7 @@
   },
   "aria": {
     "clearSearch": "Clear search",
-    "openFilters": "Open filters panel",
-    "listLabel": "Events list",
-    "loadingMore": "Loading more events"
+    "openFilters": "Open filters panel"
   },
   "alt": {
     "preview": "Event image preview",
