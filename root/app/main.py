@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 
@@ -184,6 +185,14 @@ app = FastAPI(lifespan=lifespan)
 
 configure_observability(app, engine=engine)
 configure_metrics(app)
+
+_RESPONSE_COMPRESSION_MINIMUM_SIZE = 512
+
+if settings.response_compression_enabled:
+    app.add_middleware(
+        GZipMiddleware,
+        minimum_size=_RESPONSE_COMPRESSION_MINIMUM_SIZE,
+    )
 
 app.add_middleware(
     CORSMiddleware,
