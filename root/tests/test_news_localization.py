@@ -5,11 +5,12 @@ from app.models import models
 from app.schemas import schemas
 
 
-def _assert_language_headers(response, expected_language: str) -> None:
+def _assert_news_headers(response, expected_language: str) -> None:
     assert response.headers.get("Content-Language") == expected_language
     vary_header = response.headers.get("Vary", "")
     vary_values = {value.strip() for value in vary_header.split(",") if value.strip()}
     assert "Accept-Language" in vary_values
+    assert response.headers.get("Cache-Control") == "private, max-age=180"
 
 
 @pytest.mark.anyio
@@ -80,7 +81,7 @@ async def test_news_list_localization_headers_cache(
 
     first = await async_client.get("/news", headers=headers)
     assert first.status_code == 200
-    _assert_language_headers(first, "en")
+    _assert_news_headers(first, "en")
     etag = first.headers.get("ETag")
     assert etag
 
@@ -88,12 +89,12 @@ async def test_news_list_localization_headers_cache(
         "/news", headers={**headers, "If-None-Match": etag}
     )
     assert not_modified.status_code == 304
-    _assert_language_headers(not_modified, "en")
+    _assert_news_headers(not_modified, "en")
     assert not_modified.headers.get("ETag") == etag
 
     cached = await async_client.get("/news", headers=headers)
     assert cached.status_code == 200
-    _assert_language_headers(cached, "en")
+    _assert_news_headers(cached, "en")
     assert cached.headers.get("ETag") == etag
 
 
@@ -116,7 +117,7 @@ async def test_news_detail_localization_headers_cache(
 
     first = await async_client.get(f"/news/{record.id}", headers=headers)
     assert first.status_code == 200
-    _assert_language_headers(first, "en")
+    _assert_news_headers(first, "en")
     etag = first.headers.get("ETag")
     assert etag
 
@@ -124,12 +125,12 @@ async def test_news_detail_localization_headers_cache(
         f"/news/{record.id}", headers={**headers, "If-None-Match": etag}
     )
     assert not_modified.status_code == 304
-    _assert_language_headers(not_modified, "en")
+    _assert_news_headers(not_modified, "en")
     assert not_modified.headers.get("ETag") == etag
 
     cached = await async_client.get(f"/news/{record.id}", headers=headers)
     assert cached.status_code == 200
-    _assert_language_headers(cached, "en")
+    _assert_news_headers(cached, "en")
     assert cached.headers.get("ETag") == etag
 
 
