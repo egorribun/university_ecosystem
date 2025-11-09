@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, beforeEach, vi } from "vitest"
 import type { ContextType } from "react"
@@ -104,7 +103,6 @@ describe("Events pagination UI", () => {
   })
 
   it("loads additional pages when clicking load more", async () => {
-    const user = userEvent.setup()
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -124,13 +122,34 @@ describe("Events pagination UI", () => {
     )
 
     expect(await screen.findByText("Paginated event 1")).toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByTestId("event-card")).toHaveLength(12))
+    await waitFor(() => expect(screen.getAllByTestId("event-card")).not.toHaveLength(0))
 
-    const loadMoreButton = await screen.findByRole("button", { name: /load more/i })
-    await user.click(loadMoreButton)
+    const scroller = await screen.findByTestId("events-virtual-scroll")
+    Object.defineProperty(scroller, "clientHeight", { value: 420, configurable: true })
+    scroller.getBoundingClientRect = () => ({
+      width: 600,
+      height: 420,
+      top: 200,
+      left: 0,
+      bottom: 620,
+      right: 600,
+      x: 0,
+      y: 200,
+      toJSON: () => ({ width: 600, height: 420 }),
+    })
 
-    await waitFor(() => expect(screen.getAllByTestId("event-card")).toHaveLength(15))
-    expect(await screen.findByText("Paginated event 13")).toBeInTheDocument()
+    await act(async () => {
+      window.scrollTo({ top: 200 })
+      window.dispatchEvent(new Event("resize"))
+    })
+
+    await act(async () => {
+      window.scrollTo({ top: 10_000 })
+      window.dispatchEvent(new Event("scroll"))
+    })
+
+    await waitFor(() => expect(screen.getByText("Paginated event 13")).toBeInTheDocument())
+    expect(screen.getAllByTestId("event-card").length).toBeLessThan(15)
 
     queryClient.clear()
   })
