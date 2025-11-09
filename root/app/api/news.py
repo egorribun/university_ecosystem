@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/news", tags=["news"])
 
+_NEWS_CACHE_CONTROL = "private, max-age=180"
 _LEGACY_NEWS_LIST_CACHE_KEY = "news:list"
 _LEGACY_NEWS_ITEM_PREFIX = "news:item"
 _CACHE_LOCALES: tuple[str, ...] = tuple(sorted({DEFAULT_LOCALE, *SUPPORTED_LOCALES}))
@@ -76,6 +77,7 @@ def _set_language_headers(response: Response, locale: str) -> None:
     from app.main import _ensure_vary_header as ensure_vary_header
 
     response.headers["Content-Language"] = locale
+    response.headers["Cache-Control"] = _NEWS_CACHE_CONTROL
     ensure_vary_header(response, "Accept-Language")
 
 
