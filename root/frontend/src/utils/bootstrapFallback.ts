@@ -41,8 +41,8 @@ function normalizeLanguage(value: string | null | undefined): BootstrapFallbackL
 }
 
 export function getBootstrapFallbackCopy(documentRef: Document): BootstrapFallbackCopy {
-  const detected = normalizeLanguage(documentRef.documentElement.lang) ??
-    normalizeLanguage(documentRef.body?.lang)
+  const detected =
+    normalizeLanguage(documentRef.documentElement.lang) ?? normalizeLanguage(documentRef.body?.lang)
 
   if (detected) {
     return FALLBACK_DICTIONARY[detected]
@@ -76,7 +76,8 @@ export function renderBootstrapFallback({
 }: RenderBootstrapFallbackOptions): RenderedBootstrapFallback {
   const defaultWindow = documentRef.defaultView ?? window
   const reload =
-    onReload ?? (() => {
+    onReload ??
+    (() => {
       defaultWindow.location.reload()
     })
 

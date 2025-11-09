@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import {
-  getBootstrapFallbackCopy,
-  renderBootstrapFallback,
-} from "../utils/bootstrapFallback"
+import { getBootstrapFallbackCopy, renderBootstrapFallback } from "../utils/bootstrapFallback"
 
 afterEach(() => {
   document.body.innerHTML = ""
