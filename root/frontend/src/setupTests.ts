@@ -44,7 +44,8 @@ if (!("ResizeObserver" in window)) {
       this.observed.add(target)
       const el = target as HTMLElement
       const width = typeof el.clientWidth === "number" && el.clientWidth > 0 ? el.clientWidth : 600
-      const height = typeof el.clientHeight === "number" && el.clientHeight > 0 ? el.clientHeight : 600
+      const height =
+        typeof el.clientHeight === "number" && el.clientHeight > 0 ? el.clientHeight : 600
       const entry = {
         target,
         contentRect: {
@@ -72,7 +73,10 @@ if (!("ResizeObserver" in window)) {
   ;(globalThis as any).ResizeObserver = ResizeObserver
 }
 if (!(HTMLElement.prototype as any).scrollTo) {
-  ;(HTMLElement.prototype as any).scrollTo = function scrollTo(options?: number | ScrollToOptions, y?: number) {
+  ;(HTMLElement.prototype as any).scrollTo = function scrollTo(
+    options?: number | ScrollToOptions,
+    y?: number
+  ) {
     if (typeof options === "number") {
       this.scrollTop = options
       if (typeof y === "number") {
@@ -80,10 +84,18 @@ if (!(HTMLElement.prototype as any).scrollTo) {
       }
       return
     }
-    if (options && typeof options === "object" && typeof (options as ScrollToOptions).top === "number") {
+    if (
+      options &&
+      typeof options === "object" &&
+      typeof (options as ScrollToOptions).top === "number"
+    ) {
       this.scrollTop = (options as ScrollToOptions).top
     }
-    if (options && typeof options === "object" && typeof (options as ScrollToOptions).left === "number") {
+    if (
+      options &&
+      typeof options === "object" &&
+      typeof (options as ScrollToOptions).left === "number"
+    ) {
       this.scrollLeft = (options as ScrollToOptions).left
     }
   }

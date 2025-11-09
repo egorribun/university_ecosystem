@@ -1,14 +1,7 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  type CSSProperties,
-} from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useWindowVirtualizer } from "@tanstack/react-virtual"
 import { createEvent, uploadEventImage } from "@/api/events"
@@ -261,14 +254,7 @@ const Events = () => {
     if (isBeforeLoader) {
       void fetchNextEventsPage()
     }
-  }, [
-    fetchNextEventsPage,
-    hasMore,
-    loadingMore,
-    normalizedEvents.length,
-    tab,
-    virtualItems,
-  ])
+  }, [fetchNextEventsPage, hasMore, loadingMore, normalizedEvents.length, tab, virtualItems])
 
   const handleTabChange = (newValue: EventTabKey) => setTab(newValue)
 
