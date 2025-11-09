@@ -94,6 +94,9 @@ async def test_cleanup_expired_sessions_removes_mfa_challenges(db_session):
         stmt for stmt in statements if stmt.lstrip().upper().startswith("DELETE")
     ]
     assert len(delete_statements) == 2
+    challenge_delete, session_delete = delete_statements
+    assert "mfa_challenge" in challenge_delete.lower()
+    assert "active_session" in session_delete.lower()
 
     async with async_session() as verify_session:
         result = await verify_session.execute(

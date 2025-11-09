@@ -46,10 +46,9 @@ async def cleanup_expired_sessions(
     dialect = bind.dialect
 
     if dialect.name == "sqlite":
+        subquery = select(ActiveSession.id).where(expiry_condition)
         challenge_delete_stmt = delete(MfaChallenge).where(
-            MfaChallenge.session_id.in_(
-                select(ActiveSession.id).where(expiry_condition)
-            )
+            MfaChallenge.session_id.in_(subquery)
         )
     else:
         challenge_delete_stmt = (
@@ -62,10 +61,16 @@ async def cleanup_expired_sessions(
 
     delete_stmt = delete(ActiveSession).where(expiry_condition)
     supports_returning = bool(getattr(dialect, "delete_returning", False))
+    supports_rowcount_returning = bool(
+        getattr(dialect, "supports_sane_rowcount_returning", False)
+    )
     if supports_returning:
         delete_stmt = delete_stmt.returning(ActiveSession.id)
         delete_result = await db.execute(delete_stmt)
-        deleted = len(delete_result.scalars().all())
+        if supports_rowcount_returning and delete_result.rowcount is not None:
+            deleted = int(delete_result.rowcount)
+        else:
+            deleted = len(delete_result.fetchall())
     else:
         delete_result = await db.execute(delete_stmt)
         deleted = int(delete_result.rowcount or 0)
