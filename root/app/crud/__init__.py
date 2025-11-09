@@ -513,7 +513,9 @@ async def get_all_events(
             rank_expr.desc(), models.Event.starts_at.asc(), models.Event.id.asc()
         )
     else:
-        ordered_stmt = stmt.order_by(models.Event.starts_at.asc(), models.Event.id.asc())
+        ordered_stmt = stmt.order_by(
+            models.Event.starts_at.asc(), models.Event.id.asc()
+        )
     page_stmt = ordered_stmt.limit(safe_limit + 1)
     rows = await db.execute(page_stmt)
     fetched_events = rows.scalars().all()
