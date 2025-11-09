@@ -3,7 +3,6 @@ import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
 import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { useWindowVirtualizer } from "@tanstack/react-virtual"
 import { createEvent, uploadEventImage } from "@/api/events"
 import type { Event } from "@/types/Event"
 import EventNoteIcon from "@mui/icons-material/EventNote"
@@ -15,7 +14,7 @@ import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
-import { Button, Skeleton } from "@/components/ui"
+import { Button, Badge, Skeleton } from "@/components/ui"
 import Dialog from "@/components/Dialog"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -101,8 +100,6 @@ const Events = () => {
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
   const filterPopoverRef = useRef<HTMLDivElement>(null)
-  const listContainerRef = useRef<HTMLDivElement>(null)
-  const [scrollMargin, setScrollMargin] = useState(0)
 
   useEffect(() => {
     if (!filtersOpen) return
@@ -203,58 +200,11 @@ const Events = () => {
   const loadingMore = tab !== "my" && Boolean(listIsFetchingNextPage)
   const hasMore = tab !== "my" && Boolean(listHasNextPage)
 
-  const estimatedItemSize = isMobile ? 360 : 420
-  const totalVirtualCount = normalizedEvents.length + (hasMore ? 1 : 0)
-
-  const eventsVirtualizer = useWindowVirtualizer({
-    count: totalVirtualCount,
-    estimateSize: () => estimatedItemSize,
-    overscan: 6,
-    scrollMargin,
-  })
-
-  const virtualItems = eventsVirtualizer.getVirtualItems()
-
-  useEffect(() => {
-    const updateMargin = () => {
-      if (!listContainerRef.current) return
-      const rect = listContainerRef.current.getBoundingClientRect()
-      setScrollMargin(rect.top + window.scrollY)
+  const loadMore = useCallback(async () => {
+    if (tab !== "my" && listHasNextPage) {
+      await fetchNextEventsPage()
     }
-    updateMargin()
-    window.addEventListener("resize", updateMargin)
-    return () => window.removeEventListener("resize", updateMargin)
-  }, [])
-
-  useEffect(() => {
-    if (!listContainerRef.current) return
-    const rect = listContainerRef.current.getBoundingClientRect()
-    setScrollMargin(rect.top + window.scrollY)
-  }, [tab, isMobile, loading])
-
-  useEffect(() => {
-    if (!totalVirtualCount) return
-    eventsVirtualizer.scrollToOffset(0, { align: "start", behavior: "auto" })
-    if (Number.isFinite(scrollMargin)) {
-      window.scrollTo({ top: scrollMargin, behavior: "auto" })
-    }
-  }, [eventsVirtualizer, scrollMargin, tab, totalVirtualCount])
-
-  useEffect(() => {
-    if (tab === "my" || !hasMore || loadingMore || !virtualItems.length) {
-      return
-    }
-
-    const lastItem = virtualItems[virtualItems.length - 1]
-    if (!lastItem) {
-      return
-    }
-
-    const isBeforeLoader = lastItem.index >= Math.max(0, normalizedEvents.length - 1)
-    if (isBeforeLoader) {
-      void fetchNextEventsPage()
-    }
-  }, [fetchNextEventsPage, hasMore, loadingMore, normalizedEvents.length, tab, virtualItems])
+  }, [fetchNextEventsPage, listHasNextPage, tab])
 
   const handleTabChange = (newValue: EventTabKey) => setTab(newValue)
 
@@ -335,9 +285,6 @@ const Events = () => {
   }, [createPreview])
 
   const skeletonCount = isMobile ? 3 : 6
-  const virtualListMinHeight = isMobile ? 320 : 360
-  const eventsListLabel = t("events:aria.listLabel", { defaultValue: "Events list" })
-  const loadingMoreLabel = t("events:aria.loadingMore", { defaultValue: "Loading more events" })
 
   return (
     <Layout>
@@ -519,70 +466,29 @@ const Events = () => {
             role="tabpanel"
             id={`events-tabpanel-${tab}`}
             aria-labelledby={`events-tab-${tab}`}
-            className="flex w-full flex-col gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8"
+            className={cn(
+              "flex flex-wrap gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
+              isMobile ? "flex-col" : ""
+            )}
           >
-            {loading && (
-              <div className="flex flex-col items-center gap-5 sm:gap-6 md:gap-8">
-                {Array.from({ length: skeletonCount }).map((_, i) => (
-                  <div key={`event-skel-${i}`} className="flex w-full justify-center">
-                    <div className="w-full max-w-[500px] space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
-                      <Skeleton height={isMobile ? 160 : 200} className="rounded-ue-lg" />
-                      <Skeleton height={isMobile ? 28 : 32} />
-                      <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
-                      {!isMobile && <Skeleton height={20} width="60%" />}
-                    </div>
+            {loading &&
+              Array.from({ length: skeletonCount }).map((_, i) => (
+                <div key={`event-skel-${i}`} className="flex h-full">
+                  <div className="w-full max-w-[500px] space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
+                    <Skeleton height={isMobile ? 160 : 200} className="rounded-ue-lg" />
+                    <Skeleton height={isMobile ? 28 : 32} />
+                    <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
+                    {!isMobile && <Skeleton height={20} width="60%" />}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {!loading && normalizedEvents.length > 0 && (
-              <div
-                ref={listContainerRef}
-                data-testid="events-virtual-scroll"
-                role="region"
-                aria-label={eventsListLabel}
-                className="relative w-full"
-                style={{ minHeight: virtualListMinHeight }}
-              >
-                <div
-                  role="list"
-                  aria-label={eventsListLabel}
-                  className="relative w-full"
-                  style={{ height: `${eventsVirtualizer.getTotalSize()}px` }}
-                >
-                  {virtualItems.map((virtualItem) => {
-                    const isLoaderRow = virtualItem.index >= normalizedEvents.length
-                    const event = normalizedEvents[virtualItem.index]
-
-                    return (
-                      <div
-                        key={virtualItem.key}
-                        data-virtual-index={virtualItem.index}
-                        data-index={virtualItem.index}
-                        role="listitem"
-                        className="absolute left-0 right-0 flex justify-center pb-5 sm:pb-6 md:pb-8"
-                        style={{ transform: `translateY(${virtualItem.start}px)` }}
-                      >
-                        <div className="flex w-full max-w-[500px]">
-                          {isLoaderRow ? (
-                            <div
-                              className="flex w-full items-center justify-center rounded-ue-xl border border-dashed border-[color:var(--glass-border)] bg-[color:var(--card-bg)]/70 px-4 py-6 text-sm font-medium text-[color:var(--secondary-text)] shadow-surface"
-                              role="status"
-                              aria-live="polite"
-                            >
-                              {loadingMore ? loadingMoreLabel : null}
-                            </div>
-                          ) : (
-                            <EventCard {...event} onChange={handleRefresh} maxWidth="500px" />
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
-              </div>
-            )}
+              ))}
+
+            {!loading &&
+              normalizedEvents.map((event) => (
+                <div key={event.id} className="flex h-full">
+                  <EventCard {...event} onChange={handleRefresh} maxWidth="500px" />
+                </div>
+              ))}
 
             {!loading && normalizedEvents.length === 0 && (
               <div className="mt-16 flex w-full justify-center">
@@ -597,6 +503,23 @@ const Events = () => {
               </div>
             )}
           </div>
+
+          {/* Load more */}
+          {hasMore && (
+            <div className="mb-8 flex justify-center">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="px-6"
+              >
+                {loadingMore
+                  ? t("common:statuses.loading")
+                  : t("common:buttons.loadMore", { defaultValue: "Load more" })}
+              </Button>
+            </div>
+          )}
 
           {/* Create dialog */}
           <Dialog
