@@ -211,7 +211,14 @@ async def _mint_access_token(
     if extra:
         for key, value in extra.items():
             payload[key] = value
-    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    kid = settings.jwt_signing_active_kid
+    secret = settings.jwt_signing_active_secret
+    token = jwt.encode(
+        payload,
+        secret,
+        algorithm=settings.algorithm,
+        headers={"kid": kid},
+    )
     await db.commit()
     return token
 

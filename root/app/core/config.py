@@ -205,6 +205,8 @@ class Settings(BaseSettings):
     database_pool_timeout: float = 30.0
     database_pool_recycle: int = 1_800
     secret_key: str
+    jwt_signing_keys: list[str] | str = ""
+    jwt_active_kid: str | None = None
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     frontend_origin: str = "http://localhost:5173"
@@ -496,9 +498,70 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
+        entries: list[tuple[str, str]] = []
+        seen_kids: set[str] = set()
+        for raw_entry in _coerce_str_list(self.jwt_signing_keys):
+            if ":" not in raw_entry:
+                raise RuntimeError(
+                    "JWT_SIGNING_KEYS entries must be in '<kid>:<secret>' format"
+                )
+            kid, secret = raw_entry.split(":", 1)
+            kid = kid.strip()
+            secret = secret.strip()
+            if not kid:
+                raise RuntimeError(
+                    "JWT_SIGNING_KEYS entries must specify a non-empty kid value"
+                )
+            if not secret:
+                raise RuntimeError(
+                    "JWT_SIGNING_KEYS entries must specify a non-empty secret value"
+                )
+            if kid in seen_kids:
+                raise RuntimeError(
+                    "JWT_SIGNING_KEYS entries must use unique kid values"
+                )
+            entries.append((kid, secret))
+            seen_kids.add(kid)
+
+        if not entries:
+            fallback_kid = (self.jwt_active_kid or "primary").strip() or "primary"
+            entries.append((fallback_kid, self.secret_key))
+        return entries
+
+    @property
+    def jwt_signing_key_registry(self) -> dict[str, str]:
+        registry: dict[str, str] = {}
+        for kid, secret in self._build_jwt_signing_key_entries():
+            registry[kid] = secret
+        return registry
+
+    @property
+    def jwt_signing_active_kid(self) -> str:
+        registry = self.jwt_signing_key_registry
+        configured = self.jwt_active_kid.strip() if isinstance(self.jwt_active_kid, str) else None
+        if configured:
+            if configured not in registry:
+                raise RuntimeError(
+                    "JWT_ACTIVE_KID must match one of the configured JWT_SIGNING_KEYS"
+                )
+            return configured
+        return next(iter(registry))
+
+    @property
+    def jwt_signing_active_secret(self) -> str:
+        registry = self.jwt_signing_key_registry
+        active_kid = self.jwt_signing_active_kid
+        secret = registry.get(active_kid)
+        if secret is None:
+            raise RuntimeError(
+                "Configured JWT signing key registry does not contain the active kid"
+            )
+        return secret
+
     @cached_property
     def SECRET_KEY(self) -> str:
-        return self.secret_key
+        return self.jwt_signing_active_secret
 
     @cached_property
     def ALGORITHM(self) -> str:
