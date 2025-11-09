@@ -127,6 +127,10 @@ def _metric_value(name: str, labels: dict[str, str] | None = None) -> float | No
     return _METRICS_REGISTRY.get_sample_value(name, labels)
 
 
+def _metric_value_for_kind(name: str, kind: str) -> float | None:
+    return _metric_value(name, {"kind": kind})
+
+
 @pytest.mark.anyio
 async def test_reinitialize_notification_queue_metrics_replaces_registry() -> None:
     registry_one = CollectorRegistry()
@@ -199,13 +203,22 @@ async def test_notification_queue_records_drops_when_saturated(
 
     await notification_queue.enqueue_event_notification(1)
     await notification_queue.enqueue_event_notification(2)
+    await notification_queue.enqueue_news_notification(3)
+    await notification_queue.enqueue_news_notification(4)
 
     state = notification_queue._get_loop_state()
     assert state.queue.qsize() == 1
-    assert [job.record_id for job in list(state.queue._queue)] == [2]
+    remaining_jobs = list(state.queue._queue)
+    assert [job.record_id for job in remaining_jobs] == [4]
+    assert [job.kind for job in remaining_jobs] == ["news"]
 
     assert _metric_value("notification_queue_size") == pytest.approx(1.0)
-    assert _metric_value("notification_queue_dropped_jobs_total") == pytest.approx(1.0)
+    assert _metric_value_for_kind(
+        "notification_queue_dropped_jobs_total", "event"
+    ) == pytest.approx(2.0)
+    assert _metric_value_for_kind(
+        "notification_queue_dropped_jobs_total", "news"
+    ) == pytest.approx(1.0)
 
     await notification_queue.reset_testing_state()
     await notification_queue.shutdown_notification_queue()
@@ -283,7 +296,10 @@ async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatc
         "notification_queue_processed_jobs_total",
         {"kind": "news"},
     ) in (None, pytest.approx(0.0))
-    assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(0.0)
+    for kind in ("event", "news"):
+        assert _metric_value_for_kind(
+            "notification_queue_failed_jobs_total", kind
+        ) in (None, pytest.approx(0.0))
     assert _metric_value(
         "notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}
     ) in (
@@ -435,7 +451,9 @@ async def test_persistent_queue_applies_exponential_backoff(
     assert len(attempt_times) == 2
     interval = attempt_times[1] - attempt_times[0]
     assert interval >= 0.04
-    assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(0.0)
+    assert _metric_value_for_kind(
+        "notification_queue_failed_jobs_total", "event"
+    ) in (None, pytest.approx(0.0))
 
     notification_queue._loop_states.clear()
 
@@ -496,7 +514,9 @@ async def test_persistent_queue_dead_letters_poison_jobs(
     await asyncio.sleep(0.05)
     assert len(attempts) == 3
 
-    assert _metric_value("notification_queue_failed_jobs_total") == pytest.approx(1.0)
+    assert _metric_value_for_kind(
+        "notification_queue_failed_jobs_total", "event"
+    ) == pytest.approx(1.0)
 
     await notification_queue.wait_for_all_jobs(timeout=1.0)
 

@@ -731,11 +731,13 @@ def create_notification_queue_metrics(
         dropped_jobs_total=Counter(
             "notification_queue_dropped_jobs_total",
             "Total notification jobs dropped due to queue saturation",
+            labelnames=("kind",),
             registry=target_registry,
         ),
         failed_jobs_total=Counter(
             "notification_queue_failed_jobs_total",
             "Total notification jobs permanently failed or dead-lettered",
+            labelnames=("kind",),
             registry=target_registry,
         ),
         processed_jobs_total=Counter(
