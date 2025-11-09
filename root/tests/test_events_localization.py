@@ -7,7 +7,10 @@ from app import crud
 from app.api import events
 from app.auth.security import get_password_hash
 from app.models import models
-from app.services import attendance_tokens
+from prometheus_client import CollectorRegistry
+
+from app.core import observability
+from app.services import attendance_tokens, notification_queue
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -125,6 +128,59 @@ async def test_events_localization(async_client, db_session, user_factory):
     assert payload_ru[primary.id]["about"] == "Подробности"
     assert payload_ru[fallback.id]["title"] == "Только русский"
     assert payload_ru[fallback.id]["description"] == "Без перевода"
+
+
+@pytest.mark.anyio
+async def test_create_event_records_enqueue_failure(
+    async_client, db_session, user_factory, monkeypatch
+):
+    registry = CollectorRegistry()
+    metrics = observability.reinitialize_notification_queue_metrics(registry=registry)
+    notification_queue._queue_metrics = metrics
+    await notification_queue.reset_testing_state()
+
+    password = "TeacherPass123!"
+    teacher = await user_factory(
+        role="teacher", hashed_password=get_password_hash(password), is_active=True
+    )
+
+    headers = await _login(async_client, teacher.email, password)
+
+    def _failing_add_task(self, func, *args, **kwargs):  # pragma: no cover - test shim
+        raise RuntimeError("notification queue unavailable")
+
+    monkeypatch.setattr(events.BackgroundTasks, "add_task", _failing_add_task)
+
+    now = datetime.now(UTC)
+    payload = {
+        "title": "Queue Failure",
+        "description": "Test enqueue failure handling",
+        "starts_at": (now + timedelta(days=1)).isoformat(),
+        "ends_at": (now + timedelta(days=1, hours=1)).isoformat(),
+    }
+
+    response = await async_client.post("/events", headers=headers, json=payload)
+    assert response.status_code == status.HTTP_200_OK
+
+    body = response.json()
+    assert body["title"] == "Queue Failure"
+
+    counter_value = metrics.enqueue_failures_total.labels(kind="event")._value.get()
+    assert counter_value == pytest.approx(1.0)
+
+    failed_records = await notification_queue.get_failed_enqueue_records()
+    assert len(failed_records) == 1
+    failure = failed_records[0]
+    assert failure.job.record_id == body["id"]
+    assert failure.job.kind == "event"
+    assert failure.attempts == 1
+    assert failure.source == "events.create_event"
+    assert failure.error and "notification queue unavailable" in failure.error
+
+    stored = await db_session.get(models.Event, body["id"])
+    assert stored is not None
+
+    await notification_queue.reset_testing_state()
 
 
 @pytest.mark.anyio

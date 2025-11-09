@@ -215,13 +215,21 @@ async def create_event(
         )
     record = await crud.create_event(db, data, user_id=user.id)
     await _invalidate_events_list_cache()
+    job = notification_queue.NotificationJob(
+        kind="event", record_id=record.id, locale=locale
+    )
     try:
         background.add_task(
             notification_queue.enqueue_event_notification,
             record.id,
             locale=locale,
         )
-    except Exception:
+    except Exception as exc:
+        await notification_queue.record_enqueue_failure(
+            job,
+            error=exc,
+            source="events.create_event",
+        )
         logger.exception(
             "Failed to enqueue event notification", extra={"event_id": record.id}
         )
