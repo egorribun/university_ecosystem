@@ -90,6 +90,20 @@ def sanitize_optional_text(value: Any) -> str | None:
     return text if text.strip() else None
 
 
+async def _is_postgres_session(session: AsyncSession) -> bool:
+    """Return ``True`` when the bound engine speaks PostgreSQL."""
+
+    bind = session.bind
+    if bind is None:
+        try:
+            bind = await session.get_bind()
+        except Exception:  # pragma: no cover - defensive guard
+            return False
+    dialect = getattr(bind, "dialect", None)
+    name = getattr(dialect, "name", "") or ""
+    return name.lower().startswith("postgres")
+
+
 async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
     raw_role = getattr(user_in, "role", None)
     requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
@@ -425,18 +439,40 @@ async def get_all_events(
     cursor_values = _decode_event_cursor(cursor)
 
     conditions = []
+    rank_expr = None
     if search:
-        like = f"%{search}%"
-        conditions.append(
-            or_(
-                models.Event.title.ilike(like),
-                models.Event.title_en.ilike(like),
-                models.Event.description.ilike(like),
-                models.Event.description_en.ilike(like),
-                models.Event.about.ilike(like),
-                models.Event.about_en.ilike(like),
+        if await _is_postgres_session(db):
+            search_vector = func.to_tsvector(
+                "simple",
+                func.concat_ws(
+                    " ",
+                    models.Event.title,
+                    models.Event.title_en,
+                    models.Event.description,
+                    models.Event.description_en,
+                    models.Event.location,
+                    models.Event.location_en,
+                    models.Event.about,
+                    models.Event.about_en,
+                ),
             )
-        )
+            ts_query = func.plainto_tsquery("simple", search)
+            conditions.append(search_vector.op("@@")(ts_query))
+            rank_expr = func.ts_rank(search_vector, ts_query)
+        else:
+            like = f"%{search}%"
+            conditions.append(
+                or_(
+                    models.Event.title.ilike(like),
+                    models.Event.title_en.ilike(like),
+                    models.Event.description.ilike(like),
+                    models.Event.description_en.ilike(like),
+                    models.Event.location.ilike(like),
+                    models.Event.location_en.ilike(like),
+                    models.Event.about.ilike(like),
+                    models.Event.about_en.ilike(like),
+                )
+            )
     if type:
         conditions.append(
             or_(
@@ -472,7 +508,12 @@ async def get_all_events(
             )
         )
 
-    ordered_stmt = stmt.order_by(models.Event.starts_at.asc(), models.Event.id.asc())
+    if rank_expr is not None:
+        ordered_stmt = stmt.order_by(
+            rank_expr.desc(), models.Event.starts_at.asc(), models.Event.id.asc()
+        )
+    else:
+        ordered_stmt = stmt.order_by(models.Event.starts_at.asc(), models.Event.id.asc())
     page_stmt = ordered_stmt.limit(safe_limit + 1)
     rows = await db.execute(page_stmt)
     fetched_events = rows.scalars().all()

@@ -1,0 +1,56 @@
+"""Add PostgreSQL search index for events."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "202509100001"
+down_revision: str | Sequence[str] | None = "202509010001"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+_PRIMARY_INDEX_NAME = "ix_events_search_text"
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+
+    op.execute(
+        sa.text(
+            f"""
+            CREATE INDEX IF NOT EXISTS {_PRIMARY_INDEX_NAME}
+            ON events
+            USING gin (
+                to_tsvector(
+                    'simple',
+                    concat_ws(
+                        ' ',
+                        title,
+                        description,
+                        location,
+                        title_en,
+                        description_en,
+                        location_en,
+                        about,
+                        about_en
+                    )
+                )
+            )
+            """
+        )
+    )
+
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+
+    op.execute(sa.text(f"DROP INDEX IF EXISTS {_PRIMARY_INDEX_NAME}"))
