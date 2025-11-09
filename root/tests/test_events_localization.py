@@ -2,14 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
+from prometheus_client import CollectorRegistry
 
 from app import crud
 from app.api import events
 from app.auth.security import get_password_hash
-from app.models import models
-from prometheus_client import CollectorRegistry
-
 from app.core import observability
+from app.models import models
 from app.services import attendance_tokens, notification_queue
 
 

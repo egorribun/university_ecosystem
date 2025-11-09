@@ -150,9 +150,7 @@ async def record_enqueue_failure(
         try:
             metrics.enqueue_failures_total.labels(kind=job.kind).inc()
         except Exception:  # pragma: no cover - defensive metrics guard
-            logger.debug(
-                "Failed to increment enqueue failure metric", exc_info=True
-            )
+            logger.debug("Failed to increment enqueue failure metric", exc_info=True)
     record = FailedEnqueueRecord(
         job=job,
         error=_serialize_error(error),
@@ -184,7 +182,8 @@ async def retry_failed_enqueues(limit: int | None = None) -> int:
     async with _failed_enqueue_lock:
         if limit is None:
             pending: list[FailedEnqueueRecord] = [
-                _failed_enqueue_records.popleft() for _ in range(len(_failed_enqueue_records))
+                _failed_enqueue_records.popleft()
+                for _ in range(len(_failed_enqueue_records))
             ]
         else:
             count = max(int(limit), 0)
