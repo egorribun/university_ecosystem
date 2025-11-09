@@ -641,6 +641,7 @@ class NotificationQueueMetrics:
     queue_size: Gauge
     dropped_jobs_total: Counter
     failed_jobs_total: Counter
+    enqueue_failures_total: Counter
     processed_jobs_total: Counter
     processing_latency_seconds: Histogram
     queue_wait_time_seconds: Histogram
@@ -656,6 +657,7 @@ class NotificationQueueMetrics:
             self.queue_size,
             self.dropped_jobs_total,
             self.failed_jobs_total,
+            self.enqueue_failures_total,
             self.processed_jobs_total,
             self.processing_latency_seconds,
             self.queue_wait_time_seconds,
@@ -673,6 +675,7 @@ class NotificationQueueMetrics:
         self.queue_size = fresh.queue_size
         self.dropped_jobs_total = fresh.dropped_jobs_total
         self.failed_jobs_total = fresh.failed_jobs_total
+        self.enqueue_failures_total = fresh.enqueue_failures_total
         self.processed_jobs_total = fresh.processed_jobs_total
         self.processing_latency_seconds = fresh.processing_latency_seconds
         self.queue_wait_time_seconds = fresh.queue_wait_time_seconds
@@ -737,6 +740,12 @@ def create_notification_queue_metrics(
         failed_jobs_total=Counter(
             "notification_queue_failed_jobs_total",
             "Total notification jobs permanently failed or dead-lettered",
+            labelnames=("kind",),
+            registry=target_registry,
+        ),
+        enqueue_failures_total=Counter(
+            "notification_queue_enqueue_failures_total",
+            "Total notification jobs that failed to be enqueued",
             labelnames=("kind",),
             registry=target_registry,
         ),
@@ -838,6 +847,7 @@ def reinitialize_notification_queue_metrics(
             _notification_queue_metrics.queue_size,
             _notification_queue_metrics.dropped_jobs_total,
             _notification_queue_metrics.failed_jobs_total,
+            _notification_queue_metrics.enqueue_failures_total,
             _notification_queue_metrics.processed_jobs_total,
             _notification_queue_metrics.processing_latency_seconds,
             _notification_queue_metrics.queue_wait_time_seconds,

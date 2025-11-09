@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -47,6 +48,17 @@ class NotificationJob:
 
 
 @dataclass(slots=True)
+class FailedEnqueueRecord:
+    """Metadata describing an enqueue attempt that did not succeed."""
+
+    job: NotificationJob
+    error: str | None
+    source: str | None
+    occurred_at: datetime
+    attempts: int = 1
+
+
+@dataclass(slots=True)
 class _LoopState:
     """Per-event-loop resources for the notification queue."""
 
@@ -66,6 +78,11 @@ _queue_metrics: NotificationQueueMetrics | None = None
 _DEAD_LETTER_CLEANUP_METRICS = get_periodic_task_metrics(
     "notification_queue_dead_letter_cleanup"
 )
+
+
+_FAILED_ENQUEUE_HISTORY_LIMIT = 128
+_failed_enqueue_records: deque[FailedEnqueueRecord] = deque()
+_failed_enqueue_lock = asyncio.Lock()
 
 
 def _get_metrics() -> NotificationQueueMetrics | None:
@@ -110,6 +127,99 @@ def _get_loop_state() -> _LoopState:
 
 
 _WORKER_TASK_NAME = "notification-queue-worker"
+
+
+def _serialize_error(error: BaseException | str | None) -> str | None:
+    if error is None:
+        return None
+    if isinstance(error, BaseException):
+        return f"{error.__class__.__name__}: {error}"
+    return str(error)
+
+
+async def record_enqueue_failure(
+    job: NotificationJob,
+    *,
+    error: BaseException | str | None = None,
+    source: str | None = None,
+) -> None:
+    """Record telemetry and in-memory state for a failed enqueue attempt."""
+
+    metrics = _get_metrics()
+    if metrics is not None:
+        try:
+            metrics.enqueue_failures_total.labels(kind=job.kind).inc()
+        except Exception:  # pragma: no cover - defensive metrics guard
+            logger.debug("Failed to increment enqueue failure metric", exc_info=True)
+    record = FailedEnqueueRecord(
+        job=job,
+        error=_serialize_error(error),
+        source=source,
+        occurred_at=datetime.now(UTC),
+    )
+    async with _failed_enqueue_lock:
+        _failed_enqueue_records.append(record)
+        while len(_failed_enqueue_records) > _FAILED_ENQUEUE_HISTORY_LIMIT:
+            dropped = _failed_enqueue_records.popleft()
+            logger.debug(
+                "Discarding oldest failed enqueue record", extra={"job": dropped.job}
+            )
+
+
+async def get_failed_enqueue_records() -> list[FailedEnqueueRecord]:
+    """Return a snapshot of recorded failed enqueue attempts."""
+
+    async with _failed_enqueue_lock:
+        return [replace(record) for record in _failed_enqueue_records]
+
+
+async def retry_failed_enqueues(limit: int | None = None) -> int:
+    """Retry previously failed enqueue attempts.
+
+    Returns the number of jobs successfully re-enqueued.
+    """
+
+    async with _failed_enqueue_lock:
+        if limit is None:
+            pending: list[FailedEnqueueRecord] = [
+                _failed_enqueue_records.popleft()
+                for _ in range(len(_failed_enqueue_records))
+            ]
+        else:
+            count = max(int(limit), 0)
+            pending = [
+                _failed_enqueue_records.popleft()
+                for _ in range(min(count, len(_failed_enqueue_records)))
+            ]
+
+    successes = 0
+    failures: list[FailedEnqueueRecord] = []
+    for record in pending:
+        try:
+            await _enqueue_job(record.job)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            record.error = _serialize_error(exc)
+            record.attempts += 1
+            record.occurred_at = datetime.now(UTC)
+            failures.append(record)
+            metrics = _get_metrics()
+            if metrics is not None:
+                try:
+                    metrics.enqueue_failures_total.labels(kind=record.job.kind).inc()
+                except Exception:  # pragma: no cover - defensive metrics guard
+                    logger.debug(
+                        "Failed to increment enqueue failure metric during retry",
+                        exc_info=True,
+                    )
+        else:
+            successes += 1
+
+    if failures:
+        async with _failed_enqueue_lock:
+            for record in failures:
+                _failed_enqueue_records.append(record)
+
+    return successes
 
 
 async def _ensure_worker() -> None:
@@ -354,13 +464,31 @@ async def enqueue_event_notification(
 ) -> None:
     """Queue an event notification job for asynchronous delivery."""
 
-    await _enqueue_job(NotificationJob(kind="event", record_id=event_id, locale=locale))
+    job = NotificationJob(kind="event", record_id=event_id, locale=locale)
+    try:
+        await _enqueue_job(job)
+    except Exception as exc:
+        await record_enqueue_failure(
+            job,
+            error=exc,
+            source="notification_queue.enqueue_event_notification",
+        )
+        raise
 
 
 async def enqueue_news_notification(news_id: int, *, locale: str | None = None) -> None:
     """Queue a news notification job for asynchronous delivery."""
 
-    await _enqueue_job(NotificationJob(kind="news", record_id=news_id, locale=locale))
+    job = NotificationJob(kind="news", record_id=news_id, locale=locale)
+    try:
+        await _enqueue_job(job)
+    except Exception as exc:
+        await record_enqueue_failure(
+            job,
+            error=exc,
+            source="notification_queue.enqueue_news_notification",
+        )
+        raise
 
 
 async def wait_for_all_jobs(timeout: float | None = None) -> None:
@@ -404,6 +532,8 @@ async def reset_testing_state() -> None:
     state.active_jobs = 0
     state.job_event.clear()
     await _clear_persistent_jobs()
+    async with _failed_enqueue_lock:
+        _failed_enqueue_records.clear()
     if metrics is not None:
         metrics.reset()
         if _use_persistent_backend():
