@@ -238,7 +238,8 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
     except asyncio.QueueFull:
         evicted = _evict_oldest(queue)
         if metrics is not None:
-            metrics.dropped_jobs_total.inc()
+            dropped_kind = evicted.kind if evicted is not None else job.kind
+            metrics.dropped_jobs_total.labels(kind=dropped_kind).inc()
             _update_in_memory_metrics(metrics, queue)
         logger.warning(
             "Notification queue full; dropped oldest job",
@@ -250,7 +251,7 @@ async def _enqueue_in_memory_job(job: NotificationJob) -> None:
                 enqueued = True
             except TimeoutError:
                 if metrics is not None:
-                    metrics.dropped_jobs_total.inc()
+                    metrics.dropped_jobs_total.labels(kind=job.kind).inc()
                     _update_in_memory_metrics(metrics, queue)
                 logger.warning(
                     "Notification queue saturated; dropping job after timeout",
@@ -857,7 +858,7 @@ async def _acknowledge_persistent_job(
                         record.dead_lettered = True
                         record.next_retry_at = None
                         if metrics is not None:
-                            metrics.failed_jobs_total.inc()
+                            metrics.failed_jobs_total.labels(kind=job.kind).inc()
                         logger.error(
                             (
                                 "Notification job exhausted retries; moving to "
