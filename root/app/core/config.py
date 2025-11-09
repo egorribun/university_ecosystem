@@ -382,9 +382,7 @@ class Settings(BaseSettings):
 
     @field_validator("auto_create_schema")
     @classmethod
-    def _warn_auto_create_schema(
-        cls, value: bool, info: ValidationInfo
-    ) -> bool:
+    def _warn_auto_create_schema(cls, value: bool, info: ValidationInfo) -> bool:
         if value:
             environment = str(info.data.get("environment") or "production").lower()
             if environment not in _DEVELOPMENT_ENVIRONMENTS:
