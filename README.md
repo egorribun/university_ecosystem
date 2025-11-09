@@ -47,7 +47,28 @@ cp root/.env.example root/.env
 > process environment variables) with unique secrets before starting the
 > backend.
 
-### 2. Run the full stack with Docker (recommended)
+### 2. Run database migrations
+
+Apply the latest Alembic migrations before starting the API:
+
+```bash
+cd root
+# Reuse the same connection string you configure for DATABASE_URL
+export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
+alembic upgrade head
+```
+
+Alembic reads the database URL from `root/alembic.ini`; when the bundled sample
+URL does not match your target database, set the `DATABASE_URL` environment
+variable before running the command. In Docker Compose, a one-off
+`migrations` service now executes `alembic upgrade head` automatically before
+the API and worker containers start. You can rerun migrations on demand with:
+
+```bash
+docker compose run --rm backend alembic upgrade head
+```
+
+### 3. Run the full stack with Docker (recommended)
 
 ```bash
 docker compose up --build
@@ -60,7 +81,7 @@ This command builds the backend, frontend, and notifications worker images, star
 - Frontend UI: http://localhost:8080
 - Worker metrics: http://localhost:9101/metrics
 
-### 3. Run services manually (alternative)
+### 4. Run services manually (alternative)
 
 #### Backend (FastAPI)
 ```bash

@@ -15,6 +15,27 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Для экспонирования Prometheus-метрик установите `ENABLE_METRICS_ENDPOINT=true` и задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend откажется отдавать `/metrics`, если пароль равен известному плейсхолдеру вроде `changeme`.
 - Для включения заголовка `Cross-Origin-Resource-Policy` установите `ENABLE_CORP=true`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
 
+## Миграции базы данных
+
+- Перед первым запуском новой версии выполните `alembic upgrade head`:
+
+  ```bash
+  cd root
+  export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
+  alembic upgrade head
+  ```
+
+- Alembic берёт строку подключения из `root/alembic.ini`. Если требуется другой
+  адрес, задайте его через переменную окружения `DATABASE_URL` (используйте то же
+  значение, что и для приложения).
+- В docker compose добавлен одноразовый сервис `migrations`, который выполняет
+  `alembic upgrade head` до запуска API и воркера. При необходимости повторите
+  миграции вручную:
+
+  ```bash
+  docker compose run --rm backend alembic upgrade head
+  ```
+
 ### Пул соединений базы данных
 
 - В production средах используйте пул SQLAlchemy: задайте `DATABASE_POOL_SIZE` (основной размер пула), `DATABASE_MAX_OVERFLOW` (дополнительные соединения поверх пула), `DATABASE_POOL_TIMEOUT` (секунды ожидания свободного соединения) и `DATABASE_POOL_RECYCLE` (период принудительного закрытия соединений, секунды). Значения по умолчанию — `5`, `10`, `30` и `1800` соответственно.

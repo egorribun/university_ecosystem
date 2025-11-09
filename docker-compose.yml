@@ -14,6 +14,8 @@ services:
       ENABLE_METRICS_ENDPOINT: "true"
       METRICS_ALLOWLIST: 127.0.0.1,::1
     depends_on:
+      migrations:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     ports:
@@ -50,6 +52,8 @@ services:
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
     depends_on:
+      migrations:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     restart: unless-stopped
@@ -71,6 +75,21 @@ services:
       retries: 5
     ports:
       - "5432:5432"
+
+  migrations:
+    build:
+      context: .
+      dockerfile: root/backend.Dockerfile
+      target: runtime
+    command: alembic upgrade head
+    env_file:
+      - root/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   postgres-data:
