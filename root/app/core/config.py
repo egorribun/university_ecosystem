@@ -539,7 +539,11 @@ class Settings(BaseSettings):
     @property
     def jwt_signing_active_kid(self) -> str:
         registry = self.jwt_signing_key_registry
-        configured = self.jwt_active_kid.strip() if isinstance(self.jwt_active_kid, str) else None
+        configured = (
+            self.jwt_active_kid.strip()
+            if isinstance(self.jwt_active_kid, str)
+            else None
+        )
         if configured:
             if configured not in registry:
                 raise RuntimeError(

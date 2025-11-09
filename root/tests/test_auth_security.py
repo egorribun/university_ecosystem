@@ -16,8 +16,8 @@ from app.auth.security import (
     verify_and_update_password,
     verify_password,
 )
-from app.models import models
 from app.core.config import settings
+from app.models import models
 
 
 def _make_legacy_hash(password: str) -> str:
@@ -152,7 +152,9 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
         "exp": now + timedelta(minutes=5),
         "jti": "legacy-jti",
     }
-    legacy_token = jwt.encode(legacy_payload, "old-secret", algorithm=settings.algorithm)
+    legacy_token = jwt.encode(
+        legacy_payload, "old-secret", algorithm=settings.algorithm
+    )
 
     rotated_token = await create_access_token("current-user")
 
