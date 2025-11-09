@@ -177,7 +177,7 @@ async def test_upload_event_file_rejects_forbidden_type(
 
 
 @pytest.mark.anyio("asyncio")
-async def test_upload_event_file_rejects_mismatched_magic_bytes(
+async def test_upload_event_file_prefers_detected_metadata(
     tmp_path, monkeypatch, db_session, user_factory
 ):
     admin = await user_factory(role="admin")
@@ -199,17 +199,14 @@ async def test_upload_event_file_rejects_mismatched_magic_bytes(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt", ".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
-
-    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate(
-        "errors.files.content_type_mismatch", locale="en"
+    result = await events.upload_event_file(
+        event.id, upload, request=None, db=db_session, user=admin
     )
-    folder = tmp_path / "event_files"
-    assert not folder.exists()
+
+    stored_path = tmp_path / "event_files" / result.file_url.rsplit("/", 1)[-1]
+    assert stored_path.exists()
+    assert stored_path.suffix == ".pdf"
+    assert stored_path.read_bytes() == pdf_payload
 
 
 @pytest.mark.anyio("asyncio")
@@ -247,6 +244,38 @@ async def test_upload_event_file_rejects_infected_payload(
 
     assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert excinfo.value.detail == translate("errors.files.infected", locale="en")
+    folder = tmp_path / "event_files"
+    assert not folder.exists()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_upload_event_file_rejects_detected_type_not_allowed(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    pdf_payload = b"%PDF-1.7\n" + b"0" * 100
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(pdf_payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
+
+    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert excinfo.value.detail == translate(
+        "errors.files.unsupported_type", locale="en"
+    )
     folder = tmp_path / "event_files"
     assert not folder.exists()
 
