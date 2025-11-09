@@ -16,6 +16,27 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To expose Prometheus metrics, set `ENABLE_METRICS_ENDPOINT=true` and configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (docker-compose no longer injects placeholders). The backend refuses to serve `/metrics` if the password equals a known placeholder such as `changeme`.
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
 
+## Database migrations
+
+- Before launching a new release, run `alembic upgrade head`:
+
+  ```bash
+  cd root
+  export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
+  alembic upgrade head
+  ```
+
+- Alembic reads the connection string from `root/alembic.ini`. If that sample URL
+  does not match your target database, provide the correct value through the
+  `DATABASE_URL` environment variable (reuse the same URL as the application).
+- Docker Compose now includes a one-off `migrations` service that runs
+  `alembic upgrade head` before the API and worker containers start. You can rerun
+  migrations manually when needed:
+
+  ```bash
+  docker compose run --rm backend alembic upgrade head
+  ```
+
 ### Database connection pool
 
 - In production environments use the SQLAlchemy pool: set `DATABASE_POOL_SIZE` (base pool size), `DATABASE_MAX_OVERFLOW` (additional connections above the pool), `DATABASE_POOL_TIMEOUT` (seconds to wait for a free connection), and `DATABASE_POOL_RECYCLE` (seconds before a forced connection close). Default values are `5`, `10`, `30`, and `1800` respectively.

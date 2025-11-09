@@ -8,7 +8,7 @@ from functools import cached_property
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -128,6 +128,15 @@ def _validate_webauthn_origin(value: str) -> str:
 _logger = logging.getLogger(__name__)
 
 
+_DEVELOPMENT_ENVIRONMENTS = {
+    "dev",
+    "development",
+    "local",
+    "test",
+    "testing",
+}
+
+
 _DEVELOPMENT_FALLBACKS: dict[str, str] = {
     "database_url": "sqlite+aiosqlite:///./dev.db",
     "secret_key": "development-secret-key",  # pragma: allowlist secret
@@ -217,7 +226,7 @@ class Settings(BaseSettings):
     image_max_height: int = 1920
     trusted_hosts: str | list[str] = "localhost,127.0.0.1"
     environment: str = "development"
-    auto_create_schema: bool = True
+    auto_create_schema: bool | None = None
     smtp_host: str = ""
     smtp_port: int = 0
     smtp_user: str = ""
@@ -360,6 +369,33 @@ class Settings(BaseSettings):
     event_file_scanner_port: int = 3310
     event_file_scanner_socket: str = ""
     event_file_scanner_timeout: float = 30.0
+
+    @field_validator("auto_create_schema", mode="before")
+    @classmethod
+    def _default_auto_create_schema(
+        cls, value: bool | None, info: ValidationInfo
+    ) -> bool:
+        if value is not None:
+            return bool(value)
+        environment = str(info.data.get("environment") or "development").lower()
+        return environment in _DEVELOPMENT_ENVIRONMENTS
+
+    @field_validator("auto_create_schema")
+    @classmethod
+    def _warn_auto_create_schema(cls, value: bool, info: ValidationInfo) -> bool:
+        if value:
+            environment = str(info.data.get("environment") or "production").lower()
+            if environment not in _DEVELOPMENT_ENVIRONMENTS:
+                _logger.warning(
+                    (
+                        "AUTO_CREATE_SCHEMA is enabled while ENVIRONMENT=%s. "
+                        "This should only be used for development or automated tests. "
+                        "Run 'alembic upgrade head' and set AUTO_CREATE_SCHEMA=false "
+                        "for production deployments."
+                    ),
+                    environment or "production",
+                )
+        return bool(value)
 
     @field_validator("database_pool_size")
     @classmethod
@@ -722,13 +758,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def is_development(self) -> bool:
-        return str(self.environment).lower() in {
-            "dev",
-            "development",
-            "local",
-            "test",
-            "testing",
-        }
+        return str(self.environment).lower() in _DEVELOPMENT_ENVIRONMENTS
 
     @cached_property
     def cors_allow_methods_list(self) -> list[str]:

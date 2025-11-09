@@ -128,3 +128,53 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
         "schedule",
         "system",
     }
+
+
+def test_auto_create_schema_default_true_in_development(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    monkeypatch.setenv("SECRET_KEY", "development-secret")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
+
+    with _temporary_env_file(None):
+        from app.core import config as config_module
+
+        config_module = importlib.reload(config_module)
+        settings = config_module.Settings()
+
+    assert settings.auto_create_schema is True
+
+
+def test_auto_create_schema_default_false_in_production(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    monkeypatch.setenv("SECRET_KEY", "production-secret")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
+
+    with _temporary_env_file(None):
+        from app.core import config as config_module
+
+        config_module = importlib.reload(config_module)
+        settings = config_module.Settings()
+
+    assert settings.auto_create_schema is False
+
+
+def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog):
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    monkeypatch.setenv("SECRET_KEY", "production-secret")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
+
+    with _temporary_env_file(None):
+        from app.core import config as config_module
+
+        with caplog.at_level("WARNING"):
+            config_module = importlib.reload(config_module)
+            settings = config_module.Settings()
+
+    assert settings.auto_create_schema is True
+    assert any(
+        "AUTO_CREATE_SCHEMA is enabled" in record.getMessage()
+        for record in caplog.records
+    )
