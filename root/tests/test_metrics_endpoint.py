@@ -3,7 +3,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from app.core import metrics as metrics_module, observability
+from app.core import metrics as metrics_module
+from app.core import observability
 from app.core.config import settings
 
 
