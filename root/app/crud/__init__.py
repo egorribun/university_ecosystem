@@ -435,7 +435,8 @@ async def get_all_events(
     cursor: str | None = None,
 ):
     now = datetime.now(UTC)
-    safe_limit = max(1, min(MAX_EVENTS_LIMIT, limit or DEFAULT_EVENTS_LIMIT))
+    raw_limit = DEFAULT_EVENTS_LIMIT if limit is None else limit
+    safe_limit = min(MAX_EVENTS_LIMIT, max(0, raw_limit))
     cursor_values = _decode_event_cursor(cursor)
 
     conditions = []
@@ -502,18 +503,27 @@ async def get_all_events(
         ordered_stmt = stmt.order_by(
             models.Event.starts_at.asc(), models.Event.id.asc()
         )
-    page_stmt = ordered_stmt.limit(safe_limit + 1)
+    fetch_limit = safe_limit + 1 if safe_limit > 0 else 1
+    page_stmt = ordered_stmt.limit(fetch_limit)
     rows = await db.execute(page_stmt)
     fetched_events = rows.scalars().all()
-    events = fetched_events[:safe_limit]
+    events = fetched_events[:safe_limit] if safe_limit else []
     ids = [e.id for e in events]
-    counts = await _attendance_counts(db, ids)
-    files_map = await _files_by_event(db, ids)
+    if ids:
+        counts = await _attendance_counts(db, ids)
+        files_map = await _files_by_event(db, ids)
+    else:
+        counts = {}
+        files_map = {}
 
-    total_stmt = select(func.count()).select_from(models.Event)
-    if conditions:
-        total_stmt = total_stmt.where(and_(*conditions))
-    total = (await db.execute(total_stmt)).scalar_one()
+    total: int | None
+    if cursor_values:
+        total = None
+    else:
+        total_stmt = select(func.count()).select_from(models.Event)
+        if conditions:
+            total_stmt = total_stmt.where(and_(*conditions))
+        total = (await db.execute(total_stmt)).scalar_one()
 
     registered_ids: set[int] = set()
     qr_map: dict[int, str | None] = {}

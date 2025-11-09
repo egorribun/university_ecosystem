@@ -1,6 +1,8 @@
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
 from app import crud
@@ -10,6 +12,28 @@ from app.models import models
 from app.schemas import schemas
 
 pytestmark = pytest.mark.anyio("asyncio")
+
+
+@contextmanager
+def _capture_statements(session):
+    statements: list[str] = []
+    engine = session.bind
+    if engine is None:
+        yield statements
+        return
+
+    sync_engine = engine.sync_engine
+
+    def _before_cursor_execute(
+        _conn, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        yield statements
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before_cursor_execute)
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -186,6 +210,53 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     assert third_page.cursor == second_page.next_cursor
     assert [item.title for item in third_page.items] == ["Event D"]
     assert third_page.next_cursor is None
+
+
+async def test_get_all_events_cursor_skips_total_on_followup_pages(
+    db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    student = await user_factory()
+    base = datetime.now(UTC) + timedelta(days=1)
+
+    events = [
+        models.Event(
+            title=f"Event {idx}",
+            starts_at=base + timedelta(hours=idx),
+            ends_at=base + timedelta(hours=idx, minutes=30),
+            created_by=admin.id,
+            is_active=True,
+        )
+        for idx in range(5)
+    ]
+    db_session.add_all(events)
+    await db_session.commit()
+    for event_record in events:
+        await db_session.refresh(event_record)
+
+    first_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+    )
+    assert first_page.total == 5
+    assert first_page.next_cursor is not None
+
+    with _capture_statements(db_session) as statements:
+        second_page = await crud.get_all_events(
+            db_session,
+            user_id=student.id,
+            locale="en",
+            limit=2,
+            cursor=first_page.next_cursor,
+        )
+
+    assert second_page.total is None
+    lowered_statements = [stmt.lower() for stmt in statements]
+    assert not any(
+        "count" in stmt and " from events" in stmt for stmt in lowered_statements
+    )
 
 
 async def test_event_detail_returns_qr_code_after_registration(
