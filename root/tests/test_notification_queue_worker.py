@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from prometheus_client import CollectorRegistry, REGISTRY
+from prometheus_client import REGISTRY, CollectorRegistry
 from sqlalchemy import select
 
 from alembic import command
