@@ -1,5 +1,6 @@
 import pytest
 from fastapi import status
+from sqlalchemy.exc import OperationalError
 
 from app import main
 
@@ -33,6 +34,31 @@ class _FailingSession:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+@pytest.fixture
+def missing_table_operational_error(monkeypatch):
+    class _UndefinedTableError(Exception):
+        pgcode = "42P01"
+        sqlstate = "42P01"
+
+        def __str__(self) -> str:
+            return "relation notification_queue_job does not exist"
+
+    error = OperationalError("SELECT", None, _UndefinedTableError())
+
+    class _MissingTableSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def execute(self, stmt):
+            raise error
+
+    monkeypatch.setattr(main, "async_session", lambda: _MissingTableSession())
+    return error
 
 
 @pytest.mark.anyio("asyncio")
@@ -118,6 +144,16 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["notification_queue"] == "error"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_healthcheck_notification_queue_missing_table(
+    async_client, missing_table_operational_error
+):
+    response = await async_client.get("/healthz")
+    data = response.json()
+    assert response.status_code == status.HTTP_200_OK
+    assert data["notification_queue"] == "ok"
 
 
 @pytest.mark.anyio("asyncio")

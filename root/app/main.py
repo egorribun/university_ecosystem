@@ -270,6 +270,35 @@ async def root():
     return {"status": "ok"}
 
 
+_MISSING_TABLE_SQLSTATES = {
+    "42P01",  # PostgreSQL undefined_table
+    "42S02",  # MySQL/MariaDB ER_NO_SUCH_TABLE
+}
+
+
+def _is_missing_table_error(exc: OperationalError) -> bool:
+    """Return True if the OperationalError represents a missing table."""
+
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        sqlstate = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+        # Keep this list in sync with supported backends' SQLSTATEs.
+        if sqlstate in _MISSING_TABLE_SQLSTATES:
+            return True
+
+        message = str(orig).lower()
+    else:
+        message = str(exc).lower()
+
+    missing_table_fragments = (
+        "no such table",
+        "does not exist",
+        "doesn't exist",
+        "unknown table",
+    )
+    return any(fragment in message for fragment in missing_table_fragments)
+
+
 @app.get("/healthz")
 async def healthz():
     statuses: dict[str, str] = {}
@@ -332,8 +361,7 @@ async def healthz():
                     select(func.count()).select_from(NotificationQueueJob)
                 )
         except OperationalError as exc:
-            message = str(exc).lower()
-            if "no such table" not in message:
+            if not _is_missing_table_error(exc):
                 queue_status = "error"
         except Exception:
             queue_status = "error"
