@@ -248,7 +248,7 @@ async def save_attachment(
     declared_raw = (upload.content_type or "").strip()
     declared_type = _normalize_mime_type(declared_raw)
     allowed_types = settings.event_file_allowed_mime_types_set
-    if not declared_type or (allowed_types and declared_type not in allowed_types):
+    if declared_type and allowed_types and declared_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=translate("errors.files.unsupported_type", locale=locale),
@@ -269,17 +269,25 @@ async def save_attachment(
     data = await _read_limited(upload, limit, locale=locale)
 
     detected_type = detect_mime_type(data) or ""
-    if detected_type:
-        if allowed_types and detected_type not in allowed_types:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=translate("errors.files.unsupported_type", locale=locale),
-            )
-        if declared_type and detected_type != declared_type:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=translate("errors.files.content_type_mismatch", locale=locale),
-            )
+    if detected_type and allowed_types and detected_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=translate("errors.files.unsupported_type", locale=locale),
+        )
+
+    chosen_type = ""
+    chosen_type_source = ""
+    for source, candidate in (("detected", detected_type), ("declared", declared_type)):
+        if candidate and (not allowed_types or candidate in allowed_types):
+            chosen_type = candidate
+            chosen_type_source = source
+            break
+
+    if not chosen_type:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=translate("errors.files.unsupported_type", locale=locale),
+        )
 
     def _ext_without_dot_from_mime(mime: str) -> str:
         candidate = _ext_from_mime(mime).lower()
@@ -291,39 +299,50 @@ async def save_attachment(
     declared_ext_without_dot = (
         _ext_without_dot_from_mime(declared_type) if declared_type else ""
     )
+    chosen_ext_without_dot = _ext_without_dot_from_mime(chosen_type)
 
-    if (
-        detected_ext_without_dot
-        and allowed_exts
-        and detected_ext_without_dot not in allowed_exts
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=translate("errors.files.unsupported_extension", locale=locale),
-        )
-
-    candidate_exts: tuple[str, ...] = (
-        ext_without_dot,
-        detected_ext_without_dot,
-        declared_ext_without_dot,
-    )
-    chosen_ext_without_dot = next(
-        (
-            candidate
-            for candidate in candidate_exts
-            if candidate and (not allowed_exts or candidate in allowed_exts)
-        ),
-        "",
-    )
-
-    if not chosen_ext_without_dot and allowed_exts:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=translate("errors.files.unsupported_extension", locale=locale),
-        )
-
-    if not chosen_ext_without_dot:
-        chosen_ext_without_dot = declared_ext_without_dot or detected_ext_without_dot
+    if allowed_exts:
+        if chosen_ext_without_dot:
+            if chosen_ext_without_dot not in allowed_exts:
+                raise HTTPException(
+                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    detail=translate(
+                        "errors.files.unsupported_extension", locale=locale
+                    ),
+                )
+        else:
+            fallback_exts: tuple[str, ...]
+            if chosen_type_source == "declared":
+                fallback_exts = (declared_ext_without_dot, ext_without_dot)
+            else:
+                fallback_exts = (detected_ext_without_dot,)
+            chosen_ext_without_dot = next(
+                (
+                    candidate
+                    for candidate in fallback_exts
+                    if candidate and candidate in allowed_exts
+                ),
+                "",
+            )
+            if not chosen_ext_without_dot:
+                raise HTTPException(
+                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    detail=translate(
+                        "errors.files.unsupported_extension", locale=locale
+                    ),
+                )
+    else:
+        if not chosen_ext_without_dot:
+            fallback_exts: tuple[str, ...]
+            if chosen_type_source == "declared":
+                fallback_exts = (declared_ext_without_dot, detected_ext_without_dot)
+            else:
+                fallback_exts = (detected_ext_without_dot, declared_ext_without_dot)
+            fallback_exts += (ext_without_dot,)
+            chosen_ext_without_dot = next(
+                (candidate for candidate in fallback_exts if candidate),
+                "",
+            )
 
     ext_for_name = f".{chosen_ext_without_dot}" if chosen_ext_without_dot else ""
     name = _gen_name(prefix, ext_for_name)
@@ -333,7 +352,7 @@ async def save_attachment(
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
     return await backend.save_file(
-        relative_path, data, content_type=declared_type or detected_type or None
+        relative_path, data, content_type=chosen_type or None
     )
 
 

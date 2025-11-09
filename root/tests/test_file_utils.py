@@ -174,3 +174,74 @@ async def test_save_image_preserves_transparency_with_png(tmp_path, monkeypatch)
         assert saved.width <= 300
         assert saved.height <= 200
         assert "exif" not in saved.info
+
+
+@pytest.mark.asyncio
+async def test_save_attachment_prefers_detected_type(monkeypatch):
+    payload = b"%PDF-1.7\n" + b"0" * 10
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    backend = RecordingStorage()
+
+    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
+        assert data == payload
+
+    monkeypatch.setattr(files, "scan_for_malware", fake_scan)
+    monkeypatch.setattr(files, "storage_backend", backend)
+    monkeypatch.setattr(files, "_default_storage_backend", backend)
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+    monkeypatch.setattr(
+        settings,
+        "event_file_allowed_mime_types",
+        ["text/plain", "application/pdf"],
+    )
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt", ".pdf"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    url = await files.save_attachment(upload, "event_files", "event_1")
+
+    assert url.startswith("https://cdn.example/event_files/")
+    assert url.endswith(".pdf")
+    assert backend.calls
+    method, (relative_path, data), kwargs = backend.calls[0]
+    assert method == "save"
+    assert relative_path.endswith(".pdf")
+    assert kwargs["content_type"] == "application/pdf"
+    assert data == payload
+
+
+@pytest.mark.asyncio
+async def test_save_attachment_falls_back_to_declared_type(monkeypatch):
+    payload = b"hello world"
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    backend = RecordingStorage()
+
+    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
+        assert data == payload
+
+    monkeypatch.setattr(files, "scan_for_malware", fake_scan)
+    monkeypatch.setattr(files, "storage_backend", backend)
+    monkeypatch.setattr(files, "_default_storage_backend", backend)
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+    monkeypatch.setattr(files, "detect_mime_type", lambda _data: "")
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+
+    url = await files.save_attachment(upload, "event_files", "event_1")
+
+    assert url.startswith("https://cdn.example/event_files/")
+    assert url.endswith(".txt")
+    method, (relative_path, data), kwargs = backend.calls[0]
+    assert relative_path.endswith(".txt")
+    assert kwargs["content_type"] == "text/plain"
+    assert data == payload
