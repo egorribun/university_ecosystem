@@ -30,17 +30,14 @@ def upgrade() -> None:
             USING gin (
                 to_tsvector(
                     'simple'::regconfig,
-                    concat_ws(
-                        ' ',
-                        coalesce(title, ''),
-                        coalesce(description, ''),
-                        coalesce(location, ''),
-                        coalesce(title_en, ''),
-                        coalesce(description_en, ''),
-                        coalesce(location_en, ''),
-                        coalesce(about, ''),
-                        coalesce(about_en, '')
-                    )
+                    coalesce(title, '')
+                    || ' ' || coalesce(description, '')
+                    || ' ' || coalesce(location, '')
+                    || ' ' || coalesce(title_en, '')
+                    || ' ' || coalesce(description_en, '')
+                    || ' ' || coalesce(location_en, '')
+                    || ' ' || coalesce(about, '')
+                    || ' ' || coalesce(about_en, '')
                 )
             )
             """
