@@ -7,9 +7,9 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.api.events import router as events_router
 from app.api.news import router as news_router
