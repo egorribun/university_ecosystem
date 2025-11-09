@@ -3,7 +3,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from app.core import metrics as metrics_module
+from app.core import metrics as metrics_module, observability
 from app.core.config import settings
 
 
@@ -71,3 +71,13 @@ async def test_metrics_endpoint_respects_allowlist(
         headers={"Authorization": f"Basic {_configure_metrics}"},
     )
     assert response.status_code == 403
+
+
+def test_otel_resource_attributes_include_service_version():
+    previous_version = settings.service_version
+    try:
+        settings.service_version = " 2024.05.01 "
+        attributes = observability._build_otel_resource_attributes()
+        assert attributes["service.version"] == "2024.05.01"
+    finally:
+        settings.service_version = previous_version

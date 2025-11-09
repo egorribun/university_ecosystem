@@ -8,6 +8,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
 - The `root/.env.example` file is only a template; set your own secrets via `.env` or environment variables in production.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
+- During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`) and Sentry (`release`).
 - To enable client-side error monitoring, set `VITE_SENTRY_DSN` and, if needed, `VITE_ENVIRONMENT`. The SDK does not activate automatically in dev builds.
 - The frontend logger (`src/app/logger.ts`) automatically sends `logError`/`logWarning` to Sentry and mirrors the output in the console. Unhandled `Promise`/`axios` errors are captured by global handlers (`initGlobalErrorHandlers()` is invoked in `src/main.tsx`).
 - To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.

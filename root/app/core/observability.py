@@ -201,6 +201,7 @@ def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
         return
 
     sentry_logging = LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
+    release = (settings.service_version or "").strip() or None
     sentry_init(
         dsn=settings.sentry_dsn,
         environment=settings.sentry_environment or settings.environment,
@@ -208,10 +209,27 @@ def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
         profiles_sample_rate=settings.sentry_profiles_sample_rate,
         integrations=[FastApiIntegration(), sentry_logging],
         send_default_pii=False,
+        release=release,
     )
 
     if tracer_provider is not None and SentrySpanProcessor is not None:
         tracer_provider.add_span_processor(SentrySpanProcessor())  # type: ignore[arg-type]
+
+
+def _build_otel_resource_attributes() -> dict[str, str]:
+    attributes = {
+        "service.name": settings.otel_service_name,
+        "service.instance.id": socket.gethostname(),
+        "deployment.environment": settings.environment,
+    }
+    version = (settings.service_version or "").strip()
+    if version:
+        attributes["service.version"] = version
+    return attributes
+
+
+def _create_otel_resource() -> Resource:
+    return Resource.create(_build_otel_resource_attributes())
 
 
 def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
@@ -221,13 +239,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
     if _otel_configured:
         return trace.get_tracer_provider()  # type: ignore[return-value]
 
-    resource = Resource.create(
-        {
-            "service.name": settings.otel_service_name,
-            "service.instance.id": socket.gethostname(),
-            "deployment.environment": settings.environment,
-        }
-    )
+    resource = _create_otel_resource()
 
     sampler = ParentBased(
         TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
