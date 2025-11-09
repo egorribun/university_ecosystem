@@ -42,6 +42,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 _EVENTS_LIST_CACHE_PREFIX = "events:list"
 _EVENTS_LIST_VERSION_KEY = f"{_EVENTS_LIST_CACHE_PREFIX}:version"
 _LOCAL_EVENTS_LIST_VERSION = 0
+_EVENTS_CACHE_CONTROL = "private, max-age=180"
 
 
 async def _reset_events_list_cache_version() -> None:
@@ -248,6 +249,7 @@ async def all_events(
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
+    response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
     cache = get_cache()
     cache_key: str | None = None
     cache_version: str | None = None
@@ -269,6 +271,7 @@ async def all_events(
             if etag_matches(cached.etag, if_none_match):
                 not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
                 not_modified.headers["ETag"] = etag_header
+                not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
                 _set_language_headers(not_modified, locale)
                 return not_modified
             response.headers["ETag"] = etag_header
@@ -294,6 +297,7 @@ async def all_events(
         if etag_matches(entry.etag, if_none_match):
             not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
             not_modified.headers["ETag"] = etag_header
+            not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
             _set_language_headers(not_modified, locale)
             return not_modified
         response.headers["ETag"] = etag_header
@@ -303,6 +307,7 @@ async def all_events(
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = weak_header
+        not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
         _set_language_headers(not_modified, locale)
         return not_modified
     response.headers["ETag"] = weak_header
@@ -374,11 +379,13 @@ async def my_events(
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
+    response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
     payload = await crud.get_my_events(db, user_id=user.id, locale=locale)
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = weak_header
+        not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
         _set_language_headers(not_modified, locale)
         return not_modified
     response.headers["ETag"] = weak_header
