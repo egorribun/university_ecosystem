@@ -153,6 +153,8 @@ async def metrics_endpoint(request: Request) -> Response:
     if not settings.enable_metrics_endpoint:
         return PlainTextResponse("Not Found", status_code=404)
 
+    _ensure_notification_queue_metrics_registry()
+
     if not _is_authorized(request):
         response = PlainTextResponse("Unauthorized", status_code=401)
         response.headers["WWW-Authenticate"] = 'Basic realm="Metrics"'
@@ -169,6 +171,35 @@ async def metrics_endpoint(request: Request) -> Response:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+def _ensure_notification_queue_metrics_registry() -> None:
+    """Ensure notification queue metrics are registered on the default registry."""
+
+    if REGISTRY is None:
+        return
+
+    try:
+        from app.core import observability
+    except Exception:  # pragma: no cover - defensive guard
+        return
+
+    try:
+        metrics = observability.get_notification_queue_metrics()
+    except RuntimeError:  # pragma: no cover - optional dependency guard
+        return
+
+    if metrics.registry is REGISTRY:
+        return
+
+    fresh = observability.reinitialize_notification_queue_metrics(registry=REGISTRY)
+
+    try:
+        from app.services import notification_queue
+    except Exception:  # pragma: no cover - defensive guard
+        return
+
+    notification_queue._queue_metrics = fresh
 
 
 def configure_metrics(app: FastAPI) -> None:
