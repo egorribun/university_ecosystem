@@ -301,6 +301,7 @@ class Settings(BaseSettings):
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
+    stats_cache_ttl_seconds: int = 180
     enable_metrics_endpoint: bool = False
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
@@ -444,6 +445,11 @@ class Settings(BaseSettings):
         return _validate_positive_int(
             int(value), label="NOTIFICATIONS_RETENTION_BATCH_SIZE"
         )
+
+    @field_validator("stats_cache_ttl_seconds")
+    @classmethod
+    def _validate_stats_cache_ttl_seconds(cls, value: int) -> int:
+        return _validate_positive_int(value, label="STATS_CACHE_TTL_SECONDS")
 
     @field_validator("mfa_totp_issuer")
     @classmethod

@@ -4,9 +4,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.deps import cache as cache_module
 from app.models import models
-from app.services import attendance_tokens
+from app.services import attendance_tokens, stats_cache
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -326,6 +327,59 @@ async def test_attendance_stats_uses_cache(
 
     assert calls["get"] == 2
     assert calls["set"] == 1
+
+
+@pytest.mark.anyio
+async def test_set_cached_stats_uses_settings_ttl(fake_cache, monkeypatch):
+    original_ttl = settings.stats_cache_ttl_seconds
+    settings.stats_cache_ttl_seconds = 45
+    recorded: list[int | None] = []
+    original_set = cache_module.RedisCache.set
+
+    async def tracked_set(self, key, payload, ttl=None):  # type: ignore[override]
+        recorded.append(ttl)
+        return await original_set(self, key, payload, ttl=ttl)
+
+    monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
+    try:
+        await stats_cache.set_cached_stats(
+            cache=fake_cache,
+            kind="attendance",
+            user_id=1,
+            period_key="30d",
+            payload={"value": 1},
+        )
+    finally:
+        settings.stats_cache_ttl_seconds = original_ttl
+
+    assert recorded == [45]
+
+
+@pytest.mark.anyio
+async def test_set_cached_stats_prefers_override_ttl(fake_cache, monkeypatch):
+    original_ttl = settings.stats_cache_ttl_seconds
+    settings.stats_cache_ttl_seconds = 60
+    recorded: list[int | None] = []
+    original_set = cache_module.RedisCache.set
+
+    async def tracked_set(self, key, payload, ttl=None):  # type: ignore[override]
+        recorded.append(ttl)
+        return await original_set(self, key, payload, ttl=ttl)
+
+    monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
+    try:
+        await stats_cache.set_cached_stats(
+            cache=fake_cache,
+            kind="grades",
+            user_id=7,
+            period_key="default",
+            payload={"value": 2},
+            ttl=12,
+        )
+    finally:
+        settings.stats_cache_ttl_seconds = original_ttl
+
+    assert recorded == [12]
 
 
 @pytest.mark.anyio
