@@ -42,17 +42,38 @@ async def cleanup_expired_sessions(
         ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
     )
 
-    expired_session_exists = (
-        select(1)
-        .where(ActiveSession.id == MfaChallenge.session_id)
-        .where(expiry_condition)
-        .exists()
-    )
-    await db.execute(delete(MfaChallenge).where(expired_session_exists))
+    bind = db.get_bind()
+    dialect = bind.dialect
+
+    if dialect.name == "sqlite":
+        subquery = select(ActiveSession.id).where(expiry_condition)
+        challenge_delete_stmt = delete(MfaChallenge).where(
+            MfaChallenge.session_id.in_(subquery)
+        )
+    else:
+        challenge_delete_stmt = (
+            delete(MfaChallenge)
+            .where(MfaChallenge.session_id == ActiveSession.id)
+            .where(expiry_condition)
+            .execution_options(synchronize_session=False)
+        )
+    await db.execute(challenge_delete_stmt)
 
     delete_stmt = delete(ActiveSession).where(expiry_condition)
-    delete_result = await db.execute(delete_stmt)
-    deleted = int(delete_result.rowcount or 0)
+    supports_returning = bool(getattr(dialect, "delete_returning", False))
+    supports_rowcount_returning = bool(
+        getattr(dialect, "supports_sane_rowcount_returning", False)
+    )
+    if supports_returning:
+        delete_stmt = delete_stmt.returning(ActiveSession.id)
+        delete_result = await db.execute(delete_stmt)
+        if supports_rowcount_returning and delete_result.rowcount is not None:
+            deleted = int(delete_result.rowcount)
+        else:
+            deleted = len(delete_result.fetchall())
+    else:
+        delete_result = await db.execute(delete_stmt)
+        deleted = int(delete_result.rowcount or 0)
     await db.commit()
     if deleted:
         logger.info("Removed %s expired sessions", deleted)

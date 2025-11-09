@@ -1,10 +1,10 @@
 import datetime as dt
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.auth import mfa
-from app.core.database import async_session
+from app.core.database import async_session, engine
 from app.models.models import ActiveSession, MfaChallenge, User
 from app.services.session_cleanup import cleanup_expired_sessions
 
@@ -75,9 +75,28 @@ async def test_cleanup_expired_sessions_removes_mfa_challenges(db_session):
     )
     await db_session.commit()
 
-    removed = await cleanup_expired_sessions(now=now)
+    statements: list[str] = []
+
+    def record_sql(
+        conn, cursor, statement, parameters, context, executemany
+    ):  # pragma: no cover - signature defined by SQLAlchemy
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record_sql)
+    try:
+        removed = await cleanup_expired_sessions(now=now)
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record_sql)
 
     assert removed == 1
+
+    delete_statements = [
+        stmt for stmt in statements if stmt.lstrip().upper().startswith("DELETE")
+    ]
+    assert len(delete_statements) == 2
+    challenge_delete, session_delete = delete_statements
+    assert "mfa_challenge" in challenge_delete.lower()
+    assert "active_session" in session_delete.lower()
 
     async with async_session() as verify_session:
         result = await verify_session.execute(
