@@ -45,6 +45,14 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - For dev/test environments the application automatically switches to `NullPool` so each connection opens anew; pool parameters are ignored. This avoids SQLite locks and helps with local development.
 - Before deploying to PostgreSQL or another production database, choose values within the database limits. For example, on a server limited to 20 connections you could set `DATABASE_POOL_SIZE=5` and `DATABASE_MAX_OVERFLOW=5`, leaving room for background jobs and external tools.
 
+### SQLite specifics
+
+- Event search relies on PostgreSQL's `tsvector` type with a GIN index. When the
+  app runs on SQLite (local development, unit tests) Alembic creates a plain text
+  `events.search_vector` column and `crud.get_all_events` automatically falls back
+  to `LIKE` filtering. No additional configuration is required, but SQLite search
+  results are not ranked by relevance.
+
 ### Background task metrics
 
 - `/metrics` now publishes counters and histograms for background cleanup jobs:

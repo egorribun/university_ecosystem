@@ -18,6 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -198,6 +199,7 @@ class Event(Base):
     created_by = Column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    search_vector = Column(Text().with_variant(TSVECTOR(), "postgresql"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_active = Column(Boolean, default=True, index=True)
     speaker = Column(String)
