@@ -314,6 +314,7 @@ class Settings(BaseSettings):
     notifications_webpush_concurrency_limit: int = 10
     notifications_retention_days: int = 90
     notifications_retention_cleanup_interval_seconds: int = 86_400
+    notifications_retention_batch_size: int = 500
     notification_queue_dead_letter_retention_days: int = 30
     notification_queue_dead_letter_cleanup_interval_seconds: int = 86_400
     storage_backend: str = "static"
@@ -435,6 +436,13 @@ class Settings(BaseSettings):
                 "NOTIFICATIONS_ALLOWED_PUSH_TOPICS must include at least one topic"
             )
         return normalized
+
+    @field_validator("notifications_retention_batch_size")
+    @classmethod
+    def _validate_notifications_retention_batch_size(cls, value: int) -> int:
+        return _validate_positive_int(
+            int(value), label="NOTIFICATIONS_RETENTION_BATCH_SIZE"
+        )
 
     @field_validator("mfa_totp_issuer")
     @classmethod

@@ -3,14 +3,17 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models.models import Notification, NotificationDelivery
 from app.services.notifications import cleanup_stale_notifications
 
 
 @pytest.mark.anyio
 async def test_cleanup_stale_notifications_respects_read_state(
-    db_session, user_factory
+    db_session, user_factory, monkeypatch
 ):
+    monkeypatch.setattr(settings, "notifications_retention_batch_size", 1)
+
     now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
     user = await user_factory()
 
@@ -20,6 +23,16 @@ async def test_cleanup_stale_notifications_respects_read_state(
         body="body",
         type="info",
         url="/old-read",
+        created_at=now - dt.timedelta(days=120),
+        read=True,
+        read_at=now - dt.timedelta(days=119),
+    )
+    another_old_read = Notification(
+        user_id=user.id,
+        title="Old read 2",
+        body="body",
+        type="info",
+        url="/old-read-2",
         created_at=now - dt.timedelta(days=120),
         read=True,
         read_at=now - dt.timedelta(days=119),
@@ -54,6 +67,13 @@ async def test_cleanup_stale_notifications_respects_read_state(
             delivered_at=now - dt.timedelta(days=110),
         ),
         NotificationDelivery(
+            notification=another_old_read,
+            channel="webpush",
+            status="sent",
+            attempted_at=now - dt.timedelta(days=110),
+            delivered_at=now - dt.timedelta(days=110),
+        ),
+        NotificationDelivery(
             notification=old_unread,
             channel="webpush",
             status="sent",
@@ -69,7 +89,7 @@ async def test_cleanup_stale_notifications_respects_read_state(
         ),
     ]
 
-    db_session.add_all([old_read, old_unread, recent_read, *deliveries])
+    db_session.add_all([old_read, another_old_read, old_unread, recent_read, *deliveries])
     await db_session.flush()
     recent_read_id = recent_read.id
     await db_session.commit()
@@ -78,8 +98,8 @@ async def test_cleanup_stale_notifications_respects_read_state(
         db=db_session, retention_days=90, now=now
     )
 
-    assert deleted_notifications == 1
-    assert deleted_deliveries == 2
+    assert deleted_notifications == 2
+    assert deleted_deliveries == 3
 
     remaining_notifications = (
         (await db_session.execute(select(Notification).order_by(Notification.id)))
