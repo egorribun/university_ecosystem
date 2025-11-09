@@ -42,21 +42,73 @@ type ActiveScheduleQueryKey = ReturnType<typeof scheduleQueryKey>
 const groupsStorageKey = "sched:groups"
 const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
 
-const readFromStorage = <T,>(key: string): T | undefined => {
+const STORAGE_SCHEMA_VERSION = 1
+const GROUPS_STORAGE_TTL_MS = 5 * 60_000
+const SCHEDULE_STORAGE_TTL_MS = 5 * 60_000
+
+type StoredPayload<T> = {
+  version: number
+  timestamp: number
+  data: T
+}
+
+type StorageReadResult<T> = {
+  value: T
+  timestamp: number
+}
+
+type StorageReadOptions = {
+  maxAgeMs?: number
+  version?: number
+}
+
+type StorageWriteOptions = {
+  version?: number
+}
+
+const readFromStorage = <T,>(
+  key: string,
+  { maxAgeMs = SCHEDULE_STORAGE_TTL_MS, version = STORAGE_SCHEMA_VERSION }: StorageReadOptions = {}
+): StorageReadResult<T> | undefined => {
   if (typeof window === "undefined") return undefined
   try {
     const raw = window.localStorage.getItem(key)
     if (!raw) return undefined
-    return JSON.parse(raw) as T
+    const parsed = JSON.parse(raw) as Partial<StoredPayload<T>> | null
+    if (!parsed || typeof parsed !== "object") return undefined
+    if (parsed.version !== version) {
+      window.localStorage.removeItem(key)
+      return undefined
+    }
+    const ts = typeof parsed.timestamp === "number" ? parsed.timestamp : NaN
+    if (!Number.isFinite(ts)) {
+      window.localStorage.removeItem(key)
+      return undefined
+    }
+    if (Date.now() - ts > maxAgeMs) {
+      window.localStorage.removeItem(key)
+      return undefined
+    }
+    if (!("data" in parsed)) return undefined
+    return { value: parsed.data as T, timestamp: ts }
   } catch {
     return undefined
   }
 }
 
-const writeToStorage = (key: string, value: unknown) => {
+const writeToStorage = <T,>(
+  key: string,
+  value: T,
+  { version = STORAGE_SCHEMA_VERSION }: StorageWriteOptions = {}
+) => {
   if (typeof window === "undefined") return
   try {
-    window.localStorage.setItem(key, JSON.stringify(value))
+    const payload: StoredPayload<T> = {
+      version,
+      timestamp: Date.now(),
+      data: value,
+    }
+    window.localStorage.setItem(key, JSON.stringify(payload))
   } catch {
     /* noop */
   }
@@ -125,17 +177,6 @@ const minimalWeekdayFallback: WeekdayConfig[] = [
   { id: "fri", backend: ["Friday"], long: "Friday", short: "Fri" },
   { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" },
 ]
-
-const groupsPlaceholder = (previous?: ScheduleGroup[]) => {
-  if (previous !== undefined) return previous
-  return readFromStorage<ScheduleGroup[]>(groupsStorageKey)
-}
-
-const schedulePlaceholder = (groupId: number | null, previous?: Lesson[]) => {
-  if (previous !== undefined) return previous
-  if (groupId == null) return previous
-  return readFromStorage<Lesson[]>(scheduleStorageKey(groupId))
-}
 
 function getTimeStr(lesson: Lesson) {
   if (!lesson?.start_time) return ""
@@ -495,6 +536,14 @@ export default function Schedule() {
   }, [])
   const minutesNow = useMemo(() => nowTick.hour() * 60 + nowTick.minute(), [nowTick])
 
+  const groupsStorageSnapshot = useMemo(
+    () =>
+      readFromStorage<ScheduleGroup[]>(groupsStorageKey, {
+        maxAgeMs: GROUPS_STORAGE_TTL_MS,
+      }),
+    []
+  )
+
   const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
     queryKey: scheduleGroupsQueryKey,
     queryFn: async () => {
@@ -502,13 +551,40 @@ export default function Schedule() {
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: Boolean(user),
-    placeholderData: groupsPlaceholder,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
     retry: 1,
+    ...(groupsStorageSnapshot && {
+      initialData: groupsStorageSnapshot.value,
+      initialDataUpdatedAt: groupsStorageSnapshot.timestamp,
+    }),
   })
   const groups = groupsQuery.data ?? []
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!user) return
+    if (!groupsQuery.dataUpdatedAt) return
+    if (groupsQuery.isFetching) return
+    const age = Date.now() - groupsQuery.dataUpdatedAt
+    if (age >= GROUPS_STORAGE_TTL_MS) {
+      queryClient.invalidateQueries({
+        queryKey: scheduleGroupsQueryKey,
+        exact: true,
+        refetchType: "active",
+      })
+      return
+    }
+    const timeout = window.setTimeout(() => {
+      queryClient.invalidateQueries({
+        queryKey: scheduleGroupsQueryKey,
+        exact: true,
+        refetchType: "active",
+      })
+    }, GROUPS_STORAGE_TTL_MS - age)
+    return () => window.clearTimeout(timeout)
+  }, [groupsQuery.dataUpdatedAt, groupsQuery.isFetching, queryClient, user])
 
   useEffect(() => {
     if (!groupsQuery.isSuccess) return
@@ -517,6 +593,13 @@ export default function Schedule() {
 
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
+
+  const scheduleStorageSnapshot = useMemo(() => {
+    if (activeGroupId == null) return undefined
+    return readFromStorage<Lesson[]>(scheduleStorageKey(activeGroupId), {
+      maxAgeMs: SCHEDULE_STORAGE_TTL_MS,
+    })
+  }, [activeGroupId])
 
   const scheduleQuery = useQuery<
     Lesson[],
@@ -533,13 +616,44 @@ export default function Schedule() {
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: activeGroupId != null,
-    placeholderData: (previous) => schedulePlaceholder(activeGroupId, previous),
+    placeholderData: (previous) => {
+      if (previous !== undefined) return previous
+      return scheduleStorageSnapshot?.value
+    },
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
     retry: 1,
+    ...(scheduleStorageSnapshot && {
+      initialData: scheduleStorageSnapshot.value,
+      initialDataUpdatedAt: scheduleStorageSnapshot.timestamp,
+    }),
   })
   const groupScheduleRaw = scheduleQuery.data ?? []
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!scheduleKey) return
+    if (!scheduleQuery.dataUpdatedAt) return
+    if (scheduleQuery.isFetching) return
+    const age = Date.now() - scheduleQuery.dataUpdatedAt
+    if (age >= SCHEDULE_STORAGE_TTL_MS) {
+      queryClient.invalidateQueries({
+        queryKey: scheduleKey,
+        exact: true,
+        refetchType: "active",
+      })
+      return
+    }
+    const timeout = window.setTimeout(() => {
+      queryClient.invalidateQueries({
+        queryKey: scheduleKey,
+        exact: true,
+        refetchType: "active",
+      })
+    }, SCHEDULE_STORAGE_TTL_MS - age)
+    return () => window.clearTimeout(timeout)
+  }, [queryClient, scheduleKey, scheduleQuery.dataUpdatedAt, scheduleQuery.isFetching])
   const groupSchedule = useMemo(
     () => normalizeLessons(groupScheduleRaw),
     [groupScheduleRaw, normalizeLessons]
