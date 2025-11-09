@@ -8,7 +8,13 @@ from functools import cached_property
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import Field, ValidationError, ValidationInfo, field_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -249,6 +255,10 @@ class Settings(BaseSettings):
     otel_trace_sampler_ratio: float = 1.0
     enable_otel_metrics: bool = True
     enable_otel_logs: bool = True
+    service_version: str = Field(
+        default="",
+        validation_alias=AliasChoices("service_version", "app_version"),
+    )
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.0
     sentry_profiles_sample_rate: float = 0.0

@@ -130,6 +130,7 @@ Key settings you may want to adjust for local development:
 | `PASSWORD_RESET_MAX_ACTIVE_TOKENS` | Maximum number of active (unused) password reset tokens kept per user. | `1` |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
+| `SERVICE_VERSION` / `APP_VERSION` | Release identifier propagated to OpenTelemetry (`service.version`) and Sentry (`release`). | Empty |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |
 | `ENABLE_METRICS_ENDPOINT` | Expose the Prometheus `/metrics` endpoint on the backend. | `false` |
 | `METRICS_BASIC_AUTH_USERNAME` / `METRICS_BASIC_AUTH_PASSWORD` | Optional HTTP basic auth credentials protecting `/metrics`. | Empty |
@@ -142,6 +143,8 @@ Key settings you may want to adjust for local development:
 | `VITE_WEB_VITALS_ENDPOINT` | Optional endpoint accepting POSTed Web Vitals metrics (JSON). Logs to the console when unset. | Empty |
 
 Refer to [`root/app/core/config.py`](root/app/core/config.py) for the complete configuration model and validation logic. If you create `root/.env` it will be loaded automatically; otherwise the application relies entirely on process environment variables. The sample `root/.env.example` is not loaded automatically.
+
+During CI/CD deployments export `SERVICE_VERSION` (or `APP_VERSION`) to match the build being released—for example `export SERVICE_VERSION=$(git describe --tags --always)` before starting the API and worker containers. The value is forwarded to OpenTelemetry (`service.version`) and Sentry (`release`) so traces and errors can be tied back to the exact build.
 
 Password reset tokens are trimmed during startup and by a periodic background job. The API always keeps the most recent
 `PASSWORD_RESET_MAX_ACTIVE_TOKENS` unused tokens for each user (default: one token) and reuses existing records when that limit is
