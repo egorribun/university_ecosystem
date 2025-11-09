@@ -297,9 +297,10 @@ async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatc
         {"kind": "news"},
     ) in (None, pytest.approx(0.0))
     for kind in ("event", "news"):
-        assert _metric_value_for_kind(
-            "notification_queue_failed_jobs_total", kind
-        ) in (None, pytest.approx(0.0))
+        assert _metric_value_for_kind("notification_queue_failed_jobs_total", kind) in (
+            None,
+            pytest.approx(0.0),
+        )
     assert _metric_value(
         "notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}
     ) in (
@@ -451,9 +452,10 @@ async def test_persistent_queue_applies_exponential_backoff(
     assert len(attempt_times) == 2
     interval = attempt_times[1] - attempt_times[0]
     assert interval >= 0.04
-    assert _metric_value_for_kind(
-        "notification_queue_failed_jobs_total", "event"
-    ) in (None, pytest.approx(0.0))
+    assert _metric_value_for_kind("notification_queue_failed_jobs_total", "event") in (
+        None,
+        pytest.approx(0.0),
+    )
 
     notification_queue._loop_states.clear()
 
