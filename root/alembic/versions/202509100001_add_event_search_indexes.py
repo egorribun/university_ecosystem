@@ -29,17 +29,17 @@ def upgrade() -> None:
             ON events
             USING gin (
                 to_tsvector(
-                    'simple',
+                    'simple'::regconfig,
                     concat_ws(
                         ' ',
-                        title,
-                        description,
-                        location,
-                        title_en,
-                        description_en,
-                        location_en,
-                        about,
-                        about_en
+                        coalesce(title, ''),
+                        coalesce(description, ''),
+                        coalesce(location, ''),
+                        coalesce(title_en, ''),
+                        coalesce(description_en, ''),
+                        coalesce(location_en, ''),
+                        coalesce(about, ''),
+                        coalesce(about_en, '')
                     )
                 )
             )
