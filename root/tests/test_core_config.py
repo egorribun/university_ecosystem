@@ -178,3 +178,29 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog
         "AUTO_CREATE_SCHEMA is enabled" in record.getMessage()
         for record in caplog.records
     )
+
+
+def test_response_compression_toggle(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    monkeypatch.setenv("SECRET_KEY", "testing-secret")
+    monkeypatch.delenv("ENABLE_RESPONSE_COMPRESSION", raising=False)
+
+    with _temporary_env_file(None):
+        from app.core import config as config_module
+
+        config_module = importlib.reload(config_module)
+        default_settings = config_module.Settings()
+        assert default_settings.response_compression_enabled is True
+        assert (
+            config_module.settings.response_compression_enabled
+            == default_settings.response_compression_enabled
+        )
+
+        monkeypatch.setenv("ENABLE_RESPONSE_COMPRESSION", "false")
+        config_module = importlib.reload(config_module)
+        disabled_settings = config_module.Settings()
+        assert disabled_settings.response_compression_enabled is False
+        assert (
+            config_module.settings.response_compression_enabled
+            == disabled_settings.response_compression_enabled
+        )

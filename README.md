@@ -130,6 +130,7 @@ Key settings you may want to adjust for local development:
 | `PASSWORD_RESET_MAX_ACTIVE_TOKENS` | Maximum number of active (unused) password reset tokens kept per user. | `1` |
 | `CACHE_*` & `RATE_LIMIT_*` | Toggle and configure caching and rate limiting backends. | In-memory |
 | `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Bounding box applied to uploaded images before storage. | `1920` |
+| `ENABLE_RESPONSE_COMPRESSION` | Enable gzip compression for larger API responses (≥512&nbsp;bytes). | `true` |
 | `SERVICE_VERSION` / `APP_VERSION` | Release identifier propagated to OpenTelemetry (`service.version`) and Sentry (`release`). | Empty |
 | `ENABLE_OTEL`, `SENTRY_DSN` | Observability & error tracking toggles. | Disabled |
 | `ENABLE_METRICS_ENDPOINT` | Expose the Prometheus `/metrics` endpoint on the backend. | `false` |

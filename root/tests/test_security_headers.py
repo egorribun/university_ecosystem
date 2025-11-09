@@ -4,6 +4,8 @@ import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import Response
 
 from app.core.config import Settings
 
@@ -158,6 +160,49 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     headers = response.headers
     assert headers.get("Cross-Origin-Embedder-Policy") == "credentialless"
     assert headers.get("Cross-Origin-Resource-Policy") == "cross-origin"
+
+
+@pytest.mark.anyio
+async def test_gzip_preserves_security_headers_and_etag(monkeypatch):
+    _reset_security_env(monkeypatch)
+    monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_BASE_URL", "https://example.com")
+    monkeypatch.setenv("SECURITY_CSP_REPORT_ONLY", "false")
+    settings = Settings()
+
+    spec = importlib_util.find_spec("app.core.security_headers")
+    assert spec and spec.origin
+    module = importlib_util.module_from_spec(spec)
+    loader = spec.loader
+    assert loader is not None
+    loader.exec_module(module)
+    middleware_cls = module.SecurityHeadersMiddleware
+
+    app = FastAPI()
+    etag_value = 'W/"test-etag"'
+
+    @app.get("/")
+    async def root():
+        payload = "x" * 2048
+        return Response(payload, media_type="text/plain", headers={"ETag": etag_value})
+
+    app.add_middleware(GZipMiddleware, minimum_size=512)
+    app.add_middleware(middleware_cls, settings=settings)
+
+    transport = httpx.ASGITransport(app=app)
+    async with LifespanManager(app):
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+            headers={"Accept-Encoding": "gzip"},
+        ) as client:
+            response = await client.get("/")
+
+    headers = response.headers
+    assert headers.get("Content-Encoding") == "gzip"
+    assert headers.get("ETag") == etag_value
+    assert headers.get("X-Content-Type-Options") == "nosniff"
 
 
 def _reset_security_env(monkeypatch):
