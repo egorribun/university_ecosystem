@@ -32,6 +32,31 @@ const ensureMaskableIcons = () => {
 ensureMaskableIcons()
 generateManifests({ publicDir, sourcePath: manifestSourcePath })
 
+const ensureAppReleaseEnv = () => {
+  if (process.env.VITE_APP_RELEASE) return
+
+  const fallbackKeys = [
+    "SERVICE_VERSION",
+    "SOURCE_VERSION",
+    "APP_VERSION",
+    "HEROKU_SLUG_COMMIT",
+    "RENDER_GIT_COMMIT",
+    "VERCEL_GIT_COMMIT",
+    "GITHUB_SHA",
+    "COMMIT_SHA",
+  ] as const
+
+  for (const key of fallbackKeys) {
+    const candidate = process.env[key]
+    if (candidate) {
+      process.env.VITE_APP_RELEASE = candidate
+      return
+    }
+  }
+}
+
+ensureAppReleaseEnv()
+
 const withGeneratedManifests = (): PluginOption => ({
   name: "generate-localized-manifests",
   apply: () => true,
