@@ -119,7 +119,14 @@ async def create_access_token(
     }
     if extra:
         payload.update(extra)
-    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    kid = settings.jwt_signing_active_kid
+    secret = settings.jwt_signing_active_secret
+    token = jwt.encode(
+        payload,
+        secret,
+        algorithm=settings.algorithm,
+        headers={"kid": kid},
+    )
     if db is not None:
         try:
             user_id = int(sub)
@@ -158,7 +165,31 @@ async def create_access_token(
 
 
 def decode_token(token: str) -> dict | None:
-    try:
-        return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-    except JWTError:
+    registry = settings.jwt_signing_key_registry
+    if not registry:
         return None
+
+    candidates: list[str] = []
+    try:
+        header = jwt.get_unverified_header(token)
+    except JWTError:
+        header = {}
+
+    kid = header.get("kid") if isinstance(header, dict) else None
+    if isinstance(kid, str):
+        kid_secret = registry.get(kid)
+        if kid_secret:
+            candidates.append(kid_secret)
+
+    seen: set[str] = set(candidates)
+    for secret in registry.values():
+        if secret not in seen:
+            candidates.append(secret)
+            seen.add(secret)
+
+    for secret in candidates:
+        try:
+            return jwt.decode(token, secret, algorithms=[settings.algorithm])
+        except JWTError:
+            continue
+    return None

@@ -1,17 +1,22 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
+from jose import JWTError, jwt
 from passlib.hash import bcrypt
 from sqlalchemy import select
 
 from app.auth.security import (
     LEGACY_BCRYPT_MAX_BYTES,
     _truncate_for_bcrypt,
+    create_access_token,
+    decode_token,
     get_password_hash,
     verify_and_update_password,
     verify_password,
 )
+from app.core.config import settings
 from app.models import models
 
 
@@ -106,6 +111,60 @@ def test_legacy_bcrypt_truncation_behavior():
 
     mutated_before_limit = "b" + long_password[1:]
     assert not verify_password(mutated_before_limit, legacy_hash)
+
+
+@pytest.mark.anyio
+async def test_create_access_token_uses_active_signing_key(monkeypatch):
+    monkeypatch.setattr(
+        settings,
+        "jwt_signing_keys",
+        ["new-key:new-secret", "legacy-key:old-secret"],
+    )
+    monkeypatch.setattr(settings, "jwt_active_kid", "new-key")
+
+    token = await create_access_token("user-123")
+
+    header = jwt.get_unverified_header(token)
+    assert header["kid"] == "new-key"
+
+    with pytest.raises(JWTError):
+        jwt.decode(token, "old-secret", algorithms=[settings.algorithm])
+
+    decoded = decode_token(token)
+    assert decoded is not None
+    assert decoded["sub"] == "user-123"
+
+
+@pytest.mark.anyio
+async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
+    monkeypatch.setattr(
+        settings,
+        "jwt_signing_keys",
+        ["active:new-secret", "legacy:old-secret"],
+    )
+    monkeypatch.setattr(settings, "jwt_active_kid", "active")
+
+    now = datetime.now(UTC)
+    legacy_payload = {
+        "sub": "legacy-user",
+        "iat": now,
+        "nbf": now,
+        "exp": now + timedelta(minutes=5),
+        "jti": "legacy-jti",
+    }
+    legacy_token = jwt.encode(
+        legacy_payload, "old-secret", algorithm=settings.algorithm
+    )
+
+    rotated_token = await create_access_token("current-user")
+
+    legacy_decoded = decode_token(legacy_token)
+    assert legacy_decoded is not None
+    assert legacy_decoded["sub"] == "legacy-user"
+
+    rotated_decoded = decode_token(rotated_token)
+    assert rotated_decoded is not None
+    assert rotated_decoded["sub"] == "current-user"
 
 
 @pytest.mark.anyio
