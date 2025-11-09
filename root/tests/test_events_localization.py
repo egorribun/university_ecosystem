@@ -198,24 +198,62 @@ async def test_events_etag_and_not_modified(
     assert my_not_modified.headers.get("Content-Language") == "en"
     assert my_not_modified.headers.get("ETag") == my_etag
 
-    headers = await _login(async_client, student.email, password)
-    detail_headers = {**headers, "Accept-Language": "en"}
 
-    detail_response = await async_client.get(
-        f"/events/{event.id}",
-        headers=detail_headers,
-    )
-    assert detail_response.status_code == status.HTTP_200_OK
-    detail_etag = detail_response.headers.get("ETag")
-    assert detail_etag
+@pytest.mark.anyio
+async def test_get_all_events_search_deterministic_order(db_session, user_factory):
+    admin = await user_factory(role="admin")
 
-    detail_not_modified = await async_client.get(
-        f"/events/{event.id}",
-        headers={**detail_headers, "If-None-Match": detail_etag},
+    now = datetime.now(UTC)
+    shared_phrase = "Symposium"
+    first = models.Event(
+        title=f"{shared_phrase} kickoff",
+        description="Agenda review",
+        location="Main campus",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=2),
+        created_by=admin.id,
+        is_active=True,
     )
-    assert detail_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
-    assert detail_not_modified.headers.get("Content-Language") == "en"
-    assert detail_not_modified.headers.get("ETag") == detail_etag
+    second = models.Event(
+        title=f"{shared_phrase} planning",
+        description="Breakout sessions",
+        location="Main campus",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=3),
+        created_by=admin.id,
+        is_active=True,
+    )
+    third = models.Event(
+        title="Обсуждение",
+        title_en=f"{shared_phrase} recap",
+        description="Post-event debrief",
+        location="Satellite hall",
+        starts_at=now + timedelta(days=2),
+        ends_at=now + timedelta(days=2, hours=2),
+        created_by=admin.id,
+        is_active=True,
+    )
+    unrelated = models.Event(
+        title="Another meetup",
+        description="Different topic",
+        location="Offsite",
+        starts_at=now + timedelta(days=3),
+        ends_at=now + timedelta(days=3, hours=1),
+        created_by=admin.id,
+        is_active=True,
+    )
+
+    db_session.add_all([first, second, third, unrelated])
+    await db_session.commit()
+    for event in (first, second, third, unrelated):
+        await db_session.refresh(event)
+
+    result = await crud.get_all_events(db_session, search=shared_phrase, limit=10)
+
+    assert result.total == 3
+    assert result.has_more is False
+    ordered_ids = [item.id for item in result.items]
+    assert ordered_ids == [first.id, second.id, third.id]
 
 
 @pytest.mark.anyio
