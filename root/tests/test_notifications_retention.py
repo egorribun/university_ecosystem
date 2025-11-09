@@ -89,7 +89,9 @@ async def test_cleanup_stale_notifications_respects_read_state(
         ),
     ]
 
-    db_session.add_all([old_read, another_old_read, old_unread, recent_read, *deliveries])
+    db_session.add_all(
+        [old_read, another_old_read, old_unread, recent_read, *deliveries]
+    )
     await db_session.flush()
     recent_read_id = recent_read.id
     await db_session.commit()
