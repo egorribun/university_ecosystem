@@ -67,8 +67,13 @@ async def cleanup_expired_sessions(
     if supports_returning:
         delete_stmt = delete_stmt.returning(ActiveSession.id)
         delete_result = await db.execute(delete_stmt)
-        if supports_rowcount_returning and delete_result.rowcount is not None:
-            deleted = int(delete_result.rowcount)
+        rowcount: int | None = None
+        if supports_rowcount_returning:
+            rowcount = getattr(delete_result, "rowcount", None)
+            if rowcount is None and hasattr(delete_result, "raw"):
+                rowcount = getattr(delete_result.raw, "rowcount", None)
+        if rowcount is not None:
+            deleted = int(rowcount)
         else:
             deleted = len(delete_result.fetchall())
     else:
