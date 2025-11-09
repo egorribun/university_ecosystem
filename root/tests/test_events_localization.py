@@ -354,6 +354,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert len(first_data["items"]) == 3
     assert first_data["has_more"] is True
     assert isinstance(first_data["next_cursor"], str)
+    assert first_data["total"] == 7
 
     second = await async_client.get(
         "/events",
@@ -367,6 +368,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert second_data["has_more"] is True
     assert isinstance(second_data["next_cursor"], str)
     assert second_data["next_cursor"] != first_data["next_cursor"]
+    assert second_data["total"] is None
 
     third = await async_client.get(
         "/events",
@@ -379,11 +381,12 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert len(third_data["items"]) == 1
     assert third_data["has_more"] is False
     assert third_data["next_cursor"] is None
-    assert third_data["total"] == 7
+    assert third_data["total"] is None
 
     default_response = await async_client.get("/events", headers=headers)
     assert default_response.status_code == status.HTTP_200_OK
     assert default_response.json()["limit"] == crud.DEFAULT_EVENTS_LIMIT
+    assert default_response.json()["total"] == 7
 
     capped = await async_client.get(
         "/events",
