@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from prometheus_client import CollectorRegistry
+from prometheus_client import REGISTRY, CollectorRegistry
 from sqlalchemy import select
 
 from alembic import command
@@ -60,6 +60,12 @@ def _fresh_notification_queue_metrics() -> None:
 
     metrics.reset()
     notification_queue._queue_metrics = metrics
+
+    if REGISTRY is not None:
+        default_metrics = observability.reinitialize_notification_queue_metrics(
+            registry=REGISTRY
+        )
+        notification_queue._queue_metrics = default_metrics
 
 
 @pytest.mark.anyio

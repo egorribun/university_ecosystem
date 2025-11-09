@@ -3,13 +3,12 @@ from __future__ import annotations
 import copy
 from collections.abc import Iterable, Sequence
 
+from app.core.config import settings
 from app.deps.cache import BaseCache, get_cache
 
 _STATS_CACHE_PREFIX = "stats"
 _STATS_KNOWN_KINDS = ("attendance", "grades", "participation")
 _DEFAULT_PERIOD_KEYS = ("30d", "90d", "180d")
-
-STATS_CACHE_TTL_SECONDS = 180
 
 
 def _ensure_cache(cache: BaseCache | None) -> BaseCache:
@@ -61,10 +60,11 @@ async def set_cached_stats(
     backend = _ensure_cache(cache)
     if skip_cache or not backend.enabled:
         return
+    effective_ttl = ttl if ttl is not None else settings.stats_cache_ttl_seconds
     await backend.set(
         _make_cache_key(kind, user_id, period_key),
         copy.deepcopy(payload),
-        ttl=ttl or STATS_CACHE_TTL_SECONDS,
+        ttl=effective_ttl,
     )
 
 
