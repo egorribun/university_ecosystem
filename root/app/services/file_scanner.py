@@ -19,8 +19,8 @@ class FileScannerUnavailableError(RuntimeError):
     """Raised when the configured malware scanner cannot be reached."""
 
 
-def _scan_with_clamd(data: bytes) -> str | None:
-    """Return the detected signature or ``None`` if the payload is clean."""
+def _create_clamd_client():
+    """Return a configured clamd client instance."""
 
     try:  # Import lazily so environments without clamd stay functional.
         import clamd  # type: ignore[import]
@@ -34,11 +34,20 @@ def _scan_with_clamd(data: bytes) -> str | None:
 
     try:
         if socket_path:
-            client = clamd.ClamdUnixSocket(path=socket_path, timeout=timeout)
-        else:
-            client = clamd.ClamdNetworkSocket(host=host, port=port, timeout=timeout)
+            return clamd.ClamdUnixSocket(path=socket_path, timeout=timeout)
+        return clamd.ClamdNetworkSocket(host=host, port=port, timeout=timeout)
+    except Exception as exc:  # pragma: no cover - network failure path
+        raise FileScannerUnavailableError("unable to connect to clamd") from exc
 
+
+def _scan_with_clamd(data: bytes) -> str | None:
+    """Return the detected signature or ``None`` if the payload is clean."""
+
+    try:
+        client = _create_clamd_client()
         response: Any = client.instream(io.BytesIO(data))
+    except FileScannerUnavailableError:
+        raise
     except Exception as exc:  # pragma: no cover - network failure path
         raise FileScannerUnavailableError("clamd scan failed") from exc
 
@@ -59,6 +68,23 @@ def _scan_with_clamd(data: bytes) -> str | None:
     if status_value == "ERROR":
         raise FileScannerUnavailableError(str(signature or "clamd error"))
     raise FileScannerUnavailableError(f"unsupported clamd status: {status_value}")
+
+
+def _check_clamd_health() -> None:
+    """Ensure the clamd service responds to control commands."""
+
+    try:
+        client = _create_clamd_client()
+        pong = client.ping()
+    except FileScannerUnavailableError:
+        raise
+    except Exception as exc:  # pragma: no cover - network failure path
+        raise FileScannerUnavailableError("clamd health check failed") from exc
+
+    if isinstance(pong, str) and pong.upper() == "PONG":
+        return
+
+    raise FileScannerUnavailableError("unexpected clamd health response")
 
 
 async def scan_for_malware(data: bytes, *, locale: str | None = None) -> None:
@@ -94,3 +120,22 @@ async def scan_for_malware(data: bytes, *, locale: str | None = None) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=translate("errors.files.infected", locale=locale),
         )
+
+
+async def check_file_scanner_health() -> None:
+    """Verify that the configured scanner responds without uploading data."""
+
+    if not getattr(settings, "event_file_scanner_enabled", False):
+        return
+
+    backend = (
+        (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd")
+        .strip()
+        .lower()
+    )
+
+    if backend == "clamd":
+        await asyncio.to_thread(_check_clamd_health)
+        return
+
+    raise FileScannerUnavailableError(f"unsupported scanner backend: {backend}")
