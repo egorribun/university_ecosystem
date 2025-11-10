@@ -3,7 +3,6 @@ import {
   useMemo,
   useState,
   useCallback,
-  useRef,
   type KeyboardEvent,
   type CSSProperties,
 } from "react"
@@ -11,7 +10,6 @@ import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import DashboardStories from "@/components/DashboardStories"
 import { useAuth } from "../contexts/AuthContext"
-import axios from "../api/client"
 import { Link, useNavigate } from "react-router-dom"
 import { Badge, Button, Card, ProgressBar, Skeleton, Tooltip } from "@/components/ui"
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
@@ -20,36 +18,17 @@ import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
-import type { PaginatedResponse } from "@/types/Pagination"
+import { useQueryClient } from "@tanstack/react-query"
+import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories"
+import { useDashboardNews, prefetchDashboardNews } from "@/hooks/useDashboardNews"
+import { useDashboardEvents, prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import { useDashboardSchedule } from "@/hooks/useDashboardSchedule"
+import { EVENTS_PAGE_SIZE, prefetchEventsListQuery } from "@/api/hooks/events"
 import type { StoryItem } from "@/types/Story"
-import { fetchStories as fetchStoriesRequest } from "@/api/stories"
+import type { NewsItem } from "@/api/news"
+import type { Event } from "@/types/Event"
+import type { DashboardLesson } from "@/hooks/useDashboardSchedule"
 import WeatherWidget from "@/components/WeatherWidget"
-
-type NewsItem = {
-  id: number
-  title: string
-  content: string
-  created_at?: string
-  pinned?: boolean
-}
-type EventItem = {
-  id: number
-  title: string
-  description?: string
-  starts_at?: string
-  location?: string
-}
-type Lesson = {
-  id: number
-  subject: string
-  teacher: string
-  room: string
-  lesson_type: string
-  weekday: string
-  start_time: string
-  end_time: string
-  parity: "odd" | "even" | "both"
-}
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const fmtTime = (s?: string) =>
@@ -165,24 +144,6 @@ const parseLocalDate = (s?: string) => {
   return new Date(Y || 1970, (M || 1) - 1, D || 1, h || 0, m || 0)
 }
 
-const CACHE_TTL = 120000
-function getCache<T>(key: string): T | null {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return null
-    const { t, data } = JSON.parse(raw)
-    if (Date.now() - t > CACHE_TTL) return null
-    return data as T
-  } catch {
-    return null
-  }
-}
-function setCache<T>(key: string, data: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify({ t: Date.now(), data }))
-  } catch {}
-}
-
 export default function Dashboard() {
   const { user } = useAuth()
   const isNarrow = useMediaQuery("(max-width:1100px)")
@@ -219,20 +180,28 @@ export default function Dashboard() {
   const greetingKey = useMemo(() => getGreetingKey(time.getHours()), [time])
   const greeting = t(`dashboard:greeting.${greetingKey}`)
 
-  const [loadingStories, setLoadingStories] = useState(true)
-  const [loadingNews, setLoadingNews] = useState(true)
-  const [loadingEvents, setLoadingEvents] = useState(true)
-  const [loadingSched, setLoadingSched] = useState(true)
+  const queryClient = useQueryClient()
 
-  const [stories, setStories] = useState<StoryItem[]>([])
-  const [news, setNews] = useState<NewsItem[]>([])
-  const [events, setEvents] = useState<EventItem[]>([])
-  const [schedule, setSchedule] = useState<Lesson[]>([])
+  const dashboardStoriesQuery = useDashboardStories()
+  const stories: StoryItem[] = dashboardStoriesQuery.data ?? []
+  const loadingStories = dashboardStoriesQuery.isLoading && stories.length === 0
+
+  const dashboardNewsQuery = useDashboardNews(language)
+  const news: NewsItem[] = dashboardNewsQuery.data ?? []
+  const loadingNews = dashboardNewsQuery.isLoading && news.length === 0
+
+  const dashboardEventsQuery = useDashboardEvents()
+  const events: Event[] = dashboardEventsQuery.data ?? []
+  const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
+
+  const shouldLoadSchedule = user?.role === "student" && Boolean(user?.group_id)
+  const dashboardScheduleQuery = useDashboardSchedule(user?.role ?? null, user?.group_id ?? null)
+  const schedule: DashboardLesson[] = dashboardScheduleQuery.data ?? []
+  const loadingSched = shouldLoadSchedule
+    ? dashboardScheduleQuery.isLoading && schedule.length === 0
+    : false
 
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
-  const storiesEtagRef = useRef<string | null>(null)
-  const eventsEtagRef = useRef<string | null>(null)
-  const storiesPrefetchedRef = useRef(false)
 
   const parity = useMemo(nowParity, [])
   const todayIndex = time.getDay()
@@ -299,126 +268,6 @@ export default function Dashboard() {
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
-  const fetchStories = useCallback(async () => {
-    try {
-      const previousTag = storiesEtagRef.current
-      const response = await fetchStoriesRequest(previousTag)
-      const responseTag = response.headers?.etag
-      storiesEtagRef.current = responseTag ?? null
-      if (response.status === 304) {
-        return
-      }
-      const arr = Array.isArray(response.data) ? response.data : []
-      setStories(arr)
-      setCache<StoryItem[]>("dash:stories", arr)
-    } catch {
-      const cached = getCache<StoryItem[]>("dash:stories")
-      if (cached) {
-        setStories(cached)
-      } else {
-        setStories([])
-      }
-      storiesEtagRef.current = null
-    } finally {
-      setLoadingStories(false)
-    }
-  }, [])
-
-  const fetchNews = useCallback(async () => {
-    try {
-      const r = await axios.get("/news")
-      const arr = Array.isArray(r.data) ? r.data : []
-      const sorted = [...arr].sort(
-        (a: any, b: any) => (b.pinned === true ? 1 : 0) - (a.pinned === true ? 1 : 0)
-      )
-      const sliced = sorted.slice(0, 4)
-      setNews(sliced)
-      setCache<NewsItem[]>("dash:news", sliced)
-    } catch {
-      const cached = getCache<NewsItem[]>("dash:news")
-      if (cached) {
-        setNews(cached)
-      } else {
-        setNews([])
-      }
-    } finally {
-      setLoadingNews(false)
-    }
-  }, [])
-
-  const fetchEvents = useCallback(async () => {
-    try {
-      const previousTag = eventsEtagRef.current
-      const r = await axios.get<PaginatedResponse<EventItem>>("/events", {
-        params: { is_active: true, limit: 50 },
-        headers: previousTag ? { "If-None-Match": previousTag } : undefined,
-        validateStatus: (status: number) => status >= 200 && status < 400,
-      })
-      const responseTag = r.headers?.etag
-      if (responseTag) {
-        eventsEtagRef.current = responseTag
-      } else {
-        eventsEtagRef.current = null
-      }
-      if (r.status === 304) {
-        return
-      }
-      const arr = Array.isArray(r.data?.items) ? r.data.items : []
-      const sorted = arr
-        .filter((e) => e.starts_at)
-        .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
-      setEvents(sorted.slice(0, 30))
-      setCache<EventItem[]>("dash:events", sorted.slice(0, 30))
-    } catch {
-      setEvents([])
-      eventsEtagRef.current = null
-    } finally {
-      setLoadingEvents(false)
-    }
-  }, [])
-
-  const fetchSchedule = useCallback(async () => {
-    if (!user) return
-    setLoadingSched(true)
-    try {
-      if (user.role === "student" && user.group_id) {
-        const r = await axios.get(`/schedule/${user.group_id}`)
-        setSchedule(Array.isArray(r.data) ? r.data : [])
-      } else {
-        setSchedule([])
-      }
-    } catch {
-      setSchedule([])
-    } finally {
-      setLoadingSched(false)
-    }
-  }, [user])
-
-  useEffect(() => {
-    const cachedStories = getCache<StoryItem[]>("dash:stories")
-    if (cachedStories) {
-      setStories(cachedStories)
-      setLoadingStories(false)
-    }
-    fetchStories()
-    const cachedN = getCache<NewsItem[]>("dash:news")
-    if (cachedN) {
-      setNews(cachedN)
-      setLoadingNews(false)
-    }
-    fetchNews()
-    const cachedE = getCache<EventItem[]>("dash:events")
-    if (cachedE) {
-      setEvents(cachedE)
-      setLoadingEvents(false)
-    }
-    fetchEvents()
-  }, [fetchStories, fetchNews, fetchEvents])
-
-  useEffect(() => {
-    fetchSchedule()
-  }, [fetchSchedule])
-
   const headerGradientClass = cn(
     "transition-[background] duration-700",
     isNarrow
@@ -476,33 +325,29 @@ export default function Dashboard() {
   const warmNewsPage = () => import("../pages/News").catch(() => {})
   const warmEventsPage = () => import("../pages/Events").catch(() => {})
   const warmSchedulePage = () => import("../pages/Schedule").catch(() => {})
-  const prefetchData = (type: "news" | "events" | "stories") => {
-    if (type === "news")
-      axios
-        .get("/news")
-        .then((r) => setCache("prefetch:news", r.data))
-        .catch(() => {})
-    if (type === "events")
-      axios
-        .get<PaginatedResponse<EventItem>>("/events", { params: { is_active: true, limit: 20 } })
-        .then((r) => setCache("prefetch:events", Array.isArray(r.data?.items) ? r.data.items : []))
-        .catch(() => {})
-    if (type === "stories")
-      axios
-        .get<StoryItem[]>("/stories")
-        .then((r) => setCache("prefetch:stories", Array.isArray(r.data) ? r.data : []))
-        .catch(() => {})
-  }
 
-  const triggerStoriesPrefetch = () => {
-    if (storiesPrefetchedRef.current) return
-    storiesPrefetchedRef.current = true
-    prefetchData("stories")
-  }
+  const prefetchStories = useCallback(() => {
+    void prefetchDashboardStories(queryClient)
+  }, [queryClient])
+
+  const prefetchNewsList = useCallback(() => {
+    warmNewsPage()
+    void prefetchDashboardNews(queryClient, language)
+  }, [language, queryClient])
+
+  const prefetchEventsList = useCallback(() => {
+    warmEventsPage()
+    void prefetchDashboardEvents(queryClient)
+    void prefetchEventsListQuery(queryClient, {
+      language,
+      is_active: true,
+      limit: EVENTS_PAGE_SIZE,
+    })
+  }, [language, queryClient])
 
   const handleStoryOpen = useCallback(() => {
-    triggerStoriesPrefetch()
-  }, [])
+    prefetchStories()
+  }, [prefetchStories])
 
   const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
     if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
@@ -605,7 +450,7 @@ export default function Dashboard() {
               <DashboardStories
                 stories={stories}
                 loading={loadingStories}
-                onPrefetch={triggerStoriesPrefetch}
+                onPrefetch={prefetchStories}
                 onStoryOpen={handleStoryOpen}
               />
             </div>
@@ -755,15 +600,9 @@ export default function Dashboard() {
                       variant="outline"
                       className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
                       aria-label={t("dashboard:aria.viewAllNews")}
-                      onPointerDown={() => {
-                        warmNewsPage()
-                        prefetchData("news")
-                      }}
+                      onPointerDown={prefetchNewsList}
                       onKeyDown={(event) => {
-                        prepareOnKey(event, () => {
-                          warmNewsPage()
-                          prefetchData("news")
-                        })
+                        prepareOnKey(event, prefetchNewsList)
                       }}
                     >
                       {t("dashboard:viewAll")}
@@ -861,15 +700,9 @@ export default function Dashboard() {
                       variant="outline"
                       className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
                       aria-label={t("dashboard:aria.viewAllEvents")}
-                      onPointerDown={() => {
-                        warmEventsPage()
-                        prefetchData("events")
-                      }}
+                      onPointerDown={prefetchEventsList}
                       onKeyDown={(event) => {
-                        prepareOnKey(event, () => {
-                          warmEventsPage()
-                          prefetchData("events")
-                        })
+                        prepareOnKey(event, prefetchEventsList)
                       }}
                     >
                       {t("dashboard:viewAll")}
