@@ -25,7 +25,12 @@ def upgrade() -> None:
     if dialect != "postgresql":
         # SQLite keeps a plain column for compatibility even though full-text
         # search falls back to LIKE queries in application code.
-        op.add_column("events", sa.Column("search_vector", sa.Text(), nullable=True))
+        inspector = sa.inspect(bind)
+        existing = {column["name"] for column in inspector.get_columns("events")}
+        if "search_vector" not in existing:
+            op.add_column(
+                "events", sa.Column("search_vector", sa.Text(), nullable=True)
+            )
         return
 
     op.execute(sa.text(f"DROP INDEX IF EXISTS {_OLD_INDEX_NAME}"))
