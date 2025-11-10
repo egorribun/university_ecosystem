@@ -11,7 +11,7 @@ import { AuthContext } from "@/contexts/AuthContext"
 import { routerFutureFlags } from "@/App"
 import { checkA11y } from "@/tests/axeTest"
 import { createQueryClient } from "@/app/queryClient"
-import api from "@/api/client"
+import api, { apiClient } from "@/api/client"
 import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { CssVarsProvider } from "@mui/material/styles"
@@ -188,6 +188,14 @@ describe("Accessibility checks", () => {
       }
       return { data: [], status: 200, headers: {} } as any
     })
+    const typedGetSpy = vi
+      .spyOn(apiClient, "get")
+      .mockImplementation(async (path: any) => {
+        if (path === "/news") {
+          return { data: [], status: 200, headers: {} } as any
+        }
+        return { data: [], status: 200, headers: {} } as any
+      })
 
     const { Wrapper } = createWrapper("/dashboard")
     const { container } = render(<Dashboard />, { wrapper: Wrapper })
@@ -196,6 +204,7 @@ describe("Accessibility checks", () => {
 
     await checkA11y(container)
     getSpy.mockRestore()
+    typedGetSpy.mockRestore()
   })
 
   it("Profile page has no axe violations", async () => {

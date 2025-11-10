@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
   type InfiniteData,
+  type QueryClient,
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
   type UseQueryOptions,
@@ -130,6 +131,44 @@ const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[]
   return merged
 }
 
+const createEventsListQueryFn = (
+  queryClient: QueryClient,
+  normalized: NormalizedEventsListFilters,
+  queryKey: EventsListQueryKey
+) =>
+  async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+    const etagKey = pageParam == null ? createEventsListEtagKey(normalized) : undefined
+    const params: Record<string, unknown> = {
+      limit: normalized.limit,
+      search: normalized.search,
+      type: normalized.type,
+      location: normalized.location,
+    }
+    if (normalized.is_active !== null) {
+      params.is_active = normalized.is_active
+    }
+    if (pageParam != null) {
+      params.cursor = pageParam
+    }
+
+    const requestConfig: TypedRequestOptions<"/events", "get"> = {
+      params,
+      signal,
+      validateStatus: (status) => status >= 200 && status < 400,
+      ...(etagKey ? { etagCacheKey: etagKey } : {}),
+    }
+
+    const response = await apiClient.get("/events", requestConfig)
+
+    if (response.status === 304) {
+      const cached =
+        queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>, string | null>>(queryKey)
+      return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
+    }
+
+    return ensurePaginatedResponse(response.data, normalized.limit)
+  }
+
 type UseEventsListQueryOptions = Omit<
   UseInfiniteQueryOptions<
     PaginatedResponse<Event>,
@@ -159,6 +198,11 @@ export const useEventsListQuery = (
   const queryKey: EventsListQueryKey = ["events", "list", normalized]
   const { enabled = true, ...rest } = options ?? {}
 
+  const queryFn = useMemo(
+    () => createEventsListQueryFn(queryClient, normalized, queryKey),
+    [queryClient, normalized, queryKey]
+  )
+
   const query = useInfiniteQuery<
     PaginatedResponse<Event>,
     Error,
@@ -170,38 +214,7 @@ export const useEventsListQuery = (
     enabled,
     initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage?.next_cursor ?? null,
-    queryFn: async ({ pageParam, signal }) => {
-      const etagKey = pageParam == null ? createEventsListEtagKey(normalized) : undefined
-      const params: Record<string, unknown> = {
-        limit: normalized.limit,
-        search: normalized.search,
-        type: normalized.type,
-        location: normalized.location,
-      }
-      if (normalized.is_active !== null) {
-        params.is_active = normalized.is_active
-      }
-      if (pageParam != null) {
-        params.cursor = pageParam
-      }
-
-      const requestConfig: TypedRequestOptions<"/events", "get"> = {
-        params,
-        signal,
-        validateStatus: (status) => status >= 200 && status < 400,
-        ...(etagKey ? { etagCacheKey: etagKey } : {}),
-      }
-
-      const response = await apiClient.get("/events", requestConfig)
-
-      if (response.status === 304) {
-        const cached =
-          queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>, string | null>>(queryKey)
-        return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
-      }
-
-      return ensurePaginatedResponse(response.data, normalized.limit)
-    },
+    queryFn,
     ...rest,
   })
 
@@ -214,6 +227,22 @@ export const useEventsListQuery = (
     pagination,
     queryKey,
   }
+}
+
+export const prefetchEventsListQuery = (
+  queryClient: QueryClient,
+  filters: EventsListFilters
+) => {
+  const normalized = normalizeEventsListFilters(filters)
+  const queryKey: EventsListQueryKey = ["events", "list", normalized]
+  const queryFn = createEventsListQueryFn(queryClient, normalized, queryKey)
+
+  return queryClient.prefetchInfiniteQuery({
+    queryKey,
+    queryFn,
+    initialPageParam: null,
+    getNextPageParam: (lastPage) => lastPage?.next_cursor ?? null,
+  })
 }
 
 export type MyEventsQueryParams = {
