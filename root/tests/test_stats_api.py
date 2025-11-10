@@ -41,7 +41,9 @@ async def test_attendance_stats_returns_expected_payload(
     hashed = get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    def build_event(title: str, delta: timedelta, duration_hours: int = 2) -> models.Event:
+    def build_event(
+        title: str, delta: timedelta, duration_hours: int = 2
+    ) -> models.Event:
         starts_at = now - delta
         return models.Event(
             title=title,
@@ -67,8 +69,7 @@ async def test_attendance_stats_returns_expected_payload(
     previous_missed = build_event("Computer Science", timedelta(days=50))
 
     db_session.add_all(
-        current_attended_events
-        + [current_missed, previous_attended, previous_missed]
+        current_attended_events + [current_missed, previous_attended, previous_missed]
     )
     await db_session.commit()
 

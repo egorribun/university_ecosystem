@@ -952,15 +952,11 @@ async def get_attendance_stats(
     stats_subquery = (
         select(
             func.coalesce(
-                func.sum(
-                    case((filtered_events.c.period == "current", 1), else_=0)
-                ),
+                func.sum(case((filtered_events.c.period == "current", 1), else_=0)),
                 0,
             ).label("current_total"),
             func.coalesce(
-                func.sum(
-                    case((filtered_events.c.period == "previous", 1), else_=0)
-                ),
+                func.sum(case((filtered_events.c.period == "previous", 1), else_=0)),
                 0,
             ).label("previous_total"),
             func.coalesce(
@@ -993,8 +989,7 @@ async def get_attendance_stats(
                 ),
                 0,
             ).label("previous_attended"),
-        )
-        .select_from(attendance_join)
+        ).select_from(attendance_join)
     ).subquery()
 
     recent_attendance_base = (
@@ -1021,8 +1016,7 @@ async def get_attendance_stats(
             recent_attendance_base.c.starts_at,
             recent_attendance_base.c.title,
             recent_attendance_base.c.rn,
-        )
-        .where(recent_attendance_base.c.rn <= 5)
+        ).where(recent_attendance_base.c.rn <= 5)
     ).subquery()
 
     stats_rows = await db.execute(

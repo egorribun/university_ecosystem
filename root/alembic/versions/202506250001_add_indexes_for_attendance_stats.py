@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "202506250001"
@@ -29,9 +30,7 @@ def upgrade() -> None:
         op.create_index("ix_events_starts_at", "events", ["starts_at"])
 
     if not _has_index(inspector, "event_attendance", ("user_id",)):
-        op.create_index(
-            "ix_event_attendance_user_id", "event_attendance", ["user_id"]
-        )
+        op.create_index("ix_event_attendance_user_id", "event_attendance", ["user_id"])
 
 
 def downgrade() -> None:
