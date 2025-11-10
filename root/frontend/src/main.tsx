@@ -1,13 +1,13 @@
 import { initObservability } from "./app/observability"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
-import { initWebVitals } from "./app/webVitals"
+import { initWebVitals, reportBootstrapTTI } from "./app/webVitals"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
 import { getBootstrapFallbackCopy, renderBootstrapFallback } from "./utils/bootstrapFallback"
 
 initObservability()
 initGlobalErrorHandlers()
-initWebVitals()
+const webVitalsEnabled = initWebVitals()
 ensureTrustedTypesPolicies()
 
 declare global {
@@ -22,35 +22,59 @@ async function bootstrap() {
       throw new Error("Forced bootstrap failure")
     }
 
-    const ReactMod = await import("react")
+    const bootstrapStart =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : undefined
+
+    const [
+      ReactMod,
+      ReactDOMMod,
+      MuiCoreMod,
+      MuiStylesMod,
+      ReactQueryMod,
+      AppMod,
+      ErrorBoundaryMod,
+      QueryClientLocal,
+      ThemeMod,
+    ] = await Promise.all([
+      import("react"),
+      import("react-dom/client"),
+      import("@mui/material"),
+      import("@mui/material/styles"),
+      import("@tanstack/react-query"),
+      import("./App"),
+      import("./app/ErrorBoundary"),
+      import("./app/queryClient"),
+      import("./theme"),
+    ])
+
     const { StrictMode, useEffect } = ReactMod
-    const ReactDOMMod = await import("react-dom/client")
-    const { CssBaseline } = await import("@mui/material")
-    const StylesMod = await import("@mui/material/styles")
-    const { CssVarsProvider, useColorScheme } = StylesMod
-    const ReactQueryMod = await import("@tanstack/react-query")
+    const { CssBaseline } = MuiCoreMod
+    const { CssVarsProvider, useColorScheme } = MuiStylesMod
     const { QueryClientProvider } = ReactQueryMod
-    const AppMod = await import("./App")
     const { default: App } = AppMod
-    const ErrorBoundaryMod = await import("./app/ErrorBoundary")
     const { default: ErrorBoundary } = ErrorBoundaryMod
-    const QueryClientLocal = await import("./app/queryClient")
     const { queryClient } = QueryClientLocal
-    const ThemeMod = await import("./theme")
     const { default: theme } = ThemeMod
-    await import("./styles/tailwind.css")
-    await import("./assets/themes.css")
-    await import("./i18n/config")
-    await import("dayjs/locale/ru")
-    const SWMod = await import("./push/register-sw")
-    const { registerServiceWorker } = SWMod
-    const PushMod = await import("./push/subscribe")
-    const { ensurePushSubscription, hasPushConsent } = PushMod
+
+    await Promise.all([
+      import("./styles/tailwind.css"),
+      import("./assets/themes.css"),
+      import("./i18n/config"),
+      import("dayjs/locale/ru"),
+    ])
 
     async function setupServiceWorker() {
       if (!import.meta.env.PROD) return
       if (!("serviceWorker" in navigator)) return
       try {
+        const [SWMod, PushMod] = await Promise.all([
+          import("./push/register-sw"),
+          import("./push/subscribe"),
+        ])
+        const { registerServiceWorker } = SWMod
+        const { ensurePushSubscription, hasPushConsent } = PushMod
         const registration = await registerServiceWorker("/sw.js")
         if (!registration) return
         if (!hasPushConsent()) return
@@ -103,7 +127,8 @@ async function bootstrap() {
       ? (await import("@tanstack/react-query-devtools")).ReactQueryDevtools
       : null
 
-    ReactDOMMod.default.createRoot(document.getElementById("root")!).render(
+    const rootElement = document.getElementById("root")!
+    ReactDOMMod.default.createRoot(rootElement).render(
       <StrictMode>
         <QueryClientProvider client={queryClient}>
           <CssVarsProvider
@@ -122,6 +147,31 @@ async function bootstrap() {
         </QueryClientProvider>
       </StrictMode>
     )
+
+    if (webVitalsEnabled && typeof window !== "undefined") {
+      const report = () => {
+        if (!bootstrapStart) {
+          return
+        }
+
+        const bootstrapEnd =
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : undefined
+
+        if (!bootstrapEnd) {
+          return
+        }
+
+        reportBootstrapTTI(bootstrapEnd - bootstrapStart)
+      }
+
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(report)
+      } else {
+        window.setTimeout(report, 0)
+      }
+    }
   } catch (error) {
     logError("Failed to bootstrap application", error)
 
