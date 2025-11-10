@@ -4,7 +4,7 @@ from __future__ import annotations
 
 # revision identifiers, used by Alembic.
 revision: str = "202509010001"
-down_revision: tuple[str, str] | None = ("202506250001", "202507310004")
+down_revision: tuple[str, str] | None = ("202506260001", "202507310004")
 branch_labels = None
 depends_on = None
 

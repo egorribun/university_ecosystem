@@ -1,7 +1,13 @@
 import type { Metric } from "web-vitals"
 import { onCLS, onFCP, onFID, onINP, onLCP, onTTFB } from "web-vitals"
 
-export type WebVitalMetric = Metric
+type MetricRating = Metric["rating"]
+
+export interface CustomMetric extends Omit<Metric, "name"> {
+  name: string
+}
+
+export type WebVitalMetric = Metric | CustomMetric
 export type WebVitalReporter = (metric: WebVitalMetric) => void
 
 type ExtendedEnv = ImportMetaEnv & {
@@ -10,6 +16,7 @@ type ExtendedEnv = ImportMetaEnv & {
 }
 
 let initialized = false
+let reporterRef: WebVitalReporter | undefined
 
 function isEnabled(value: string | undefined): boolean {
   if (!value) return false
@@ -17,7 +24,7 @@ function isEnabled(value: string | undefined): boolean {
   return normalized === "true" || normalized === "1" || normalized === "yes"
 }
 
-function hasLabel(metric: Metric): metric is Metric & { label: string } {
+function hasLabel(metric: WebVitalMetric): metric is WebVitalMetric & { label: string } {
   return typeof (metric as { label?: unknown }).label === "string"
 }
 
@@ -116,10 +123,74 @@ export function initWebVitals(env: ExtendedEnv = import.meta.env as ExtendedEnv)
   onLCP(reporter)
   onTTFB(reporter)
 
+  reporterRef = reporter
   initialized = true
   return true
 }
 
 export function resetWebVitalsForTesting(): void {
   initialized = false
+  reporterRef = undefined
+}
+
+function resolveRating(
+  value: number,
+  [goodThreshold, needsImprovementThreshold]: [number, number]
+): MetricRating {
+  if (value <= goodThreshold) {
+    return "good"
+  }
+
+  if (value <= needsImprovementThreshold) {
+    return "needs-improvement"
+  }
+
+  return "poor"
+}
+
+function resolveNavigationType(): WebVitalMetric["navigationType"] {
+  if (typeof performance === "undefined" || typeof performance.getEntriesByType !== "function") {
+    return "navigate"
+  }
+
+  const navigationEntry = performance.getEntriesByType("navigation")[0] as
+    | PerformanceNavigationTiming
+    | undefined
+  if (!navigationEntry || !navigationEntry.type) {
+    return "navigate"
+  }
+
+  if (navigationEntry.type === "back_forward") {
+    return "back-forward"
+  }
+
+  return navigationEntry.type as WebVitalMetric["navigationType"]
+}
+
+function createCustomMetric(
+  name: string,
+  value: number,
+  thresholds: [number, number]
+): CustomMetric {
+  return {
+    name,
+    value,
+    delta: value,
+    rating: resolveRating(value, thresholds),
+    id: `${name}-${Date.now()}`,
+    entries: [],
+    navigationType: resolveNavigationType(),
+  }
+}
+
+const BOOTSTRAP_TTI_THRESHOLDS: [number, number] = [3800, 7300]
+
+export function reportBootstrapTTI(duration: number): boolean {
+  if (!reporterRef) {
+    return false
+  }
+
+  const metric = createCustomMetric("APP_TTI", duration, BOOTSTRAP_TTI_THRESHOLDS)
+  reporterRef(metric)
+  return true
 }
