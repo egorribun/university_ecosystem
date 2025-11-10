@@ -416,7 +416,11 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
     }
   }
   try {
-    const response = await api.get<User>("/users/me", { signal, headers })
+    const response = await api.get<User>("/users/me", {
+      signal,
+      headers,
+      skipRateLimitQueue: true,
+    })
     return response.data
   } catch (error) {
     if (
@@ -426,7 +430,10 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
       !signal?.aborted
     ) {
       clearProfileCacheStorage()
-      const retry = await api.get<User>("/users/me", { signal })
+      const retry = await api.get<User>("/users/me", {
+        signal,
+        skipRateLimitQueue: true,
+      })
       return retry.data
     }
     throw error
@@ -471,7 +478,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const promise = (async () => {
       try {
-        const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key")
+        const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
+          skipRateLimitQueue: true,
+        })
         const key = response.data.signing_key
         updateSessionSigningKey(key)
         return key
