@@ -39,7 +39,7 @@ from app.services.email_change_cleanup import (
     cleanup_stale_email_change_tokens,
     start_email_change_cleanup_scheduler,
 )
-from app.services.file_scanner import scan_for_malware
+from app.services.file_scanner import check_file_scanner_health
 from app.services.notification_queue import (
     DeadLetterCleanupConfig,
     start_dead_letter_cleanup_scheduler,
@@ -379,7 +379,7 @@ async def healthz():
     if getattr(settings, "event_file_scanner_enabled", False):
         scanner_status = "ok"
         try:
-            await scan_for_malware(b"healthz-probe")
+            await check_file_scanner_health()
         except Exception:
             scanner_status = "error"
         statuses["file_scanner"] = scanner_status

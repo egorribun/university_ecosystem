@@ -160,10 +160,10 @@ async def test_healthcheck_notification_queue_missing_table(
 async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
     monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
 
-    async def _fake_scan(data: bytes, *, locale=None) -> None:
+    async def _fake_health_check() -> None:
         return None
 
-    monkeypatch.setattr(main, "scan_for_malware", _fake_scan)
+    monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
 
     response = await async_client.get("/healthz")
     data = response.json()
@@ -175,12 +175,33 @@ async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
 async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
     monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
 
-    async def _failing_scan(data: bytes, *, locale=None) -> None:
+    async def _failing_health_check() -> None:
         raise RuntimeError("scanner offline")
 
-    monkeypatch.setattr(main, "scan_for_malware", _failing_scan)
+    monkeypatch.setattr(main, "check_file_scanner_health", _failing_health_check)
 
     response = await async_client.get("/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["file_scanner"] == "error"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_healthcheck_file_scanner_uses_lightweight_probe(
+    async_client, monkeypatch
+):
+    monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
+
+    async def _fake_health_check() -> None:
+        return None
+
+    async def _forbidden_scan(data: bytes, *, locale=None) -> None:  # pragma: no cover
+        raise AssertionError("health check should not trigger file scanning")
+
+    monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
+    monkeypatch.setattr(main, "scan_for_malware", _forbidden_scan)
+
+    response = await async_client.get("/healthz")
+    data = response.json()
+    assert response.status_code == status.HTTP_200_OK
+    assert data["file_scanner"] == "ok"
