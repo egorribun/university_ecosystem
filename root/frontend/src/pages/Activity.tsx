@@ -615,7 +615,7 @@ export default function Activity() {
             initial="hidden"
             animate="show"
             variants={headerVariants}
-            className="mx-auto max-w-6xl px-2 pb-16 sm:px-4"
+            className="px-2 pb-16 sm:px-4"
             style={
               reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
             }
