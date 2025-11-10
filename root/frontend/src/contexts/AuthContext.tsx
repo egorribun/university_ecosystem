@@ -478,10 +478,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const promise = (async () => {
       try {
-        const response = await api.get<SessionSigningKeyResponse>(
-          "/auth/session/signing-key",
-          { skipRateLimitQueue: true }
-        )
+        const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
+          skipRateLimitQueue: true,
+        })
         const key = response.data.signing_key
         updateSessionSigningKey(key)
         return key
