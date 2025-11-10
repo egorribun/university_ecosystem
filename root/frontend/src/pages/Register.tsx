@@ -187,7 +187,7 @@ const Register = () => {
       }
 
       try {
-        await api.post("/users", {
+        await api.post("/auth/register", {
           full_name: fullName,
           email,
           password,

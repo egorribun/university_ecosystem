@@ -25,7 +25,7 @@ const renderRegister = () =>
 describe("Register page", () => {
   it("surfaces API error messages", async () => {
     server.use(
-      http.post("*/users", () =>
+      http.post("*/auth/register", () =>
         HttpResponse.json({ detail: "Email already used" }, { status: 400 })
       )
     )
@@ -48,10 +48,10 @@ describe("Register page", () => {
   it("sends registration payload and navigates to login", async () => {
     const payloads: unknown[] = []
     server.use(
-      http.post("*/users", async ({ request }) => {
+      http.post("*/auth/register", async ({ request }) => {
         const body = await request.json()
         payloads.push(body)
-        return HttpResponse.json({ ok: true }, { status: 201 })
+        return HttpResponse.json({ status: "ok" })
       })
     )
 

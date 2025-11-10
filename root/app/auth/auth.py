@@ -15,12 +15,12 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import crud
 from app.api.deps import get_current_user, require_fresh_mfa
 from app.auth import mfa
 from app.auth.security import (
     create_access_token,
     decode_token,
-    get_password_hash,
     verify_and_update_password,
 )
 from app.core.config import settings
@@ -1280,27 +1280,22 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ):
     locale = resolve_locale(request=request)
-    email = user.email.strip().lower()
-    res = await db.execute(select(User).where(func.lower(User.email) == email))
-    if res.scalars().first():
-        message = translate("errors.users.email_in_use", locale=locale)
+    try:
+        new_user = await crud.create_user(db, user)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:  # pragma: no cover - defensive guard
+        await db.rollback()
+        message = translate("errors.users.create_failed", locale=locale)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=message,
-        )
-    try:
-        hashed_password = get_password_hash(user.password, locale=locale)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    new_user = User(
-        email=email,
-        full_name=user.full_name,
-        hashed_password=hashed_password,
-        role="student",
-    )
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+        ) from exc
+
     return {"status": "ok", "id": new_user.id}
 
 
