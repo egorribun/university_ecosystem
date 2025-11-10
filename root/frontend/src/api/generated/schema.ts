@@ -2134,7 +2134,7 @@ export interface components {
       /** Items */
       items: components["schemas"]["EventOut"][]
       /** Total */
-      total: number
+      total?: number | null
       /** Limit */
       limit: number
       /** Cursor */

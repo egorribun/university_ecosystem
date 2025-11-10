@@ -450,7 +450,7 @@ class EventOut(OrmModel):
 
 class PaginatedEvents(BaseModel):
     items: list[EventOut]
-    total: int
+    total: int | None = None
     limit: int
     cursor: str | None = None
     next_cursor: str | None = None
