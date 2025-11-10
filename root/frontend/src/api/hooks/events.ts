@@ -213,8 +213,9 @@ export const useEventsListQuery = (
   >({
     queryKey,
     enabled,
-    initialPageParam: null,
-    getNextPageParam: (lastPage) => lastPage?.next_cursor ?? null,
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: PaginatedResponse<Event>) =>
+      lastPage?.next_cursor ?? null,
     queryFn,
     ...rest,
   })
@@ -238,8 +239,9 @@ export const prefetchEventsListQuery = (queryClient: QueryClient, filters: Event
   return queryClient.prefetchInfiniteQuery({
     queryKey,
     queryFn,
-    initialPageParam: null,
-    getNextPageParam: (lastPage) => lastPage?.next_cursor ?? null,
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: PaginatedResponse<Event>) =>
+      lastPage?.next_cursor ?? null,
   })
 }
 

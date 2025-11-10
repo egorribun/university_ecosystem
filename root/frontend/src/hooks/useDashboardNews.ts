@@ -7,6 +7,13 @@ import type { SupportedLanguage } from "@/contexts/LanguageContext"
 
 const DASHBOARD_NEWS_LIMIT = 4
 
+type MaybePinnedNewsItem = NewsItem & { pinned?: boolean | null }
+
+const getPinnedRank = (item: NewsItem) => {
+  const candidate = item as MaybePinnedNewsItem
+  return typeof candidate.pinned === "boolean" ? Number(candidate.pinned) : 0
+}
+
 const sortNewsItems = (items: readonly NewsItem[] | undefined) => {
   if (!items?.length) {
     return [] as NewsItem[]
@@ -14,7 +21,7 @@ const sortNewsItems = (items: readonly NewsItem[] | undefined) => {
 
   return [...items]
     .filter(Boolean)
-    .sort((a, b) => Number(b?.pinned === true) - Number(a?.pinned === true))
+    .sort((a, b) => getPinnedRank(b) - getPinnedRank(a))
     .slice(0, DASHBOARD_NEWS_LIMIT)
 }
 
