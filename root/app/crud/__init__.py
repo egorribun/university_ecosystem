@@ -3,9 +3,10 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, literal, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.auth import mfa
 from app.auth.security import get_password_hash
@@ -923,77 +924,148 @@ async def get_attendance_stats(
     window_start = now - timedelta(days=period_days)
     previous_start = window_start - timedelta(days=period_days)
 
-    base_event_filter = (
-        models.Event.is_active.is_(True),
-        models.Event.starts_at >= window_start,
-        models.Event.starts_at < now,
-    )
-    total_events = await db.scalar(
-        select(func.count()).select_from(models.Event).where(*base_event_filter)
-    )
-    total_events = int(total_events or 0)
-
-    attendance_filter = (
-        models.EventAttendance.user_id == user_id,
-        models.EventAttendance.event_id == models.Event.id,
-        *base_event_filter,
-    )
-    attended_events = await db.scalar(
-        select(func.count())
-        .select_from(models.EventAttendance)
-        .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-        .where(*attendance_filter)
-    )
-    attended_events = int(attended_events or 0)
-
-    percent = (attended_events / total_events * 100) if total_events else 0.0
-
-    previous_events = await db.scalar(
-        select(func.count())
-        .select_from(models.Event)
+    attendance_alias = aliased(models.EventAttendance)
+    filtered_events = (
+        select(
+            models.Event.id.label("event_id"),
+            case(
+                (models.Event.starts_at >= window_start, literal("current")),
+                else_=literal("previous"),
+            ).label("period"),
+        )
         .where(
             models.Event.is_active.is_(True),
             models.Event.starts_at >= previous_start,
-            models.Event.starts_at < window_start,
+            models.Event.starts_at < now,
         )
+        .cte("filtered_events")
     )
-    previous_events = int(previous_events or 0)
 
-    previous_attended = await db.scalar(
-        select(func.count())
-        .select_from(models.EventAttendance)
+    attendance_join = filtered_events.outerjoin(
+        attendance_alias,
+        and_(
+            attendance_alias.event_id == filtered_events.c.event_id,
+            attendance_alias.user_id == user_id,
+        ),
+    )
+
+    stats_subquery = (
+        select(
+            func.coalesce(
+                func.sum(
+                    case((filtered_events.c.period == "current", 1), else_=0)
+                ),
+                0,
+            ).label("current_total"),
+            func.coalesce(
+                func.sum(
+                    case((filtered_events.c.period == "previous", 1), else_=0)
+                ),
+                0,
+            ).label("previous_total"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                filtered_events.c.period == "current",
+                                attendance_alias.id.isnot(None),
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("current_attended"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                filtered_events.c.period == "previous",
+                                attendance_alias.id.isnot(None),
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("previous_attended"),
+        )
+        .select_from(attendance_join)
+    ).subquery()
+
+    recent_attendance_base = (
+        select(
+            models.EventAttendance.registered_at.label("registered_at"),
+            models.Event.starts_at.label("starts_at"),
+            models.Event.title.label("title"),
+            func.row_number()
+            .over(order_by=models.EventAttendance.registered_at.desc())
+            .label("rn"),
+        )
         .join(models.Event, models.Event.id == models.EventAttendance.event_id)
         .where(
             models.EventAttendance.user_id == user_id,
-            models.Event.starts_at >= previous_start,
-            models.Event.starts_at < window_start,
             models.Event.is_active.is_(True),
+            models.Event.starts_at >= window_start,
+            models.Event.starts_at < now,
         )
+    ).subquery()
+
+    top_recent = (
+        select(
+            recent_attendance_base.c.registered_at,
+            recent_attendance_base.c.starts_at,
+            recent_attendance_base.c.title,
+            recent_attendance_base.c.rn,
+        )
+        .where(recent_attendance_base.c.rn <= 5)
+    ).subquery()
+
+    stats_rows = await db.execute(
+        select(
+            stats_subquery.c.current_total,
+            stats_subquery.c.previous_total,
+            stats_subquery.c.current_attended,
+            stats_subquery.c.previous_attended,
+            top_recent.c.registered_at,
+            top_recent.c.starts_at,
+            top_recent.c.title,
+            top_recent.c.rn,
+        )
+        .select_from(stats_subquery.outerjoin(top_recent, true()))
+        .order_by(top_recent.c.rn)
     )
-    previous_attended = int(previous_attended or 0)
+
+    rows = stats_rows.all()
+
+    if rows:
+        first_row = rows[0]
+        total_events = int(first_row.current_total or 0)
+        attended_events = int(first_row.current_attended or 0)
+        previous_events = int(first_row.previous_total or 0)
+        previous_attended = int(first_row.previous_attended or 0)
+    else:
+        total_events = attended_events = previous_events = previous_attended = 0
+
+    percent = (attended_events / total_events * 100) if total_events else 0.0
     previous_percent = (
         previous_attended / previous_events * 100 if previous_events else 0.0
     )
 
-    recent_rows = await db.execute(
-        select(
-            models.EventAttendance.registered_at,
-            models.Event.starts_at,
-            models.Event.title,
-        )
-        .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-        .where(*attendance_filter)
-        .order_by(models.EventAttendance.registered_at.desc())
-        .limit(5)
-    )
-    recent = []
-    for registered_at, starts_at, title in recent_rows.all():
-        date_source = starts_at or registered_at
+    recent: list[dict[str, Any]] = []
+    for row in rows:
+        if getattr(row, "rn", None) is None:
+            continue
+        date_source = row.starts_at or row.registered_at
         recent.append(
             {
                 "date": _dt_to_iso(date_source),
                 "status": "present",
-                "course": title or None,
+                "course": row.title or None,
             }
         )
 
