@@ -41,84 +41,61 @@ async def test_attendance_stats_returns_expected_payload(
     hashed = get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    current_attended = models.Event(
-        title="Functional Analysis",
-        description="Lecture",
-        location="Auditorium A",
-        event_type="lecture",
-        starts_at=now - timedelta(days=5),
-        ends_at=now - timedelta(days=5) + timedelta(hours=2),
-        created_by=admin.id,
-        is_active=True,
-    )
-    current_attended_2 = models.Event(
-        title="Modern Physics",
-        description="Seminar",
-        location="Room 204",
-        event_type="seminar",
-        starts_at=now - timedelta(days=2),
-        ends_at=now - timedelta(days=2) + timedelta(hours=3),
-        created_by=admin.id,
-        is_active=True,
-    )
-    current_missed = models.Event(
-        title="Statistics",
-        description="Workshop",
-        location="Room 101",
-        event_type="workshop",
-        starts_at=now - timedelta(days=8),
-        ends_at=now - timedelta(days=8) + timedelta(hours=2),
-        created_by=admin.id,
-        is_active=True,
-    )
-    previous_attended = models.Event(
-        title="Linear Algebra",
-        description="Lecture",
-        location="Auditorium B",
-        event_type="lecture",
-        starts_at=now - timedelta(days=35),
-        ends_at=now - timedelta(days=35) + timedelta(hours=2),
-        created_by=admin.id,
-        is_active=True,
-    )
-    previous_missed = models.Event(
-        title="Computer Science",
-        description="Seminar",
-        location="Lab 5",
-        event_type="seminar",
-        starts_at=now - timedelta(days=50),
-        ends_at=now - timedelta(days=50) + timedelta(hours=2),
-        created_by=admin.id,
-        is_active=True,
-    )
+    def build_event(
+        title: str, delta: timedelta, duration_hours: int = 2
+    ) -> models.Event:
+        starts_at = now - delta
+        return models.Event(
+            title=title,
+            description=f"Session for {title}",
+            location="Auditorium A",
+            event_type="lecture",
+            starts_at=starts_at,
+            ends_at=starts_at + timedelta(hours=duration_hours),
+            created_by=admin.id,
+            is_active=True,
+        )
+
+    current_attended_events = [
+        build_event("Functional Analysis", timedelta(days=5)),
+        build_event("Modern Physics", timedelta(days=4)),
+        build_event("Organic Chemistry", timedelta(days=3)),
+        build_event("Biology Lab", timedelta(days=2)),
+        build_event("Contemporary History", timedelta(days=1)),
+        build_event("Philosophy of Science", timedelta(hours=12)),
+    ]
+    current_missed = build_event("Applied Statistics", timedelta(days=8))
+    previous_attended = build_event("Linear Algebra", timedelta(days=35))
+    previous_missed = build_event("Computer Science", timedelta(days=50))
 
     db_session.add_all(
-        [
-            current_attended,
-            current_attended_2,
-            current_missed,
-            previous_attended,
-            previous_missed,
-        ]
+        current_attended_events + [current_missed, previous_attended, previous_missed]
     )
     await db_session.commit()
 
     attendances = []
-    for event_id, registered_at in [
-        (current_attended.id, now - timedelta(days=5, hours=1)),
-        (current_attended_2.id, now - timedelta(days=2, hours=2)),
-        (previous_attended.id, now - timedelta(days=34)),
-    ]:
+    for event in current_attended_events:
         secret = attendance_tokens.generate_secret()
         attendances.append(
             models.EventAttendance(
                 user_id=student.id,
-                event_id=event_id,
-                registered_at=registered_at,
+                event_id=event.id,
+                registered_at=event.starts_at - timedelta(minutes=30),
                 qr_secret=secret,
                 qr_hmac=attendance_tokens.compute_secret_hmac(secret),
             )
         )
+
+    secret = attendance_tokens.generate_secret()
+    attendances.append(
+        models.EventAttendance(
+            user_id=student.id,
+            event_id=previous_attended.id,
+            registered_at=previous_attended.starts_at - timedelta(hours=1),
+            qr_secret=secret,
+            qr_hmac=attendance_tokens.compute_secret_hmac(secret),
+        )
+    )
     db_session.add_all(attendances)
     await db_session.commit()
 
@@ -128,15 +105,16 @@ async def test_attendance_stats_returns_expected_payload(
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["present"] == 2
-    assert payload["total"] == 3
-    assert payload["percent"] == pytest.approx(66.67, rel=1e-2)
-    assert payload["trend"] == pytest.approx(16.67, rel=1e-2)
+    assert payload["present"] == 6
+    assert payload["total"] == 7
+    assert payload["percent"] == pytest.approx(85.71, rel=1e-2)
+    assert payload["trend"] == pytest.approx(35.71, rel=1e-2)
     assert payload["period_key"] == "30d"
     assert payload["period_label"] == "Last 30 days"
-    assert len(payload["recent"]) == 2
-    assert payload["recent"][0]["status"] == "present"
-    assert payload["recent"][0]["course"] == "Modern Physics"
+    assert len(payload["recent"]) == 5
+    assert [entry["status"] for entry in payload["recent"]] == ["present"] * 5
+    assert payload["recent"][0]["course"] == "Philosophy of Science"
+    assert payload["recent"][4]["course"] == "Modern Physics"
 
 
 @pytest.mark.anyio
