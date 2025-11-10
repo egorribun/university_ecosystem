@@ -10,7 +10,7 @@ import type {
   TotpEnrollmentStartResponse,
 } from "@/types/Mfa"
 
-type NewUserPayload = {
+type RegisterPayload = {
   email?: string
   [key: string]: unknown
 }
@@ -560,12 +560,12 @@ export const handlers = [
     const removed = applyAdminQueueMutation(jobIds)
     return HttpResponse.json({ deleted: removed })
   }),
-  http.post("*/users", async ({ request }) => {
-    const body = (await request.json()) as NewUserPayload
+  http.post("*/auth/register", async ({ request }) => {
+    const body = (await request.json()) as RegisterPayload
     if (body.email === "taken@example.com") {
       return HttpResponse.json({ detail: "Email already used" }, { status: 400 })
     }
-    return HttpResponse.json({ id: 2, ...body }, { status: 201 })
+    return HttpResponse.json({ status: "ok", id: 2, ...body })
   }),
   http.post("*/auth/login", async ({ request }) => {
     const raw = await request.text()
