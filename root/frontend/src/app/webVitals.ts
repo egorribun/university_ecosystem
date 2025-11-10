@@ -133,7 +133,10 @@ export function resetWebVitalsForTesting(): void {
   reporterRef = undefined
 }
 
-function resolveRating(value: number, [goodThreshold, needsImprovementThreshold]: [number, number]): MetricRating {
+function resolveRating(
+  value: number,
+  [goodThreshold, needsImprovementThreshold]: [number, number]
+): MetricRating {
   if (value <= goodThreshold) {
     return "good"
   }
@@ -150,7 +153,9 @@ function resolveNavigationType(): WebVitalMetric["navigationType"] {
     return "navigate"
   }
 
-  const navigationEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined
+  const navigationEntry = performance.getEntriesByType("navigation")[0] as
+    | PerformanceNavigationTiming
+    | undefined
   if (!navigationEntry || !navigationEntry.type) {
     return "navigate"
   }
@@ -162,7 +167,11 @@ function resolveNavigationType(): WebVitalMetric["navigationType"] {
   return navigationEntry.type as WebVitalMetric["navigationType"]
 }
 
-function createCustomMetric(name: string, value: number, thresholds: [number, number]): CustomMetric {
+function createCustomMetric(
+  name: string,
+  value: number,
+  thresholds: [number, number]
+): CustomMetric {
   return {
     name,
     value,
