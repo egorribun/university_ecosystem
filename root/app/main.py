@@ -41,6 +41,8 @@ from app.services.email_change_cleanup import (
 )
 from app.services.file_scanner import (
     check_file_scanner_health,
+)
+from app.services.file_scanner import (
     scan_for_malware as _scan_for_malware,
 )
 from app.services.notification_queue import (
