@@ -113,7 +113,7 @@ function useClock(locale: string) {
   const [time, setTime] = useState(getCurrentMinute)
   useEffect(() => {
     const tick = () => setTime(getCurrentMinute())
-    let intervalId: ReturnType<typeof window.setInterval> | null = null
+    let intervalId: number | null = null
     const now = new Date()
     const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds()
     const timeoutId = window.setTimeout(() => {
