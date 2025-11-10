@@ -103,21 +103,38 @@ function DateBullet({ date, locale }: { date?: string; locale: string }) {
   )
 }
 
+const getCurrentMinute = () => {
+  const d = new Date()
+  d.setSeconds(0, 0)
+  return d
+}
+
 function useClock(locale: string) {
-  const [time, setTime] = useState(new Date())
+  const [time, setTime] = useState(getCurrentMinute)
   useEffect(() => {
-    const id = setInterval(() => setTime(new Date()), 1000)
-    return () => clearInterval(id)
+    const tick = () => setTime(getCurrentMinute())
+    let intervalId: number | null = null
+    const now = new Date()
+    const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds()
+    const timeoutId = window.setTimeout(() => {
+      tick()
+      intervalId = window.setInterval(tick, 60_000)
+    }, msUntilNextMinute)
+    return () => {
+      window.clearTimeout(timeoutId)
+      if (intervalId) {
+        window.clearInterval(intervalId)
+      }
+    }
   }, [])
   const hh = pad(time.getHours())
   const mm = pad(time.getMinutes())
-  const showColon = time.getSeconds() % 2 === 0
   const dateStr = time.toLocaleDateString(locale, {
     weekday: "long",
     day: "numeric",
     month: "long",
   })
-  return { hh, mm, showColon, dateStr, time }
+  return { hh, mm, dateStr, time }
 }
 
 function getGreetingKey(hour: number): "morning" | "afternoon" | "evening" | "night" {
@@ -174,7 +191,7 @@ export default function Dashboard() {
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
   const { t } = useTranslation(["dashboard", "common", "navigation"])
-  const { hh, mm, showColon, dateStr, time } = useClock(locale)
+  const { hh, mm, dateStr, time } = useClock(locale)
   const weekDaysDisplay = useMemo(() => {
     const result = t("dashboard:weekDays.display", { returnObjects: true }) as unknown
     if (Array.isArray(result) && result.length === 7) {
@@ -230,7 +247,7 @@ export default function Dashboard() {
       .sort((a, b) => fmtTime(a.start_time).localeCompare(fmtTime(b.start_time)))
   }, [schedule, parity, todayIndex, weekdayIndex])
 
-  const minutesNow = time.getHours() * 60 + time.getMinutes()
+  const minutesNow = useMemo(() => time.getHours() * 60 + time.getMinutes(), [time])
   const currentLesson = useMemo(() => {
     return (
       todayLessons.find((l) => {
@@ -558,13 +575,7 @@ export default function Dashboard() {
                     >
                       <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
                         <span>{hh}</span>
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "transition-opacity duration-300 ease-out",
-                            showColon ? "opacity-100" : "opacity-0"
-                          )}
-                        >
+                        <span aria-hidden="true" className="inline-block animate-dash-colon-blink">
                           :
                         </span>
                         <span>{mm}</span>
