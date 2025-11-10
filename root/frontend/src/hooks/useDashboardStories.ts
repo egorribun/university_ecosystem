@@ -14,10 +14,7 @@ type StoriesSnapshot = {
   etag: string | null
 }
 
-export const dashboardStoriesQueryKey = [
-  "dashboard",
-  "stories",
-] as const
+export const dashboardStoriesQueryKey = ["dashboard", "stories"] as const
 
 type DashboardStoriesQueryKey = typeof dashboardStoriesQueryKey
 
@@ -103,14 +100,10 @@ export const createDashboardStoriesQueryOptions = (queryClient: QueryClient) => 
 export const useDashboardStories = () => {
   const queryClient = useQueryClient()
 
-  const queryOptions = useMemo(
-    () => createDashboardStoriesQueryOptions(queryClient),
-    [queryClient]
-  )
+  const queryOptions = useMemo(() => createDashboardStoriesQueryOptions(queryClient), [queryClient])
 
   return useQuery(queryOptions)
 }
 
 export const prefetchDashboardStories = (queryClient: QueryClient) =>
   queryClient.prefetchQuery(createDashboardStoriesQueryOptions(queryClient))
-

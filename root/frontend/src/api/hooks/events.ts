@@ -131,11 +131,12 @@ const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[]
   return merged
 }
 
-const createEventsListQueryFn = (
-  queryClient: QueryClient,
-  normalized: NormalizedEventsListFilters,
-  queryKey: EventsListQueryKey
-) =>
+const createEventsListQueryFn =
+  (
+    queryClient: QueryClient,
+    normalized: NormalizedEventsListFilters,
+    queryKey: EventsListQueryKey
+  ) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
     const etagKey = pageParam == null ? createEventsListEtagKey(normalized) : undefined
     const params: Record<string, unknown> = {
@@ -229,10 +230,7 @@ export const useEventsListQuery = (
   }
 }
 
-export const prefetchEventsListQuery = (
-  queryClient: QueryClient,
-  filters: EventsListFilters
-) => {
+export const prefetchEventsListQuery = (queryClient: QueryClient, filters: EventsListFilters) => {
   const normalized = normalizeEventsListFilters(filters)
   const queryKey: EventsListQueryKey = ["events", "list", normalized]
   const queryFn = createEventsListQueryFn(queryClient, normalized, queryKey)

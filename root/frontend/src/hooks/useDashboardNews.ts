@@ -14,9 +14,7 @@ const sortNewsItems = (items: readonly NewsItem[] | undefined) => {
 
   return [...items]
     .filter(Boolean)
-    .sort(
-      (a, b) => Number(b?.pinned === true) - Number(a?.pinned === true)
-    )
+    .sort((a, b) => Number(b?.pinned === true) - Number(a?.pinned === true))
     .slice(0, DASHBOARD_NEWS_LIMIT)
 }
 
@@ -31,13 +29,9 @@ export const useDashboardNews = (language: SupportedLanguage) => {
   }
 }
 
-export const prefetchDashboardNews = (
-  queryClient: QueryClient,
-  language: SupportedLanguage
-) => {
+export const prefetchDashboardNews = (queryClient: QueryClient, language: SupportedLanguage) => {
   const options = createNewsFeedQueryOptions(queryClient, language)
   return queryClient.prefetchQuery(options)
 }
 
 export const dashboardNewsQueryKey = newsFeedQueryKey
-

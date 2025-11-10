@@ -1,9 +1,5 @@
 import { useMemo } from "react"
-import {
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from "@tanstack/react-query"
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query"
 
 import api from "@/api/client"
 import type { User } from "@/types/User"
@@ -93,6 +89,4 @@ export const prefetchDashboardSchedule = (
   queryClient: QueryClient,
   role: User["role"] | null | undefined,
   groupId: number | null | undefined
-) =>
-  queryClient.prefetchQuery(createScheduleQueryOptions(queryClient, role, groupId))
-
+) => queryClient.prefetchQuery(createScheduleQueryOptions(queryClient, role, groupId))

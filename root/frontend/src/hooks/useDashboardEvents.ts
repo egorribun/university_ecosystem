@@ -86,14 +86,10 @@ export const createDashboardEventsQueryOptions = (queryClient: QueryClient) => {
 export const useDashboardEvents = () => {
   const queryClient = useQueryClient()
 
-  const queryOptions = useMemo(
-    () => createDashboardEventsQueryOptions(queryClient),
-    [queryClient]
-  )
+  const queryOptions = useMemo(() => createDashboardEventsQueryOptions(queryClient), [queryClient])
 
   return useQuery(queryOptions)
 }
 
 export const prefetchDashboardEvents = (queryClient: QueryClient) =>
   queryClient.prefetchQuery(createDashboardEventsQueryOptions(queryClient))
-

@@ -188,14 +188,12 @@ describe("Accessibility checks", () => {
       }
       return { data: [], status: 200, headers: {} } as any
     })
-    const typedGetSpy = vi
-      .spyOn(apiClient, "get")
-      .mockImplementation(async (path: any) => {
-        if (path === "/news") {
-          return { data: [], status: 200, headers: {} } as any
-        }
+    const typedGetSpy = vi.spyOn(apiClient, "get").mockImplementation(async (path: any) => {
+      if (path === "/news") {
         return { data: [], status: 200, headers: {} } as any
-      })
+      }
+      return { data: [], status: 200, headers: {} } as any
+    })
 
     const { Wrapper } = createWrapper("/dashboard")
     const { container } = render(<Dashboard />, { wrapper: Wrapper })

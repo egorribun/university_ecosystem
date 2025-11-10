@@ -197,7 +197,9 @@ export default function Dashboard() {
   const shouldLoadSchedule = user?.role === "student" && Boolean(user?.group_id)
   const dashboardScheduleQuery = useDashboardSchedule(user?.role ?? null, user?.group_id ?? null)
   const schedule: DashboardLesson[] = dashboardScheduleQuery.data ?? []
-  const loadingSched = shouldLoadSchedule ? dashboardScheduleQuery.isLoading && schedule.length === 0 : false
+  const loadingSched = shouldLoadSchedule
+    ? dashboardScheduleQuery.isLoading && schedule.length === 0
+    : false
 
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
@@ -444,14 +446,14 @@ export default function Dashboard() {
               </div>
             </header>
 
-            <div data-fade="up" data-pop="true" style={fadeDelayStyle("100ms")}> 
-              <DashboardStories 
-                stories={stories} 
-                loading={loadingStories} 
-                onPrefetch={prefetchStories} 
-                onStoryOpen={handleStoryOpen} 
-              /> 
-            </div> 
+            <div data-fade="up" data-pop="true" style={fadeDelayStyle("100ms")}>
+              <DashboardStories
+                stories={stories}
+                loading={loadingStories}
+                onPrefetch={prefetchStories}
+                onStoryOpen={handleStoryOpen}
+              />
+            </div>
             <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
               <Card
                 data-fade="left"

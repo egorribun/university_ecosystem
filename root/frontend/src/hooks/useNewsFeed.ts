@@ -172,19 +172,13 @@ export const createNewsFeedQueryOptions = (
 ) => {
   const queryKey = buildQueryKey(language)
 
-  const options: UseQueryOptions<
-    NewsFeedSnapshot,
-    Error,
-    NewsItem[],
-    NewsFeedQueryKey
-  > = {
+  const options: UseQueryOptions<NewsFeedSnapshot, Error, NewsItem[], NewsFeedQueryKey> = {
     queryKey,
     queryFn: async ({ signal }) =>
       fetchNewsSnapshot(
         language,
         signal,
-        () =>
-          queryClient.getQueryData<NewsFeedSnapshot>(queryKey) ?? readCacheSnapshot(language)
+        () => queryClient.getQueryData<NewsFeedSnapshot>(queryKey) ?? readCacheSnapshot(language)
       ),
     select: (snapshot) => snapshot.items,
     placeholderData: (previous) => previous,
