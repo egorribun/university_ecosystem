@@ -1,7 +1,7 @@
 import { PropsWithChildren } from "react"
 import { renderHook, waitFor } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { AxiosError } from "axios"
+import { AxiosError, AxiosHeaders } from "axios"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
@@ -63,7 +63,9 @@ describe("fetchCurrentUser request configuration", () => {
         status: 400,
         statusText: "Bad Request",
         headers: {},
-        config: {},
+        config: {
+          headers: new AxiosHeaders(),
+        },
         data: {},
       }
     )
