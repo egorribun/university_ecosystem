@@ -67,7 +67,7 @@ from app.services.story_cleanup import (
     cleanup_expired_stories,
     start_story_cleanup_scheduler,
 )
-from app.utils.files import _get_storage_backend
+from app.utils.files import _get_storage_backend, scan_for_malware
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
