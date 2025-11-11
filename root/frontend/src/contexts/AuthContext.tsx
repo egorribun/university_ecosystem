@@ -123,9 +123,7 @@ type TokenWithProfileResponse = {
   session?: SessionSigningKeyResponse | null
 }
 
-const extractSigningKey = (
-  value: TokenWithProfileResponse | undefined | null
-): string | null => {
+const extractSigningKey = (value: TokenWithProfileResponse | undefined | null): string | null => {
   if (!value) return null
   const key = value.session?.signing_key
   return typeof key === "string" && key.length > 0 ? key : null
