@@ -142,7 +142,14 @@ const deriveCacheMetadata = () => {
 const primeCachedProfile = () => {
   const { schemaVersion, sessionKeyStorageKey, versionKey } = deriveCacheMetadata()
   const signingKey = "cached-session-key"
-  sessionStorage.setItem(sessionKeyStorageKey, signingKey)
+  const originalGetItem = Storage.prototype.getItem
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, key: string) {
+    if (key === sessionKeyStorageKey) {
+      return signingKey
+    }
+
+    return originalGetItem.call(this, key)
+  })
 
   const snapshot = {
     id: testUser.id,
