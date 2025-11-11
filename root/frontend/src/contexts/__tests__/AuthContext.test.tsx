@@ -1,5 +1,4 @@
 import { PropsWithChildren } from "react"
-import { Buffer } from "node:buffer"
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -14,8 +13,48 @@ import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
+import { utf8ToBytes } from "@noble/hashes/utils"
 
-const textEncoder = new TextEncoder()
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  const maybeBuffer =
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
+      : undefined
+
+  if (
+    maybeBuffer &&
+    typeof maybeBuffer === "function" &&
+    typeof (maybeBuffer as { from?: unknown }).from === "function"
+  ) {
+    return (
+      maybeBuffer as {
+        from: (
+          input: Uint8Array | string,
+          encoding?: string
+        ) => {
+          toString: (encoding: string) => string
+        }
+      }
+    )
+      .from(bytes)
+      .toString("base64")
+  }
+
+  let binary = ""
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+
+  if (
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as { btoa?: (value: string) => string }).btoa === "function"
+  ) {
+    return (globalThis as { btoa: (value: string) => string }).btoa(binary)
+  }
+
+  throw new Error("Unable to encode payload in base64")
+}
 
 describe("AuthProvider caching", () => {
   beforeEach(() => {
@@ -169,10 +208,10 @@ const primeCachedProfile = () => {
 
   const signatureBytes = hmac(
     sha256,
-    textEncoder.encode(signingKey),
-    textEncoder.encode(JSON.stringify(payload))
+    utf8ToBytes(signingKey),
+    utf8ToBytes(JSON.stringify(payload))
   )
-  const signature = Buffer.from(signatureBytes).toString("base64")
+  const signature = bytesToBase64(signatureBytes)
 
   const envelope = { ...payload, signature }
   localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
