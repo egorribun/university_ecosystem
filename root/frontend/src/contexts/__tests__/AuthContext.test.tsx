@@ -178,13 +178,17 @@ const deriveCacheMetadata = () => {
   return { schemaVersion, sessionKeyStorageKey, versionKey }
 }
 
+const buildMockSigningKey = () =>
+  Array.from({ length: 32 }, (_, index) => ((index * 13 + 7) % 16).toString(16)).join("")
+
+const mockSigningKey = buildMockSigningKey()
+
 const primeCachedProfile = () => {
   const { schemaVersion, sessionKeyStorageKey, versionKey } = deriveCacheMetadata()
-  const signingKey = "cached-session-key"
   const originalGetItem = Storage.prototype.getItem
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, key: string) {
     if (key === sessionKeyStorageKey) {
-      return signingKey
+      return mockSigningKey
     }
 
     return originalGetItem.call(this, key)
@@ -206,11 +210,7 @@ const primeCachedProfile = () => {
     data: snapshot,
   }
 
-  const signatureBytes = hmac(
-    sha256,
-    utf8ToBytes(signingKey),
-    utf8ToBytes(JSON.stringify(payload))
-  )
+  const signatureBytes = hmac(sha256, utf8ToBytes(mockSigningKey), utf8ToBytes(JSON.stringify(payload)))
   const signature = bytesToBase64(signatureBytes)
 
   const envelope = { ...payload, signature }
@@ -245,7 +245,7 @@ describe("AuthProvider loading state", () => {
         return Promise.resolve({ data: testUser })
       }
       if (url === "/auth/session/signing-key") {
-        return Promise.resolve({ data: { signing_key: "cached-session-key" } })
+        return Promise.resolve({ data: { signing_key: mockSigningKey } })
       }
       throw new Error(`Unexpected url: ${url}`)
     })
@@ -284,7 +284,7 @@ describe("AuthProvider loading state", () => {
       }
 
       if (url === "/auth/session/signing-key") {
-        return Promise.resolve({ data: { signing_key: "fresh-session-key" } })
+        return Promise.resolve({ data: { signing_key: mockSigningKey } })
       }
 
       throw new Error(`Unexpected url: ${url}`)
