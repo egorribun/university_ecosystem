@@ -206,7 +206,11 @@ const primeCachedProfile = () => {
     data: snapshot,
   }
 
-  const signatureBytes = hmac(sha256, utf8ToBytes(mockSigningKey), utf8ToBytes(JSON.stringify(payload)))
+  const signatureBytes = hmac(
+    sha256,
+    utf8ToBytes(mockSigningKey),
+    utf8ToBytes(JSON.stringify(payload))
+  )
   const signature = bytesToBase64(signatureBytes)
 
   const envelope = { ...payload, signature }
