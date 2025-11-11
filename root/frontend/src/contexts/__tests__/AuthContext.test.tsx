@@ -198,10 +198,6 @@ const primeCachedProfile = () => {
     id: testUser.id,
     full_name: testUser.full_name,
     avatar_url: testUser.avatar_url,
-    mfa_required: testUser.mfa_required,
-    mfa_default_method: testUser.mfa_default_method,
-    mfa_last_verified_at: testUser.mfa_last_verified_at,
-    mfa_recovery_codes_generated_at: testUser.mfa_recovery_codes_generated_at,
   }
 
   const payload = {
