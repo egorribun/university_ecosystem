@@ -116,8 +116,35 @@ type CachedProfileEnvelope = {
 
 type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
 
-type SessionSigningKeyResponse = {
-  signing_key: string
+type TokenWithProfileResponse = {
+  access_token: string
+  token_type: string
+  user?: User
+  session?: SessionSigningKeyResponse | null
+}
+
+const extractSigningKey = (
+  value: TokenWithProfileResponse | undefined | null
+): string | null => {
+  if (!value) return null
+  const key = value.session?.signing_key
+  return typeof key === "string" && key.length > 0 ? key : null
+}
+
+const isTokenWithProfileResponse = (
+  value: unknown
+): value is TokenWithProfileResponse & { user: User } => {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+  const candidate = value as Record<string, unknown>
+  if (typeof candidate.access_token !== "string") {
+    return false
+  }
+  if (!candidate.user || typeof candidate.user !== "object") {
+    return false
+  }
+  return true
 }
 
 type ProfileBroadcastMessage =
@@ -759,15 +786,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const finalizeAuthenticatedSession = useCallback(
     async (
       controller: AbortController,
-      { skipPushSync = false }: { skipPushSync?: boolean } = {}
+      {
+        skipPushSync = false,
+        profile,
+        signingKey,
+      }: {
+        skipPushSync?: boolean
+        profile?: User | null
+        signingKey?: string | null
+      } = {}
     ) => {
-      const signingKeyPromise = ensureSessionSigningKey()
-      const profile = await fetchCurrentUser({ signal: controller.signal })
-      try {
-        await signingKeyPromise
-      } catch (error) {
-        if (!controller.signal.aborted && import.meta.env.DEV) {
-          console.warn("Failed to obtain session signing key", error)
+      let resolvedProfile: User | null = profile ?? null
+      let signingKeyPromise: Promise<string | null> | null = null
+
+      if (typeof signingKey === "string" && signingKey.length > 0) {
+        updateSessionSigningKey(signingKey)
+      } else {
+        signingKeyPromise = ensureSessionSigningKey()
+      }
+
+      if (!resolvedProfile) {
+        resolvedProfile = await fetchCurrentUser({ signal: controller.signal })
+      }
+
+      if (signingKeyPromise) {
+        try {
+          await signingKeyPromise
+        } catch (error) {
+          if (!controller.signal.aborted && import.meta.env.DEV) {
+            console.warn("Failed to obtain session signing key", error)
+          }
         }
       }
 
@@ -775,7 +823,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return
       }
 
-      setUser(profile)
+      if (resolvedProfile) {
+        setUser(resolvedProfile)
+      }
 
       if (!skipPushSync && typeof window !== "undefined" && typeof Notification !== "undefined") {
         if (Notification.permission === "granted" && hasPushConsent()) {
@@ -789,7 +839,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     },
-    [ensureSessionSigningKey, setUser]
+    [ensureSessionSigningKey, setUser, updateSessionSigningKey]
   )
 
   const login = useCallback(
@@ -805,7 +855,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         setAuthOperation(true)
         setInitializing(true)
-        const response = await api.post<PendingMfaResponse | { access_token?: string }>(
+        const response = await api.post<PendingMfaResponse | TokenWithProfileResponse>(
           "/auth/login",
           payload,
           {
@@ -824,7 +874,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         updatePendingMfa(null)
-        await finalizeAuthenticatedSession(controller)
+        if (isTokenWithProfileResponse(response.data)) {
+          const success = response.data
+          await finalizeAuthenticatedSession(controller, {
+            profile: success.user,
+            signingKey: extractSigningKey(success),
+          })
+        } else {
+          await finalizeAuthenticatedSession(controller)
+        }
         return null
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -925,16 +983,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         const skipPushSync = Boolean(pending.session_id)
-        await api.post("/auth/mfa/verify", requestPayload, { signal: controller.signal })
+        const response = await api.post<TokenWithProfileResponse | undefined>(
+          "/auth/mfa/verify",
+          requestPayload,
+          { signal: controller.signal }
+        )
 
         if (controller.signal.aborted) {
           return
         }
 
         updatePendingMfa(null)
-        await finalizeAuthenticatedSession(controller, {
-          skipPushSync,
-        })
+        if (isTokenWithProfileResponse(response.data)) {
+          const success = response.data
+          await finalizeAuthenticatedSession(controller, {
+            skipPushSync,
+            profile: success.user,
+            signingKey: extractSigningKey(success),
+          })
+        } else {
+          await finalizeAuthenticatedSession(controller, {
+            skipPushSync,
+          })
+        }
       } catch (error) {
         if (controller.signal.aborted) {
           return

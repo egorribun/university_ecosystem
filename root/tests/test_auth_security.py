@@ -184,6 +184,11 @@ async def test_login_migrates_legacy_hash(async_client, user_factory, db_session
     body = response.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
+    assert body["user"]["id"] == user.id
+    session = body.get("session")
+    assert session is not None
+    assert isinstance(session.get("signing_key"), str)
+    assert session["signing_key"]
 
     await db_session.refresh(user)
     assert user.hashed_password.startswith("$argon2id$")
@@ -316,6 +321,11 @@ async def test_login_accepts_mixed_case_username(async_client, user_factory):
     body = response.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
+    assert body["user"]["id"] == user.id
+    session = body.get("session")
+    assert session is not None
+    assert isinstance(session.get("signing_key"), str)
+    assert session["signing_key"]
 
 
 @pytest.mark.anyio

@@ -4,7 +4,7 @@ import math
 import secrets
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.api.deps import get_current_user, require_fresh_mfa
+from app.api.users import _attach_pending_email
 from app.auth import mfa
 from app.auth.security import (
     create_access_token,
@@ -35,13 +36,15 @@ from app.models.models import (
     MfaWebAuthnCredential,
     User,
 )
+from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas.schemas import (
     MfaRecoveryCodeOut,
     MfaTotpEnrollmentOut,
     MfaWebAuthnCredentialOut,
     SessionSigningKeyOut,
-    Token,
+    TokenWithProfile,
     UserCreate,
+    UserOut,
 )
 from app.utils.ratelimit import sensitive_route_limit
 
@@ -221,6 +224,30 @@ async def _mint_access_token(
     )
     await db.commit()
     return token
+
+
+async def _build_token_response(
+    db: AsyncSession,
+    user: User,
+    token: str,
+    session: ActiveSession | None,
+) -> TokenWithProfile:
+    refreshed_user = await ensure_mfa_relationships_loaded(db, user)
+    if refreshed_user is not None:
+        user = refreshed_user
+    enriched_user = await _attach_pending_email(db, user)
+    if enriched_user is not None:
+        user = enriched_user
+    session_payload: SessionSigningKeyOut | None = None
+    signing_key = getattr(session, "signing_key", None) if session else None
+    if isinstance(signing_key, str) and signing_key:
+        session_payload = SessionSigningKeyOut(signing_key=signing_key)
+    return TokenWithProfile(
+        access_token=token,
+        token_type="bearer",
+        user=UserOut.model_validate(user),
+        session=session_payload,
+    )
 
 
 async def _resolve_mfa_capabilities(db: AsyncSession, *, user: User) -> dict[str, bool]:
@@ -690,7 +717,7 @@ async def _perform_login(
 
     client_ip, user_agent = _extract_client_info(request)
     now = datetime.now(UTC)
-    token = await create_access_token(
+    token_result = await create_access_token(
         str(user.id),
         db=db,
         session_metadata={
@@ -703,6 +730,11 @@ async def _perform_login(
             "mfa_verified_at": now,
         },
     )
+    if isinstance(token_result, tuple):
+        token, session = token_result
+    else:
+        token = cast(str, token_result)
+        session = None
     _set_access_token_cookie(response, token)
     _audit_log(
         "auth.login.success",
@@ -710,12 +742,12 @@ async def _perform_login(
         user_id=user.id,
         reason="authenticated",
     )
-    return {"access_token": token, "token_type": "bearer"}
+    return await _build_token_response(db, user, token, session)
 
 
 @router.post(
     "/login",
-    response_model=Token,
+    response_model=TokenWithProfile,
     responses={status.HTTP_202_ACCEPTED: {"model": PendingMfaResponse}},
     dependencies=[Depends(sensitive_route_limit())],
 )
@@ -736,7 +768,7 @@ async def login(
 
 @router.post(
     "/login-json",
-    response_model=Token,
+    response_model=TokenWithProfile,
     responses={status.HTTP_202_ACCEPTED: {"model": PendingMfaResponse}},
     dependencies=[Depends(sensitive_route_limit())],
 )
@@ -1040,7 +1072,7 @@ async def regenerate_recovery_codes(
     }
 
 
-@router.post("/mfa/verify", response_model=Token)
+@router.post("/mfa/verify", response_model=TokenWithProfile)
 async def verify_mfa_challenge(
     payload: MfaVerifyIn,
     response: Response,
@@ -1211,7 +1243,7 @@ async def verify_mfa_challenge(
             reason="verified",
             extra={"session_id": session.id},
         )
-    return Token(access_token=token, token_type="bearer")
+    return await _build_token_response(db, user, token, session)
 
 
 @router.post(

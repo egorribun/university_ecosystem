@@ -474,6 +474,11 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class TokenWithProfile(Token):
+    user: UserOut
+    session: "SessionSigningKeyOut | None" = None
+
+
 class SessionSigningKeyOut(BaseModel):
     signing_key: str
 

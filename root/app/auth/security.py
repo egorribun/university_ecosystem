@@ -105,7 +105,7 @@ async def create_access_token(
     extra: dict | None = None,
     db: AsyncSession | None = None,
     session_metadata: dict | None = None,
-) -> str:
+) -> str | tuple[str, ActiveSession]:
     minutes = expires_delta or settings.access_token_expire_minutes
     now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=minutes)
@@ -161,6 +161,8 @@ async def create_access_token(
                 session.mfa_verified_at = mfa_verified_at
         db.add(session)
         await db.commit()
+        await db.refresh(session)
+        return token, session
     return token
 
 
