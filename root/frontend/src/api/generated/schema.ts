@@ -2536,8 +2536,8 @@ export interface components {
       /** Is Active */
       is_active?: boolean | null
     }
-    /** Token */
-    Token: {
+    /** TokenWithProfile */
+    TokenWithProfile: {
       /** Access Token */
       access_token: string
       /**
@@ -2545,6 +2545,8 @@ export interface components {
        * @default bearer
        */
       token_type: string
+      user: components["schemas"]["UserOut"]
+      session?: components["schemas"]["SessionSigningKeyOut"] | null
     }
     /** TotpEnrollmentConfirmIn */
     TotpEnrollmentConfirmIn: {
@@ -2943,7 +2945,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["Token"]
+          "application/json": components["schemas"]["TokenWithProfile"]
         }
       }
       /** @description Accepted */
@@ -2985,7 +2987,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["Token"]
+          "application/json": components["schemas"]["TokenWithProfile"]
         }
       }
       /** @description Accepted */
@@ -3308,7 +3310,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["Token"]
+          "application/json": components["schemas"]["TokenWithProfile"]
         }
       }
       /** @description Validation Error */
