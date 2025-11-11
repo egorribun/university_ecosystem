@@ -456,10 +456,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userState, setUserState] = useState<UserState>(initializeCachedUser)
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
+  const userStateRef = useRef<UserState>(userState)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
-  const [initializing, setInitializing] = useState<boolean>(true)
+  const [initializing, setInitializing] = useState<boolean>(() => userState == null)
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
 
@@ -528,6 +529,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const next =
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
+        userStateRef.current = normalized
         if (persist) {
           persistUserToCache(normalized, sessionSigningKeyRef.current)
         }
@@ -654,7 +656,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
-    setInitializing(true)
+    if (userStateRef.current == null) {
+      setInitializing(true)
+    }
     ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
@@ -697,7 +701,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     activeRequestRef.current = controller
 
     try {
-      setInitializing(true)
+      if (userStateRef.current == null) {
+        setInitializing(true)
+      }
       const profile = await fetchCurrentUser({ signal: controller.signal })
       try {
         await ensureSessionSigningKey()
