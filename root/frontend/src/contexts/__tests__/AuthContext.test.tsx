@@ -1,5 +1,5 @@
 import { PropsWithChildren } from "react"
-import { createHmac } from "node:crypto"
+import { Buffer } from "node:buffer"
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -12,6 +12,10 @@ import {
 } from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
+import { hmac } from "@noble/hashes/hmac"
+import { sha256 } from "@noble/hashes/sha256"
+
+const textEncoder = new TextEncoder()
 
 describe("AuthProvider caching", () => {
   beforeEach(() => {
@@ -156,9 +160,12 @@ const primeCachedProfile = () => {
     data: snapshot,
   }
 
-  const signature = createHmac("sha256", signingKey)
-    .update(JSON.stringify(payload))
-    .digest("base64")
+  const signatureBytes = hmac(
+    sha256,
+    textEncoder.encode(signingKey),
+    textEncoder.encode(JSON.stringify(payload))
+  )
+  const signature = Buffer.from(signatureBytes).toString("base64")
 
   const envelope = { ...payload, signature }
   localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
