@@ -10,6 +10,8 @@ import {
   resetTestEvents,
   resetTestMfa,
   resetTestSessions,
+  resetTestStories,
+  resetTestNews,
 } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
 import { resetEtagCache } from "./api/client"
@@ -25,6 +27,8 @@ afterEach(() => {
   server.resetHandlers()
   resetTestSessions()
   resetTestEvents()
+  resetTestStories()
+  resetTestNews()
   resetTestMfa()
   resetAdminDeadLetterJobs()
   resetEtagCache()
