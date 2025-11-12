@@ -9,6 +9,14 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "src"),
       "@simplewebauthn/browser": path.resolve(__dirname, "src/tests/mocks/simplewebauthn.ts"),
+      "@mui/material/styles/CssVarsProvider": path.resolve(
+        __dirname,
+        "src/shims/muiCssVarsProvider.ts"
+      ),
+      "@mui/material/styles/useColorScheme": path.resolve(
+        __dirname,
+        "src/shims/muiUseColorScheme.ts"
+      ),
     },
   },
   test: {

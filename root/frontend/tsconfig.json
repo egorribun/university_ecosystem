@@ -16,7 +16,9 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@mui/material/styles/CssVarsProvider": ["src/shims/muiCssVarsProvider.ts"],
+      "@mui/material/styles/useColorScheme": ["src/shims/muiUseColorScheme.ts"]
     },
     "types": ["vite/client", "vite-plugin-pwa/client", "vitest", "vitest/globals", "jsdom"]
   },

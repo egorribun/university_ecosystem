@@ -183,7 +183,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins,
-    resolve: { alias: { "@": srcDir } },
+    resolve: {
+      alias: {
+        "@": srcDir,
+        "@mui/material/styles/CssVarsProvider": resolve(srcDir, "shims/muiCssVarsProvider.ts"),
+        "@mui/material/styles/useColorScheme": resolve(srcDir, "shims/muiUseColorScheme.ts"),
+      },
+    },
     server: {
       host: true,
       cors: true,
