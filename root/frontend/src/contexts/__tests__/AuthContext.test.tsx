@@ -11,6 +11,7 @@ import {
 } from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
+import i18n from "@/i18n/config"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 import { utf8ToBytes } from "@noble/hashes/utils"
@@ -316,5 +317,151 @@ describe("AuthProvider loading state", () => {
     expect(result.current.loading).toBe(false)
 
     queryClient.clear()
+  })
+})
+
+describe("AuthProvider dashboard prefetch", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const setup = () => {
+    const queryClient = createQueryClient()
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    )
+    return { queryClient, wrapper }
+  }
+
+  const resolveActiveLanguage = () => {
+    const resolved = i18n.resolvedLanguage ?? i18n.language ?? "ru"
+    return resolved === "en" ? "en" : "ru"
+  }
+
+  const preparePrefetchSpies = async () => {
+    const [storiesModule, newsModule, eventsModule, eventsApiModule] = await Promise.all([
+      import("@/hooks/useDashboardStories"),
+      import("@/hooks/useDashboardNews"),
+      import("@/hooks/useDashboardEvents"),
+      import("@/api/hooks/events"),
+    ])
+
+    const storiesSpy = vi
+      .spyOn(storiesModule, "prefetchDashboardStories")
+      .mockImplementation(async () => undefined)
+    const newsSpy = vi
+      .spyOn(newsModule, "prefetchDashboardNews")
+      .mockImplementation(async () => undefined)
+    const eventsSpy = vi
+      .spyOn(eventsModule, "prefetchDashboardEvents")
+      .mockImplementation(async () => undefined)
+    const eventsListSpy = vi
+      .spyOn(eventsApiModule, "prefetchEventsListQuery")
+      .mockImplementation(async () => undefined as any)
+
+    return {
+      storiesSpy,
+      newsSpy,
+      eventsSpy,
+      eventsListSpy,
+      eventsPageSize: eventsApiModule.EVENTS_PAGE_SIZE,
+    }
+  }
+
+  it("prefetches dashboard queries after login", async () => {
+    const postSpy = vi.spyOn(api, "post").mockResolvedValue({
+      status: 200,
+      data: {
+        access_token: "token",
+        token_type: "bearer",
+        user: { ...testUser, group_id: null },
+        session: { signing_key: "key" },
+      },
+    } as any)
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        return Promise.resolve({ data: testUser })
+      }
+      if (url === "/auth/session/signing-key") {
+        return Promise.resolve({ data: { signing_key: "key" } })
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    const { storiesSpy, newsSpy, eventsSpy, eventsListSpy } = await preparePrefetchSpies()
+    const language = resolveActiveLanguage()
+    const { wrapper } = setup()
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.login("user@example.com", "password")
+    })
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalled()
+      expect(storiesSpy).toHaveBeenCalledTimes(1)
+      expect(newsSpy).toHaveBeenCalledTimes(1)
+      expect(eventsSpy).toHaveBeenCalledTimes(1)
+    })
+
+    expect(newsSpy).toHaveBeenCalledWith(expect.anything(), language)
+    expect(eventsListSpy).not.toHaveBeenCalled()
+  })
+
+  it("prefetches schedule data when the student has a group", async () => {
+    const loginUser = { ...testUser, group_id: 42 }
+    const postSpy = vi.spyOn(api, "post").mockResolvedValue({
+      status: 200,
+      data: {
+        access_token: "token",
+        token_type: "bearer",
+        user: loginUser,
+        session: { signing_key: "key" },
+      },
+    } as any)
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        return Promise.resolve({ data: testUser })
+      }
+      if (url === "/auth/session/signing-key") {
+        return Promise.resolve({ data: { signing_key: "key" } })
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    const { storiesSpy, newsSpy, eventsSpy, eventsListSpy, eventsPageSize } =
+      await preparePrefetchSpies()
+    const language = resolveActiveLanguage()
+    const { wrapper } = setup()
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.login("user@example.com", "password")
+    })
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalled()
+      expect(storiesSpy).toHaveBeenCalledTimes(1)
+      expect(newsSpy).toHaveBeenCalledTimes(1)
+      expect(eventsSpy).toHaveBeenCalledTimes(1)
+      expect(eventsListSpy).toHaveBeenCalledTimes(1)
+    })
+
+    expect(eventsListSpy).toHaveBeenCalledWith(expect.anything(), {
+      language,
+      is_active: true,
+      limit: eventsPageSize,
+    })
   })
 })
