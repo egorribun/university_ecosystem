@@ -183,13 +183,14 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(user: User = Depends(get_current_user)):
-    state = await create_access_token(str(user.id), expires_delta=10)
+    state_result = await create_access_token(str(user.id), expires_delta=10)
+    state_token = state_result[0] if isinstance(state_result, tuple) else state_result
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
         "redirect_uri": settings.spotify_redirect_uri,
         "scope": settings.spotify_scopes,
-        "state": state,
+        "state": state_token,
         "show_dialog": "false",
     }
     url = "https://accounts.spotify.com/authorize?" + urlencode(params)

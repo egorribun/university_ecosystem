@@ -144,6 +144,11 @@ async def test_totp_enrollment_and_verification_flow(
     body = success.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
+    assert body["user"]["id"] == user.id
+    session = body.get("session")
+    assert session is not None
+    assert isinstance(session.get("signing_key"), str)
+    assert session["signing_key"]
 
     result = await db_session.execute(
         select(models.MfaChallenge).where(
