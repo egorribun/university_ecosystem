@@ -22,6 +22,7 @@ import type { components } from "@/api/generated/schema"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { PendingMfaResponse, MfaMethod, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
+import type { SupportedLanguage } from "@/contexts/LanguageContext"
 
 type UserState = User | null
 
@@ -477,7 +478,7 @@ const initializeCachedUser = (): UserState => {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient()
-  const { t } = useTranslation("auth")
+  const { t, i18n } = useTranslation("auth")
   const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(() =>
     readStoredSessionSigningKey()
   )
@@ -826,6 +827,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (resolvedProfile) {
         setUser(resolvedProfile)
+
+        if (typeof window !== "undefined") {
+          const resolvedLanguage = (i18n.resolvedLanguage ?? i18n.language ?? "ru") as SupportedLanguage
+          const language: SupportedLanguage = resolvedLanguage === "en" ? "en" : "ru"
+
+          void (async () => {
+            try {
+              const [storiesModule, newsModule, eventsModule, eventsApiModule] = await Promise.all([
+                import("@/hooks/useDashboardStories"),
+                import("@/hooks/useDashboardNews"),
+                import("@/hooks/useDashboardEvents"),
+                import("@/api/hooks/events"),
+              ])
+
+              const promises: Promise<unknown>[] = [
+                storiesModule.prefetchDashboardStories(queryClient),
+                newsModule.prefetchDashboardNews(queryClient, language),
+                eventsModule.prefetchDashboardEvents(queryClient),
+              ]
+
+              if (resolvedProfile.role === "student" && resolvedProfile.group_id) {
+                promises.push(
+                  eventsApiModule.prefetchEventsListQuery(queryClient, {
+                    language,
+                    is_active: true,
+                    limit: eventsApiModule.EVENTS_PAGE_SIZE,
+                  })
+                )
+              }
+
+              await Promise.all(promises)
+            } catch (error) {
+              if (import.meta.env.DEV) {
+                console.warn("Failed to prefetch dashboard data", error)
+              }
+            }
+          })()
+        }
       }
 
       if (!skipPushSync && typeof window !== "undefined" && typeof Notification !== "undefined") {
@@ -840,7 +879,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     },
-    [ensureSessionSigningKey, setUser, updateSessionSigningKey]
+    [ensureSessionSigningKey, i18n, queryClient, setUser, updateSessionSigningKey]
   )
 
   const login = useCallback(
