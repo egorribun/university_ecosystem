@@ -829,7 +829,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(resolvedProfile)
 
         if (typeof window !== "undefined") {
-          const resolvedLanguage = (i18n.resolvedLanguage ?? i18n.language ?? "ru") as SupportedLanguage
+          const resolvedLanguage = (i18n.resolvedLanguage ??
+            i18n.language ??
+            "ru") as SupportedLanguage
           const language: SupportedLanguage = resolvedLanguage === "en" ? "en" : "ru"
 
           void (async () => {
