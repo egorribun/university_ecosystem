@@ -30,8 +30,9 @@ async function bootstrap() {
     const [
       ReactMod,
       ReactDOMMod,
-      MuiCoreMod,
-      MuiStylesMod,
+      MuiCssBaselineMod,
+      MuiCssVarsProviderMod,
+      MuiUseColorSchemeMod,
       ReactQueryMod,
       AppMod,
       ErrorBoundaryMod,
@@ -40,8 +41,9 @@ async function bootstrap() {
     ] = await Promise.all([
       import("react"),
       import("react-dom/client"),
-      import("@mui/material"),
-      import("@mui/material/styles"),
+      import("@mui/material/CssBaseline"),
+      import("@mui/material/styles/CssVarsProvider"),
+      import("@mui/material/styles/useColorScheme"),
       import("@tanstack/react-query"),
       import("./App"),
       import("./app/ErrorBoundary"),
@@ -50,8 +52,9 @@ async function bootstrap() {
     ])
 
     const { StrictMode, useEffect } = ReactMod
-    const { CssBaseline } = MuiCoreMod
-    const { CssVarsProvider, useColorScheme } = MuiStylesMod
+    const { default: CssBaseline } = MuiCssBaselineMod
+    const { default: CssVarsProvider } = MuiCssVarsProviderMod
+    const { default: useColorScheme } = MuiUseColorSchemeMod
     const { QueryClientProvider } = ReactQueryMod
     const { default: App } = AppMod
     const { default: ErrorBoundary } = ErrorBoundaryMod
