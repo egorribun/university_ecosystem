@@ -18,6 +18,7 @@ import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
 import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
+import type { components } from "@/api/generated/schema"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { PendingMfaResponse, MfaMethod, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
@@ -115,6 +116,8 @@ type CachedProfileEnvelope = {
 }
 
 type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
+
+type SessionSigningKeyResponse = components["schemas"]["SessionSigningKeyOut"]
 
 type TokenWithProfileResponse = {
   access_token: string
