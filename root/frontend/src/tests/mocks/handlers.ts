@@ -2,6 +2,8 @@ import { HttpResponse, http } from "msw"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
 import type { Event } from "@/types/Event"
+import type { StoryItem } from "@/types/Story"
+import type { NewsItem } from "@/api/news"
 import type {
   MfaMethod,
   MfaTotpEnrollment,
@@ -273,6 +275,58 @@ export const resetTestEvents = () => {
   setTestEvents(createBaseEvents())
 }
 
+const createTestStories = (): StoryItem[] => {
+  const now = new Date()
+  return Array.from({ length: 4 }, (_, index) => {
+    const id = index + 1
+    const publishedAt = new Date(now.getTime() - index * 60 * 60 * 1000).toISOString()
+    const expiresAt = new Date(now.getTime() + (index + 1) * 60 * 60 * 1000).toISOString()
+    return {
+      id,
+      title: `Test story ${id}`,
+      title_en: `Test story ${id}`,
+      short_text: `Story preview ${id}`,
+      short_text_en: `Story preview ${id}`,
+      cover_url: null,
+      cta_url: null,
+      published_at: publishedAt,
+      expires_at: expiresAt,
+      is_active: true,
+      created_by: testUser.id,
+      created_at: nowIso(),
+    }
+  })
+}
+
+const createTestNews = (): NewsItem[] => {
+  const now = new Date()
+  return Array.from({ length: 5 }, (_, index) => {
+    const id = index + 1
+    return {
+      id,
+      title: `News item ${id}`,
+      content: `News content ${id}`,
+      title_en: `News item ${id}`,
+      content_en: `News content ${id}`,
+      image_url: null,
+      created_at: new Date(now.getTime() - index * 24 * 60 * 60 * 1000).toISOString(),
+    }
+  })
+}
+
+export const testStories = createTestStories()
+export const testNewsItems = createTestNews()
+
+export const resetTestStories = () => {
+  const stories = createTestStories()
+  testStories.splice(0, testStories.length, ...stories)
+}
+
+export const resetTestNews = () => {
+  const news = createTestNews()
+  testNewsItems.splice(0, testNewsItems.length, ...news)
+}
+
 const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
   {
     id: 1,
@@ -325,6 +379,8 @@ export const handlers = [
     HttpResponse.json({ signing_key: "test-session-signing-key" })
   ),
   http.get("*/users/me", () => HttpResponse.json(testUser)),
+  http.get("*/stories", () => HttpResponse.json(testStories)),
+  http.get("*/news", () => HttpResponse.json(testNewsItems)),
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
   http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments ?? [])),
   http.post("*/auth/mfa/totp/start", async ({ request }) => {
