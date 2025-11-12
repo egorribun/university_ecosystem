@@ -11,11 +11,11 @@ export default defineConfig({
       "@simplewebauthn/browser": path.resolve(__dirname, "src/tests/mocks/simplewebauthn.ts"),
       "@mui/material/styles/CssVarsProvider": path.resolve(
         __dirname,
-        "src/shims/muiCssVarsProvider.ts",
+        "src/shims/muiCssVarsProvider.ts"
       ),
       "@mui/material/styles/useColorScheme": path.resolve(
         __dirname,
-        "src/shims/muiUseColorScheme.ts",
+        "src/shims/muiUseColorScheme.ts"
       ),
     },
   },
