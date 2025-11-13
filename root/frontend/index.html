@@ -37,12 +37,7 @@
           s = localStorage.getItem("theme");
         } catch (e) {}
         var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        var dark = m;
-        if (s === "light") {
-          dark = false;
-        } else if (s === "dark") {
-          dark = true;
-        }
+        var dark = s ? s === "dark" : m;
         var bg = dark ? "#0b0d11" : "#f4f8fd";
         var html = document.documentElement;
         html.style.backgroundColor = bg;
