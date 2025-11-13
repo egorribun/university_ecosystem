@@ -1,6 +1,23 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" style="background-color: #060B14;">
   <head>
+    <script>
+      (function () {
+        var s = null;
+        try {
+          s = localStorage.getItem("theme");
+        } catch (e) {}
+        var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var dark = s ? s === "dark" : m;
+        var bg = dark ? "#060B14" : "#E8F1FB";
+        var html = document.documentElement;
+        html.style.backgroundColor = bg;
+        html.style.setProperty("--initial-bg", bg);
+        if (dark) {
+          html.classList.add("dark");
+        }
+      })();
+    </script>
     <script>
       (function () {
         import("/static-shell-i18n.js")
@@ -31,38 +48,61 @@
         } catch (error) {}
         document.documentElement.setAttribute("lang", lang);
         window.__UE_SELECTED_LANG__ = lang;
-
-        var s = null;
-        try {
-          s = localStorage.getItem("theme");
-        } catch (e) {}
-        var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        var dark = s ? s === "dark" : m;
-        var bg = dark ? "#0b0d11" : "#f4f8fd";
-        var html = document.documentElement;
-        html.style.backgroundColor = bg;
-        if (dark) html.classList.add("dark");
-        document.addEventListener("DOMContentLoaded", function () {
-          document.body.style.backgroundColor = bg;
-          document.body.classList.toggle("dark", dark);
-          var r = document.getElementById("root");
-          if (r) r.style.backgroundColor = bg;
-        });
       })();
     </script>
     <style>
-      html, body, #root { min-height: 100vh; min-height: 100svh; min-height: 100dvh; height: auto }
-      body { margin: 0; background: inherit; overscroll-behavior-y: none }
-      #root { background: inherit }
+      :root { 
+        --initial-bg: #060B14; 
+      }
+      html { 
+        background: var(--initial-bg, #060B14) !important; 
+        background-color: var(--initial-bg, #060B14) !important; 
+        min-height: 100vh; 
+        min-height: 100svh; 
+        min-height: 100dvh; 
+        height: auto; 
+        scrollbar-gutter: stable;
+        visibility: visible;
+      }
+      body { 
+        background: var(--initial-bg, #060B14) !important; 
+        background-color: var(--initial-bg, #060B14) !important; 
+        margin: 0; 
+        overscroll-behavior-y: none;
+        min-height: 100vh; 
+        min-height: 100svh; 
+        min-height: 100dvh; 
+        height: auto;
+        opacity: 1;
+        visibility: visible;
+      }
+      #root { 
+        background: var(--initial-bg, #060B14) !important; 
+        background-color: var(--initial-bg, #060B14) !important; 
+        min-height: 100vh; 
+        min-height: 100svh; 
+        min-height: 100dvh; 
+        height: auto;
+        opacity: 0;
+        transition: opacity 0.15s ease-in;
+      }
+      #root.ready {
+        opacity: 1;
+      }
+      html::before,
+      html::after,
+      body::before,
+      body::after {
+        display: none !important;
+      }
       * { scrollbar-width: none; -ms-overflow-style: none }
       *::-webkit-scrollbar { display: none; width: 0; height: 0 }
-      html { scrollbar-gutter: stable }
     </style>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f8fd" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d11" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#E8F1FB" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#060B14" />
     <meta
       name="description"
       content="Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте."
@@ -92,10 +132,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Oxygen:wght@300;400;700&family=Varela&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Oxygen:wght@300;400;700&family=Varela&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <style>
+        #root { display: block !important; }
+      </style>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -72,12 +72,22 @@ function AppContent() {
   const fallbackShell = (
     <div
       aria-hidden="true"
-      style={{ minHeight: "100dvh", background: "var(--page-bg)", color: "var(--page-text)" }}
+      style={{
+        minHeight: "100dvh",
+        background: "var(--page-bg, var(--initial-bg, #060B14))",
+        color: "var(--page-text)",
+      }}
     />
   )
 
   const routedContent = (
-    <div style={{ minHeight: "100dvh", background: "var(--page-bg)", color: "var(--page-text)" }}>
+    <div
+      style={{
+        minHeight: "100dvh",
+        background: "var(--page-bg, var(--initial-bg, #060B14))",
+        color: "var(--page-text)",
+      }}
+    >
       <Suspense fallback={fallbackShell}>
         <Routes location={location} key={location.pathname}>
           <Route path="/login" element={wrap(<Login />)} />
