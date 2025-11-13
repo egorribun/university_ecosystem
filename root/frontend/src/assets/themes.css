@@ -320,7 +320,7 @@ button:not(.MuiButtonBase-root):focus-visible,
   border-radius: max(var(--ue-radius-sm), 0.75rem);
 }
 body {
-  background: var(--page-bg, var(--initial-bg, #060B14));
+  background: var(--page-bg, var(--initial-bg, #060b14));
   color: var(--page-text);
   transition:
     background var(--anim-med),

@@ -5,7 +5,7 @@
 @layer base {
   body {
     @apply min-h-screen text-page-foreground font-ui antialiased transition-colors duration-300 ease-out;
-    background: var(--page-bg, var(--initial-bg, #060B14));
+    background: var(--page-bg, var(--initial-bg, #060b14));
   }
 
   h1,
