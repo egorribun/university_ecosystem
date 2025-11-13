@@ -131,7 +131,8 @@ async function bootstrap() {
       : null
 
     const rootElement = document.getElementById("root")!
-    ReactDOMMod.default.createRoot(rootElement).render(
+    const root = ReactDOMMod.default.createRoot(rootElement)
+    root.render(
       <StrictMode>
         <QueryClientProvider client={queryClient}>
           <CssVarsProvider
@@ -150,6 +151,12 @@ async function bootstrap() {
         </QueryClientProvider>
       </StrictMode>
     )
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        rootElement.classList.add("ready")
+      })
+    })
 
     if (webVitalsEnabled && typeof window !== "undefined") {
       const report = () => {
