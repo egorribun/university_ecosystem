@@ -893,7 +893,9 @@ async def test_webauthn_metadata_resolver_cached_fallback(monkeypatch, tmp_path)
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_cache_file", str(cache_path))
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_cache_ttl_seconds", 3600)
     monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", "")
-    monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "https://metadata.example")
+    monkeypatch.setattr(
+        settings, "mfa_webauthn_metadata_url", "https://metadata.example"
+    )
 
     payload = {
         "entries": [
