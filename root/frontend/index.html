@@ -67,36 +67,9 @@
       })();
     </script>
     <style>
-      html {
-        background-color: #060b14;
-        color: #dde6f7;
-        color-scheme: dark;
-      }
-      @media (prefers-color-scheme: light) {
-        html {
-          background-color: #e8f1fb;
-          color: #101621;
-          color-scheme: light;
-        }
-      }
-      html,
-      body,
-      #root {
-        min-height: 100vh;
-        min-height: 100svh;
-        min-height: 100dvh;
-        height: auto;
-      }
-      body {
-        margin: 0;
-        background: inherit;
-        color: inherit;
-        overscroll-behavior-y: none;
-      }
-      #root {
-        background: inherit;
-        color: inherit;
-      }
+      html, body, #root { min-height: 100vh; min-height: 100svh; min-height: 100dvh; height: auto }
+      body { margin: 0; background: inherit; overscroll-behavior-y: none }
+      #root { background: inherit }
       html.dark, html.dark body, html.dark #root { background-color: #060b14 !important; color: #dde6f7 }
       html:not(.dark), html:not(.dark) body, html:not(.dark) #root { background-color: #e8f1fb; color: #101621 }
       * { scrollbar-width: none; -ms-overflow-style: none }
