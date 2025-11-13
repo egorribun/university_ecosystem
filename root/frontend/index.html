@@ -17,6 +17,9 @@
     </script>
     <script>
       (function () {
+        var html = document.documentElement;
+        html.classList.add("theme-initializing");
+
         var lang = "ru";
         try {
           var storedLang = localStorage.getItem("ue:language");
@@ -44,25 +47,37 @@
           dark = true;
         }
         var bg = dark ? "#060b14" : "#e8f1fb";
-        var html = document.documentElement;
         var scheme = dark ? "dark" : "light";
         html.style.backgroundColor = bg;
         html.style.colorScheme = scheme;
         html.classList.toggle("dark", dark);
         html.setAttribute("data-color-scheme", scheme);
         html.setAttribute("data-mui-color-scheme", scheme);
+
+        function finalizeThemeInitialization() {
+          requestAnimationFrame(function () {
+            html.classList.remove("theme-initializing");
+            if (document.body) {
+              document.body.classList.remove("theme-initializing");
+            }
+          });
+        }
+
         function applyThemeToBody() {
           if (!document.body) return false;
-          document.body.style.backgroundColor = bg;
-          document.body.style.colorScheme = scheme;
-          document.body.classList.toggle("dark", dark);
-          document.body.setAttribute("data-color-scheme", scheme);
-          document.body.setAttribute("data-mui-color-scheme", scheme);
+          var body = document.body;
+          body.classList.add("theme-initializing");
+          body.style.backgroundColor = bg;
+          body.style.colorScheme = scheme;
+          body.classList.toggle("dark", dark);
+          body.setAttribute("data-color-scheme", scheme);
+          body.setAttribute("data-mui-color-scheme", scheme);
           var root = document.getElementById("root");
           if (root) {
             root.style.backgroundColor = bg;
             root.style.colorScheme = scheme;
           }
+          finalizeThemeInitialization();
           return true;
         }
         if (!applyThemeToBody()) {
@@ -71,8 +86,9 @@
               document.removeEventListener("readystatechange", onReady);
             }
           });
-          document.addEventListener("DOMContentLoaded", applyThemeToBody);
+          document.addEventListener("DOMContentLoaded", applyThemeToBody, { once: true });
         }
+        window.addEventListener("load", finalizeThemeInitialization, { once: true });
       })();
     </script>
     <style>
@@ -80,6 +96,15 @@
         background-color: #060b14;
         color: #dde6f7;
         color-scheme: dark;
+      }
+      html.theme-initializing,
+      html.theme-initializing *,
+      body.theme-initializing,
+      body.theme-initializing * {
+        transition-property: none !important;
+        transition-duration: 0s !important;
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
       }
       @media (prefers-color-scheme: light) {
         html {
