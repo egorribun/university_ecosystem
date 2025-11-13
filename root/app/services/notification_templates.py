@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
 from textwrap import shorten
-from typing import Any
+from typing import Any, Protocol
 
 from app.localization import SUPPORTED_LOCALES, translate
 
@@ -529,7 +529,14 @@ def _build_system(
     }
 
 
-_BUILDERS: dict[str, Any] = {
+class NotificationBuilder(Protocol):
+    def __call__(
+        self, context: ScenarioContext, *, locale: str | None = ...
+    ) -> dict[str, Any] | None:
+        """Build a notification payload for the given scenario."""
+
+
+_BUILDERS: dict[str, NotificationBuilder] = {
     "schedule.change": _build_schedule_change,
     "schedule.reminder": _build_schedule_reminder,
     "news.new": _build_news,

@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 from io import BytesIO
+from typing import cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
+    from PIL.Image import Resampling
+except ImportError:  # pragma: no cover - Pillow < 9.1 compatibility
+    Resampling = int  # type: ignore[misc,assignment]
 
-def _resolve_resample_filter() -> int:
+
+def _resolve_resample_filter() -> Resampling:
     """Return the best available high-quality resampling filter."""
 
     resampling = getattr(Image, "Resampling", None)
     if resampling is not None:
-        return resampling.LANCZOS
-    return Image.LANCZOS  # pragma: no cover - compatibility fallback
+        return cast(Resampling, resampling.LANCZOS)
+    lanczos = getattr(Image, "LANCZOS", None)
+    if lanczos is None:
+        raise AttributeError("Pillow installation does not expose a LANCZOS filter")
+    return cast(Resampling, lanczos)
 
 
 def optimize_image(
