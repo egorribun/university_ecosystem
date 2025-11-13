@@ -110,7 +110,10 @@ class WebAuthnMetadataResolver:
             cached = self._load_cached_payload()
             if cached is not None:
                 logger.warning(
-                    "Failed to refresh WebAuthn metadata from source; using cached payload (%s)",
+                    (
+                        "Failed to refresh WebAuthn metadata from source; "
+                        "using cached payload (%s)"
+                    ),
                     failure,
                     exc_info=True,
                 )
@@ -118,7 +121,10 @@ class WebAuthnMetadataResolver:
                 used_cache = True
             else:
                 logger.error(
-                    "Failed to refresh WebAuthn metadata and no cached payload is available: %s",
+                    (
+                        "Failed to refresh WebAuthn metadata and no cached "
+                        "payload is available: %s"
+                    ),
                     failure,
                     exc_info=True,
                 )
