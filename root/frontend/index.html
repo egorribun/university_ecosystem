@@ -32,46 +32,33 @@
         document.documentElement.setAttribute("lang", lang);
         window.__UE_SELECTED_LANG__ = lang;
 
-        var storedTheme = null;
+        var s = null;
         try {
-          storedTheme = localStorage.getItem("theme");
+          s = localStorage.getItem("theme");
         } catch (e) {}
-        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        var dark = prefersDark;
-        if (storedTheme === "light") {
+        var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var dark = m;
+        if (s === "light") {
           dark = false;
-        } else if (storedTheme === "dark") {
+        } else if (s === "dark") {
           dark = true;
         }
-        var bg = dark ? "#060b14" : "#e8f1fb";
+        var bg = dark ? "#0b0d11" : "#f4f8fd";
         var html = document.documentElement;
         html.style.backgroundColor = bg;
-        html.style.colorScheme = dark ? "dark" : "light";
-        html.classList.toggle("dark", dark);
-        function applyThemeToBody() {
-          if (!document.body) return false;
+        if (dark) html.classList.add("dark");
+        document.addEventListener("DOMContentLoaded", function () {
           document.body.style.backgroundColor = bg;
           document.body.classList.toggle("dark", dark);
-          var root = document.getElementById("root");
-          if (root) root.style.backgroundColor = bg;
-          return true;
-        }
-        if (!applyThemeToBody()) {
-          document.addEventListener("readystatechange", function onReady() {
-            if (document.readyState !== "loading" && applyThemeToBody()) {
-              document.removeEventListener("readystatechange", onReady);
-            }
-          });
-          document.addEventListener("DOMContentLoaded", applyThemeToBody);
-        }
+          var r = document.getElementById("root");
+          if (r) r.style.backgroundColor = bg;
+        });
       })();
     </script>
     <style>
       html, body, #root { min-height: 100vh; min-height: 100svh; min-height: 100dvh; height: auto }
       body { margin: 0; background: inherit; overscroll-behavior-y: none }
       #root { background: inherit }
-      html.dark, html.dark body, html.dark #root { background-color: #060b14 !important; color: #dde6f7 }
-      html:not(.dark), html:not(.dark) body, html:not(.dark) #root { background-color: #e8f1fb; color: #101621 }
       * { scrollbar-width: none; -ms-overflow-style: none }
       *::-webkit-scrollbar { display: none; width: 0; height: 0 }
       html { scrollbar-gutter: stable }
@@ -79,8 +66,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e8f1fb" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#060b14" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f8fd" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d11" />
     <meta
       name="description"
       content="Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте."
