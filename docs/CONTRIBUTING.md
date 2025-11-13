@@ -12,3 +12,12 @@
   introduce new localized screens.
 - Snapshot updates should reflect the finalized English strings; re-run Vitest
   with `--update` if assertions flag stale output.
+
+## Backend test coverage
+
+- Keep backend coverage at or above **72%**, matching the current baseline. The
+  CI pipeline enforces this with `pytest --cov-fail-under=72`, so changes that
+  slip below the threshold will fail the build.
+- Before pushing, run `pytest --cov=app --cov-report=term-missing --cov-fail-under=72`
+  from the `root/` directory to verify your branch still meets the target and to
+  review any uncovered lines.
