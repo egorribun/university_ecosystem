@@ -12,6 +12,9 @@
   introduce new localized screens.
 - Snapshot updates should reflect the finalized English strings; re-run Vitest
   with `--update` if assertions flag stale output.
+- Run `npm run manifests:check` from `root/frontend` to confirm generated PWA
+  manifests are clean before you push. If it reports drift, regenerate them with
+  `npm run generate:manifests` and include the updated files in your commit.
 
 ## Backend test coverage
 

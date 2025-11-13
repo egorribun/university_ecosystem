@@ -105,10 +105,14 @@ jobs:
             git diff -- frontend/src/api/generated/schema.ts
             exit 1
           fi
-      - name: Run ESLint and Prettier
+      - name: Run ESLint, manifests check, and Prettier
         working-directory: root/frontend
         run: |
           npm run lint
+          if ! npm run manifests:check; then
+            echo "::error::Generated PWA manifests are not up to date. Run 'npm run generate:manifests' and commit the results."
+            exit 1
+          fi
           npm run format:check
 
   pip-audit:
