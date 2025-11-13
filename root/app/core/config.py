@@ -296,6 +296,8 @@ class Settings(BaseSettings):
     mfa_webauthn_metadata_url: str = ""
     mfa_webauthn_metadata_json: str = ""
     mfa_webauthn_metadata_refresh_seconds: int = 86_400
+    mfa_webauthn_metadata_cache_file: str = ""
+    mfa_webauthn_metadata_cache_ttl_seconds: int = 604_800
     mfa_webauthn_metadata_enforcement: str = "log"
     mfa_step_up_ttl_seconds: int = 300
     security_csp: str = ""
@@ -529,13 +531,18 @@ class Settings(BaseSettings):
             )
         return normalized
 
-    @field_validator("mfa_webauthn_metadata_refresh_seconds")
+    @field_validator(
+        "mfa_webauthn_metadata_refresh_seconds",
+        "mfa_webauthn_metadata_cache_ttl_seconds",
+    )
     @classmethod
-    def _validate_webauthn_metadata_refresh(cls, value: int) -> int:
+    def _validate_webauthn_metadata_refresh(
+        cls, value: int, info: FieldValidationInfo
+    ) -> int:
         if value < 0:
-            raise ValueError(
-                "MFA_WEBAUTHN_METADATA_REFRESH_SECONDS must be zero or positive"
-            )
+            field_name = getattr(info, "field_name", "value")
+            label = str(field_name or "value").upper()
+            raise ValueError(f"{label} must be zero or positive")
         return value
 
     @field_validator(

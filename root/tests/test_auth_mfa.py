@@ -2,7 +2,9 @@ import base64
 import datetime as dt
 import json
 import logging
+from collections.abc import Mapping
 from types import SimpleNamespace
+from typing import Any
 
 import pyotp
 import pytest
@@ -24,7 +26,7 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.management import reset_mfa
 from app.models import models
-from app.services.webauthn_metadata import metadata_resolver
+from app.services.webauthn_metadata import MetadataLoadError, metadata_resolver
 
 
 def _base64url(data: bytes) -> str:
@@ -880,5 +882,51 @@ async def test_webauthn_metadata_resolver_refresh(monkeypatch):
 
     await metadata_resolver.refresh(force=True)
     assert len(calls) == 3
+
+    metadata_resolver.invalidate()
+
+
+@pytest.mark.anyio
+async def test_webauthn_metadata_resolver_cached_fallback(monkeypatch, tmp_path):
+    metadata_resolver.invalidate()
+    cache_path = tmp_path / "metadata-cache.json"
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_cache_file", str(cache_path))
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_cache_ttl_seconds", 3600)
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_json", "")
+    monkeypatch.setattr(settings, "mfa_webauthn_metadata_url", "https://metadata.example")
+
+    payload = {
+        "entries": [
+            {
+                "aaguid": "00112233-4455-6677-8899-aabbccddeeff",
+                "metadataStatement": {
+                    "aaguid": "00112233-4455-6677-8899-aabbccddeeff",
+                    "description": "Sample Authenticator",
+                    "attestationRootCertificates": ["root-cert"],
+                    "authenticatorGetInfo": {"transports": ["usb"]},
+                },
+                "statusReports": [{"status": "FIDO_CERTIFIED"}],
+            }
+        ]
+    }
+
+    async def _load_ok() -> Mapping[str, Any]:
+        return payload
+
+    monkeypatch.setattr(metadata_resolver, "_load_source", _load_ok)
+    await metadata_resolver.refresh(force=True)
+    assert cache_path.is_file()
+
+    metadata_resolver.invalidate()
+
+    async def _load_fail() -> Mapping[str, Any]:
+        raise MetadataLoadError("network down")
+
+    monkeypatch.setattr(metadata_resolver, "_load_source", _load_fail)
+
+    entry = await metadata_resolver.get_entry("00112233-4455-6677-8899-aabbccddeeff")
+    assert entry is not None
+    assert entry.description == "Sample Authenticator"
+    assert "usb" in entry.allowed_transports
 
     metadata_resolver.invalidate()
