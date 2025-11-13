@@ -81,6 +81,25 @@ This command builds the backend, frontend, and notifications worker images, star
 - Frontend UI: http://localhost:8080
 - Worker metrics: http://localhost:9101/metrics
 
+#### Opt in to Redis-backed features
+
+The Compose stack now includes a `redis` service that mirrors the cache and
+rate-limiting infrastructure used in production. To enable Redis locally you
+have two options:
+
+1. **Rely on the Compose defaults.** The `backend` and `notifications-worker`
+   containers already set `CACHE_ENABLED=true`,
+   `CACHE_REDIS_URL=redis://redis:6379/0`, and configure rate limiting to use
+   Redis (`RATE_LIMIT_STORAGE_BACKEND=redis`, `RATE_LIMIT_STORAGE_URI=redis://redis:6379/1`).
+   When you run `docker compose up` these overrides take effect automatically.
+2. **Apply the same settings when running services outside of Docker.** Copy
+   the commented examples in [`root/.env.example`](root/.env.example) into your
+   local `.env` file, then start the backend/worker after exporting the Redis
+   environment variables.
+
+With Redis enabled you can test cache hits, TTL expirations, and distributed
+rate limiting behavior exactly as it will run in production.
+
 ### 4. Run services manually (alternative)
 
 #### Backend (FastAPI)

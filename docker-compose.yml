@@ -13,11 +13,18 @@ services:
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
       ENABLE_METRICS_ENDPOINT: "true"
       METRICS_ALLOWLIST: 127.0.0.1,::1
+      CACHE_ENABLED: "true"
+      CACHE_REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_STORAGE_BACKEND: redis
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      RATE_LIMIT_HEADERS_ENABLED: "true"
     depends_on:
       migrations:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "8000:8000"
     extra_hosts:
@@ -51,11 +58,17 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
+      CACHE_ENABLED: "true"
+      CACHE_REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_STORAGE_BACKEND: redis
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
     depends_on:
       migrations:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
     ports:
       - "9101:9101"
@@ -75,6 +88,17 @@ services:
       retries: 5
     ports:
       - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
 
   migrations:
     build:
