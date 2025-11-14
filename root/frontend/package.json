@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "google-chrome-stable": "./scripts/google-chrome-stable.cjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -22,6 +25,7 @@
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
     "prepare": "husky ../.husky",
+    "postinstall": "node ./scripts/setup-lhci-binaries.cjs",
     "generate:api": "node ./scripts/generate-api-types.mjs",
     "generate:manifests": "node ./scripts/generate-manifests.mjs",
     "manifests:check": "node ./scripts/generate-manifests.mjs --check"
