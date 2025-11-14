@@ -1017,9 +1017,9 @@ async def _acknowledge_persistent_job(
                             record.dead_lettered = False
                             record.next_retry_at = next_retry
                             if metrics is not None and wake_delay > 0:
-                                metrics.retry_delay_seconds.labels(kind=job.kind).observe(
-                                    wake_delay
-                                )
+                                metrics.retry_delay_seconds.labels(
+                                    kind=job.kind
+                                ).observe(wake_delay)
                             logger.warning(
                                 "Notification job failed; scheduling retry",
                                 extra={
@@ -1037,10 +1037,7 @@ async def _acknowledge_persistent_job(
                             )
         except OperationalError as exc:
             message = str(exc).lower()
-            if (
-                "locked" in message
-                and attempt_no < _DB_LOCK_RETRY_ATTEMPTS
-            ):
+            if "locked" in message and attempt_no < _DB_LOCK_RETRY_ATTEMPTS:
                 await asyncio.sleep(_DB_LOCK_RETRY_DELAY_SECONDS * attempt_no)
                 continue
             logger.exception(
