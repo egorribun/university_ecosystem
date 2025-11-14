@@ -205,15 +205,15 @@ function AnimatedRing({
   const stroke = 8
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
-  const mv = useMotionValue(reduce ? value : 0)
+  const prevValueRef = useRef(value)
+  const mv = useMotionValue(reduce ? value : prevValueRef.current)
 
   useEffect(() => {
     const controls = animate(mv, value, {
-      duration: reduce ? 0 : 1.1,
-      type: "spring",
-      stiffness: 120,
-      damping: 24,
+      duration: reduce ? 0 : 0.8,
+      ease: easeOutExpo,
     })
+    prevValueRef.current = value
     return () => controls.stop()
   }, [value, reduce, mv])
 
@@ -279,6 +279,7 @@ export default function Activity() {
   const [grades, setGrades] = useState<GradeStats | null>(null)
   const [participation, setParticipation] = useState<ParticipationStats | null>(null)
   const [loading, setLoading] = useState(false)
+  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
   const [detail, setDetail] = useState<
     | ""
     | "attendance"
@@ -459,6 +460,7 @@ export default function Activity() {
       }
       if (!controller.signal.aborted) {
         setLoading(false)
+        setHasInitiallyLoaded(true)
       }
     }
   }, [period, labelByPeriod])
@@ -532,7 +534,7 @@ export default function Activity() {
 
     return (
       <motion.div
-        initial={{ y: reduce ? 0 : 14, opacity: reduce ? 1 : 0 }}
+        initial={hasInitiallyLoaded ? false : { y: reduce ? 0 : 14, opacity: reduce ? 1 : 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
         className={cn(
@@ -771,7 +773,7 @@ export default function Activity() {
                     </h3>
                   </div>
                   <div className="space-y-1">
-                    <AnimatePresence initial={true}>
+                    <AnimatePresence initial={false}>
                       {(attendance?.recent ?? []).slice(0, 6).map((r, i) => {
                         const color =
                           r.status === "present"
@@ -797,10 +799,10 @@ export default function Activity() {
                           <motion.div
                             key={itemKey}
                             variants={listItemVariants}
-                            initial="hidden"
+                            initial={hasInitiallyLoaded ? false : "hidden"}
                             animate="show"
                             exit={{ opacity: 0 }}
-                            transition={{ delay: reduce ? 0 : i * 0.04 }}
+                            transition={{ delay: reduce || hasInitiallyLoaded ? 0 : i * 0.04 }}
                             className="py-1"
                             style={
                               reduce
@@ -857,7 +859,7 @@ export default function Activity() {
                     </h3>
                   </div>
                   <div className="space-y-1">
-                    <AnimatePresence initial={true}>
+                    <AnimatePresence initial={false}>
                       {(grades?.recent ?? []).slice(0, 6).map((r, i) => {
                         const gradeRecord = r as Partial<{ id?: number | string }>
                         const itemKey = pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
@@ -865,10 +867,10 @@ export default function Activity() {
                           <motion.div
                             key={itemKey}
                             variants={listItemVariants}
-                            initial="hidden"
+                            initial={hasInitiallyLoaded ? false : "hidden"}
                             animate="show"
                             exit={{ opacity: 0 }}
-                            transition={{ delay: reduce ? 0 : i * 0.04 }}
+                            transition={{ delay: reduce || hasInitiallyLoaded ? 0 : i * 0.04 }}
                             className="py-1"
                             style={
                               reduce
@@ -913,7 +915,7 @@ export default function Activity() {
                     </h3>
                   </div>
                   <div className="space-y-1">
-                    <AnimatePresence initial={true}>
+                    <AnimatePresence initial={false}>
                       {(participation?.recent ?? []).slice(0, 6).map((r, i) => {
                         const participationRecord = r as Partial<{ id?: number | string }>
                         const itemKey =
@@ -922,10 +924,10 @@ export default function Activity() {
                           <motion.div
                             key={itemKey}
                             variants={listItemVariants}
-                            initial="hidden"
+                            initial={hasInitiallyLoaded ? false : "hidden"}
                             animate="show"
                             exit={{ opacity: 0 }}
-                            transition={{ delay: reduce ? 0 : i * 0.04 }}
+                            transition={{ delay: reduce || hasInitiallyLoaded ? 0 : i * 0.04 }}
                             className="py-1"
                             style={
                               reduce
