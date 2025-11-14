@@ -223,4 +223,48 @@ describe("Settings media actions", () => {
     expect(updatedBackground).toContain("v=")
     expect(updatedBackground).not.toEqual(initialBackground)
   })
+
+  it("deletes avatar and refreshes the profile", async () => {
+    const updatedUser = { ...baseUser, avatar_url: null }
+    const deleteSpy = vi.spyOn(api, "delete").mockResolvedValue({ data: updatedUser } as any)
+    const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
+
+    const { mockSetUser } = renderSettings()
+
+    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+
+    const deleteButton = await screen.findByRole("button", {
+      name: tSettings("media.avatar.delete"),
+    })
+
+    await act(async () => {
+      fireEvent.click(deleteButton)
+    })
+
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("/users/me/avatar"))
+    await waitFor(() => expect(getSpy).toHaveBeenCalled())
+    await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
+  })
+
+  it("deletes cover and refreshes the profile", async () => {
+    const updatedUser = { ...baseUser, cover_url: null }
+    const deleteSpy = vi.spyOn(api, "delete").mockResolvedValue({ data: updatedUser } as any)
+    const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
+
+    const { mockSetUser } = renderSettings()
+
+    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+
+    const deleteButton = await screen.findByRole("button", {
+      name: tSettings("media.cover.remove"),
+    })
+
+    await act(async () => {
+      fireEvent.click(deleteButton)
+    })
+
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("/users/me/cover"))
+    await waitFor(() => expect(getSpy).toHaveBeenCalled())
+    await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
+  })
 })

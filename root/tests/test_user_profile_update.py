@@ -362,6 +362,68 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
 
 @pytest.mark.anyio
+async def test_delete_cover_removes_file(async_client, user_factory, db_session):
+    password = "DeleteCover123!"
+    hashed = get_password_hash(password)
+    cover_rel = f"covers/test-cover-{uuid.uuid4().hex}.png"
+    cover_path = settings.static_dir_path / cover_rel
+    cover_path.parent.mkdir(parents=True, exist_ok=True)
+    cover_path.write_bytes(b"cover")
+
+    user = await user_factory(
+        hashed_password=hashed,
+        is_active=True,
+        cover_url=f"/static/{cover_rel}",
+    )
+
+    headers = await _login(async_client, user.email, password)
+
+    response = await async_client.delete("/users/me/cover", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cover_url"] is None
+    assert not cover_path.exists()
+
+    await db_session.refresh(user)
+    assert user.cover_url is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cover_url", ["", "https://example.com/cover.png"])
+async def test_delete_cover_ignores_invalid_path(
+    async_client, user_factory, db_session, cover_url
+):
+    password = "IgnoreCover123!"
+    hashed = get_password_hash(password)
+    sentinel_rel = f"covers/sentinel-{uuid.uuid4().hex}.txt"
+    sentinel_path = settings.static_dir_path / sentinel_rel
+    sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+    sentinel_path.write_text("keep")
+
+    try:
+        user = await user_factory(
+            hashed_password=hashed,
+            is_active=True,
+            cover_url=cover_url,
+        )
+
+        headers = await _login(async_client, user.email, password)
+
+        response = await async_client.delete("/users/me/cover", headers=headers)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cover_url"] is None
+        assert sentinel_path.exists()
+
+        await db_session.refresh(user)
+        assert user.cover_url is None
+    finally:
+        sentinel_path.unlink(missing_ok=True)
+
+
+@pytest.mark.anyio
 async def test_forgot_password_sends_email_via_thread(
     async_client, user_factory, monkeypatch
 ):

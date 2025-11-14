@@ -2404,7 +2404,7 @@ export default function Settings() {
                                   disabled={coverBusy}
                                   className="w-full sm:w-auto"
                                 >
-                                  {t("settings:media.cover.delete")}
+                                  {t("settings:media.cover.remove")}
                                 </Button>
                               )}
                             </div>
