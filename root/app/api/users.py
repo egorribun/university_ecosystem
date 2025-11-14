@@ -875,6 +875,20 @@ async def delete_avatar(
     return db_user
 
 
+@users_router.delete("/me/cover", response_model=schemas.UserOut)
+async def delete_cover(
+    db: AsyncSession = Depends(get_db), user: models.User = Depends(get_current_user)
+):
+    db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+    if db_user.cover_url:
+        await delete_static_file(db_user.cover_url)
+    db_user.cover_url = None
+    await db.commit()
+    await db.refresh(db_user)
+    await ensure_mfa_relationships_loaded(db, db_user)
+    return db_user
+
+
 @users_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
