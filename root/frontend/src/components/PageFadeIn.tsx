@@ -7,15 +7,32 @@ type PageFadeInProps = {
 }
 
 export default function PageFadeIn({ children, delay = 80, effect = "default" }: PageFadeInProps) {
-  const [ready, setReady] = useState(false)
+  const isTestEnvironment = import.meta.env.MODE === "test"
+
+  const [ready, setReady] = useState(() => isTestEnvironment)
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setReady(true))
-    return () => cancelAnimationFrame(frame)
-  }, [])
+    if (isTestEnvironment) return
+
+    if (typeof window === "undefined") {
+      setReady(true)
+      return
+    }
+
+    const markReady = () => setReady(true)
+
+    if (typeof window.requestAnimationFrame === "function") {
+      const frame = window.requestAnimationFrame(markReady)
+      return () => window.cancelAnimationFrame(frame)
+    }
+
+    const timeout = window.setTimeout(markReady, 16)
+    return () => window.clearTimeout(timeout)
+  }, [isTestEnvironment])
 
   useEffect(() => {
+    if (isTestEnvironment) return
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return
     }
@@ -36,7 +53,7 @@ export default function PageFadeIn({ children, delay = 80, effect = "default" }:
     }
 
     return
-  }, [])
+  }, [isTestEnvironment])
 
   const resolvedEffect = prefersReducedMotion
     ? undefined
