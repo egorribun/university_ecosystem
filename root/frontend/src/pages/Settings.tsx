@@ -2325,108 +2325,114 @@ export default function Settings() {
                       </SectionSubtitle>
                     </div>
 
-                    <div className="flex flex-col gap-3">
-                      <AccordionSection
-                        title={t("settings:media.avatar.title")}
-                        subtitle="Загрузите или измените фото профиля"
-                      >
-                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                          <Avatar
-                            src={avatarSrc}
-                            alt={user?.full_name || "avatar"}
-                            className="w-20 h-20"
-                            imgProps={{
-                              onError: handleAvatarError,
-                              loading: "lazy",
-                              decoding: "async",
-                              referrerPolicy: "no-referrer",
-                            }}
-                          />
-                          <div className="flex flex-col sm:flex-row gap-2 flex-1">
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={triggerAvatarPick}
-                              disabled={avatarBusy}
-                              className="w-full sm:w-auto"
-                            >
-                              {t("settings:media.avatar.change")}
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              onClick={removeAvatar}
-                              disabled={avatarBusy}
-                              className="w-full sm:w-auto"
-                            >
-                              {t("settings:media.avatar.delete")}
-                            </Button>
-                          </div>
-                        </div>
-                      </AccordionSection>
-
-                      <AccordionSection
-                        title={t("settings:media.cover.title")}
-                        subtitle="Установите обложку для вашего профиля"
-                      >
-                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                          <div
-                            data-testid="settings-cover-preview"
-                            className="h-20 w-32 rounded-xl border flex-shrink-0"
-                            style={{
-                              background: coverSrc
-                                ? `url(${coverSrc}) center/cover no-repeat`
-                                : "color-mix(in srgb, var(--page-text) 6%, transparent)",
-                              borderColor:
-                                "color-mix(in srgb, var(--glass-border) 88%, transparent)",
-                            }}
-                          />
-                          <div className="flex flex-col sm:flex-row gap-2 flex-1">
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={triggerCoverPick}
-                              disabled={coverBusy}
-                              className="w-full sm:w-auto"
-                            >
-                              {t("settings:media.cover.change")}
-                            </Button>
-                            {coverUrl && (
+                    <ul className="flex flex-col gap-3 list-none m-0 p-0">
+                      <li className="list-none">
+                        <AccordionSection
+                          title={t("settings:media.avatar.title")}
+                          subtitle="Загрузите или измените фото профиля"
+                        >
+                          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                            <Avatar
+                              src={avatarSrc}
+                              alt={user?.full_name || "avatar"}
+                              className="w-20 h-20"
+                              imgProps={{
+                                onError: handleAvatarError,
+                                loading: "lazy",
+                                decoding: "async",
+                                referrerPolicy: "no-referrer",
+                              }}
+                            />
+                            <div className="flex flex-col sm:flex-row gap-2 flex-1">
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={triggerAvatarPick}
+                                disabled={avatarBusy}
+                                className="w-full sm:w-auto"
+                              >
+                                {t("settings:media.avatar.change")}
+                              </Button>
                               <Button
                                 size="small"
                                 variant="outlined"
                                 color="error"
-                                onClick={removeCover}
+                                onClick={removeAvatar}
+                                disabled={avatarBusy}
+                                className="w-full sm:w-auto"
+                              >
+                                {t("settings:media.avatar.delete")}
+                              </Button>
+                            </div>
+                          </div>
+                        </AccordionSection>
+                      </li>
+
+                      <li className="list-none">
+                        <AccordionSection
+                          title={t("settings:media.cover.title")}
+                          subtitle="Установите обложку для вашего профиля"
+                        >
+                          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                            <div
+                              data-testid="settings-cover-preview"
+                              className="h-20 w-32 rounded-xl border flex-shrink-0"
+                              style={{
+                                background: coverSrc
+                                  ? `url(${coverSrc}) center/cover no-repeat`
+                                  : "color-mix(in srgb, var(--page-text) 6%, transparent)",
+                                borderColor:
+                                  "color-mix(in srgb, var(--glass-border) 88%, transparent)",
+                              }}
+                            />
+                            <div className="flex flex-col sm:flex-row gap-2 flex-1">
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={triggerCoverPick}
                                 disabled={coverBusy}
                                 className="w-full sm:w-auto"
                               >
-                                {t("settings:media.cover.remove")}
+                                {t("settings:media.cover.change")}
                               </Button>
-                            )}
+                              {coverUrl && (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="error"
+                                  onClick={removeCover}
+                                  disabled={coverBusy}
+                                  className="w-full sm:w-auto"
+                                >
+                                  {t("settings:media.cover.delete")}
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </AccordionSection>
+                        </AccordionSection>
+                      </li>
 
-                      <AccordionSection
-                        title="Информация о пользователе"
-                        subtitle="Имя, биография и другие данные профиля"
-                      >
-                        <div className="flex flex-col gap-3">
-                          <SectionSubtitle className="text-sm">
-                            Редактируйте информацию о себе на странице профиля
-                          </SectionSubtitle>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
-                            className="self-start"
-                          >
-                            {t("common:buttons.edit")}
-                          </Button>
-                        </div>
-                      </AccordionSection>
-                    </div>
+                      <li className="list-none">
+                        <AccordionSection
+                          title="Информация о пользователе"
+                          subtitle="Имя, биография и другие данные профиля"
+                        >
+                          <div className="flex flex-col gap-3">
+                            <SectionSubtitle className="text-sm">
+                              Редактируйте информацию о себе на странице профиля
+                            </SectionSubtitle>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
+                              className="self-start"
+                            >
+                              {t("common:buttons.edit")}
+                            </Button>
+                          </div>
+                        </AccordionSection>
+                      </li>
+                    </ul>
                     <input
                       ref={avatarInputRef}
                       type="file"

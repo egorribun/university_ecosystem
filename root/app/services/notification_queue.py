@@ -84,6 +84,9 @@ _FAILED_ENQUEUE_HISTORY_LIMIT = 128
 _failed_enqueue_records: deque[FailedEnqueueRecord] = deque()
 _failed_enqueue_lock = asyncio.Lock()
 
+_DB_LOCK_RETRY_ATTEMPTS = 5
+_DB_LOCK_RETRY_DELAY_SECONDS = 0.05
+
 
 def _get_metrics() -> NotificationQueueMetrics | None:
     global _queue_metrics
@@ -961,85 +964,107 @@ async def _acknowledge_persistent_job(
     if job.queue_id is None:
         return
     wake_delay = 0.0
-    try:
-        async with async_session() as session:
-            async with session.begin():
-                result = await session.execute(
-                    select(NotificationQueueJob)
-                    .where(NotificationQueueJob.id == job.queue_id)
-                    .with_for_update()
-                )
-                record = result.scalar_one_or_none()
-                if record is None:
-                    return
-                if success:
-                    await session.delete(record)
-                else:
-                    error_message = _format_job_error(error)
-                    attempts = record.attempts or 0
-                    base_delay = max(
-                        float(settings.notifications_queue_retry_base_seconds), 0.0
+    base_delay = max(float(settings.notifications_queue_retry_base_seconds), 0.0)
+    max_attempts_setting = int(settings.notifications_queue_max_attempts)
+
+    for attempt_no in range(1, _DB_LOCK_RETRY_ATTEMPTS + 1):
+        try:
+            async with async_session() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        select(NotificationQueueJob)
+                        .where(NotificationQueueJob.id == job.queue_id)
+                        .with_for_update()
                     )
-                    max_attempts = int(settings.notifications_queue_max_attempts)
-                    record.last_error = error_message
-                    record.claimed_at = None
-                    should_dead_letter = max_attempts > 0 and attempts >= max_attempts
-                    if should_dead_letter:
-                        record.dead_lettered = True
-                        record.next_retry_at = None
-                        if metrics is not None:
-                            metrics.failed_jobs_total.labels(kind=job.kind).inc()
-                        logger.error(
-                            (
-                                "Notification job exhausted retries; moving to "
-                                "dead-letter queue"
-                            ),
-                            extra={
-                                "job": job,
-                                "queue_id": job.queue_id,
-                                "attempt": attempts,
-                                "max_attempts": max_attempts,
-                                "error": error_message,
-                            },
-                        )
+                    record = result.scalar_one_or_none()
+                    if record is None:
+                        return
+                    if success:
+                        await session.delete(record)
                     else:
-                        delay_seconds = base_delay * (2 ** max(attempts - 1, 0))
-                        wake_delay = max(delay_seconds, 0.0)
-                        next_retry = datetime.now(UTC) + timedelta(seconds=wake_delay)
-                        record.dead_lettered = False
-                        record.next_retry_at = next_retry
-                        if metrics is not None and wake_delay > 0:
-                            metrics.retry_delay_seconds.labels(kind=job.kind).observe(
-                                wake_delay
-                            )
-                        logger.warning(
-                            "Notification job failed; scheduling retry",
-                            extra={
-                                "job": job,
-                                "queue_id": job.queue_id,
-                                "attempt": attempts,
-                                "max_attempts": (
-                                    max_attempts if max_attempts > 0 else None
-                                ),
-                                "next_retry_at": next_retry.isoformat(),
-                                "error": error_message,
-                            },
+                        error_message = _format_job_error(error)
+                        attempts = record.attempts or 0
+                        record.last_error = error_message
+                        record.claimed_at = None
+                        should_dead_letter = (
+                            max_attempts_setting > 0
+                            and attempts >= max_attempts_setting
                         )
-    except Exception:
-        logger.exception(
-            "Failed to acknowledge persistent notification job",
-            extra={"job": job, "success": success},
-        )
-    else:
-        if not success:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:  # pragma: no cover - defensive guard
+                        if should_dead_letter:
+                            record.dead_lettered = True
+                            record.next_retry_at = None
+                            if metrics is not None:
+                                metrics.failed_jobs_total.labels(kind=job.kind).inc()
+                            logger.error(
+                                (
+                                    "Notification job exhausted retries; moving to "
+                                    "dead-letter queue"
+                                ),
+                                extra={
+                                    "job": job,
+                                    "queue_id": job.queue_id,
+                                    "attempt": attempts,
+                                    "max_attempts": max_attempts_setting,
+                                    "error": error_message,
+                                },
+                            )
+                        else:
+                            delay_seconds = base_delay * (2 ** max(attempts - 1, 0))
+                            wake_delay = max(delay_seconds, 0.0)
+                            next_retry = datetime.now(UTC) + timedelta(
+                                seconds=wake_delay
+                            )
+                            record.dead_lettered = False
+                            record.next_retry_at = next_retry
+                            if metrics is not None and wake_delay > 0:
+                                metrics.retry_delay_seconds.labels(
+                                    kind=job.kind
+                                ).observe(wake_delay)
+                            logger.warning(
+                                "Notification job failed; scheduling retry",
+                                extra={
+                                    "job": job,
+                                    "queue_id": job.queue_id,
+                                    "attempt": attempts,
+                                    "max_attempts": (
+                                        max_attempts_setting
+                                        if max_attempts_setting > 0
+                                        else None
+                                    ),
+                                    "next_retry_at": next_retry.isoformat(),
+                                    "error": error_message,
+                                },
+                            )
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "locked" in message and attempt_no < _DB_LOCK_RETRY_ATTEMPTS:
+                await asyncio.sleep(_DB_LOCK_RETRY_DELAY_SECONDS * attempt_no)
+                continue
+            logger.exception(
+                "Failed to acknowledge persistent notification job",
+                extra={"job": job, "success": success},
+            )
+            return
+        except Exception:
+            logger.exception(
+                "Failed to acknowledge persistent notification job",
+                extra={"job": job, "success": success},
+            )
+            return
+        else:
+            break
+    else:  # pragma: no cover - defensive guard
+        return
+
+    if not success:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # pragma: no cover - defensive guard
+            state.job_event.set()
+        else:
+            if wake_delay <= 0:
                 state.job_event.set()
             else:
-                if wake_delay <= 0:
-                    state.job_event.set()
-                else:
-                    loop.call_later(wake_delay, state.job_event.set)
+                loop.call_later(wake_delay, state.job_event.set)
     if metrics is not None:
         await _refresh_persistent_queue_size(metrics)
