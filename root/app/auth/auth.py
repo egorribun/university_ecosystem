@@ -879,9 +879,7 @@ async def delete_totp_enrollment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    disabled_count = await mfa.disable_totp(
-        db, user=user, enrollment_id=enrollment_id
-    )
+    disabled_count = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
     await mfa.refresh_user_mfa_preferences(db, user=user)
     payload = MfaFactorStatusOut(
         disabled=bool(disabled_count),
