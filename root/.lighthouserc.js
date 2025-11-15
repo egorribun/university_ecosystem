@@ -1,32 +1,28 @@
-module.exports = {
-  ci: {
-    collect: {
-      numberOfRuns: 1,
-      url: [
-        'http://127.0.0.1:4174/',
-        'http://127.0.0.1:4174/login',
-      ],
-      beforeAllScript: 'npm run build',
-      startServerCommand: 'LHCI_PREVIEW_HOST=0.0.0.0 node scripts/lhci-preview.mjs',
-      startServerReadyPattern: 'LHCI_READY',
-      startServerReadyTimeout: 120000,
-      settings: {
-        chromeFlags: '--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost',
-      },
+{
+  "ci": {
+    "collect": {
+      "numberOfRuns": 1,
+      "beforeAllScript": "npm run build && node scripts/prepare-lhci-routes.mjs",
+      "staticDistDir": "dist",
+      "chromePath": "/usr/bin/google-chrome-stable",
+      "settings": {
+        "chromeFlags": "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type",
+        "chromePath": "/usr/bin/google-chrome-stable"
+      }
     },
-    upload: {
-      target: 'filesystem',
-      outputDir: '.lighthouseci',
-      reportFilenamePattern: '%%DATETIME%%-%%PATHNAME%%.report.html',
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".lighthouseci",
+      "reportFilenamePattern": "%%DATETIME%%-%%PATHNAME%%.report.html"
     },
-    assert: {
-      assertions: {
-        'categories:performance': ['error', { minScore: 0.8 }],
-        'categories:accessibility': ['error', { minScore: 0.8 }],
-        'categories:best-practices': ['error', { minScore: 0.8 }],
-        'categories:seo': ['error', { minScore: 0.8 }],
-        'total-blocking-time': ['warn', { maxNumericValue: 435, aggregationMethod: 'median' }],
-      },
-    },
-  },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.8 }],
+        "categories:accessibility": ["error", { "minScore": 0.8 }],
+        "categories:best-practices": ["error", { "minScore": 0.8 }],
+        "categories:seo": ["error", { "minScore": 0.8 }],
+        "total-blocking-time": ["warn", { "maxNumericValue": 435, "aggregationMethod": "median" }]
+      }
+    }
+  }
 }

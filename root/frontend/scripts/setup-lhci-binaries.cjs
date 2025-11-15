@@ -7,9 +7,15 @@ const path = require('node:path');
 const frontendDir = path.join(__dirname, '..');
 const binDir = path.join(frontendDir, 'node_modules', '.bin');
 const wrapper = path.join(__dirname, 'google-chrome-stable.cjs');
-const candidates = ['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser'];
+const localCandidates = ['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser'];
+const globalCandidates = [
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+];
 
-async function ensureSymlink(targetName) {
+async function ensureLocalSymlink(targetName) {
   const destination = path.join(binDir, targetName);
   try {
     const existing = await fs.readlink(destination);
@@ -26,9 +32,44 @@ async function ensureSymlink(targetName) {
   await fs.symlink(wrapper, destination);
 }
 
+async function ensureGlobalSymlink(targetPath) {
+  try {
+    const stats = await fs.lstat(targetPath);
+    if (!stats.isSymbolicLink()) {
+      return;
+    }
+
+    const existing = await fs.readlink(targetPath);
+    if (existing === wrapper) {
+      return;
+    }
+
+    return;
+  } catch (error) {
+    if (!error || error.code !== 'ENOENT') {
+      return;
+    }
+  }
+
+  try {
+    await fs.symlink(wrapper, targetPath);
+  } catch (error) {
+    if (!error) {
+      return;
+    }
+
+    if (error.code === 'EEXIST' || error.code === 'EACCES' || error.code === 'EPERM') {
+      return;
+    }
+
+    throw error;
+  }
+}
+
 async function main() {
   await fs.mkdir(binDir, { recursive: true });
-  await Promise.all(candidates.map(ensureSymlink));
+  await Promise.all(localCandidates.map(ensureLocalSymlink));
+  await Promise.all(globalCandidates.map(ensureGlobalSymlink));
 }
 
 main().catch(error => {
