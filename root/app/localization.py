@@ -189,9 +189,17 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Повторите попытку через {duration}.",
         "en": "Try again in {duration}.",
     },
+    "errors.auth.mfa_challenge_locked": {
+        "ru": "Превышено число попыток подтверждения. Запросите новый челлендж.",
+        "en": "Too many incorrect verification attempts. Request a new challenge.",
+    },
     "errors.auth.mfa_step_up_required": {
         "ru": "Требуется дополнительное подтверждение входа.",
         "en": "Additional verification is required to continue.",
+    },
+    "errors.auth.webauthn_verification_failed": {
+        "ru": "Не удалось подтвердить ключ безопасности.",
+        "en": "Could not verify the security key.",
     },
     "errors.auth.user_deactivated": {
         "ru": "Пользователь деактивирован",

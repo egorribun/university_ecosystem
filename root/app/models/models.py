@@ -340,6 +340,7 @@ class MfaChallenge(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     payload = Column(JSON, nullable=True)
+    attempt_count = Column(Integer, nullable=False, server_default="0", default=0)
 
     user = relationship("User", back_populates="mfa_challenges")
     session = relationship("ActiveSession", back_populates="challenges")

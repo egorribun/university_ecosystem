@@ -216,6 +216,7 @@ async def issue_challenge(
     payload: MutableMapping[str, Any] | None = None,
     ttl_seconds: int | None = None,
     locale: str | None = None,
+    attempt_limit: int | None = None,
 ) -> MfaChallenge:
     await _enforce_challenge_rate_limit(
         user_id=user_id, challenge_type=challenge_type, locale=locale
@@ -228,17 +229,128 @@ async def issue_challenge(
         else settings.mfa_challenge_ttl_seconds
     )
     expires_at = now + timedelta(seconds=ttl)
+    payload_data = dict(payload or {})
+    if attempt_limit is not None and attempt_limit > 0:
+        payload_data.setdefault("attempt_limit", attempt_limit)
     challenge = MfaChallenge(
         user_id=user_id,
         session_id=session_id,
         challenge_type=challenge_type,
         token=token,
         expires_at=expires_at,
-        payload=dict(payload or {}),
+        payload=payload_data,
     )
     db.add(challenge)
     await db.flush()
     return challenge
+
+
+def _extract_attempt_limit(
+    challenge: MfaChallenge | None, fallback: int | None = None
+) -> int | None:
+    limit = fallback
+    if challenge and isinstance(challenge.payload, Mapping):
+        raw_limit = challenge.payload.get("attempt_limit")
+        if isinstance(raw_limit, int):
+            limit = raw_limit
+    if limit is None:
+        return None
+    try:
+        resolved = int(limit)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+    if resolved <= 0:
+        return None
+    return resolved
+
+
+def describe_challenge_attempts(
+    challenge: MfaChallenge,
+    *,
+    default_limit: int | None = None,
+) -> tuple[int, int | None, int | None]:
+    attempts = int(getattr(challenge, "attempt_count", 0) or 0)
+    limit = _extract_attempt_limit(challenge, default_limit)
+    remaining: int | None = None
+    if limit is not None:
+        remaining = max(limit - attempts, 0)
+    return attempts, limit, remaining
+
+
+async def _lock_challenge(
+    db: AsyncSession,
+    challenge: MfaChallenge,
+    *,
+    method: str,
+    limit: int | None,
+    locale: str | None,
+    status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
+) -> None:
+    await consume_challenge(db, challenge)
+    audit_logger.warning(
+        json.dumps(
+            {
+                "event": "auth.mfa.challenge.locked",
+                "user_id": challenge.user_id,
+                "challenge_id": challenge.id,
+                "challenge_type": challenge.challenge_type,
+                "method": method,
+                "attempt_count": int(getattr(challenge, "attempt_count", 0) or 0),
+                "attempt_limit": limit,
+            },
+            ensure_ascii=False,
+        )
+    )
+    message = translate("errors.auth.mfa_challenge_locked", locale=locale)
+    raise HTTPException(status_code=status_code, detail=message)
+
+
+async def _ensure_challenge_not_locked(
+    db: AsyncSession,
+    challenge: MfaChallenge | None,
+    *,
+    method: str,
+    limit: int | None,
+    locale: str | None,
+    status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
+) -> None:
+    if challenge is None or limit is None:
+        return
+    attempts = int(getattr(challenge, "attempt_count", 0) or 0)
+    if attempts >= limit:
+        await _lock_challenge(
+            db,
+            challenge,
+            method=method,
+            limit=limit,
+            locale=locale,
+            status_code=status_code,
+        )
+
+
+async def _register_failed_attempt(
+    db: AsyncSession,
+    challenge: MfaChallenge | None,
+    *,
+    method: str,
+    limit: int | None,
+    locale: str | None,
+    status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
+) -> None:
+    if challenge is None:
+        return
+    current = int(getattr(challenge, "attempt_count", 0) or 0)
+    challenge.attempt_count = current + 1
+    await db.flush()
+    if limit is not None and challenge.attempt_count >= limit:
+        await _lock_challenge(
+            db,
+            challenge,
+            method=method,
+            limit=limit,
+            locale=locale,
+            status_code=status_code,
+        )
 
 
 async def get_challenge(
@@ -315,7 +427,29 @@ async def use_recovery_code(
     code: str,
     challenge_token: str | None = None,
     session_id: int | None = None,
+    locale: str | None = None,
 ) -> tuple[MfaRecoveryCode, MfaChallenge | None]:
+    challenge: MfaChallenge | None = None
+    limit: int | None = None
+    if challenge_token:
+        challenge = await get_challenge(
+            db,
+            token=challenge_token,
+            challenge_type=CHALLENGE_TYPE_RECOVERY,
+            user_id=user.id,
+            session_id=session_id,
+            consume=False,
+        )
+        limit = _extract_attempt_limit(
+            challenge, settings.mfa_recovery_attempt_limit
+        )
+        await _ensure_challenge_not_locked(
+            db,
+            challenge,
+            method=MFA_METHOD_RECOVERY,
+            limit=limit,
+            locale=locale,
+        )
     normalized_hash = hash_recovery_code(code)
     stmt = (
         select(MfaRecoveryCode)
@@ -325,16 +459,15 @@ async def use_recovery_code(
     result = await db.execute(stmt)
     record = result.scalars().first()
     if not record or record.used_at is not None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid recovery code")
-    challenge: MfaChallenge | None = None
-    if challenge_token:
-        challenge = await get_challenge(
+        await _register_failed_attempt(
             db,
-            token=challenge_token,
-            challenge_type=CHALLENGE_TYPE_RECOVERY,
-            user_id=user.id,
-            session_id=session_id,
+            challenge,
+            method=MFA_METHOD_RECOVERY,
+            limit=limit,
+            locale=locale,
         )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid recovery code")
+    if challenge is not None:
         await consume_challenge(db, challenge)
     record.used_at = _utcnow()
     await db.flush()
@@ -413,6 +546,7 @@ async def start_totp_verification(
         challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         locale=locale,
         payload=dict(payload or {}),
+        attempt_limit=settings.mfa_totp_attempt_limit,
     )
     return challenge
 
@@ -425,6 +559,7 @@ async def verify_totp_for_user(
     challenge_token: str | None = None,
     challenge: MfaChallenge | None = None,
     session_id: int | None = None,
+    locale: str | None = None,
 ) -> tuple[MfaTotpEnrollment, MfaChallenge | None]:
     stmt = (
         select(MfaTotpEnrollment)
@@ -459,11 +594,27 @@ async def verify_totp_for_user(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
             )
+    limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
+    await _ensure_challenge_not_locked(
+        db,
+        loaded_challenge,
+        method=MFA_METHOD_TOTP,
+        limit=limit,
+        locale=locale,
+    )
+
     for enrollment in enrollments:
         if verify_totp(enrollment.secret, code):
             if loaded_challenge is not None:
                 await consume_challenge(db, loaded_challenge)
             return enrollment, loaded_challenge
+    await _register_failed_attempt(
+        db,
+        loaded_challenge,
+        method=MFA_METHOD_TOTP,
+        limit=limit,
+        locale=locale,
+    )
     raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code")
 
 
@@ -726,6 +877,7 @@ async def start_webauthn_assertion(
         challenge_type=CHALLENGE_TYPE_WEBAUTHN_ASSERT,
         payload=merged_payload,
         locale=locale,
+        attempt_limit=settings.mfa_webauthn_attempt_limit,
     )
     return _serialize_authentication_options(options), challenge
 
@@ -737,6 +889,7 @@ async def verify_webauthn_assertion(
     credential: AuthenticationCredential | Mapping[str, Any],
     challenge_token: str,
     session_id: int | None = None,
+    locale: str | None = None,
 ) -> tuple[MfaWebAuthnCredential, MfaChallenge]:
     challenge = await get_challenge(
         db,
@@ -764,6 +917,15 @@ async def verify_webauthn_assertion(
             raw_id = _base64url_decode(raw_id_encoded)
         else:
             raw_id = raw_id_encoded
+    limit = _extract_attempt_limit(challenge, settings.mfa_webauthn_attempt_limit)
+    await _ensure_challenge_not_locked(
+        db,
+        challenge,
+        method=MFA_METHOD_WEBAUTHN,
+        limit=limit,
+        locale=locale,
+    )
+
     stmt = (
         select(MfaWebAuthnCredential)
         .where(MfaWebAuthnCredential.user_id == user.id)
@@ -773,16 +935,34 @@ async def verify_webauthn_assertion(
     result = await db.execute(stmt)
     record = result.scalars().first()
     if not record:
+        await _register_failed_attempt(
+            db,
+            challenge,
+            method=MFA_METHOD_WEBAUTHN,
+            limit=limit,
+            locale=locale,
+        )
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown credential")
-    verified: VerifiedAuthentication = verify_authentication_response(
-        credential=credential,
-        expected_challenge=expected_challenge,
-        expected_rp_id=settings.mfa_webauthn_rp_id,
-        expected_origin=settings.mfa_webauthn_origin,
-        credential_public_key=_base64url_decode(record.public_key),
-        credential_current_sign_count=record.sign_count,
-        require_user_verification=True,
-    )
+    try:
+        verified: VerifiedAuthentication = verify_authentication_response(
+            credential=credential,
+            expected_challenge=expected_challenge,
+            expected_rp_id=settings.mfa_webauthn_rp_id,
+            expected_origin=settings.mfa_webauthn_origin,
+            credential_public_key=_base64url_decode(record.public_key),
+            credential_current_sign_count=record.sign_count,
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        await _register_failed_attempt(
+            db,
+            challenge,
+            method=MFA_METHOD_WEBAUTHN,
+            limit=limit,
+            locale=locale,
+        )
+        message = translate("errors.auth.webauthn_verification_failed", locale=locale)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message) from exc
     record.clone_warning = verified.new_sign_count <= record.sign_count
     record.sign_count = verified.new_sign_count
     record.last_used_at = _utcnow()

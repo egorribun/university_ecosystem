@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useAuth } from "@/contexts/AuthContext"
+import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/contexts/AuthContext"
 import type { MfaMethod } from "@/types/Mfa"
 import OtpEntry, { type OtpMethod } from "./OtpEntry"
@@ -12,11 +12,15 @@ type StepUpDialogProps = {
   title?: string
   description?: string
   onCompleted?: () => void
+  onChallengeReset?: () => void
 }
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 
 const resolveMethods = (pending: PendingMfaState | null) => pending?.methods ?? []
+
+type ChallengeWithAttempts = ChallengeMethod &
+  Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
 
 export const StepUpDialog = ({
   open,
@@ -24,6 +28,7 @@ export const StepUpDialog = ({
   title,
   description,
   onCompleted,
+  onChallengeReset,
 }: StepUpDialogProps) => {
   const { t } = useTranslation(["auth", "common"])
   const { requireMfa, submitMfaChallenge } = useAuth()
@@ -38,6 +43,12 @@ export const StepUpDialog = ({
   const hasRecovery = methods.some((entry) => entry.method === "recovery")
   const hasWebAuthn = methods.some((entry) => entry.method === "webauthn")
 
+  const refreshChallenges = useCallback(async () => {
+    const result = await requireMfa()
+    setPending(result)
+    return result
+  }, [requireMfa])
+
   useEffect(() => {
     if (!open) {
       setPending(null)
@@ -49,9 +60,10 @@ export const StepUpDialog = ({
     let cancelled = false
     void (async () => {
       try {
-        const result = await requireMfa()
-        if (!cancelled) {
-          setPending(result)
+        const result = await refreshChallenges()
+        if (!cancelled && !result) {
+          setError(t("mfa.stepUp.requestFailed"))
+        } else if (!cancelled) {
           setError(null)
         }
       } catch (err) {
@@ -64,7 +76,7 @@ export const StepUpDialog = ({
     return () => {
       cancelled = true
     }
-  }, [open, requireMfa, t])
+  }, [open, refreshChallenges, t])
 
   const getChallenge = useCallback(
     (method: MfaMethod): ChallengeMethod | null =>
@@ -81,12 +93,37 @@ export const StepUpDialog = ({
         onCompleted?.()
         onClose()
       } catch (err) {
-        setError(err instanceof Error ? err.message : t("mfa.stepUp.verifyFailed"))
+        if (err instanceof ChallengeLockedError) {
+          setError(err.message)
+          if (err.refreshable) {
+            try {
+              const refreshed = await refreshChallenges()
+              if (refreshed) {
+                onChallengeReset?.()
+              }
+            } catch (refreshError) {
+              setError(
+                refreshError instanceof Error
+                  ? refreshError.message
+                  : t("mfa.stepUp.requestFailed")
+              )
+            }
+          }
+        } else {
+          setError(err instanceof Error ? err.message : t("mfa.stepUp.verifyFailed"))
+        }
       } finally {
         setVerifying(false)
       }
     },
-    [onClose, onCompleted, submitMfaChallenge, t]
+    [
+      onChallengeReset,
+      onClose,
+      onCompleted,
+      refreshChallenges,
+      submitMfaChallenge,
+      t,
+    ]
   )
 
   const otpMethods = useMemo<OtpMethod[]>(() => {
@@ -109,6 +146,37 @@ export const StepUpDialog = ({
   )
 
   const webAuthnChallenge = useMemo(() => getChallenge("webauthn"), [getChallenge])
+
+  const formatRemainingAttempts = useCallback(
+    (challenge: ChallengeMethod | null) => {
+      if (!challenge) return null
+      const meta = challenge as ChallengeWithAttempts
+      const limit =
+        typeof meta.attempt_limit === "number" ? meta.attempt_limit : null
+      const remaining =
+        typeof meta.remaining_attempts === "number"
+          ? meta.remaining_attempts
+          : null
+      if (!limit || limit <= 0 || remaining === null) {
+        return null
+      }
+      return t("mfa.otp.attemptsRemaining", { count: Math.max(remaining, 0) })
+    },
+    [t]
+  )
+
+  const methodHelperText = useMemo<Partial<Record<OtpMethod, string>> | undefined>(() => {
+    const map: Partial<Record<OtpMethod, string>> = {}
+    const totpText = formatRemainingAttempts(getChallenge("totp"))
+    if (totpText) {
+      map.totp = totpText
+    }
+    const recoveryText = formatRemainingAttempts(getChallenge("recovery"))
+    if (recoveryText) {
+      map.recovery = recoveryText
+    }
+    return Object.keys(map).length ? map : undefined
+  }, [formatRemainingAttempts, getChallenge])
 
   if (!open) return null
 
@@ -143,6 +211,7 @@ export const StepUpDialog = ({
                 }
                 loading={verifying}
                 error={error}
+                methodHelperText={methodHelperText}
                 onSubmit={handleOtpSubmit}
               />
             ) : null}

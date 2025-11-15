@@ -1635,6 +1635,10 @@ export default function Settings() {
     }
   }, [])
 
+  const handleChallengeResetNotice = useCallback(() => {
+    setSnack({ text: t("settings:security.snackbar.challengeReset"), sev: "info" })
+  }, [t])
+
   const handleRevokeSession = useCallback(
     async (sessionId: number, options?: { skipStepUp?: boolean }) => {
       try {
@@ -3082,6 +3086,7 @@ export default function Settings() {
             onClose={handleStepUpClose}
             onCompleted={handleStepUpCompleted}
             description={t("settings:security.stepUp.description")}
+            onChallengeReset={handleChallengeResetNotice}
           />
           <Snackbar
             open={!!snack}

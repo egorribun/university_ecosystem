@@ -10,6 +10,7 @@ type OtpEntryProps = {
   loading?: boolean
   error?: string | null
   helperText?: string | null
+  methodHelperText?: Partial<Record<OtpMethod, string | null>>
   onSubmit: (method: OtpMethod, code: string) => Promise<void> | void
 }
 
@@ -19,6 +20,7 @@ export const OtpEntry = ({
   loading,
   error,
   helperText,
+  methodHelperText,
   onSubmit,
 }: OtpEntryProps) => {
   const { t } = useTranslation("auth")
@@ -69,6 +71,13 @@ export const OtpEntry = ({
   }, [activeMethod, t])
 
   const derivedError = localError || error
+  const hasMethodOverride = Boolean(methodHelperText) && activeMethod in (methodHelperText ?? {})
+  const derivedHelperText =
+    derivedError
+      ? null
+      : hasMethodOverride
+        ? methodHelperText?.[activeMethod] ?? null
+        : helperText ?? null
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
@@ -138,8 +147,8 @@ export const OtpEntry = ({
 
         {derivedError ? (
           <p className="text-xs text-red-500">{derivedError}</p>
-        ) : helperText ? (
-          <p className="text-xs text-page-text/60">{helperText}</p>
+        ) : derivedHelperText ? (
+          <p className="text-xs text-page-text/60">{derivedHelperText}</p>
         ) : null}
 
         <button

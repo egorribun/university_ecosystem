@@ -88,12 +88,38 @@ const createTotpEnrollment = (overrides: Partial<MfaTotpEnrollment> = {}): MfaTo
 
 const createChallengeExpiresAt = () => new Date(Date.now() + 5 * 60 * 1000).toISOString()
 
+type ChallengeAttemptOverrides = {
+  limit?: number | null
+  count?: number
+}
+
 type ChallengeOptions = {
   includeTotp?: boolean
   includeRecovery?: boolean
   includeWebAuthn?: boolean
   defaultMethod?: MfaMethod | null
   sessionId?: number | null
+  attempts?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
+}
+
+const resolveAttemptMeta = (
+  method: MfaMethod,
+  overrides?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
+) => {
+  const config = overrides?.[method]
+  const defaultLimit = method === "recovery" ? 8 : 5
+  const limit =
+    config && Object.prototype.hasOwnProperty.call(config, "limit")
+      ? config.limit ?? null
+      : defaultLimit
+  const countRaw = config?.count ?? 0
+  const count = Number.isFinite(countRaw) ? Math.max(0, Math.floor(countRaw)) : 0
+  const remaining = typeof limit === "number" ? Math.max(limit - count, 0) : null
+  return {
+    attempt_limit: limit,
+    attempt_count: count,
+    remaining_attempts: remaining,
+  }
 }
 
 const createMfaChallenge = ({
@@ -102,25 +128,31 @@ const createMfaChallenge = ({
   includeWebAuthn = false,
   defaultMethod = includeTotp ? "totp" : includeWebAuthn ? "webauthn" : null,
   sessionId = 1,
+  attempts,
 }: ChallengeOptions = {}): PendingMfaResponse => {
   const methods: PendingMfaResponse["methods"] = []
   if (includeTotp) {
+    const attemptMeta = resolveAttemptMeta("totp", attempts)
     methods.push({
       method: "totp",
       challenge_token: "totp-challenge-token",
       challenge_expires_at: createChallengeExpiresAt(),
       options: null,
+      ...attemptMeta,
     })
   }
   if (includeRecovery) {
+    const attemptMeta = resolveAttemptMeta("recovery", attempts)
     methods.push({
       method: "recovery",
       challenge_token: "recovery-challenge-token",
       challenge_expires_at: createChallengeExpiresAt(),
       options: null,
+      ...attemptMeta,
     })
   }
   if (includeWebAuthn) {
+    const attemptMeta = resolveAttemptMeta("webauthn", attempts)
     methods.push({
       method: "webauthn",
       challenge_token: "webauthn-challenge-token",
@@ -138,6 +170,7 @@ const createMfaChallenge = ({
         ],
         userVerification: "preferred",
       },
+      ...attemptMeta,
     })
   }
 
