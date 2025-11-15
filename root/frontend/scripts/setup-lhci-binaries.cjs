@@ -6,6 +6,10 @@ const path = require('node:path');
 
 const frontendDir = path.join(__dirname, '..');
 const binDir = path.join(frontendDir, 'node_modules', '.bin');
+const lhciUtilsDir = path.join(frontendDir, 'node_modules', '@lhci', 'utils');
+const lhciNamespaceDir = path.join(frontendDir, 'node_modules', '@lhci');
+const rootConfig = path.join(frontendDir, '..', '.lighthouserc.js');
+const workspaceConfig = path.join(frontendDir, '..', '..', '.lighthouserc.js');
 const wrapper = path.join(__dirname, 'google-chrome-stable.cjs');
 const localCandidates = ['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser'];
 const globalCandidates = [
@@ -66,10 +70,49 @@ async function ensureGlobalSymlink(targetPath) {
   }
 }
 
+async function ensureConfigSymlink(sourcePath, destinationDir) {
+  if (!sourcePath) {
+    return;
+  }
+
+  try {
+    await fs.access(sourcePath);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+
+  await fs.mkdir(destinationDir, {recursive: true});
+  const destination = path.join(destinationDir, '.lighthouserc.js');
+  const relative = path.relative(destinationDir, sourcePath);
+
+  try {
+    const current = await fs.readlink(destination);
+    if (current === relative) {
+      return;
+    }
+    await fs.unlink(destination);
+  } catch (error) {
+    if (error && error.code !== 'EINVAL' && error.code !== 'ENOENT') {
+      throw error;
+    }
+    if (error && error.code === 'EINVAL') {
+      // A regular file already exists; avoid overwriting user-provided configs.
+      return;
+    }
+  }
+
+  await fs.symlink(relative, destination);
+}
+
 async function main() {
   await fs.mkdir(binDir, { recursive: true });
   await Promise.all(localCandidates.map(ensureLocalSymlink));
   await Promise.all(globalCandidates.map(ensureGlobalSymlink));
+  await ensureConfigSymlink(rootConfig, lhciUtilsDir);
+  await ensureConfigSymlink(workspaceConfig, lhciNamespaceDir);
 }
 
 main().catch(error => {
