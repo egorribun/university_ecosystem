@@ -566,9 +566,7 @@ class Settings(BaseSettings):
         "mfa_recovery_attempt_limit",
     )
     @classmethod
-    def _validate_mfa_attempt_limits(
-        cls, value: int, info: FieldValidationInfo
-    ) -> int:
+    def _validate_mfa_attempt_limits(cls, value: int, info: FieldValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_attempt_limit"
         return _validate_non_negative_int(value, label=str(field_name).upper())
 

@@ -257,9 +257,8 @@ async def test_totp_attempt_limit_blocks_challenge(
         },
     )
     assert second_failure.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-    assert (
-        second_failure.json()["detail"]
-        == translate("errors.auth.mfa_challenge_locked", locale="en")
+    assert second_failure.json()["detail"] == translate(
+        "errors.auth.mfa_challenge_locked", locale="en"
     )
 
     result = await db_session.execute(

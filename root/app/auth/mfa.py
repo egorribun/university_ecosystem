@@ -440,9 +440,7 @@ async def use_recovery_code(
             session_id=session_id,
             consume=False,
         )
-        limit = _extract_attempt_limit(
-            challenge, settings.mfa_recovery_attempt_limit
-        )
+        limit = _extract_attempt_limit(challenge, settings.mfa_recovery_attempt_limit)
         await _ensure_challenge_not_locked(
             db,
             challenge,
