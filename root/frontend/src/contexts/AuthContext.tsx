@@ -55,6 +55,17 @@ type AuthContextType = {
   requireMfa: () => Promise<PendingMfaState | null>
 }
 
+export class ChallengeLockedError extends Error {
+  refreshable: boolean
+
+  constructor(message: string, options?: { refreshable?: boolean }) {
+    super(message)
+    this.name = "ChallengeLockedError"
+    this.refreshable = Boolean(options?.refreshable)
+    Object.setPrototypeOf(this, ChallengeLockedError.prototype)
+  }
+}
+
 const noopSetUser: Dispatch<SetUserArg> = (_value) => {
   if (import.meta.env.DEV) {
     console.warn("AuthContext setUser called outside provider")
@@ -1057,6 +1068,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (error.response?.status === 401) {
             handleUnauthorized()
             return
+          }
+          if (error.response?.status === 429) {
+            const isStepUpFlow = pending.reason === "step-up"
+            const message = isStepUpFlow
+              ? t("mfa.stepUp.locked")
+              : t("mfa.errors.challengeLocked")
+            throw new ChallengeLockedError(message, { refreshable: isStepUpFlow })
           }
           const message =
             typeof error.response?.data?.detail === "string"

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
-import { useAuth } from "../contexts/AuthContext"
+import {
+  ChallengeLockedError,
+  type PendingMfaState,
+  useAuth,
+} from "@/contexts/AuthContext"
 import {
   Box,
   Paper,
@@ -80,6 +84,10 @@ function suggestEmailDomain(email: string) {
   return best ? `${local}@${best.d}` : null
 }
 
+type ChallengeMethod = PendingMfaState["methods"][number]
+type ChallengeWithAttempts = ChallengeMethod &
+  Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
+
 const Login = () => {
   const { t } = useTranslation(["auth"])
   const savedEmail = useRef<string>(localStorage.getItem("auth:lastEmail") || "")
@@ -140,6 +148,41 @@ const Login = () => {
     () => loginChallenge?.methods.find((entry) => entry.method === "webauthn") ?? null,
     [loginChallenge]
   )
+
+  const formatRemainingAttempts = useCallback(
+    (challenge: ChallengeMethod | null) => {
+      if (!challenge) return null
+      const meta = challenge as ChallengeWithAttempts
+      const limit = typeof meta.attempt_limit === "number" ? meta.attempt_limit : null
+      const remaining =
+        typeof meta.remaining_attempts === "number" ? meta.remaining_attempts : null
+      if (!limit || limit <= 0 || remaining === null) {
+        return null
+      }
+      return t("auth:mfa.otp.attemptsRemaining", { count: Math.max(remaining, 0) })
+    },
+    [t]
+  )
+
+  const otpMethodHelperText = useMemo<Partial<Record<OtpMethod, string>> | undefined>(() => {
+    if (!loginChallenge) {
+      return undefined
+    }
+    const map: Partial<Record<OtpMethod, string>> = {}
+    const totpChallenge =
+      loginChallenge.methods.find((entry) => entry.method === "totp") ?? null
+    const totpText = formatRemainingAttempts(totpChallenge)
+    if (totpText) {
+      map.totp = totpText
+    }
+    const recoveryChallenge =
+      loginChallenge.methods.find((entry) => entry.method === "recovery") ?? null
+    const recoveryText = formatRemainingAttempts(recoveryChallenge)
+    if (recoveryText) {
+      map.recovery = recoveryText
+    }
+    return Object.keys(map).length ? map : undefined
+  }, [formatRemainingAttempts, loginChallenge])
 
   useEffect(() => {
     if (!loginChallenge) {
@@ -252,10 +295,15 @@ const Login = () => {
         })
         navigate("/dashboard")
       } catch (err) {
-        const message =
-          err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
-        setMfaError(message)
-        setMfaErrorSource("totp")
+        if (err instanceof ChallengeLockedError) {
+          setMfaError(err.message)
+          setMfaErrorSource("general")
+        } else {
+          const message =
+            err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
+          setMfaError(message)
+          setMfaErrorSource("totp")
+        }
       } finally {
         setMfaBusy(false)
       }
@@ -281,10 +329,15 @@ const Login = () => {
         })
         navigate("/dashboard")
       } catch (err) {
-        const message =
-          err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
-        setMfaError(message)
-        setMfaErrorSource("webauthn")
+        if (err instanceof ChallengeLockedError) {
+          setMfaError(err.message)
+          setMfaErrorSource("general")
+        } else {
+          const message =
+            err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
+          setMfaError(message)
+          setMfaErrorSource("webauthn")
+        }
       } finally {
         setMfaBusy(false)
       }
@@ -343,6 +396,7 @@ const Login = () => {
                 loading={mfaBusy}
                 error={mfaErrorSource === "totp" ? mfaError : null}
                 helperText={t("auth:mfa.otpHint")}
+                methodHelperText={otpMethodHelperText}
                 onSubmit={handleOtpVerify}
               />
             ) : null}

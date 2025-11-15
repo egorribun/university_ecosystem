@@ -121,6 +121,7 @@ class MfaChallengeOut(OrmModel):
     consumed_at: datetime | None = None
     created_at: datetime
     payload: dict[str, Any] | None = None
+    attempt_count: int = 0
 
 
 class MfaFactorStatusOut(BaseModel):

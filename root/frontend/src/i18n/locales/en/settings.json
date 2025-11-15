@@ -233,7 +233,8 @@
       "webauthnRemoved": "Security key removed",
       "webauthnRemoveFailed": "Couldn't remove security key",
       "recoveryGenerated": "New recovery codes generated",
-      "recoveryFailed": "Couldn't generate recovery codes"
+      "recoveryFailed": "Couldn't generate recovery codes",
+      "challengeReset": "Verification challenge refreshed. Try again."
     },
     "stepUp": {
       "description": "Complete multi-factor authentication to continue."

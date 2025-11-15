@@ -300,6 +300,9 @@ class Settings(BaseSettings):
     mfa_webauthn_metadata_cache_ttl_seconds: int = 604_800
     mfa_webauthn_metadata_enforcement: str = "log"
     mfa_step_up_ttl_seconds: int = 300
+    mfa_totp_attempt_limit: int = 5
+    mfa_webauthn_attempt_limit: int = 5
+    mfa_recovery_attempt_limit: int = 5
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
@@ -556,6 +559,16 @@ class Settings(BaseSettings):
     ) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_value"
         return _validate_positive_int(value, label=field_name.upper())
+
+    @field_validator(
+        "mfa_totp_attempt_limit",
+        "mfa_webauthn_attempt_limit",
+        "mfa_recovery_attempt_limit",
+    )
+    @classmethod
+    def _validate_mfa_attempt_limits(cls, value: int, info: FieldValidationInfo) -> int:
+        field_name = getattr(info, "field_name", None) or "mfa_attempt_limit"
+        return _validate_non_negative_int(value, label=str(field_name).upper())
 
     @field_validator("password_reset_max_active_tokens")
     @classmethod

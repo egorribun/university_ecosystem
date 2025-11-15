@@ -69,6 +69,9 @@ class MfaMethodChallengeOut(BaseModel):
     challenge_token: str
     challenge_expires_at: datetime
     options: dict[str, Any] | None = None
+    attempt_count: int | None = None
+    attempt_limit: int | None = None
+    remaining_attempts: int | None = None
 
 
 class PendingMfaResponse(BaseModel):
@@ -301,11 +304,21 @@ async def _collect_mfa_challenges(
             session=session,
             locale=locale,
         )
+        (
+            attempt_count,
+            attempt_limit,
+            remaining_attempts,
+        ) = mfa.describe_challenge_attempts(
+            challenge, default_limit=settings.mfa_totp_attempt_limit
+        )
         methods.append(
             MfaMethodChallengeOut(
                 method=mfa.MFA_METHOD_TOTP,
                 challenge_token=challenge.token,
                 challenge_expires_at=challenge.expires_at,
+                attempt_count=attempt_count,
+                attempt_limit=attempt_limit,
+                remaining_attempts=remaining_attempts,
             )
         )
     if capabilities.get(mfa.MFA_METHOD_WEBAUTHN):
@@ -320,12 +333,22 @@ async def _collect_mfa_challenges(
             if exc.status_code != status.HTTP_400_BAD_REQUEST:
                 raise
         else:
+            (
+                attempt_count,
+                attempt_limit,
+                remaining_attempts,
+            ) = mfa.describe_challenge_attempts(
+                challenge, default_limit=settings.mfa_webauthn_attempt_limit
+            )
             methods.append(
                 MfaMethodChallengeOut(
                     method=mfa.MFA_METHOD_WEBAUTHN,
                     challenge_token=challenge.token,
                     challenge_expires_at=challenge.expires_at,
                     options=options,
+                    attempt_count=attempt_count,
+                    attempt_limit=attempt_limit,
+                    remaining_attempts=remaining_attempts,
                 )
             )
     if capabilities.get(mfa.MFA_METHOD_RECOVERY):
@@ -335,12 +358,23 @@ async def _collect_mfa_challenges(
             session_id=session.id if session else None,
             challenge_type=mfa.CHALLENGE_TYPE_RECOVERY,
             locale=locale,
+            attempt_limit=settings.mfa_recovery_attempt_limit,
+        )
+        (
+            attempt_count,
+            attempt_limit,
+            remaining_attempts,
+        ) = mfa.describe_challenge_attempts(
+            challenge, default_limit=settings.mfa_recovery_attempt_limit
         )
         methods.append(
             MfaMethodChallengeOut(
                 method=mfa.MFA_METHOD_RECOVERY,
                 challenge_token=challenge.token,
                 challenge_expires_at=challenge.expires_at,
+                attempt_count=attempt_count,
+                attempt_limit=attempt_limit,
+                remaining_attempts=remaining_attempts,
             )
         )
     return methods
@@ -1132,6 +1166,7 @@ async def verify_mfa_challenge(
             reason="user_unavailable",
         )
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Challenge user unavailable")
+    locale = resolve_locale(request=request, user=user)
     session: ActiveSession | None = None
     now = datetime.now(UTC)
     if challenge.session_id is not None:
@@ -1187,6 +1222,7 @@ async def verify_mfa_challenge(
                 code=payload.code,
                 challenge=challenge,
                 session_id=challenge.session_id,
+                locale=locale,
             )
         elif payload.method == mfa.MFA_METHOD_WEBAUTHN:
             if payload.credential is None:
@@ -1205,6 +1241,7 @@ async def verify_mfa_challenge(
                 credential=payload.credential,
                 challenge_token=payload.challenge_token,
                 session_id=challenge.session_id,
+                locale=locale,
             )
         else:
             if not payload.code:
@@ -1223,8 +1260,10 @@ async def verify_mfa_challenge(
                 code=payload.code,
                 challenge_token=payload.challenge_token,
                 session_id=challenge.session_id,
+                locale=locale,
             )
     except HTTPException as exc:
+        await db.commit()
         _audit_log(
             "auth.mfa.verify.failure",
             request,
@@ -1241,6 +1280,7 @@ async def verify_mfa_challenge(
     await mfa.record_mfa_success(db, user=user, session=session, method=payload.method)
     token = await _mint_access_token(db, session)
     _set_access_token_cookie(response, token)
+    await db.commit()
     _audit_log(
         "auth.mfa.verify.success",
         request,

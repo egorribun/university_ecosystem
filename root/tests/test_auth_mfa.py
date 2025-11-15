@@ -24,6 +24,7 @@ from app.api import users as users_api
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.localization import translate
 from app.management import reset_mfa
 from app.models import models
 from app.services.webauthn_metadata import MetadataLoadError, metadata_resolver
@@ -204,6 +205,71 @@ async def test_totp_challenge_expiry_blocks_verification(
     )
     assert verify.status_code == status.HTTP_400_BAD_REQUEST
     assert verify.json()["detail"] == "Invalid or expired challenge"
+
+
+@pytest.mark.anyio
+async def test_totp_attempt_limit_blocks_challenge(
+    async_client, user_factory, db_session, monkeypatch
+):
+    password = "TotpLockPass123!"
+    user = await user_factory(
+        email="mfa-totp-lock@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    secret = await _enroll_totp(async_client, user, password, db_session)
+
+    monkeypatch.setattr(settings, "mfa_enabled", True)
+    monkeypatch.setattr(settings, "mfa_totp_attempt_limit", 2)
+
+    pending_response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert pending_response.status_code == status.HTTP_202_ACCEPTED
+    pending = pending_response.json()
+    totp_method = _get_method_entry(pending, mfa.MFA_METHOD_TOTP)
+
+    totp = pyotp.TOTP(secret)
+    valid_code = totp.now()
+    invalid_candidate = (int(valid_code) + 1) % 1_000_000
+    invalid_code = f"{invalid_candidate:06d}"
+    if invalid_code == valid_code:
+        invalid_code = "987654"
+
+    first_failure = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "method": mfa.MFA_METHOD_TOTP,
+            "challenge_token": totp_method["challenge_token"],
+            "code": invalid_code,
+        },
+    )
+    assert first_failure.status_code == status.HTTP_400_BAD_REQUEST
+
+    second_failure = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "method": mfa.MFA_METHOD_TOTP,
+            "challenge_token": totp_method["challenge_token"],
+            "code": invalid_code,
+        },
+    )
+    assert second_failure.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert second_failure.json()["detail"] == translate(
+        "errors.auth.mfa_challenge_locked", locale="en"
+    )
+
+    result = await db_session.execute(
+        select(models.MfaChallenge).where(
+            models.MfaChallenge.token == totp_method["challenge_token"]
+        )
+    )
+    challenge_row = result.scalars().first()
+    assert challenge_row is not None
+    assert challenge_row.attempt_count == 2
+    assert challenge_row.consumed_at is not None
 
 
 @pytest.mark.anyio
