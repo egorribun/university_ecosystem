@@ -186,7 +186,9 @@
       "defaultMethod": "Default method: {{method}}",
       "noDefault": "Default method: none",
       "lastVerified": "Last verified {{value}}",
-      "notVerified": "Not verified yet"
+      "notVerified": "Not verified yet",
+      "mfaDisabled": "Multi-factor authentication is disabled. Add an authenticator app or security key to protect your account.",
+      "mfaDisabledWasRequired": "Multi-factor authentication was required for your account, but all factors were removed. Add a new method to secure your next sign-in."
     },
     "totp": {
       "description": "Generate one-time codes using apps like Google Authenticator or 1Password.",

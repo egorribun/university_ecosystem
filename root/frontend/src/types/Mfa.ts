@@ -18,3 +18,9 @@ export type MfaVerifyPayload = components["schemas"]["MfaVerifyIn"]
 type StepUpPath = paths["/auth/mfa/step-up"]["post"]
 
 export type StepUpResponse = StepUpPath["responses"]["200"]["content"]["application/json"]
+
+export type MfaFactorStatus = {
+  disabled: boolean
+  mfa_default_method: MfaMethod | null
+  mfa_required: boolean
+}

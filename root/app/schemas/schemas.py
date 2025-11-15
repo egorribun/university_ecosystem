@@ -123,6 +123,12 @@ class MfaChallengeOut(OrmModel):
     payload: dict[str, Any] | None = None
 
 
+class MfaFactorStatusOut(BaseModel):
+    disabled: bool
+    mfa_default_method: str | None = None
+    mfa_required: bool = False
+
+
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool

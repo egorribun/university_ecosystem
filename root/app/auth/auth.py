@@ -38,6 +38,7 @@ from app.models.models import (
 )
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas.schemas import (
+    MfaFactorStatusOut,
     MfaRecoveryCodeOut,
     MfaTotpEnrollmentOut,
     MfaWebAuthnCredentialOut,
@@ -870,7 +871,7 @@ async def list_totp_enrollments(
     ]
 
 
-@router.delete("/mfa/totp/{enrollment_id}")
+@router.delete("/mfa/totp/{enrollment_id}", response_model=MfaFactorStatusOut)
 async def delete_totp_enrollment(
     enrollment_id: int,
     request: Request,
@@ -878,16 +879,27 @@ async def delete_totp_enrollment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    disabled = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
+    disabled_count = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
+    await mfa.refresh_user_mfa_preferences(db, user=user)
+    payload = MfaFactorStatusOut(
+        disabled=bool(disabled_count),
+        mfa_default_method=user.mfa_default_method,
+        mfa_required=bool(user.mfa_required),
+    )
     await db.commit()
     _audit_log(
         "auth.mfa.totp.disabled",
         request,
         user_id=user.id,
         reason="revoked",
-        extra={"disabled": disabled, "enrollment_id": enrollment_id},
+        extra={
+            "disabled": bool(disabled_count),
+            "enrollment_id": enrollment_id,
+            "default_method": payload.mfa_default_method,
+            "mfa_required": payload.mfa_required,
+        },
     )
-    return {"disabled": disabled}
+    return payload
 
 
 @router.get("/mfa/webauthn", response_model=list[MfaWebAuthnCredentialOut])
@@ -907,7 +919,7 @@ async def list_webauthn_credentials(
     ]
 
 
-@router.delete("/mfa/webauthn/{credential_id}")
+@router.delete("/mfa/webauthn/{credential_id}", response_model=MfaFactorStatusOut)
 async def delete_webauthn_credential(
     credential_id: str,
     request: Request,
@@ -915,8 +927,14 @@ async def delete_webauthn_credential(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    disabled = await mfa.disable_webauthn_credential(
+    disabled_count = await mfa.disable_webauthn_credential(
         db, user=user, credential_id=credential_id
+    )
+    await mfa.refresh_user_mfa_preferences(db, user=user)
+    payload = MfaFactorStatusOut(
+        disabled=bool(disabled_count),
+        mfa_default_method=user.mfa_default_method,
+        mfa_required=bool(user.mfa_required),
     )
     await db.commit()
     _audit_log(
@@ -924,9 +942,14 @@ async def delete_webauthn_credential(
         request,
         user_id=user.id,
         reason="revoked",
-        extra={"disabled": disabled, "credential_id": credential_id},
+        extra={
+            "disabled": bool(disabled_count),
+            "credential_id": credential_id,
+            "default_method": payload.mfa_default_method,
+            "mfa_required": payload.mfa_required,
+        },
     )
-    return {"disabled": disabled}
+    return payload
 
 
 @router.post(
