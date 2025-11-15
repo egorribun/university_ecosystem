@@ -60,6 +60,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   - `periodic_task_password_reset_cleanup_*` — cleanup of password reset tokens.
   - `periodic_task_session_cleanup_*` — removal of expired user sessions.
   - `periodic_task_story_cleanup_*` — cleanup of expired stories.
+  - `periodic_task_mfa_challenge_cleanup_*` — deletion of expired or consumed MFA challenges.
 - Each job exposes:
   - `*_runs_total` — number of successful iterations.
   - `*_errors_total` — number of runs ending with an exception.
@@ -195,3 +196,9 @@ server {
 
 - The API automatically removes stale records from `active_sessions` at startup and then every 15 minutes.
 - Adjust the frequency via `SESSION_CLEANUP_INTERVAL_SECONDS` (minimum 30 seconds). Setting the value to `0` disables the background scheduler; you can run the cleanup manually with `python -m app.services.session_cleanup` inside the container/virtual environment.
+
+## MFA challenge cleanup
+
+- The `cleanup_stale_mfa_challenges` utility removes rows where both `expires_at` and `consumed_at` are older than `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
+- The scheduler runs every 10 minutes by default (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, minimum 30 seconds). Set the value to `0` to disable the background loop; you can still run the job manually via `python -m app.services.mfa_challenge_cleanup`.
+- We recommend triggering the cleanup every 5–10 minutes so the table does not grow indefinitely and login flows stay responsive. Monitor `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total`, and `_deleted_total` to spot anomalies or repeated failures.

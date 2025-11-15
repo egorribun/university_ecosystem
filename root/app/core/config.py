@@ -368,6 +368,8 @@ class Settings(BaseSettings):
     attendance_token_ttl_seconds: int = 300
     notifications_queue_max_attempts: int = 5
     session_cleanup_interval_seconds: int = 900
+    mfa_challenge_cleanup_interval_seconds: int = 600
+    mfa_challenge_cleanup_grace_period_seconds: int = 600
     password_reset_cleanup_interval_seconds: int = 3_600
     password_reset_cleanup_retention_minutes: int = 45
     email_change_cleanup_interval_seconds: int = 3_600

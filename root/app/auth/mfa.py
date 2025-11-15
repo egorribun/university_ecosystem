@@ -14,7 +14,7 @@ from typing import Any
 
 import pyotp
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn import (
     generate_authentication_options,
@@ -393,13 +393,29 @@ async def consume_challenge(db: AsyncSession, challenge: MfaChallenge) -> None:
         await db.flush()
 
 
-async def purge_expired_challenges(db: AsyncSession) -> int:
-    now = _utcnow()
-    result = await db.execute(
-        delete(MfaChallenge).where(MfaChallenge.expires_at <= now)
+async def purge_expired_challenges(
+    db: AsyncSession,
+    *,
+    grace_period_seconds: int | None = None,
+    now: datetime | None = None,
+) -> int:
+    if now is None:
+        now = _utcnow()
+    grace_seconds = max(0, int(grace_period_seconds or 0))
+    cutoff = now - timedelta(seconds=grace_seconds)
+    delete_stmt = (
+        delete(MfaChallenge)
+        .where(MfaChallenge.expires_at <= cutoff)
+        .where(
+            or_(
+                MfaChallenge.consumed_at.is_(None),
+                MfaChallenge.consumed_at <= cutoff,
+            )
+        )
     )
+    result = await db.execute(delete_stmt)
     await db.flush()
-    return result.rowcount or 0
+    return int(result.rowcount or 0)
 
 
 async def create_recovery_codes(
