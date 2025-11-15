@@ -45,6 +45,11 @@ from app.services.file_scanner import (
 from app.services.file_scanner import (
     scan_for_malware as _scan_for_malware,
 )
+from app.services.mfa_challenge_cleanup import (
+    MfaChallengeCleanupConfig,
+    cleanup_stale_mfa_challenges,
+    start_mfa_challenge_cleanup_scheduler,
+)
 from app.services.notification_queue import (
     DeadLetterCleanupConfig,
     start_dead_letter_cleanup_scheduler,
@@ -56,11 +61,6 @@ from app.services.notifications import (
 from app.services.notifications_retention import (
     NotificationsRetentionConfig,
     start_notifications_retention_scheduler,
-)
-from app.services.mfa_challenge_cleanup import (
-    MfaChallengeCleanupConfig,
-    cleanup_stale_mfa_challenges,
-    start_mfa_challenge_cleanup_scheduler,
 )
 from app.services.password_reset_cleanup import (
     PasswordResetCleanupConfig,
