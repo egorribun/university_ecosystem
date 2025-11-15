@@ -4,10 +4,10 @@
       "numberOfRuns": 1,
       "beforeAllScript": "npm run build && node scripts/prepare-lhci-routes.mjs",
       "staticDistDir": "dist",
-      "chromePath": "../frontend/node_modules/.bin/google-chrome-stable",
+      "chromePath": "node_modules/.bin/google-chrome-stable",
       "settings": {
         "chromeFlags": "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type",
-        "chromePath": "../frontend/node_modules/.bin/google-chrome-stable"
+        "chromePath": "node_modules/.bin/google-chrome-stable"
       }
     },
     "upload": {
