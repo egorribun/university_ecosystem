@@ -4,11 +4,11 @@
       "numberOfRuns": 3,
       "beforeAllScript": "npm --prefix root/frontend run build && node root/frontend/scripts/prepare-lhci-routes.mjs",
       "staticDistDir": "root/frontend/dist",
-      "chromePath": "/usr/bin/google-chrome-stable",
+      "chromePath": "root/frontend/node_modules/.bin/google-chrome-stable",
       "settings": {
         "budgetsPath": "budget.json",
         "chromeFlags": "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type",
-        "chromePath": "/usr/bin/google-chrome-stable"
+        "chromePath": "root/frontend/node_modules/.bin/google-chrome-stable"
       }
     },
     "upload": {
