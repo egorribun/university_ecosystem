@@ -75,15 +75,16 @@ async function ensureChromiumExecutable() {
 
 async function createConfig() {
   const chromePath = await ensureChromiumExecutable()
+  process.env.CHROME_PATH = chromePath
 
   const collect = {
     numberOfRuns: 1,
     url: useRemotePreview ? [base, `${base}/login`] : ["/", "/login"],
+    chromePath,
     settings: {
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type " +
         "--unsafely-treat-insecure-origin-as-secure=http://127.0.0.1:4174",
-      chromePath,
       throttlingMethod: "devtools",
       emulatedFormFactor: "desktop",
     },

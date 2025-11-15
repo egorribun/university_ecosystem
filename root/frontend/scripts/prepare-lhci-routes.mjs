@@ -11,15 +11,21 @@ const entryFile = path.join(distDir, "index.html")
 
 const spaRoutes = ["login"]
 
-async function ensureRouteFile(route) {
-  const targetDir = path.join(distDir, route)
-  await mkdir(targetDir, { recursive: true })
-  const targetFile = path.join(targetDir, "index.html")
-  await copyFile(entryFile, targetFile)
+async function ensureRouteFiles(route) {
+  const segments = route.split("/").filter(Boolean)
+
+  const directoryTarget = path.join(distDir, ...segments)
+  await mkdir(directoryTarget, { recursive: true })
+
+  const indexTarget = path.join(directoryTarget, "index.html")
+  await copyFile(entryFile, indexTarget)
+
+  const htmlFallback = `${path.join(distDir, ...segments)}.html`
+  await copyFile(entryFile, htmlFallback)
 }
 
 async function main() {
-  await Promise.all(spaRoutes.map(ensureRouteFile))
+  await Promise.all(spaRoutes.map(ensureRouteFiles))
 }
 
 main().catch((error) => {
