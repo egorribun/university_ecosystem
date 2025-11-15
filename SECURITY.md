@@ -23,6 +23,12 @@ To report a vulnerability, use the **Security** tab on GitHub and open a new **P
 - Sensitive fields (passwords, reset tokens, email addresses) are never included. If additional context is required for an investigation, correlate by `request_id` or session identifiers rather than augmenting the log payloads with PII.
 - Operators should alert on high volumes of `auth.login.failure` or `password.reset.failed` events from a single IP, and reconcile `auth.logout.revoked` events with expected device revocations to detect account takeovers.
 
+## Multi-factor Authentication Management
+
+- Disabling an individual MFA factor now triggers an automatic refresh of the user's MFA preferences. If other confirmed factors remain (TOTP secrets take precedence over WebAuthn credentials), the default factor is switched to the next available method.
+- When the last interactive factor is removed, the platform clears `mfa_default_method` and turns off the `mfa_required` flag to prevent users from being locked in an MFA loop on their next login.
+- Administrators should advise users that removing every factor effectively disables MFA until a new authenticator or security key is added.
+
 ## HTTP Security Headers & Browser Hardening
 
 Our FastAPI middleware enables a strict set of transport and browser security headers in production:

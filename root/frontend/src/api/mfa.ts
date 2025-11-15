@@ -1,5 +1,6 @@
 import api from "./client"
 import type {
+  MfaFactorStatus,
   MfaTotpEnrollment,
   MfaWebAuthnCredential,
   MfaRecoveryCode,
@@ -23,12 +24,12 @@ export const confirmTotpEnrollment = (payload: TotpEnrollmentConfirmPayload) =>
 export const listTotpEnrollments = () => api.get<MfaTotpEnrollment[]>("/auth/mfa/totp")
 
 export const deleteTotpEnrollment = (enrollmentId: number) =>
-  api.delete<{ disabled: boolean }>(`/auth/mfa/totp/${enrollmentId}`)
+  api.delete<MfaFactorStatus>(`/auth/mfa/totp/${enrollmentId}`)
 
 export const listWebAuthnCredentials = () => api.get<MfaWebAuthnCredential[]>("/auth/mfa/webauthn")
 
 export const deleteWebAuthnCredential = (credentialId: string) =>
-  api.delete<{ disabled: boolean }>(`/auth/mfa/webauthn/${credentialId}`)
+  api.delete<MfaFactorStatus>(`/auth/mfa/webauthn/${credentialId}`)
 
 export const startWebAuthnAttestation = () =>
   api.post<WebAuthnAttestationStartResponse>("/auth/mfa/webauthn/attestation/start")

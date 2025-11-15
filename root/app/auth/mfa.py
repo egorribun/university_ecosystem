@@ -811,6 +811,54 @@ async def disable_webauthn_credential(
     return count
 
 
+async def refresh_user_mfa_preferences(
+    db: AsyncSession,
+    *,
+    user: User,
+) -> str | None:
+    """Re-evaluate the preferred MFA method for a user after factors change."""
+
+    totp_stmt = (
+        select(MfaTotpEnrollment.id)
+        .where(MfaTotpEnrollment.user_id == user.id)
+        .where(MfaTotpEnrollment.is_active.is_(True))
+        .where(MfaTotpEnrollment.revoked_at.is_(None))
+        .where(MfaTotpEnrollment.confirmed_at.is_not(None))
+        .limit(1)
+    )
+    totp_available = bool((await db.execute(totp_stmt)).scalars().first())
+
+    webauthn_stmt = (
+        select(MfaWebAuthnCredential.id)
+        .where(MfaWebAuthnCredential.user_id == user.id)
+        .where(MfaWebAuthnCredential.is_active.is_(True))
+        .limit(1)
+    )
+    webauthn_available = bool((await db.execute(webauthn_stmt)).scalars().first())
+
+    new_default: str | None
+    if totp_available:
+        new_default = MFA_METHOD_TOTP
+    elif webauthn_available:
+        new_default = MFA_METHOD_WEBAUTHN
+    else:
+        new_default = None
+
+    changed = False
+    if user.mfa_default_method != new_default:
+        user.mfa_default_method = new_default
+        changed = True
+
+    if new_default is None and user.mfa_required:
+        user.mfa_required = False
+        changed = True
+
+    if changed:
+        await db.flush()
+
+    return new_default
+
+
 async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
     """Remove MFA factors, revoke challenges, and clear MFA state for a user."""
 

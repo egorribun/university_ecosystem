@@ -1551,6 +1551,18 @@ export default function Settings() {
     [user?.webauthn_credentials]
   )
 
+  const hasInteractiveMfa = activeTotp.length > 0 || activeWebAuthn.length > 0
+
+  const mfaDisabledMessage = useMemo(() => {
+    if (hasInteractiveMfa) {
+      return null
+    }
+    if (user?.mfa_required) {
+      return t("settings:security.status.mfaDisabledWasRequired")
+    }
+    return t("settings:security.status.mfaDisabled")
+  }, [hasInteractiveMfa, t, user?.mfa_required])
+
   const defaultMethodText = useMemo(() => {
     const key = user?.mfa_default_method
     if (!key) return t("settings:security.status.noDefault")
@@ -1913,7 +1925,18 @@ export default function Settings() {
     (enrollmentId: number) => {
       const action = async () => {
         try {
-          await deleteTotpEnrollment(enrollmentId)
+          const { data } = await deleteTotpEnrollment(enrollmentId)
+          if (data) {
+            setUser((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    mfa_default_method: data.mfa_default_method,
+                    mfa_required: data.mfa_required,
+                  }
+                : prev
+            )
+          }
           await refreshMe()
           setSnack({ text: t("settings:security.snackbar.totpDisabled"), sev: "success" })
         } catch (error) {
@@ -1925,7 +1948,7 @@ export default function Settings() {
       }
       openStepUpFor(action)
     },
-    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, t]
+    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, setUser, t]
   )
 
   const handleRegisterWebAuthn = useCallback(async () => {
@@ -1966,7 +1989,18 @@ export default function Settings() {
     (credentialId: string) => {
       const action = async () => {
         try {
-          await deleteWebAuthnCredential(credentialId)
+          const { data } = await deleteWebAuthnCredential(credentialId)
+          if (data) {
+            setUser((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    mfa_default_method: data.mfa_default_method,
+                    mfa_required: data.mfa_required,
+                  }
+                : prev
+            )
+          }
           await refreshMe()
           setSnack({ text: t("settings:security.snackbar.webauthnRemoved"), sev: "success" })
         } catch (error) {
@@ -1978,7 +2012,7 @@ export default function Settings() {
       }
       openStepUpFor(action)
     },
-    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, t]
+    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, setUser, t]
   )
 
   const handleGenerateRecoveryCodes = useCallback(() => {
@@ -2757,6 +2791,12 @@ export default function Settings() {
                         {t("settings:security.subtitle")}
                       </SectionSubtitle>
                     </div>
+
+                    {mfaDisabledMessage ? (
+                      <Alert severity="warning" variant="outlined" className="mb-3">
+                        {mfaDisabledMessage}
+                      </Alert>
+                    ) : null}
 
                     <div className="flex flex-col sm:flex-row gap-2 mb-4">
                       <Chip size="small" label={defaultMethodText} className="font-semibold" />
