@@ -73,7 +73,7 @@
       "title": "Profile photo",
       "subtitle": "PNG, JPG, WebP, AVIF, or GIF up to 12 MB",
       "change": "Change",
-      "delete": "Remove",
+      "delete": "Remove photo",
       "updated": "Avatar updated",
       "deleted": "Avatar removed",
       "uploadFailed": "Couldn't upload avatar",
@@ -85,7 +85,7 @@
       "change": "Change",
       "updated": "Cover updated",
       "uploadFailed": "Couldn't upload cover",
-      "remove": "Remove",
+      "remove": "Remove cover",
       "deleted": "Cover removed",
       "deleteFailed": "Couldn't remove cover"
     }

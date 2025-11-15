@@ -1032,7 +1032,8 @@ export interface paths {
     put?: never
     /** Upload Cover */
     post: operations["upload_cover_users_me_cover_post"]
-    delete?: never
+    /** Delete Cover */
+    delete: operations["delete_cover_users_me_cover_delete"]
     options?: never
     head?: never
     patch?: never
@@ -4707,6 +4708,26 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_cover_users_me_cover_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
         }
       }
     }
