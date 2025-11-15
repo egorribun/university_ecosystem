@@ -11,9 +11,7 @@
       }
     },
     "upload": {
-      "target": "filesystem",
-      "outputDir": ".lighthouseci",
-      "reportFilenamePattern": "%%DATETIME%%-%%PATHNAME%%.report.html"
+      "target": "temporary-public-storage"
     },
     "assert": {
       "assertions": {

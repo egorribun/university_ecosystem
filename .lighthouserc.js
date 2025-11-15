@@ -12,9 +12,7 @@
       }
     },
     "upload": {
-      "target": "filesystem",
-      "outputDir": "root/frontend/.lighthouseci",
-      "reportFilenamePattern": "%%DATETIME%%-%%PATHNAME%%.report.html"
+      "target": "temporary-public-storage"
     },
     "assert": {
       "assertions": {
