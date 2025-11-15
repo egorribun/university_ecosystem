@@ -94,6 +94,7 @@ async function createConfig() {
   if (!useRemotePreview) {
     collect.beforeAllScript = "npm run build && node scripts/prepare-lhci-routes.mjs"
     collect.staticDistDir = path.resolve(frontendRoot, "dist")
+    collect.isSinglePageApplication = true
   } else {
     collect.startServerCommand = "node scripts/lhci-preview.mjs"
     collect.startServerReadyPattern = "LHCI_READY"
