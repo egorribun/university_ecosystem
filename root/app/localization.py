@@ -197,10 +197,6 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Требуется дополнительное подтверждение входа.",
         "en": "Additional verification is required to continue.",
     },
-    "errors.auth.webauthn_verification_failed": {
-        "ru": "Не удалось подтвердить ключ безопасности.",
-        "en": "Could not verify the security key.",
-    },
     "errors.auth.user_deactivated": {
         "ru": "Пользователь деактивирован",
         "en": "User account is deactivated",

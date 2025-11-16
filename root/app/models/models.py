@@ -119,12 +119,6 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    webauthn_credentials = relationship(
-        "MfaWebAuthnCredential",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
     recovery_codes = relationship(
         "MfaRecoveryCode",
         back_populates="user",
@@ -269,36 +263,6 @@ class MfaTotpEnrollment(Base):
     user = relationship("User", back_populates="totp_enrollments")
 
     __table_args__ = (Index("ix_mfa_totp_enrollments_active", "user_id", "is_active"),)
-
-
-class MfaWebAuthnCredential(Base):
-    __tablename__ = "mfa_webauthn_credentials"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    credential_id = Column(String(255), nullable=False, unique=True)
-    public_key = Column(Text, nullable=False)
-    sign_count = Column(Integer, nullable=False, default=0)
-    transports = Column(JSON, nullable=True)
-    device_name = Column(String(255))
-    backed_up = Column(Boolean, nullable=False, default=False, index=True)
-    clone_warning = Column(Boolean, nullable=False, default=False)
-    aaguid = Column(String(64), nullable=True, index=True)
-    attestation_format = Column(String(64), nullable=True)
-    attestation_trust_score = Column(Integer, nullable=True)
-    attestation_metadata = Column(JSON, nullable=True)
-    metadata_warnings = Column(JSON, nullable=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    last_used_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    is_active = Column(Boolean, nullable=False, default=True, index=True)
-
-    user = relationship("User", back_populates="webauthn_credentials")
-
-    __table_args__ = (Index("ix_mfa_webauthn_user_active", "user_id", "is_active"),)
 
 
 class MfaRecoveryCode(Base):

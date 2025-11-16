@@ -89,20 +89,6 @@ class MfaTotpEnrollmentOut(OrmModel):
     created_at: datetime
 
 
-class MfaWebAuthnCredentialOut(OrmModel):
-    id: int
-    user_id: int
-    credential_id: str
-    device_name: str | None = None
-    sign_count: int
-    transports: list[str] | None = None
-    backed_up: bool
-    clone_warning: bool
-    created_at: datetime
-    last_used_at: datetime | None = None
-    is_active: bool
-
-
 class MfaRecoveryCodeOut(OrmModel):
     id: int
     user_id: int
@@ -140,7 +126,6 @@ class UserOut(OrmModel, UserBase):
     mfa_last_verified_at: datetime | None = None
     mfa_recovery_codes_generated_at: datetime | None = None
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    webauthn_credentials: list[MfaWebAuthnCredentialOut] = Field(default_factory=list)
     recovery_codes: list[MfaRecoveryCodeOut] = Field(default_factory=list)
     mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
 
@@ -155,7 +140,6 @@ class UserAdminUpdate(BaseModel):
 
 class UserMfaMethodsOut(BaseModel):
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    webauthn_credentials: list[MfaWebAuthnCredentialOut] = Field(default_factory=list)
     recovery_codes: list[MfaRecoveryCodeOut] = Field(default_factory=list)
     pending_challenges: list[MfaChallengeOut] = Field(default_factory=list)
 

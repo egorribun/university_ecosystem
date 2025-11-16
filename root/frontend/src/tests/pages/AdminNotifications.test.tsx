@@ -44,7 +44,6 @@ const adminUser: User = {
   mfa_last_verified_at: null,
   mfa_recovery_codes_generated_at: null,
   totp_enrollments: [],
-  webauthn_credentials: [],
   recovery_codes: [],
   mfa_challenges: [],
 }

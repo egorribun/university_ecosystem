@@ -26,9 +26,7 @@ import Visibility from "@mui/icons-material/Visibility"
 import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import { useTranslation } from "react-i18next"
 import OtpEntry, { type OtpMethod } from "@/components/mfa/OtpEntry"
-import WebAuthnPrompt from "@/components/mfa/WebAuthnPrompt"
 import type { MfaMethod } from "@/types/Mfa"
-import type { AuthenticationResponseJSON } from "@simplewebauthn/browser"
 
 function levenshtein(a: string, b: string) {
   const m = a.length,
@@ -117,7 +115,7 @@ const Login = () => {
   )
   const [mfaBusy, setMfaBusy] = useState(false)
   const [mfaError, setMfaError] = useState<string | null>(null)
-  const [mfaErrorSource, setMfaErrorSource] = useState<"totp" | "webauthn" | "general" | null>(null)
+  const [mfaErrorSource, setMfaErrorSource] = useState<"totp" | "general" | null>(null)
 
   const loginChallenge = useMemo(
     () => (pendingMfa?.reason === "login" ? pendingMfa : null),
@@ -143,11 +141,6 @@ const Login = () => {
     if (otpMethods.includes("recovery")) return "recovery"
     return null
   }, [loginChallenge, otpMethods])
-
-  const webAuthnChallenge = useMemo(
-    () => loginChallenge?.methods.find((entry) => entry.method === "webauthn") ?? null,
-    [loginChallenge]
-  )
 
   const formatRemainingAttempts = useCallback(
     (challenge: ChallengeMethod | null) => {
@@ -311,40 +304,6 @@ const Login = () => {
     [loginChallenge, navigate, submitMfaChallenge, t]
   )
 
-  const handleWebAuthnVerify = useCallback(
-    async (credential: AuthenticationResponseJSON) => {
-      if (!loginChallenge || !webAuthnChallenge) {
-        setMfaError(t("auth:mfa.errors.expired"))
-        setMfaErrorSource("general")
-        return
-      }
-      setMfaBusy(true)
-      setMfaError(null)
-      setMfaErrorSource(null)
-      try {
-        await submitMfaChallenge({
-          method: "webauthn",
-          credential: credential as unknown as Record<string, unknown>,
-          challengeToken: webAuthnChallenge.challenge_token,
-        })
-        navigate("/dashboard")
-      } catch (err) {
-        if (err instanceof ChallengeLockedError) {
-          setMfaError(err.message)
-          setMfaErrorSource("general")
-        } else {
-          const message =
-            err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
-          setMfaError(message)
-          setMfaErrorSource("webauthn")
-        }
-      } finally {
-        setMfaBusy(false)
-      }
-    },
-    [loginChallenge, navigate, submitMfaChallenge, t, webAuthnChallenge]
-  )
-
   const activeEmail = pendingEmail || currentEmail || savedEmail.current || ""
   const generalMfaError = mfaErrorSource === "general" ? mfaError : null
 
@@ -400,16 +359,7 @@ const Login = () => {
                 onSubmit={handleOtpVerify}
               />
             ) : null}
-            {webAuthnChallenge ? (
-              <WebAuthnPrompt
-                options={webAuthnChallenge.options ?? null}
-                autoStart
-                loading={mfaBusy}
-                error={mfaErrorSource === "webauthn" ? (mfaError ?? undefined) : undefined}
-                onResolve={handleWebAuthnVerify}
-              />
-            ) : null}
-            {!otpMethods.length && !webAuthnChallenge ? (
+            {!otpMethods.length ? (
               <Alert severity="warning" variant="outlined">
                 {t("auth:mfa.noMethods")}
               </Alert>

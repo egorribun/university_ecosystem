@@ -41,8 +41,6 @@ export const StepUpDialog = ({
 
   const hasTotp = methods.some((entry) => entry.method === "totp")
   const hasRecovery = methods.some((entry) => entry.method === "recovery")
-  const hasWebAuthn = methods.some((entry) => entry.method === "webauthn")
-
   const refreshChallenges = useCallback(async () => {
     const result = await requireMfa()
     setPending(result)
@@ -145,8 +143,6 @@ export const StepUpDialog = ({
     [getChallenge, handleSubmit, t]
   )
 
-  const webAuthnChallenge = useMemo(() => getChallenge("webauthn"), [getChallenge])
-
   const formatRemainingAttempts = useCallback(
     (challenge: ChallengeMethod | null) => {
       if (!challenge) return null
@@ -205,7 +201,7 @@ export const StepUpDialog = ({
               <OtpEntry
                 availableMethods={otpMethods}
                 defaultMethod={
-                  defaultMethod && defaultMethod !== "webauthn"
+                  defaultMethod && otpMethods.includes(defaultMethod as OtpMethod)
                     ? (defaultMethod as Extract<MfaMethod, "totp" | "recovery">)
                     : otpMethods[0]
                 }
@@ -213,21 +209,6 @@ export const StepUpDialog = ({
                 error={error}
                 methodHelperText={methodHelperText}
                 onSubmit={handleOtpSubmit}
-              />
-            ) : null}
-            {hasWebAuthn && webAuthnChallenge ? (
-              <WebAuthnPrompt
-                options={webAuthnChallenge.options ?? null}
-                autoStart
-                loading={verifying}
-                error={error}
-                onResolve={async (credential) => {
-                  await handleSubmit({
-                    method: "webauthn",
-                    credential: credential as unknown as Record<string, unknown>,
-                    challengeToken: webAuthnChallenge.challenge_token,
-                  })
-                }}
               />
             ) : null}
           </div>

@@ -182,6 +182,14 @@ cleanup, or increase the interval if you prefer less frequent maintenance.
 > local development and automated tests, strict headers are disabled by default so the cookie omits
 > `Secure`, allowing sign-in flows to work over `http://localhost`.
 
+## Multi-factor authentication
+
+The platform now standardizes on authenticator apps (TOTP) plus recovery codes for multi-factor
+authentication. Hardware security keys and WebAuthn ceremonies were removed from both the backend and
+frontend. Users can enroll multiple authenticator apps, confirm them with six-digit codes, and
+generate recovery codes for emergency access. When the last authenticator is revoked the account's MFA
+requirements are cleared automatically until a new TOTP enrollment is added.
+
 ## Image uploads
 
 Uploaded profile photos and news images are limited to **5&nbsp;MB**. The backend

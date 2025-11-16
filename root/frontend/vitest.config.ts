@@ -8,7 +8,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      "@simplewebauthn/browser": path.resolve(__dirname, "src/tests/mocks/simplewebauthn.ts"),
       "@mui/material/styles/CssVarsProvider": path.resolve(
         __dirname,
         "src/shims/muiCssVarsProvider.ts"

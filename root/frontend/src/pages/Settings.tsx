@@ -21,26 +21,17 @@ import {
   startTotpEnrollment,
   confirmTotpEnrollment,
   deleteTotpEnrollment,
-  startWebAuthnAttestation,
-  finishWebAuthnAttestation,
-  deleteWebAuthnCredential,
   regenerateRecoveryCodes,
 } from "@/api/mfa"
 import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import RecoveryCodeList from "@/components/mfa/RecoveryCodeList"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
-import {
-  startRegistration,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type RegistrationResponseJSON,
-} from "@simplewebauthn/browser"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
 import type {
   MfaMethod,
   MfaTotpEnrollment,
-  MfaWebAuthnCredential,
   TotpEnrollmentStartResponse,
 } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
@@ -1474,8 +1465,6 @@ export default function Settings() {
   const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStartResponse | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
-  const [webAuthnBusy, setWebAuthnBusy] = useState(false)
-  const [webAuthnName, setWebAuthnName] = useState("")
   const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[]>([])
   const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [pendingEmail, setPendingEmail] = useState<string | null>(user?.pending_email ?? null)
@@ -1528,7 +1517,6 @@ export default function Settings() {
   const methodLabels = useMemo<Record<MfaMethod, string>>(
     () => ({
       totp: t("settings:security.method.totp"),
-      webauthn: t("settings:security.method.webauthn"),
       recovery: t("settings:security.method.recovery"),
     }),
     [t]
@@ -1546,12 +1534,7 @@ export default function Settings() {
     [user?.totp_enrollments]
   )
 
-  const activeWebAuthn = useMemo(
-    () => (user?.webauthn_credentials ?? []).filter((entry) => entry.is_active),
-    [user?.webauthn_credentials]
-  )
-
-  const hasInteractiveMfa = activeTotp.length > 0 || activeWebAuthn.length > 0
+  const hasInteractiveMfa = activeTotp.length > 0
 
   const mfaDisabledMessage = useMemo(() => {
     if (hasInteractiveMfa) {
@@ -1946,70 +1929,6 @@ export default function Settings() {
         } catch (error) {
           setSnack({
             text: resolveDetailMessage(error, t("settings:security.snackbar.totpDisableFailed")),
-            sev: "error",
-          })
-        }
-      }
-      openStepUpFor(action)
-    },
-    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, setUser, t]
-  )
-
-  const handleRegisterWebAuthn = useCallback(async () => {
-    if (webAuthnBusy) return
-    setWebAuthnBusy(true)
-    try {
-      const { data } = await startWebAuthnAttestation()
-      const rawOptions = data.options ?? null
-      if (!isCreationOptions(rawOptions)) {
-        throw new Error("Invalid WebAuthn attestation options")
-      }
-      const credential: RegistrationResponseJSON = await startRegistration({
-        optionsJSON: rawOptions,
-      })
-      await finishWebAuthnAttestation({
-        challenge_token: data.challenge_token,
-        credential: credential as unknown as Record<string, unknown>,
-        device_name: webAuthnName.trim() || undefined,
-      })
-      setWebAuthnName("")
-      await refreshMe()
-      setSnack({ text: t("settings:security.snackbar.webauthnAdded"), sev: "success" })
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotAllowedError") {
-        setSnack({ text: t("settings:security.snackbar.webauthnCancelled"), sev: "info" })
-      } else {
-        setSnack({
-          text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnAddFailed")),
-          sev: "error",
-        })
-      }
-    } finally {
-      setWebAuthnBusy(false)
-    }
-  }, [refreshMe, resolveDetailMessage, setSnack, t, webAuthnBusy, webAuthnName])
-
-  const handleRemoveWebAuthn = useCallback(
-    (credentialId: string) => {
-      const action = async () => {
-        try {
-          const { data } = await deleteWebAuthnCredential(credentialId)
-          if (data) {
-            setUser((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    mfa_default_method: data.mfa_default_method,
-                    mfa_required: data.mfa_required,
-                  }
-                : prev
-            )
-          }
-          await refreshMe()
-          setSnack({ text: t("settings:security.snackbar.webauthnRemoved"), sev: "success" })
-        } catch (error) {
-          setSnack({
-            text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnRemoveFailed")),
             sev: "error",
           })
         }
@@ -2890,87 +2809,6 @@ export default function Settings() {
                               {t("settings:security.totp.add")}
                             </Button>
                           </div>
-                        )}
-                      </AccordionSection>
-
-                      <AccordionSection
-                        title={t("settings:security.method.webauthn")}
-                        subtitle={t("settings:security.webauthn.description")}
-                      >
-                        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center max-w-[420px]">
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label={t("settings:security.webauthn.nameLabel")}
-                            placeholder={t("settings:security.webauthn.namePlaceholder")}
-                            value={webAuthnName}
-                            onChange={(event) => setWebAuthnName(event.target.value)}
-                          />
-                          <Button
-                            variant="contained"
-                            onClick={() => void handleRegisterWebAuthn()}
-                            disabled={webAuthnBusy}
-                          >
-                            {webAuthnBusy
-                              ? t("settings:security.webauthn.registering")
-                              : t("settings:security.webauthn.cta")}
-                          </Button>
-                        </div>
-
-                        {activeWebAuthn.length ? (
-                          <div className="flex flex-col gap-2.5">
-                            {activeWebAuthn.map(
-                              (credential: MfaWebAuthnCredential, index: number) => {
-                                const added = formatDateTime(credential.created_at)
-                                const lastUsed = formatDateTime(credential.last_used_at ?? null)
-                                return (
-                                  <div
-                                    key={credential.credential_id}
-                                    className={cn(
-                                      "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
-                                      "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
-                                      "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.04)_4%)]",
-                                      "dark:border-[rgba(148,163,184,0.24)]",
-                                      "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
-                                    )}
-                                  >
-                                    <div className="flex min-w-0 flex-col gap-1">
-                                      <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
-                                        {credential.device_name ||
-                                          t("settings:security.webauthn.unnamed", {
-                                            index: index + 1,
-                                          })}
-                                      </p>
-                                      {added ? (
-                                        <SectionSubtitle className="text-xs">
-                                          {t("settings:security.webauthn.added", { value: added })}
-                                        </SectionSubtitle>
-                                      ) : null}
-                                      {lastUsed ? (
-                                        <SectionSubtitle className="text-xs">
-                                          {t("settings:security.webauthn.lastUsed", {
-                                            value: lastUsed,
-                                          })}
-                                        </SectionSubtitle>
-                                      ) : null}
-                                    </div>
-                                    <Button
-                                      variant="outlined"
-                                      color="error"
-                                      size="small"
-                                      onClick={() => handleRemoveWebAuthn(credential.credential_id)}
-                                    >
-                                      {t("settings:security.webauthn.remove")}
-                                    </Button>
-                                  </div>
-                                )
-                              }
-                            )}
-                          </div>
-                        ) : (
-                          <SectionSubtitle className="text-sm">
-                            {t("settings:security.webauthn.empty")}
-                          </SectionSubtitle>
                         )}
                       </AccordionSection>
 

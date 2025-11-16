@@ -90,7 +90,6 @@ const createBaseProfile = (): User => ({
   mfa_last_verified_at: null,
   mfa_recovery_codes_generated_at: null,
   totp_enrollments: [],
-  webauthn_credentials: [],
   recovery_codes: [],
   mfa_challenges: [],
 })
@@ -222,13 +221,11 @@ const challengeExpiresAt = () => new Date(Date.now() + 5 * 60 * 1000).toISOStrin
 const createMfaChallenge = ({
   includeTotp = true,
   includeRecovery = false,
-  includeWebAuthn = false,
-  defaultMethod = includeTotp ? "totp" : includeWebAuthn ? "webauthn" : null,
+  defaultMethod = includeTotp ? "totp" : null,
   sessionId = 1,
 }: {
   includeTotp?: boolean
   includeRecovery?: boolean
-  includeWebAuthn?: boolean
   defaultMethod?: PendingMfaResponse["default_method"]
   sessionId?: number
 } = {}): PendingMfaResponse => {
@@ -247,26 +244,6 @@ const createMfaChallenge = ({
       challenge_token: "recovery-challenge-token",
       challenge_expires_at: challengeExpiresAt(),
       options: null,
-    })
-  }
-  if (includeWebAuthn) {
-    methods.push({
-      method: "webauthn",
-      challenge_token: "webauthn-challenge-token",
-      challenge_expires_at: challengeExpiresAt(),
-      options: {
-        challenge: "c2FtcGxlLXdlYmF1dGhu",
-        timeout: 60_000,
-        rpId: "localhost",
-        allowCredentials: [
-          {
-            type: "public-key",
-            id: "credential-id",
-            transports: ["internal"],
-          },
-        ],
-        userVerification: "preferred",
-      },
     })
   }
 
@@ -292,15 +269,14 @@ export async function useMockApi(page: Page) {
       enrollments: [],
       nextId: 1,
     },
-    mfa: {
-      loginChallenge: null,
-      stepUpChallenge: createMfaChallenge({
-        includeTotp: true,
-        includeRecovery: true,
-        includeWebAuthn: true,
-        sessionId: 42,
-      }),
-    },
+  mfa: {
+    loginChallenge: null,
+    stepUpChallenge: createMfaChallenge({
+      includeTotp: true,
+      includeRecovery: true,
+      sessionId: 42,
+    }),
+  },
     deadLetterJobs: createDeadLetterJobs(),
   }
 
@@ -384,24 +360,6 @@ export async function useMockApi(page: Page) {
         })
         state.profile.mfa_required = true
         state.profile.mfa_default_method = "totp"
-        state.mfa.loginChallenge = challenge
-        await route.fulfill({
-          status: 202,
-          contentType: "application/json",
-          body: JSON.stringify(challenge),
-        })
-        return
-      }
-
-      if (username === "webauthn@example.com" && password === "Password123") {
-        const challenge = createMfaChallenge({
-          includeTotp: false,
-          includeWebAuthn: true,
-          defaultMethod: "webauthn",
-          sessionId: 96,
-        })
-        state.profile.mfa_required = true
-        state.profile.mfa_default_method = "webauthn"
         state.mfa.loginChallenge = challenge
         await route.fulfill({
           status: 202,
@@ -648,7 +606,6 @@ export async function useMockApi(page: Page) {
       let payload: {
         method?: string
         code?: string
-        credential?: unknown
         challenge_token?: string
       }
       try {
@@ -688,25 +645,14 @@ export async function useMockApi(page: Page) {
         return
       }
 
-      if (method === "webauthn") {
-        if (!payload.credential || typeof payload.credential !== "object") {
-          await route.fulfill({
-            status: 400,
-            contentType: "application/json",
-            body: JSON.stringify({ detail: "Invalid credential" }),
-          })
-          return
-        }
-      } else {
-        const code = String(payload.code ?? "").replace(/\s+/g, "")
-        if (code !== "123456" && !(method === "recovery" && code === "RECOVERY-1")) {
-          await route.fulfill({
-            status: 400,
-            contentType: "application/json",
-            body: JSON.stringify({ detail: "Invalid verification code" }),
-          })
-          return
-        }
+      const code = String(payload.code ?? "").replace(/\s+/g, "")
+      if (code !== "123456" && !(method === "recovery" && code === "RECOVERY-1")) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Invalid verification code" }),
+        })
+        return
       }
 
       state.profile.mfa_last_verified_at = new Date().toISOString()
@@ -723,7 +669,6 @@ export async function useMockApi(page: Page) {
         state.mfa.stepUpChallenge = createMfaChallenge({
           includeTotp: true,
           includeRecovery: true,
-          includeWebAuthn: true,
           sessionId: 42,
         })
       }

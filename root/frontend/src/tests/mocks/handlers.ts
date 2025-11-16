@@ -66,7 +66,6 @@ export const testUser: User = {
   mfa_last_verified_at: null,
   mfa_recovery_codes_generated_at: null,
   totp_enrollments: [],
-  webauthn_credentials: [],
   recovery_codes: [],
   mfa_challenges: [],
 }
@@ -96,7 +95,6 @@ type ChallengeAttemptOverrides = {
 type ChallengeOptions = {
   includeTotp?: boolean
   includeRecovery?: boolean
-  includeWebAuthn?: boolean
   defaultMethod?: MfaMethod | null
   sessionId?: number | null
   attempts?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
@@ -125,8 +123,7 @@ const resolveAttemptMeta = (
 const createMfaChallenge = ({
   includeTotp = true,
   includeRecovery = false,
-  includeWebAuthn = false,
-  defaultMethod = includeTotp ? "totp" : includeWebAuthn ? "webauthn" : null,
+  defaultMethod = includeTotp ? "totp" : includeRecovery ? "recovery" : null,
   sessionId = 1,
   attempts,
 }: ChallengeOptions = {}): PendingMfaResponse => {
@@ -151,29 +148,6 @@ const createMfaChallenge = ({
       ...attemptMeta,
     })
   }
-  if (includeWebAuthn) {
-    const attemptMeta = resolveAttemptMeta("webauthn", attempts)
-    methods.push({
-      method: "webauthn",
-      challenge_token: "webauthn-challenge-token",
-      challenge_expires_at: createChallengeExpiresAt(),
-      options: {
-        challenge: "c2FtcGxlLXdlYmF1dGhuLWNoYWxsZW5nZQ==",
-        timeout: 60_000,
-        rpId: "localhost",
-        allowCredentials: [
-          {
-            type: "public-key",
-            id: "credential-id",
-            transports: ["internal"],
-          },
-        ],
-        userVerification: "preferred",
-      },
-      ...attemptMeta,
-    })
-  }
-
   return {
     status: "mfa_required",
     user_id: testUser.id,
@@ -188,14 +162,12 @@ let totpEnrollmentCounter = 1
 let loginChallenge: PendingMfaResponse | null = null
 let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
   includeTotp: true,
-  includeWebAuthn: true,
   includeRecovery: true,
   sessionId: 42,
 })
 
 const resetUserEnrollments = () => {
   testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length)
-  testUser.webauthn_credentials!.splice(0, testUser.webauthn_credentials!.length)
   testUser.recovery_codes!.splice(0, testUser.recovery_codes!.length)
   testUser.mfa_challenges!.splice(0, testUser.mfa_challenges!.length)
 }
@@ -206,7 +178,6 @@ export const resetTestMfa = () => {
   loginChallenge = null
   stepUpChallenge = createMfaChallenge({
     includeTotp: true,
-    includeWebAuthn: true,
     includeRecovery: true,
     sessionId: 42,
   })
@@ -492,7 +463,6 @@ export const handlers = [
       stepUpChallenge = createMfaChallenge({
         includeTotp: true,
         includeRecovery: true,
-        includeWebAuthn: true,
         sessionId: 42,
       })
     }
@@ -519,15 +489,9 @@ export const handlers = [
       return HttpResponse.json({ detail: "Challenge expired" }, { status: 400 })
     }
 
-    if (body.method === "webauthn") {
-      if (!body.credential || typeof body.credential !== "object") {
-        return HttpResponse.json({ detail: "Invalid credential" }, { status: 400 })
-      }
-    } else {
-      const code = body.code?.toString().replace(/\s+/g, "") ?? ""
-      if (code !== "123456" && !(body.method === "recovery" && code === "RECOVERY-1")) {
-        return HttpResponse.json({ detail: "Invalid verification code" }, { status: 400 })
-      }
+    const code = body.code?.toString().replace(/\s+/g, "") ?? ""
+    if (code !== "123456" && !(body.method === "recovery" && code === "RECOVERY-1")) {
+      return HttpResponse.json({ detail: "Invalid verification code" }, { status: 400 })
     }
 
     testUser.mfa_last_verified_at = nowIso()
@@ -543,7 +507,6 @@ export const handlers = [
       stepUpChallenge = createMfaChallenge({
         includeTotp: true,
         includeRecovery: true,
-        includeWebAuthn: true,
         sessionId: 42,
       })
     }
@@ -675,19 +638,6 @@ export const handlers = [
       })
       testUser.mfa_required = true
       testUser.mfa_default_method = "totp"
-      return HttpResponse.json(loginChallenge, { status: 202 })
-    }
-
-    if (username === "webauthn@example.com" && password === "Password123") {
-      loginChallenge = createMfaChallenge({
-        includeTotp: false,
-        includeRecovery: false,
-        includeWebAuthn: true,
-        defaultMethod: "webauthn",
-        sessionId: 96,
-      })
-      testUser.mfa_required = true
-      testUser.mfa_default_method = "webauthn"
       return HttpResponse.json(loginChallenge, { status: 202 })
     }
 

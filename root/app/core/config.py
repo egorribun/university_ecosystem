@@ -114,24 +114,6 @@ def _validate_positive_float(value: float, *, label: str) -> float:
     return value
 
 
-def _validate_webauthn_origin(value: str) -> str:
-    normalized = value.strip()
-    if not normalized:
-        raise ValueError("MFA_WEBAUTHN_ORIGIN must not be empty")
-    parsed = urlparse(normalized)
-    if parsed.scheme not in {"https", "http"}:
-        raise ValueError("MFA_WEBAUTHN_ORIGIN must use http or https")
-    if not parsed.netloc:
-        raise ValueError("MFA_WEBAUTHN_ORIGIN must include a host")
-    if parsed.scheme == "http":
-        host = (parsed.hostname or "").lower()
-        if host not in {"localhost", "127.0.0.1"}:
-            raise ValueError(
-                "Insecure MFA_WEBAUTHN_ORIGIN http scheme is only allowed for localhost"
-            )
-    return normalized
-
-
 _logger = logging.getLogger(__name__)
 
 
@@ -290,18 +272,8 @@ class Settings(BaseSettings):
     mfa_totp_initial_skew_windows: int = 1
     mfa_challenge_ttl_seconds: int = 300
     mfa_challenge_max_attempts: int = 5
-    mfa_webauthn_rp_id: str = "localhost"
-    mfa_webauthn_rp_name: str = "University Ecosystem"
-    mfa_webauthn_origin: str = "http://localhost:5173"
-    mfa_webauthn_metadata_url: str = ""
-    mfa_webauthn_metadata_json: str = ""
-    mfa_webauthn_metadata_refresh_seconds: int = 86_400
-    mfa_webauthn_metadata_cache_file: str = ""
-    mfa_webauthn_metadata_cache_ttl_seconds: int = 604_800
-    mfa_webauthn_metadata_enforcement: str = "log"
     mfa_step_up_ttl_seconds: int = 300
     mfa_totp_attempt_limit: int = 5
-    mfa_webauthn_attempt_limit: int = 5
     mfa_recovery_attempt_limit: int = 5
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
@@ -516,40 +488,6 @@ class Settings(BaseSettings):
     def _validate_mfa_totp_issuer(cls, value: str) -> str:
         return _validate_non_empty(value, label="MFA_TOTP_ISSUER")
 
-    @field_validator("mfa_webauthn_rp_id")
-    @classmethod
-    def _validate_mfa_webauthn_rp_id(cls, value: str) -> str:
-        return _validate_non_empty(value, label="MFA_WEBAUTHN_RP_ID")
-
-    @field_validator("mfa_webauthn_origin")
-    @classmethod
-    def _validate_mfa_webauthn_origin(cls, value: str) -> str:
-        return _validate_webauthn_origin(value)
-
-    @field_validator("mfa_webauthn_metadata_enforcement")
-    @classmethod
-    def _validate_webauthn_metadata_enforcement(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"disabled", "log", "strict"}:
-            raise ValueError(
-                "MFA_WEBAUTHN_METADATA_ENFORCEMENT must be disabled, log, or strict"
-            )
-        return normalized
-
-    @field_validator(
-        "mfa_webauthn_metadata_refresh_seconds",
-        "mfa_webauthn_metadata_cache_ttl_seconds",
-    )
-    @classmethod
-    def _validate_webauthn_metadata_refresh(
-        cls, value: int, info: FieldValidationInfo
-    ) -> int:
-        if value < 0:
-            field_name = getattr(info, "field_name", "value")
-            label = str(field_name or "value").upper()
-            raise ValueError(f"{label} must be zero or positive")
-        return value
-
     @field_validator(
         "mfa_challenge_ttl_seconds",
         "mfa_challenge_max_attempts",
@@ -564,7 +502,6 @@ class Settings(BaseSettings):
 
     @field_validator(
         "mfa_totp_attempt_limit",
-        "mfa_webauthn_attempt_limit",
         "mfa_recovery_attempt_limit",
     )
     @classmethod

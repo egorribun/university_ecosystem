@@ -101,11 +101,12 @@ def test_alembic_upgrade_head(tmp_path, dbname):
 
     for table_name in {
         "mfa_totp_enrollments",
-        "mfa_webauthn_credentials",
         "mfa_recovery_codes",
         "mfa_challenges",
     }:
         assert insp.has_table(table_name)
+
+    assert not insp.has_table("mfa_webauthn_credentials")
 
     challenge_columns = {col["name"] for col in insp.get_columns("mfa_challenges")}
     assert {"user_id", "session_id", "challenge_type", "expires_at"}.issubset(

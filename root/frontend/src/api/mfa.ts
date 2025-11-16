@@ -2,15 +2,11 @@ import api from "./client"
 import type {
   MfaFactorStatus,
   MfaTotpEnrollment,
-  MfaWebAuthnCredential,
   MfaRecoveryCode,
   PendingMfaResponse,
   TotpEnrollmentConfirmPayload,
   TotpEnrollmentStartPayload,
   TotpEnrollmentStartResponse,
-  WebAuthnAssertionStartResponse,
-  WebAuthnAttestationFinishPayload,
-  WebAuthnAttestationStartResponse,
   MfaVerifyPayload,
   StepUpResponse,
 } from "@/types/Mfa"
@@ -25,20 +21,6 @@ export const listTotpEnrollments = () => api.get<MfaTotpEnrollment[]>("/auth/mfa
 
 export const deleteTotpEnrollment = (enrollmentId: number) =>
   api.delete<MfaFactorStatus>(`/auth/mfa/totp/${enrollmentId}`)
-
-export const listWebAuthnCredentials = () => api.get<MfaWebAuthnCredential[]>("/auth/mfa/webauthn")
-
-export const deleteWebAuthnCredential = (credentialId: string) =>
-  api.delete<MfaFactorStatus>(`/auth/mfa/webauthn/${credentialId}`)
-
-export const startWebAuthnAttestation = () =>
-  api.post<WebAuthnAttestationStartResponse>("/auth/mfa/webauthn/attestation/start")
-
-export const finishWebAuthnAttestation = (payload: WebAuthnAttestationFinishPayload) =>
-  api.post<MfaWebAuthnCredential>("/auth/mfa/webauthn/attestation/finish", payload)
-
-export const startWebAuthnAssertion = () =>
-  api.post<WebAuthnAssertionStartResponse>("/auth/mfa/webauthn/assertion/start")
 
 export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
   api.post<{ access_token: string; token_type: string }>("/auth/mfa/verify", payload)

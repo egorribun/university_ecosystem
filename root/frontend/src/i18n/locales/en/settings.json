@@ -179,7 +179,6 @@
     },
     "method": {
       "totp": "Authenticator app",
-      "webauthn": "Security key",
       "recovery": "Recovery codes"
     },
     "status": {
@@ -187,7 +186,7 @@
       "noDefault": "Default method: none",
       "lastVerified": "Last verified {{value}}",
       "notVerified": "Not verified yet",
-      "mfaDisabled": "Multi-factor authentication is disabled. Add an authenticator app or security key to protect your account.",
+      "mfaDisabled": "Multi-factor authentication is disabled. Add an authenticator app to protect your account.",
       "mfaDisabledWasRequired": "Multi-factor authentication was required for your account, but all factors were removed. Add a new method to secure your next sign-in."
     },
     "totp": {
@@ -202,20 +201,8 @@
       "remove": "Remove",
       "unnamed": "Authenticator {{index}}"
     },
-    "webauthn": {
-      "description": "Use hardware keys or built-in authenticators for passwordless sign-in.",
-      "empty": "No security keys connected.",
-      "nameLabel": "Device name",
-      "namePlaceholder": "e.g. Work laptop key",
-      "cta": "Register security key",
-      "registering": "Waiting for security key…",
-      "added": "Added on {{value}}",
-      "lastUsed": "Last used {{value}}",
-      "remove": "Remove",
-      "unnamed": "Security key {{index}}"
-    },
     "recovery": {
-      "description": "Use recovery codes when you can't access your authenticator or security key.",
+      "description": "Use recovery codes when you can't access your authenticator.",
       "generate": "Generate new codes",
       "generatedAt": "Last generated {{value}}",
       "neverGenerated": "Codes not generated yet.",
@@ -227,11 +214,6 @@
       "totpConfirmFailed": "Couldn't confirm authenticator code",
       "totpDisabled": "Authenticator app removed",
       "totpDisableFailed": "Couldn't remove authenticator app",
-      "webauthnAdded": "Security key registered",
-      "webauthnAddFailed": "Couldn't register security key",
-      "webauthnCancelled": "Security key verification cancelled",
-      "webauthnRemoved": "Security key removed",
-      "webauthnRemoveFailed": "Couldn't remove security key",
       "recoveryGenerated": "New recovery codes generated",
       "recoveryFailed": "Couldn't generate recovery codes",
       "challengeReset": "Verification challenge refreshed. Try again."
