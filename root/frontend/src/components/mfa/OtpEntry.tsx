@@ -25,7 +25,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   }
 
   const derivedError = localError || error
-  const derivedHelperText = derivedError ? null : helperText ?? null
+  const derivedHelperText = derivedError ? null : (helperText ?? null)
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
