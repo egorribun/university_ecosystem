@@ -4,7 +4,6 @@ import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/contexts/AuthContext"
 import type { MfaMethod } from "@/types/Mfa"
 import OtpEntry, { type OtpMethod } from "./OtpEntry"
-import WebAuthnPrompt from "./WebAuthnPrompt"
 
 type StepUpDialogProps = {
   open: boolean
