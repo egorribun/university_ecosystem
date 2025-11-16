@@ -143,8 +143,6 @@ async def revoke_other_sessions(
     ]
     if current_jti:
         where_parts.append(ActiveSession.jti != current_jti)
-    revoked = await delete_sessions_matching(
-        db=db, whereclause=and_(*where_parts)
-    )
+    revoked = await delete_sessions_matching(db=db, whereclause=and_(*where_parts))
     await db.commit()
     return schemas.SessionBulkRevokeOut(revoked=revoked)
