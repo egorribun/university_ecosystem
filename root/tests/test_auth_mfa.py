@@ -2,12 +2,10 @@ import base64
 import datetime as dt
 import json
 import logging
-from collections.abc import Mapping
-from typing import Any
 
 import pyotp
 import pytest
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select
 
 from app.api import users as users_api
@@ -408,7 +406,6 @@ async def test_recovery_code_login_flow(
     assert fallback.json()["access_token"]
 
 
-
 @pytest.mark.anyio
 async def test_admin_reset_endpoint_clears_mfa_state(
     async_client, user_factory, db_session, monkeypatch, caplog
@@ -598,8 +595,3 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
     audit_event = _find_audit_event(caplog, "app.users.audit", "users.mfa.reset")
     assert audit_event["user_id"] == str(user.id)
     assert audit_event["reason"] == "admin_reset_noop"
-
-
-
-
-
