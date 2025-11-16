@@ -9,9 +9,8 @@ type RequireMfaFn = () => Promise<PendingMfaState | null>
 const mockUseAuth = vi.fn()
 
 vi.mock("@/contexts/AuthContext", async () => {
-  const actual = await vi.importActual<typeof import("@/contexts/AuthContext")>(
-    "@/contexts/AuthContext"
-  )
+  const actual =
+    await vi.importActual<typeof import("@/contexts/AuthContext")>("@/contexts/AuthContext")
   return {
     ...actual,
     useAuth: () => mockUseAuth(),
@@ -57,13 +56,7 @@ describe("StepUpDialog", () => {
 
     const user = userEvent.setup()
 
-    render(
-      <StepUpDialog
-        open
-        onClose={() => {}}
-        onChallengeReset={onChallengeReset}
-      />
-    )
+    render(<StepUpDialog open onClose={() => {}} onChallengeReset={onChallengeReset} />)
 
     const input = await screen.findByLabelText("Authenticator code")
     expect(await screen.findByText("2 attempts remaining")).toBeInTheDocument()

@@ -64,9 +64,7 @@ export const testUser: User = {
   mfa_required: false,
   mfa_default_method: null,
   mfa_last_verified_at: null,
-  mfa_recovery_codes_generated_at: null,
   totp_enrollments: [],
-  recovery_codes: [],
   mfa_challenges: [],
 }
 
@@ -94,7 +92,6 @@ type ChallengeAttemptOverrides = {
 
 type ChallengeOptions = {
   includeTotp?: boolean
-  includeRecovery?: boolean
   defaultMethod?: MfaMethod | null
   sessionId?: number | null
   attempts?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
@@ -105,10 +102,10 @@ const resolveAttemptMeta = (
   overrides?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
 ) => {
   const config = overrides?.[method]
-  const defaultLimit = method === "recovery" ? 8 : 5
+  const defaultLimit = 5
   const limit =
     config && Object.prototype.hasOwnProperty.call(config, "limit")
-      ? config.limit ?? null
+      ? (config.limit ?? null)
       : defaultLimit
   const countRaw = config?.count ?? 0
   const count = Number.isFinite(countRaw) ? Math.max(0, Math.floor(countRaw)) : 0
@@ -122,8 +119,7 @@ const resolveAttemptMeta = (
 
 const createMfaChallenge = ({
   includeTotp = true,
-  includeRecovery = false,
-  defaultMethod = includeTotp ? "totp" : includeRecovery ? "recovery" : null,
+  defaultMethod = includeTotp ? "totp" : null,
   sessionId = 1,
   attempts,
 }: ChallengeOptions = {}): PendingMfaResponse => {
@@ -133,16 +129,6 @@ const createMfaChallenge = ({
     methods.push({
       method: "totp",
       challenge_token: "totp-challenge-token",
-      challenge_expires_at: createChallengeExpiresAt(),
-      options: null,
-      ...attemptMeta,
-    })
-  }
-  if (includeRecovery) {
-    const attemptMeta = resolveAttemptMeta("recovery", attempts)
-    methods.push({
-      method: "recovery",
-      challenge_token: "recovery-challenge-token",
       challenge_expires_at: createChallengeExpiresAt(),
       options: null,
       ...attemptMeta,
@@ -162,13 +148,11 @@ let totpEnrollmentCounter = 1
 let loginChallenge: PendingMfaResponse | null = null
 let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
   includeTotp: true,
-  includeRecovery: true,
   sessionId: 42,
 })
 
 const resetUserEnrollments = () => {
   testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length)
-  testUser.recovery_codes!.splice(0, testUser.recovery_codes!.length)
   testUser.mfa_challenges!.splice(0, testUser.mfa_challenges!.length)
 }
 
@@ -178,13 +162,11 @@ export const resetTestMfa = () => {
   loginChallenge = null
   stepUpChallenge = createMfaChallenge({
     includeTotp: true,
-    includeRecovery: true,
     sessionId: 42,
   })
   testUser.mfa_required = false
   testUser.mfa_default_method = null
   testUser.mfa_last_verified_at = null
-  testUser.mfa_recovery_codes_generated_at = null
   resetUserEnrollments()
 }
 
@@ -462,7 +444,6 @@ export const handlers = [
     if (!stepUpChallenge) {
       stepUpChallenge = createMfaChallenge({
         includeTotp: true,
-        includeRecovery: true,
         sessionId: 42,
       })
     }
@@ -490,14 +471,12 @@ export const handlers = [
     }
 
     const code = body.code?.toString().replace(/\s+/g, "") ?? ""
-    if (code !== "123456" && !(body.method === "recovery" && code === "RECOVERY-1")) {
+    if (code !== "123456") {
       return HttpResponse.json({ detail: "Invalid verification code" }, { status: 400 })
     }
 
     testUser.mfa_last_verified_at = nowIso()
-    if (body.method !== "recovery") {
-      testUser.mfa_default_method = body.method
-    }
+    testUser.mfa_default_method = body.method
     testUser.mfa_required = false
 
     if (matchedLogin) {
@@ -506,7 +485,6 @@ export const handlers = [
     if (matchedStepUp) {
       stepUpChallenge = createMfaChallenge({
         includeTotp: true,
-        includeRecovery: true,
         sessionId: 42,
       })
     }
@@ -632,7 +610,6 @@ export const handlers = [
     if (username === "mfa@example.com" && password === "Password123") {
       loginChallenge = createMfaChallenge({
         includeTotp: true,
-        includeRecovery: true,
         defaultMethod: "totp",
         sessionId: 84,
       })

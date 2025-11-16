@@ -65,5 +65,4 @@ test.describe("Multi-factor authentication flows", () => {
 
     await expect(page).toHaveURL(/\/dashboard$/)
   })
-
 })
