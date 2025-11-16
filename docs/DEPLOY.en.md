@@ -196,6 +196,7 @@ server {
 
 - The API automatically removes stale records from `active_sessions` at startup and then every 15 minutes.
 - Adjust the frequency via `SESSION_CLEANUP_INTERVAL_SECONDS` (minimum 30 seconds). Setting the value to `0` disables the background scheduler; you can run the cleanup manually with `python -m app.services.session_cleanup` inside the container/virtual environment.
+- Session revocations (logout, `/auth/sessions/*`) now delete database rows immediately. Run the cleanup script once after upgrading to purge any previously revoked-but-not-deleted rows so that operator dashboards and the `/auth/sessions` UI stay in sync.
 
 ## MFA challenge cleanup
 

@@ -20,7 +20,7 @@ from fastapi import (
     status,
 )
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -38,6 +38,7 @@ from app.models.user_loaders import (
 )
 from app.schemas import schemas
 from app.services.notifications import create_notifications_for_users
+from app.services.session_cleanup import delete_sessions_matching
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
 from app.utils.files import delete_static_file
 from app.utils.ratelimit import sensitive_route_limit
@@ -618,17 +619,13 @@ async def change_password(
         request.state, "active_session", None
     )
     current_session_id = active_session.id if active_session else None
-    now = datetime.now(UTC)
-    stmt = (
-        update(models.ActiveSession)
-        .where(models.ActiveSession.user_id == user.id)
-        .where(models.ActiveSession.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
+    conditions = [
+        models.ActiveSession.user_id == user.id,
+        models.ActiveSession.revoked_at.is_(None),
+    ]
     if current_session_id is not None:
-        stmt = stmt.where(models.ActiveSession.id != current_session_id)
-    result = await db.execute(stmt)
-    revoked = int(result.rowcount or 0)
+        conditions.append(models.ActiveSession.id != current_session_id)
+    revoked = await delete_sessions_matching(db=db, whereclause=and_(*conditions))
 
     await db.commit()
     await db.refresh(db_user)

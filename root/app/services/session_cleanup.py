@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ClauseElement
 
 from app.core.database import async_session
 from app.core.observability import get_periodic_task_metrics
@@ -26,27 +27,16 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def cleanup_expired_sessions(
-    *, db: AsyncSession | None = None, now: datetime | None = None
+async def delete_sessions_matching(
+    *, db: AsyncSession, whereclause: ClauseElement[bool]
 ) -> int:
-    """Remove sessions where the expiry or revocation timestamp has passed."""
-
-    owns_session = db is None
-    if now is None:
-        now = _now()
-    if owns_session:
-        async with async_session() as session:
-            return await cleanup_expired_sessions(db=session, now=now)
-
-    expiry_condition = or_(
-        ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
-    )
+    """Delete sessions (and their MFA challenges) matching *whereclause*."""
 
     bind = db.get_bind()
     dialect = bind.dialect
 
     if dialect.name == "sqlite":
-        subquery = select(ActiveSession.id).where(expiry_condition)
+        subquery = select(ActiveSession.id).where(whereclause)
         challenge_delete_stmt = delete(MfaChallenge).where(
             MfaChallenge.session_id.in_(subquery)
         )
@@ -54,12 +44,12 @@ async def cleanup_expired_sessions(
         challenge_delete_stmt = (
             delete(MfaChallenge)
             .where(MfaChallenge.session_id == ActiveSession.id)
-            .where(expiry_condition)
+            .where(whereclause)
             .execution_options(synchronize_session=False)
         )
     await db.execute(challenge_delete_stmt)
 
-    delete_stmt = delete(ActiveSession).where(expiry_condition)
+    delete_stmt = delete(ActiveSession).where(whereclause)
     supports_returning = bool(getattr(dialect, "delete_returning", False))
     supports_rowcount_returning = bool(
         getattr(dialect, "supports_sane_rowcount_returning", False)
@@ -79,6 +69,26 @@ async def cleanup_expired_sessions(
     else:
         delete_result = await db.execute(delete_stmt)
         deleted = int(delete_result.rowcount or 0)
+    return deleted
+
+
+async def cleanup_expired_sessions(
+    *, db: AsyncSession | None = None, now: datetime | None = None
+) -> int:
+    """Remove sessions where the expiry or revocation timestamp has passed."""
+
+    owns_session = db is None
+    if now is None:
+        now = _now()
+    if owns_session:
+        async with async_session() as session:
+            return await cleanup_expired_sessions(db=session, now=now)
+
+    expiry_condition = or_(
+        ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
+    )
+
+    deleted = await delete_sessions_matching(db=db, whereclause=expiry_condition)
     await db.commit()
     if deleted:
         logger.info("Removed %s expired sessions", deleted)
