@@ -39,7 +39,7 @@ describe("AuthProvider MFA state machine", () => {
     await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"))
 
     await act(async () => {
-      await result.current.submitMfaChallenge({ method: "totp", code: "123456" })
+      await result.current.submitMfaChallenge({ code: "123456" })
     })
 
     await waitFor(() => expect(result.current.pendingMfa).toBeNull())
@@ -67,7 +67,7 @@ describe("AuthProvider MFA state machine", () => {
     await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("step-up"))
 
     await act(async () => {
-      await result.current.submitMfaChallenge({ method: "totp", code: "123456" })
+      await result.current.submitMfaChallenge({ code: "123456" })
     })
 
     await waitFor(() => expect(result.current.pendingMfa).toBeNull())
@@ -90,7 +90,7 @@ describe("AuthProvider MFA state machine", () => {
 
     await expect(
       act(async () => {
-        await result.current.submitMfaChallenge({ method: "totp", code: "000000" })
+        await result.current.submitMfaChallenge({ code: "000000" })
       })
     ).rejects.toThrow()
 

@@ -1790,9 +1790,9 @@ export interface components {
     MfaMethodChallengeOut: {
       /**
        * Method
-       * @enum {string}
+       * @constant
        */
-      method: "totp" | "recovery"
+      method: "totp"
       /** Challenge Token */
       challenge_token: string
       /**
@@ -1851,9 +1851,9 @@ export interface components {
     MfaVerifyIn: {
       /**
        * Method
-       * @enum {string}
+       * @constant
        */
-      method: "totp" | "recovery"
+      method: "totp"
       /** Challenge Token */
       challenge_token: string
       /** Code */
@@ -2074,7 +2074,7 @@ export interface components {
       /** Session Id */
       session_id?: number | null
       /** Default Method */
-      default_method?: string | null
+      default_method?: "totp" | null
       /** Methods */
       methods: components["schemas"]["MfaMethodChallengeOut"][]
     }

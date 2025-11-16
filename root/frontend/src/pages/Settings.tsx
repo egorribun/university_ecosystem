@@ -21,15 +21,13 @@ import {
   startTotpEnrollment,
   confirmTotpEnrollment,
   deleteTotpEnrollment,
-  regenerateRecoveryCodes,
 } from "@/api/mfa"
 import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
 import OtpEntry from "@/components/mfa/OtpEntry"
-import RecoveryCodeList from "@/components/mfa/RecoveryCodeList"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
-import type { MfaMethod, MfaTotpEnrollment, TotpEnrollmentStartResponse } from "@/types/Mfa"
+import type { MfaTotpEnrollment, TotpEnrollmentStartResponse } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import { Settings as SettingsIcon, Moon, Sun, Monitor } from "lucide-react"
@@ -1461,8 +1459,6 @@ export default function Settings() {
   const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStartResponse | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
-  const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[]>([])
-  const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [pendingEmail, setPendingEmail] = useState<string | null>(user?.pending_email ?? null)
   const [emailValue, setEmailValue] = useState(user?.email ?? "")
   const [emailPassword, setEmailPassword] = useState("")
@@ -1510,14 +1506,6 @@ export default function Settings() {
     []
   )
 
-  const methodLabels = useMemo<Record<MfaMethod, string>>(
-    () => ({
-      totp: t("settings:security.method.totp"),
-      recovery: t("settings:security.method.recovery"),
-    }),
-    [t]
-  )
-
   const formatDateTime = useCallback((value: string | null) => {
     if (!value) return null
     const parsed = dayjs(value)
@@ -1543,15 +1531,11 @@ export default function Settings() {
   }, [hasInteractiveMfa, t, user?.mfa_required])
 
   const defaultMethodText = useMemo(() => {
-    const key = user?.mfa_default_method
-    if (!key) return t("settings:security.status.noDefault")
-    if (!(key in methodLabels)) {
+    if (!user?.mfa_default_method) {
       return t("settings:security.status.noDefault")
     }
-    return t("settings:security.status.defaultMethod", {
-      method: methodLabels[key as MfaMethod],
-    })
-  }, [methodLabels, t, user?.mfa_default_method])
+    return t("settings:security.status.defaultTotp")
+  }, [t, user?.mfa_default_method])
 
   const lastVerifiedText = useMemo(() => {
     if (!user?.mfa_last_verified_at) {
@@ -1562,17 +1546,6 @@ export default function Settings() {
       ? t("settings:security.status.lastVerified", { value: formatted })
       : t("settings:security.status.notVerified")
   }, [formatDateTime, t, user?.mfa_last_verified_at])
-
-  const recoveryStatusText = useMemo(() => {
-    const generatedAt = user?.mfa_recovery_codes_generated_at
-    if (!generatedAt) {
-      return t("settings:security.recovery.neverGenerated")
-    }
-    const formatted = formatDateTime(generatedAt)
-    return formatted
-      ? t("settings:security.recovery.generatedAt", { value: formatted })
-      : t("settings:security.recovery.neverGenerated")
-  }, [formatDateTime, t, user?.mfa_recovery_codes_generated_at])
 
   const isNewPasswordError = useMemo(() => {
     if (!passwordError) return false
@@ -1880,14 +1853,13 @@ export default function Settings() {
   }, [resolveDetailMessage, setSnack, t, totpBusy])
 
   const handleConfirmTotp = useCallback(
-    async (_method: Extract<MfaMethod, "totp" | "recovery">, code: string) => {
+    async (code: string) => {
       if (!totpDraft) return
       setTotpBusy(true)
       setTotpError(null)
       try {
         await confirmTotpEnrollment({ enrollment_id: totpDraft.enrollment.id, code })
         setTotpDraft(null)
-        setGeneratedRecoveryCodes([])
         await refreshMe()
         setSnack({ text: t("settings:security.snackbar.totpEnabled"), sev: "success" })
       } catch (error) {
@@ -1933,27 +1905,6 @@ export default function Settings() {
     },
     [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, setUser, t]
   )
-
-  const handleGenerateRecoveryCodes = useCallback(() => {
-    const action = async () => {
-      setRecoveryBusy(true)
-      try {
-        const { data } = await regenerateRecoveryCodes()
-        const codes = Array.isArray(data?.codes) ? data.codes.map((code) => String(code)) : []
-        setGeneratedRecoveryCodes(codes)
-        await refreshMe()
-        setSnack({ text: t("settings:security.snackbar.recoveryGenerated"), sev: "success" })
-      } catch (error) {
-        setSnack({
-          text: resolveDetailMessage(error, t("settings:security.snackbar.recoveryFailed")),
-          sev: "error",
-        })
-      } finally {
-        setRecoveryBusy(false)
-      }
-    }
-    openStepUpFor(action)
-  }, [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, t])
 
   const formatSessionTimestamp = useCallback(
     (value: string | null) => {
@@ -2740,12 +2691,7 @@ export default function Settings() {
                               secret={totpDraft.secret}
                               label={totpDraft.enrollment.label}
                             />
-                            <OtpEntry
-                              availableMethods={["totp"]}
-                              loading={totpBusy}
-                              error={totpError}
-                              onSubmit={handleConfirmTotp}
-                            />
+                            <OtpEntry loading={totpBusy} error={totpError} onSubmit={handleConfirmTotp} />
                             <Button
                               variant="text"
                               color="inherit"
@@ -2808,32 +2754,6 @@ export default function Settings() {
                         )}
                       </AccordionSection>
 
-                      <AccordionSection
-                        title={t("settings:security.method.recovery")}
-                        subtitle={t("settings:security.recovery.description")}
-                      >
-                        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                          <Button
-                            variant="outlined"
-                            onClick={handleGenerateRecoveryCodes}
-                            disabled={recoveryBusy}
-                          >
-                            {recoveryBusy
-                              ? t("settings:security.recovery.generating")
-                              : t("settings:security.recovery.generate")}
-                          </Button>
-                          <SectionSubtitle className="text-sm">
-                            {recoveryStatusText}
-                          </SectionSubtitle>
-                        </div>
-
-                        {generatedRecoveryCodes.length ? (
-                          <RecoveryCodeList
-                            codes={generatedRecoveryCodes.map((code) => ({ code }))}
-                            allowCopy
-                          />
-                        ) : null}
-                      </AccordionSection>
                     </div>
                   </SectionCard>
                 </div>
