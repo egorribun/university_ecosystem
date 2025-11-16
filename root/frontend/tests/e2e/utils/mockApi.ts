@@ -88,9 +88,7 @@ const createBaseProfile = (): User => ({
   mfa_required: false,
   mfa_default_method: null,
   mfa_last_verified_at: null,
-  mfa_recovery_codes_generated_at: null,
   totp_enrollments: [],
-  recovery_codes: [],
   mfa_challenges: [],
 })
 
@@ -220,12 +218,10 @@ const challengeExpiresAt = () => new Date(Date.now() + 5 * 60 * 1000).toISOStrin
 
 const createMfaChallenge = ({
   includeTotp = true,
-  includeRecovery = false,
   defaultMethod = includeTotp ? "totp" : null,
   sessionId = 1,
 }: {
   includeTotp?: boolean
-  includeRecovery?: boolean
   defaultMethod?: PendingMfaResponse["default_method"]
   sessionId?: number
 } = {}): PendingMfaResponse => {
@@ -234,14 +230,6 @@ const createMfaChallenge = ({
     methods.push({
       method: "totp",
       challenge_token: "totp-challenge-token",
-      challenge_expires_at: challengeExpiresAt(),
-      options: null,
-    })
-  }
-  if (includeRecovery) {
-    methods.push({
-      method: "recovery",
-      challenge_token: "recovery-challenge-token",
       challenge_expires_at: challengeExpiresAt(),
       options: null,
     })
@@ -273,7 +261,6 @@ export async function useMockApi(page: Page) {
     loginChallenge: null,
     stepUpChallenge: createMfaChallenge({
       includeTotp: true,
-      includeRecovery: true,
       sessionId: 42,
     }),
   },
@@ -354,7 +341,6 @@ export async function useMockApi(page: Page) {
       if (username === "mfa@example.com" && password === "Password123") {
         const challenge = createMfaChallenge({
           includeTotp: true,
-          includeRecovery: true,
           defaultMethod: "totp",
           sessionId: 84,
         })
@@ -588,8 +574,6 @@ export async function useMockApi(page: Page) {
         state.mfa.stepUpChallenge ??
         createMfaChallenge({
           includeTotp: true,
-          includeRecovery: true,
-          includeWebAuthn: true,
           sessionId: 42,
         })
       state.mfa.stepUpChallenge = challenge
@@ -646,7 +630,7 @@ export async function useMockApi(page: Page) {
       }
 
       const code = String(payload.code ?? "").replace(/\s+/g, "")
-      if (code !== "123456" && !(method === "recovery" && code === "RECOVERY-1")) {
+      if (code !== "123456") {
         await route.fulfill({
           status: 400,
           contentType: "application/json",
@@ -657,9 +641,7 @@ export async function useMockApi(page: Page) {
 
       state.profile.mfa_last_verified_at = new Date().toISOString()
       state.profile.mfa_required = false
-      if (method !== "recovery") {
-        state.profile.mfa_default_method = method
-      }
+      state.profile.mfa_default_method = method
 
       if (matchedLogin) {
         state.loggedIn = true
@@ -668,7 +650,6 @@ export async function useMockApi(page: Page) {
       if (matchedStepUp) {
         state.mfa.stepUpChallenge = createMfaChallenge({
           includeTotp: true,
-          includeRecovery: true,
           sessionId: 42,
         })
       }

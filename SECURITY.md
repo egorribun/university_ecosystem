@@ -25,7 +25,7 @@ To report a vulnerability, use the **Security** tab on GitHub and open a new **P
 
 ## Multi-factor Authentication Management
 
-- Disabling an individual MFA factor now triggers an automatic refresh of the user's MFA preferences. If other confirmed TOTP enrollments remain, the default factor stays on an active authenticator; otherwise the platform falls back to recovery-code-only access.
+- Disabling an individual MFA factor now triggers an automatic refresh of the user's MFA preferences. If other confirmed TOTP enrollments remain, the default factor stays on an active authenticator; otherwise the platform clears `mfa_default_method` and temporarily turns off MFA until another authenticator is added.
 - When the last interactive factor is removed, the platform clears `mfa_default_method` and turns off the `mfa_required` flag to prevent users from being locked in an MFA loop on their next login.
 - Administrators should advise users that removing every factor effectively disables MFA until a new authenticator app is added.
 
