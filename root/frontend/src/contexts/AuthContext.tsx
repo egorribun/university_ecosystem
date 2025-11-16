@@ -30,17 +30,11 @@ type SetUserArg = SetStateAction<UserState>
 
 export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up" }
 
-export type SubmitMfaChallengePayload =
-  | {
-      method: Extract<MfaMethod, "totp" | "recovery">
-      code: string
-      challengeToken?: string
-    }
-  | {
-      method: Extract<MfaMethod, "webauthn">
-      credential: Record<string, unknown>
-      challengeToken?: string
-    }
+export type SubmitMfaChallengePayload = {
+  method: Extract<MfaMethod, "totp" | "recovery">
+  code: string
+  challengeToken?: string
+}
 
 type AuthContextType = {
   isAuth: boolean
@@ -330,7 +324,6 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
   mfa_recovery_codes_generated_at: snapshot.mfa_recovery_codes_generated_at ?? null,
   totp_enrollments: [],
-  webauthn_credentials: [],
   recovery_codes: [],
   mfa_challenges: [],
 })
@@ -1020,19 +1013,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error(t("login.error"))
         }
 
-        let requestPayload: MfaVerifyPayload
-        if (payload.method === "webauthn") {
-          requestPayload = {
-            method: payload.method,
-            challenge_token: token,
-            credential: payload.credential,
-          }
-        } else {
-          requestPayload = {
-            method: payload.method,
-            challenge_token: token,
-            code: payload.code,
-          }
+        const requestPayload: MfaVerifyPayload = {
+          method: payload.method,
+          challenge_token: token,
+          code: payload.code,
         }
 
         const skipPushSync = Boolean(pending.session_id)

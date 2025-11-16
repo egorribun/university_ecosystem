@@ -158,91 +158,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/auth/mfa/webauthn": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List Webauthn Credentials */
-    get: operations["list_webauthn_credentials_auth_mfa_webauthn_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/auth/mfa/webauthn/{credential_id}": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Delete Webauthn Credential */
-    delete: operations["delete_webauthn_credential_auth_mfa_webauthn__credential_id__delete"]
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/auth/mfa/webauthn/attestation/start": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Start Webauthn Attestation */
-    post: operations["start_webauthn_attestation_auth_mfa_webauthn_attestation_start_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/auth/mfa/webauthn/attestation/finish": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Finish Webauthn Attestation */
-    post: operations["finish_webauthn_attestation_auth_mfa_webauthn_attestation_finish_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/auth/mfa/webauthn/assertion/start": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Start Webauthn Assertion Endpoint */
-    post: operations["start_webauthn_assertion_endpoint_auth_mfa_webauthn_assertion_start_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/auth/mfa/recovery": {
     parameters: {
       query?: never
@@ -1860,7 +1775,7 @@ export interface components {
        * Method
        * @enum {string}
        */
-      method: "totp" | "webauthn" | "recovery"
+      method: "totp" | "recovery"
       /** Challenge Token */
       challenge_token: string
       /**
@@ -1915,19 +1830,13 @@ export interface components {
        * Method
        * @enum {string}
        */
-      method: "totp" | "webauthn" | "recovery"
+      method: "totp" | "recovery"
       /** Challenge Token */
       challenge_token: string
       /** Code */
       code?: string | null
-      /** Credential */
-      credential?: {
-        [key: string]: unknown
-      } | null
     }
-    /** MfaWebAuthnCredentialOut */
-    MfaWebAuthnCredentialOut: {
-      /** Id */
+    /** Id */
       id: number
       /** User Id */
       user_id: number
@@ -2664,8 +2573,6 @@ export interface components {
     UserMfaMethodsOut: {
       /** Totp Enrollments */
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Webauthn Credentials */
-      webauthn_credentials?: components["schemas"]["MfaWebAuthnCredentialOut"][]
       /** Recovery Codes */
       recovery_codes?: components["schemas"]["MfaRecoveryCodeOut"][]
       /** Pending Challenges */
@@ -2751,8 +2658,6 @@ export interface components {
       mfa_recovery_codes_generated_at?: string | null
       /** Totp Enrollments */
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Webauthn Credentials */
-      webauthn_credentials?: components["schemas"]["MfaWebAuthnCredentialOut"][]
       /** Recovery Codes */
       recovery_codes?: components["schemas"]["MfaRecoveryCodeOut"][]
       /** Mfa Challenges */
@@ -3124,130 +3029,6 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  list_webauthn_credentials_auth_mfa_webauthn_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MfaWebAuthnCredentialOut"][]
-        }
-      }
-    }
-  }
-  delete_webauthn_credential_auth_mfa_webauthn__credential_id__delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        credential_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  start_webauthn_attestation_auth_mfa_webauthn_attestation_start_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["WebAuthnAttestationStartOut"]
-        }
-      }
-    }
-  }
-  finish_webauthn_attestation_auth_mfa_webauthn_attestation_finish_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["WebAuthnAttestationFinishIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MfaWebAuthnCredentialOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  start_webauthn_assertion_endpoint_auth_mfa_webauthn_assertion_start_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["WebAuthnAssertionStartOut"]
         }
       }
     }
