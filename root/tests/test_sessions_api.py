@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from app.auth.security import get_password_hash
 from app.models.models import ActiveSession
@@ -137,7 +138,7 @@ async def test_non_admin_cannot_list_sessions_for_other_user(
 
 
 @pytest.mark.anyio
-async def test_revoke_session_marks_revoked(
+async def test_revoke_session_removes_from_listing(
     async_client: AsyncClient,
     user_factory,
     db_session,
@@ -157,6 +158,10 @@ async def test_revoke_session_marks_revoked(
 
     headers = await _login(async_client, email=user.email, password=password)
 
+    response = await async_client.get("/auth/sessions", headers=headers)
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
     response = await async_client.delete(
         f"/auth/sessions/{other_session.id}", headers=headers
     )
@@ -165,8 +170,16 @@ async def test_revoke_session_marks_revoked(
     assert body["revoked_at"] is not None
     assert body["is_current"] is False
 
-    await db_session.refresh(other_session)
-    assert other_session.revoked_at is not None
+    listing = await async_client.get("/auth/sessions", headers=headers)
+    assert listing.status_code == 200
+    sessions = listing.json()
+    assert len(sessions) == 1
+    assert all(entry["jti"] != "revocable" for entry in sessions)
+
+    deleted = await db_session.execute(
+        select(ActiveSession.id).where(ActiveSession.id == other_session.id)
+    )
+    assert deleted.scalars().first() is None
 
 
 @pytest.mark.anyio
@@ -195,6 +208,44 @@ async def test_admin_can_revoke_foreign_session(
     response = await async_client.delete(f"/auth/sessions/{doomed.id}", headers=headers)
     assert response.status_code == 200
     assert response.json()["revoked_at"] is not None
+
+    deleted = await db_session.execute(
+        select(ActiveSession.id).where(ActiveSession.id == doomed.id)
+    )
+    assert deleted.scalars().first() is None
+
+
+@pytest.mark.anyio
+async def test_logout_removes_session_immediately(
+    async_client: AsyncClient,
+    user_factory,
+    db_session,
+):
+    password = "Logout123!"
+    user = await user_factory(
+        email="logout@example.com", hashed_password=get_password_hash(password)
+    )
+
+    headers = await _login(async_client, email=user.email, password=password)
+
+    response = await async_client.get("/auth/sessions", headers=headers)
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+    logout_response = await async_client.post("/auth/logout", headers=headers)
+    assert logout_response.status_code == 200
+
+    remaining = await db_session.execute(
+        select(ActiveSession.id).where(ActiveSession.user_id == user.id)
+    )
+    assert remaining.scalars().all() == []
+
+    new_headers = await _login(async_client, email=user.email, password=password)
+    refreshed = await async_client.get("/auth/sessions", headers=new_headers)
+    assert refreshed.status_code == 200
+    refreshed_sessions = refreshed.json()
+    assert len(refreshed_sessions) == 1
+    assert refreshed_sessions[0]["is_current"] is True
 
 
 @pytest.mark.anyio

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select, update
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_fresh_mfa
@@ -14,6 +14,7 @@ from app.localization import resolve_locale, translate
 from app.models.enums import UserRole
 from app.models.models import ActiveSession, User
 from app.schemas import schemas
+from app.services.session_cleanup import delete_sessions_matching
 
 router = APIRouter(prefix="/auth/sessions", tags=["auth"])
 
@@ -109,14 +110,15 @@ async def revoke_session(
     if session.user_id != current_user.id and current_user.role != UserRole.ADMIN.value:
         message = translate("errors.forbidden", locale=locale)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
-    if session.revoked_at is None:
-        session.revoked_at = datetime.now(UTC)
-        await db.commit()
-        await db.refresh(session)
+    revoked_at = session.revoked_at or datetime.now(UTC)
+    session.revoked_at = revoked_at
     current_jti = _extract_jti(request)
-    return schemas.ActiveSessionOut.model_validate(session).model_copy(
-        update={"is_current": session.jti == current_jti}
+    payload = schemas.ActiveSessionOut.model_validate(session).model_copy(
+        update={"is_current": session.jti == current_jti, "revoked_at": revoked_at}
     )
+    await delete_sessions_matching(db=db, whereclause=(ActiveSession.id == session.id))
+    await db.commit()
+    return payload
 
 
 @router.post("/revoke-others", response_model=schemas.SessionBulkRevokeOut)
@@ -134,17 +136,15 @@ async def revoke_other_sessions(
         requested_user_id=user_id,
         locale=locale,
     )
-    now = datetime.now(UTC)
     current_jti = _extract_jti(request)
-    stmt = (
-        update(ActiveSession)
-        .where(ActiveSession.user_id == target_user_id)
-        .where(ActiveSession.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
+    where_parts = [
+        ActiveSession.user_id == target_user_id,
+        ActiveSession.revoked_at.is_(None),
+    ]
     if current_jti:
-        stmt = stmt.where(ActiveSession.jti != current_jti)
-    result = await db.execute(stmt)
+        where_parts.append(ActiveSession.jti != current_jti)
+    revoked = await delete_sessions_matching(
+        db=db, whereclause=and_(*where_parts)
+    )
     await db.commit()
-    revoked = int(result.rowcount or 0)
     return schemas.SessionBulkRevokeOut(revoked=revoked)
