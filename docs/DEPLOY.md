@@ -60,6 +60,7 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
   - `periodic_task_password_reset_cleanup_*` — очистка токенов восстановления пароля.
   - `periodic_task_session_cleanup_*` — удаление протухших пользовательских сессий.
   - `periodic_task_story_cleanup_*` — очистка просроченных историй.
+  - `periodic_task_mfa_challenge_cleanup_*` — удаление просроченных и потреблённых MFA-челленджей.
 - Для каждой задачи доступны:
   - `*_runs_total` — количество успешных итераций.
   - `*_errors_total` — количество завершений с исключением.
@@ -196,3 +197,9 @@ server {
 
 - API автоматически удаляет устаревшие записи из `active_sessions` при старте и затем каждые 15 минут.
 - Частоту можно изменить переменной `SESSION_CLEANUP_INTERVAL_SECONDS` (минимум 30 секунд). Значение `0` выключает фоновой планировщик; при этом скрипт очистки можно запускать вручную, вызвав `python -m app.services.session_cleanup` внутри контейнера/виртуального окружения.
+
+## Очистка MFA-челленджей
+
+- Утилита `cleanup_stale_mfa_challenges` удаляет записи, у которых и срок действия, и отметка `consumed_at` старше `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
+- Планировщик запускается каждые 10 минут по умолчанию (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, минимум 30 секунд). Значение `0` отключает фоновой цикл, но задачу можно запускать вручную через `python -m app.services.mfa_challenge_cleanup`.
+- Рекомендуется выдерживать интервал 5–10 минут, чтобы база не разрасталась и не блокировала логин-формы. Следите за метриками `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total` и `_deleted_total`, чтобы замечать аномальные пики или ошибки очистки.

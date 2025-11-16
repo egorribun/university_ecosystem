@@ -345,7 +345,10 @@ class MfaChallenge(Base):
     user = relationship("User", back_populates="mfa_challenges")
     session = relationship("ActiveSession", back_populates="challenges")
 
-    __table_args__ = (Index("ix_mfa_challenges_user_expires", "user_id", "expires_at"),)
+    __table_args__ = (
+        Index("ix_mfa_challenges_user_expires", "user_id", "expires_at"),
+        Index("ix_mfa_challenges_consumed_expires", "consumed_at", "expires_at"),
+    )
 
 
 class FailedLoginAttempt(Base):

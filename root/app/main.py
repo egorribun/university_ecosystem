@@ -45,6 +45,11 @@ from app.services.file_scanner import (
 from app.services.file_scanner import (
     scan_for_malware as _scan_for_malware,
 )
+from app.services.mfa_challenge_cleanup import (
+    MfaChallengeCleanupConfig,
+    cleanup_stale_mfa_challenges,
+    start_mfa_challenge_cleanup_scheduler,
+)
 from app.services.notification_queue import (
     DeadLetterCleanupConfig,
     start_dead_letter_cleanup_scheduler,
@@ -93,6 +98,7 @@ async def lifespan(app: FastAPI):
     stop_session_cleanup = None
     stop_story_cleanup = None
     stop_password_reset_cleanup = None
+    stop_mfa_challenge_cleanup = None
     stop_email_change_cleanup = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
@@ -114,6 +120,7 @@ async def lifespan(app: FastAPI):
     await cleanup_stale_email_change_tokens(
         retention_minutes=settings.email_change_cleanup_retention_minutes
     )
+    await cleanup_stale_mfa_challenges()
     if (
         settings.notifications_retention_days > 0
         and settings.notifications_retention_cleanup_interval_seconds > 0
@@ -138,6 +145,13 @@ async def lifespan(app: FastAPI):
         stop_session_cleanup = await start_session_cleanup_scheduler(
             config=SessionCleanupConfig(
                 interval_seconds=settings.session_cleanup_interval_seconds
+            )
+        )
+    if settings.mfa_challenge_cleanup_interval_seconds > 0:
+        stop_mfa_challenge_cleanup = await start_mfa_challenge_cleanup_scheduler(
+            config=MfaChallengeCleanupConfig(
+                interval_seconds=settings.mfa_challenge_cleanup_interval_seconds,
+                grace_period_seconds=settings.mfa_challenge_cleanup_grace_period_seconds,
             )
         )
     if settings.password_reset_cleanup_interval_seconds > 0:
@@ -180,6 +194,8 @@ async def lifespan(app: FastAPI):
             await stop_password_reset_cleanup()
         if stop_email_change_cleanup is not None:
             await stop_email_change_cleanup()
+        if stop_mfa_challenge_cleanup is not None:
+            await stop_mfa_challenge_cleanup()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
