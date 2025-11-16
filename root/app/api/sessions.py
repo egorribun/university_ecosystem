@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -14,7 +15,7 @@ from app.localization import resolve_locale, translate
 from app.models.enums import UserRole
 from app.models.models import ActiveSession, User
 from app.schemas import schemas
-from app.services.session_cleanup import delete_sessions_matching
+from app.services.session_cleanup import revoke_sessions_matching
 
 router = APIRouter(prefix="/auth/sessions", tags=["auth"])
 
@@ -82,6 +83,7 @@ async def list_sessions(
     result = await db.execute(
         select(ActiveSession)
         .where(ActiveSession.user_id == target_user_id)
+        .where(ActiveSession.revoked_at.is_(None))
         .order_by(ActiveSession.created_at.desc())
     )
     sessions = result.scalars().all()
@@ -110,14 +112,16 @@ async def revoke_session(
     if session.user_id != current_user.id and current_user.role != UserRole.ADMIN.value:
         message = translate("errors.forbidden", locale=locale)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
-    revoked_at = session.revoked_at or datetime.now(UTC)
+    now = datetime.now(UTC)
+    revoked_at = session.revoked_at or now
     session.revoked_at = revoked_at
+    session.signing_key = secrets.token_urlsafe(32)
     current_jti = _extract_jti(request)
     payload = schemas.ActiveSessionOut.model_validate(session).model_copy(
         update={"is_current": session.jti == current_jti, "revoked_at": revoked_at}
     )
-    await delete_sessions_matching(db=db, whereclause=(ActiveSession.id == session.id))
     await db.commit()
+    await db.refresh(session)
     return payload
 
 
@@ -143,6 +147,6 @@ async def revoke_other_sessions(
     ]
     if current_jti:
         where_parts.append(ActiveSession.jti != current_jti)
-    revoked = await delete_sessions_matching(db=db, whereclause=and_(*where_parts))
+    revoked = await revoke_sessions_matching(db=db, whereclause=and_(*where_parts))
     await db.commit()
     return schemas.SessionBulkRevokeOut(revoked=revoked)

@@ -45,7 +45,6 @@ from app.schemas.schemas import (
     UserCreate,
     UserOut,
 )
-from app.services.session_cleanup import delete_sessions_matching
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
@@ -1118,12 +1117,12 @@ async def logout(
         res = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
         session = res.scalars().first()
         if session:
-            revoked_at = session.revoked_at or datetime.now(UTC)
+            now = datetime.now(UTC)
+            revoked_at = session.revoked_at or now
             session.revoked_at = revoked_at
-            await delete_sessions_matching(
-                db=db, whereclause=(ActiveSession.id == session.id)
-            )
+            session.signing_key = secrets.token_urlsafe(32)
             await db.commit()
+            await db.refresh(session)
             _audit_log(
                 "auth.logout.revoked",
                 request,
