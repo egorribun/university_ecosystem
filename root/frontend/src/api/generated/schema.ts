@@ -1768,6 +1768,23 @@ export interface components {
       payload?: {
         [key: string]: unknown
       } | null
+      /**
+       * Attempt Count
+       * @default 0
+       */
+      attempt_count: number
+    }
+    /** MfaFactorStatusOut */
+    MfaFactorStatusOut: {
+      /** Disabled */
+      disabled: boolean
+      /** Mfa Default Method */
+      mfa_default_method?: string | null
+      /**
+       * Mfa Required
+       * @default false
+       */
+      mfa_required: boolean
     }
     /** MfaMethodChallengeOut */
     MfaMethodChallengeOut: {
@@ -1787,6 +1804,12 @@ export interface components {
       options?: {
         [key: string]: unknown
       } | null
+      /** Attempt Count */
+      attempt_count?: number | null
+      /** Attempt Limit */
+      attempt_limit?: number | null
+      /** Remaining Attempts */
+      remaining_attempts?: number | null
     }
     /** MfaRecoveryCodeOut */
     MfaRecoveryCodeOut: {
@@ -1835,32 +1858,6 @@ export interface components {
       challenge_token: string
       /** Code */
       code?: string | null
-    }
-    /** Id */
-      id: number
-      /** User Id */
-      user_id: number
-      /** Credential Id */
-      credential_id: string
-      /** Device Name */
-      device_name?: string | null
-      /** Sign Count */
-      sign_count: number
-      /** Transports */
-      transports?: string[] | null
-      /** Backed Up */
-      backed_up: boolean
-      /** Clone Warning */
-      clone_warning: boolean
-      /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string
-      /** Last Used At */
-      last_used_at?: string | null
-      /** Is Active */
-      is_active: boolean
     }
     /** NewsCreate */
     NewsCreate: {
@@ -2724,45 +2721,6 @@ export interface components {
       /** Error Type */
       type: string
     }
-    /** WebAuthnAssertionStartOut */
-    WebAuthnAssertionStartOut: {
-      /** Options */
-      options: {
-        [key: string]: unknown
-      }
-      /** Challenge Token */
-      challenge_token: string
-      /**
-       * Challenge Expires At
-       * Format: date-time
-       */
-      challenge_expires_at: string
-    }
-    /** WebAuthnAttestationFinishIn */
-    WebAuthnAttestationFinishIn: {
-      /** Challenge Token */
-      challenge_token: string
-      /** Credential */
-      credential: {
-        [key: string]: unknown
-      }
-      /** Device Name */
-      device_name?: string | null
-    }
-    /** WebAuthnAttestationStartOut */
-    WebAuthnAttestationStartOut: {
-      /** Options */
-      options: {
-        [key: string]: unknown
-      }
-      /** Challenge Token */
-      challenge_token: string
-      /**
-       * Challenge Expires At
-       * Format: date-time
-       */
-      challenge_expires_at: string
-    }
   }
   responses: never
   parameters: never
@@ -3019,7 +2977,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": unknown
+          "application/json": components["schemas"]["MfaFactorStatusOut"]
         }
       }
       /** @description Validation Error */

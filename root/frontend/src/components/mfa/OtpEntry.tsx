@@ -72,12 +72,11 @@ export const OtpEntry = ({
 
   const derivedError = localError || error
   const hasMethodOverride = Boolean(methodHelperText) && activeMethod in (methodHelperText ?? {})
-  const derivedHelperText =
-    derivedError
-      ? null
-      : hasMethodOverride
-        ? methodHelperText?.[activeMethod] ?? null
-        : helperText ?? null
+  const derivedHelperText = derivedError
+    ? null
+    : hasMethodOverride
+      ? (methodHelperText?.[activeMethod] ?? null)
+      : (helperText ?? null)
 
   return (
     <form onSubmit={handleSubmit} className="w-full">

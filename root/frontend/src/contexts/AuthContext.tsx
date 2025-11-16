@@ -1055,9 +1055,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
           if (error.response?.status === 429) {
             const isStepUpFlow = pending.reason === "step-up"
-            const message = isStepUpFlow
-              ? t("mfa.stepUp.locked")
-              : t("mfa.errors.challengeLocked")
+            const message = isStepUpFlow ? t("mfa.stepUp.locked") : t("mfa.errors.challengeLocked")
             throw new ChallengeLockedError(message, { refreshable: isStepUpFlow })
           }
           const message =

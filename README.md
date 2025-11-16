@@ -184,11 +184,13 @@ cleanup, or increase the interval if you prefer less frequent maintenance.
 
 ## Multi-factor authentication
 
-The platform now standardizes on authenticator apps (TOTP) plus recovery codes for multi-factor
-authentication. Hardware security keys and WebAuthn ceremonies were removed from both the backend and
-frontend. Users can enroll multiple authenticator apps, confirm them with six-digit codes, and
-generate recovery codes for emergency access. When the last authenticator is revoked the account's MFA
-requirements are cleared automatically until a new TOTP enrollment is added.
+The platform now standardizes on authenticator apps (TOTP) as the sole multi-factor authentication
+option. Hardware security keys, WebAuthn ceremonies, and one-time recovery codes were removed from
+both the backend and frontend. Users can enroll multiple authenticator apps, confirm them with
+six-digit codes, and when the last authenticator is revoked the account's MFA requirements are cleared
+automatically until a new TOTP enrollment is added. Because recovery codes are no longer issued,
+administrators should ensure everyone keeps at least one authenticator registered before enabling
+"MFA required" on an account.
 
 ## Image uploads
 

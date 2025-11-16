@@ -29,11 +29,7 @@ import RecoveryCodeList from "@/components/mfa/RecoveryCodeList"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
-import type {
-  MfaMethod,
-  MfaTotpEnrollment,
-  TotpEnrollmentStartResponse,
-} from "@/types/Mfa"
+import type { MfaMethod, MfaTotpEnrollment, TotpEnrollmentStartResponse } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import { Settings as SettingsIcon, Moon, Sun, Monitor } from "lucide-react"

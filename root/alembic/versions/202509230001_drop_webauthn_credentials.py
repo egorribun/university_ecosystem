@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "202509230001"
-down_revision: str | None = "202509220001_add_consumed_expires_index_to_mfa_challenges"
+down_revision: str | None = "202509220001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
