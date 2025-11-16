@@ -17,11 +17,7 @@ import { usePushPreferences } from "@/hooks/usePushPreferences"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
 import { useColorScheme } from "@mui/material/styles"
 import api from "../api/client"
-import {
-  startTotpEnrollment,
-  confirmTotpEnrollment,
-  deleteTotpEnrollment,
-} from "@/api/mfa"
+import { startTotpEnrollment, confirmTotpEnrollment, deleteTotpEnrollment } from "@/api/mfa"
 import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
@@ -2691,7 +2687,11 @@ export default function Settings() {
                               secret={totpDraft.secret}
                               label={totpDraft.enrollment.label}
                             />
-                            <OtpEntry loading={totpBusy} error={totpError} onSubmit={handleConfirmTotp} />
+                            <OtpEntry
+                              loading={totpBusy}
+                              error={totpError}
+                              onSubmit={handleConfirmTotp}
+                            />
                             <Button
                               variant="text"
                               color="inherit"
@@ -2753,7 +2753,6 @@ export default function Settings() {
                           </div>
                         )}
                       </AccordionSection>
-
                     </div>
                   </SectionCard>
                 </div>

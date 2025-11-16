@@ -38,7 +38,7 @@ from app.models.user_loaders import (
 )
 from app.schemas import schemas
 from app.services.notifications import create_notifications_for_users
-from app.services.session_cleanup import delete_sessions_matching
+from app.services.session_cleanup import revoke_sessions_matching
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
 from app.utils.files import delete_static_file
 from app.utils.ratelimit import sensitive_route_limit
@@ -625,7 +625,7 @@ async def change_password(
     ]
     if current_session_id is not None:
         conditions.append(models.ActiveSession.id != current_session_id)
-    revoked = await delete_sessions_matching(db=db, whereclause=and_(*conditions))
+    revoked = await revoke_sessions_matching(db=db, whereclause=and_(*conditions))
 
     await db.commit()
     await db.refresh(db_user)

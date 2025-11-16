@@ -32,9 +32,7 @@ export const StepUpDialog = ({
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const challenge = useMemo<ChallengeMethod>(()
-    => pending?.methods?.[0] ?? null,
-  [pending])
+  const challenge = useMemo<ChallengeMethod>(() => pending?.methods?.[0] ?? null, [pending])
   const refreshChallenges = useCallback(async () => {
     const result = await requireMfa()
     setPending(result)
@@ -128,7 +126,10 @@ export const StepUpDialog = ({
     [t]
   )
 
-  const helperText = useMemo(() => formatRemainingAttempts(challenge), [challenge, formatRemainingAttempts])
+  const helperText = useMemo(
+    () => formatRemainingAttempts(challenge),
+    [challenge, formatRemainingAttempts]
+  )
 
   if (!open) return null
 
@@ -154,7 +155,12 @@ export const StepUpDialog = ({
               {description ?? t("mfa.stepUp.description")}
             </p>
             {challenge ? (
-              <OtpEntry loading={verifying} error={error} helperText={helperText} onSubmit={handleOtpSubmit} />
+              <OtpEntry
+                loading={verifying}
+                error={error}
+                helperText={helperText}
+                onSubmit={handleOtpSubmit}
+              />
             ) : null}
           </div>
         </div>

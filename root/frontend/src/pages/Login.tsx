@@ -118,7 +118,7 @@ const Login = () => {
   )
 
   const otpChallenge = useMemo<ChallengeMethod | null>(
-    () => (loginChallenge ? loginChallenge.methods[0] ?? null : null),
+    () => (loginChallenge ? (loginChallenge.methods[0] ?? null) : null),
     [loginChallenge]
   )
 
@@ -136,7 +136,10 @@ const Login = () => {
     [t]
   )
 
-  const otpHelperText = useMemo(() => formatRemainingAttempts(otpChallenge), [formatRemainingAttempts, otpChallenge])
+  const otpHelperText = useMemo(
+    () => formatRemainingAttempts(otpChallenge),
+    [formatRemainingAttempts, otpChallenge]
+  )
 
   useEffect(() => {
     if (!loginChallenge) {

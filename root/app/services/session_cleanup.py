@@ -1,9 +1,10 @@
-"""Utilities for removing expired authentication sessions."""
+"""Utilities for removing or revoking authentication sessions."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -70,6 +71,31 @@ async def delete_sessions_matching(
         delete_result = await db.execute(delete_stmt)
         deleted = int(delete_result.rowcount or 0)
     return deleted
+
+
+async def revoke_sessions_matching(
+    *,
+    db: AsyncSession,
+    whereclause: ClauseElement[bool],
+    rotate_signing_key: bool = True,
+) -> int:
+    """Mark matching sessions as revoked without deleting their rows."""
+
+    result = await db.execute(select(ActiveSession).where(whereclause))
+    sessions = result.scalars().all()
+    if not sessions:
+        return 0
+    now = datetime.now(UTC)
+    revoked = 0
+    for session in sessions:
+        if session.revoked_at is None:
+            revoked += 1
+            session.revoked_at = now
+        else:
+            revoked += 1
+        if rotate_signing_key:
+            session.signing_key = secrets.token_urlsafe(32)
+    return revoked
 
 
 async def cleanup_expired_sessions(

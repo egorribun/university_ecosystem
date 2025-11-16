@@ -224,9 +224,9 @@ async def test_revoke_session_removes_from_listing(
     assert all(entry["jti"] != "revocable" for entry in sessions)
 
     deleted = await db_session.execute(
-        select(ActiveSession.id).where(ActiveSession.id == other_session.id)
+        select(ActiveSession.revoked_at).where(ActiveSession.id == other_session.id)
     )
-    assert deleted.scalars().first() is None
+    assert deleted.scalar_one() is not None
 
 
 @pytest.mark.anyio
@@ -257,9 +257,9 @@ async def test_admin_can_revoke_foreign_session(
     assert response.json()["revoked_at"] is not None
 
     deleted = await db_session.execute(
-        select(ActiveSession.id).where(ActiveSession.id == doomed.id)
+        select(ActiveSession.revoked_at).where(ActiveSession.id == doomed.id)
     )
-    assert deleted.scalars().first() is None
+    assert deleted.scalar_one() is not None
 
 
 @pytest.mark.anyio
@@ -283,7 +283,9 @@ async def test_logout_removes_session_immediately(
     assert logout_response.status_code == 200
 
     remaining = await db_session.execute(
-        select(ActiveSession.id).where(ActiveSession.user_id == user.id)
+        select(ActiveSession.id)
+        .where(ActiveSession.user_id == user.id)
+        .where(ActiveSession.revoked_at.is_(None))
     )
     assert remaining.scalars().all() == []
 
