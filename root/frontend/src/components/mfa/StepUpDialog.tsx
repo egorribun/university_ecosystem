@@ -32,9 +32,10 @@ export const StepUpDialog = ({
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const challenge = useMemo<ChallengeMethod>(()
-    => pending?.methods?.[0] ?? null,
-  [pending])
+  const challenge = useMemo<ChallengeMethod>(
+    () => pending?.methods?.[0] ?? null,
+    [pending]
+  )
   const refreshChallenges = useCallback(async () => {
     const result = await requireMfa()
     setPending(result)
