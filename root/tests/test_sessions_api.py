@@ -1,19 +1,17 @@
-from datetime import UTC, datetime, timedelta
-
+import asyncio
 import datetime as dt
+from datetime import UTC, datetime, timedelta
 
 import pyotp
 import pytest
-import asyncio
-
 from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.auth.security import get_password_hash
-from app.models.models import ActiveSession
 from app.auth import mfa
+from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.models.models import ActiveSession
 
 
 async def _login(
@@ -307,7 +305,9 @@ async def test_revoke_session_requires_step_up(
     monkeypatch.setattr(settings, "mfa_step_up_ttl_seconds", 60)
     password = "StepUpSessions123!"
     hashed = get_password_hash(password)
-    user = await user_factory(email="stepup-sessions@example.com", hashed_password=hashed)
+    user = await user_factory(
+        email="stepup-sessions@example.com", hashed_password=hashed
+    )
 
     headers = await _login(async_client, email=user.email, password=password)
     secret = await _enable_totp(async_client, headers)
