@@ -21,8 +21,7 @@ import {
 import Visibility from "@mui/icons-material/Visibility"
 import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import { useTranslation } from "react-i18next"
-import OtpEntry, { type OtpMethod } from "@/components/mfa/OtpEntry"
-import type { MfaMethod } from "@/types/Mfa"
+import OtpEntry from "@/components/mfa/OtpEntry"
 
 function levenshtein(a: string, b: string) {
   const m = a.length,
@@ -118,25 +117,10 @@ const Login = () => {
     [pendingMfa]
   )
 
-  const otpMethods = useMemo<OtpMethod[]>(() => {
-    if (!loginChallenge) return []
-    const set = new Set<OtpMethod>()
-    for (const entry of loginChallenge.methods) {
-      if (entry.method === "totp" || entry.method === "recovery") {
-        set.add(entry.method)
-      }
-    }
-    return Array.from(set)
-  }, [loginChallenge])
-
-  const otpDefaultMethod = useMemo(() => {
-    if (!loginChallenge) return null
-    const preferred = loginChallenge.default_method
-    if (preferred === "totp" || preferred === "recovery") return preferred
-    if (otpMethods.includes("totp")) return "totp"
-    if (otpMethods.includes("recovery")) return "recovery"
-    return null
-  }, [loginChallenge, otpMethods])
+  const otpChallenge = useMemo<ChallengeMethod | null>(
+    () => (loginChallenge ? loginChallenge.methods[0] ?? null : null),
+    [loginChallenge]
+  )
 
   const formatRemainingAttempts = useCallback(
     (challenge: ChallengeMethod | null) => {
@@ -152,24 +136,7 @@ const Login = () => {
     [t]
   )
 
-  const otpMethodHelperText = useMemo<Partial<Record<OtpMethod, string>> | undefined>(() => {
-    if (!loginChallenge) {
-      return undefined
-    }
-    const map: Partial<Record<OtpMethod, string>> = {}
-    const totpChallenge = loginChallenge.methods.find((entry) => entry.method === "totp") ?? null
-    const totpText = formatRemainingAttempts(totpChallenge)
-    if (totpText) {
-      map.totp = totpText
-    }
-    const recoveryChallenge =
-      loginChallenge.methods.find((entry) => entry.method === "recovery") ?? null
-    const recoveryText = formatRemainingAttempts(recoveryChallenge)
-    if (recoveryText) {
-      map.recovery = recoveryText
-    }
-    return Object.keys(map).length ? map : undefined
-  }, [formatRemainingAttempts, loginChallenge])
+  const otpHelperText = useMemo(() => formatRemainingAttempts(otpChallenge), [formatRemainingAttempts, otpChallenge])
 
   useEffect(() => {
     if (!loginChallenge) {
@@ -257,13 +224,13 @@ const Login = () => {
   }
 
   const handleOtpVerify = useCallback(
-    async (method: Extract<MfaMethod, "totp" | "recovery">, code: string) => {
+    async (code: string) => {
       if (!loginChallenge) {
         setMfaError(t("auth:mfa.errors.expired"))
         setMfaErrorSource("general")
         return
       }
-      const challenge = loginChallenge.methods.find((entry) => entry.method === method)
+      const challenge = loginChallenge.methods[0]
       if (!challenge) {
         setMfaError(t("auth:mfa.errors.missingChallenge"))
         setMfaErrorSource("general")
@@ -276,7 +243,6 @@ const Login = () => {
 
       try {
         await submitMfaChallenge({
-          method,
           code,
           challengeToken: challenge.challenge_token,
         })
@@ -342,18 +308,15 @@ const Login = () => {
                 {generalMfaError}
               </Alert>
             ) : null}
-            {otpMethods.length ? (
+            {otpChallenge ? (
               <OtpEntry
-                availableMethods={otpMethods}
-                defaultMethod={otpDefaultMethod ?? undefined}
                 loading={mfaBusy}
                 error={mfaErrorSource === "totp" ? mfaError : null}
-                helperText={t("auth:mfa.otpHint")}
-                methodHelperText={otpMethodHelperText}
+                helperText={otpHelperText ?? t("auth:mfa.otpHint")}
                 onSubmit={handleOtpVerify}
               />
             ) : null}
-            {!otpMethods.length ? (
+            {!otpChallenge ? (
               <Alert severity="warning" variant="outlined">
                 {t("auth:mfa.noMethods")}
               </Alert>

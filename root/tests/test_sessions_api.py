@@ -1,12 +1,19 @@
 from datetime import UTC, datetime, timedelta
 
+import datetime as dt
+
+import pyotp
 import pytest
+import asyncio
+
 from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.auth.security import get_password_hash
 from app.models.models import ActiveSession
+from app.auth import mfa
+from app.core.config import settings
 
 
 async def _login(
@@ -35,6 +42,48 @@ async def _login(
     assert response.status_code == 200
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}", "User-Agent": user_agent}
+
+
+async def _enable_totp(async_client: AsyncClient, headers: dict[str, str]) -> str:
+    start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert start.status_code == status.HTTP_200_OK, start.text
+    data = start.json()
+    secret = data["secret"]
+    enrollment_id = data["enrollment"]["id"]
+    totp = pyotp.TOTP(secret)
+    confirm = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={"enrollment_id": enrollment_id, "code": totp.now()},
+    )
+    assert confirm.status_code == status.HTTP_200_OK, confirm.text
+    return secret
+
+
+async def _complete_step_up(
+    async_client: AsyncClient, headers: dict[str, str], secret: str
+) -> dict:
+    challenge = await async_client.post("/auth/mfa/step-up", headers=headers)
+    assert challenge.status_code == status.HTTP_202_ACCEPTED, challenge.text
+    payload = challenge.json()
+    assert payload["default_method"] == mfa.MFA_METHOD_TOTP
+    assert len(payload["methods"]) == 1
+    method = payload["methods"][0]
+    assert method["method"] == mfa.MFA_METHOD_TOTP
+    code = pyotp.TOTP(secret).now()
+    verify = await async_client.post(
+        "/auth/mfa/verify",
+        headers=headers,
+        json={
+            "method": mfa.MFA_METHOD_TOTP,
+            "challenge_token": method["challenge_token"],
+            "code": code,
+        },
+    )
+    assert verify.status_code == status.HTTP_200_OK, verify.text
+    body = verify.json()
+    headers["Authorization"] = f"Bearer {body['access_token']}"
+    return payload
 
 
 @pytest.mark.anyio
@@ -246,6 +295,62 @@ async def test_logout_removes_session_immediately(
     refreshed_sessions = refreshed.json()
     assert len(refreshed_sessions) == 1
     assert refreshed_sessions[0]["is_current"] is True
+
+
+@pytest.mark.anyio
+async def test_revoke_session_requires_step_up(
+    async_client: AsyncClient,
+    user_factory,
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "mfa_step_up_ttl_seconds", 60)
+    password = "StepUpSessions123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(email="stepup-sessions@example.com", hashed_password=hashed)
+
+    headers = await _login(async_client, email=user.email, password=password)
+    secret = await _enable_totp(async_client, headers)
+
+    other_session = ActiveSession(
+        user_id=user.id,
+        jti="step-up-other",
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=1),
+        last_seen_at=dt.datetime.now(dt.UTC),
+    )
+    db_session.add(other_session)
+    await db_session.commit()
+
+    result = await db_session.execute(
+        select(ActiveSession)
+        .where(ActiveSession.user_id == user.id)
+        .order_by(ActiveSession.created_at.desc())
+    )
+    current_session = result.scalars().first()
+    assert current_session is not None
+    current_session.mfa_verified_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
+    await db_session.commit()
+
+    blocked = await async_client.delete(
+        f"/auth/sessions/{other_session.id}", headers=headers
+    )
+    assert blocked.status_code == status.HTTP_428_PRECONDITION_REQUIRED
+    detail = blocked.json()["detail"]
+    assert detail["error"] == "mfa_step_up_required"
+
+    # Give the server a moment before requesting the challenge so the refreshed
+    # access token minted after verification has a distinct timestamp. This
+    # prevents the rate-limit middleware from grouping the requests under the
+    # same identifier when everything happens within a single second.
+    await asyncio.sleep(1.1)
+    payload = await _complete_step_up(async_client, headers, secret)
+    assert payload["session_id"] == current_session.id
+
+    success = await async_client.delete(
+        f"/auth/sessions/{other_session.id}", headers=headers
+    )
+    assert success.status_code == 200
+    assert success.json()["revoked_at"] is not None
 
 
 @pytest.mark.anyio

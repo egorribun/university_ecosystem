@@ -134,7 +134,7 @@
   },
   "security": {
     "title": "Security & MFA",
-    "subtitle": "Manage two-factor authentication methods, recovery codes, and trusted devices.",
+    "subtitle": "Manage your authenticator app and session security.",
     "account": {
       "title": "Account security",
       "subtitle": "Update your sign-in email and password to keep your account safe."
@@ -178,11 +178,10 @@
       }
     },
     "method": {
-      "totp": "Authenticator app",
-      "recovery": "Recovery codes"
+      "totp": "Authenticator app"
     },
     "status": {
-      "defaultMethod": "Default method: {{method}}",
+      "defaultTotp": "Default method: authenticator app",
       "noDefault": "Default method: none",
       "lastVerified": "Last verified {{value}}",
       "notVerified": "Not verified yet",
@@ -201,21 +200,12 @@
       "remove": "Remove",
       "unnamed": "Authenticator {{index}}"
     },
-    "recovery": {
-      "description": "Use recovery codes when you can't access your authenticator.",
-      "generate": "Generate new codes",
-      "generatedAt": "Last generated {{value}}",
-      "neverGenerated": "Codes not generated yet.",
-      "generating": "Generating…"
-    },
     "snackbar": {
       "totpStartFailed": "Couldn't start authenticator setup",
       "totpEnabled": "Authenticator app connected",
       "totpConfirmFailed": "Couldn't confirm authenticator code",
       "totpDisabled": "Authenticator app removed",
       "totpDisableFailed": "Couldn't remove authenticator app",
-      "recoveryGenerated": "New recovery codes generated",
-      "recoveryFailed": "Couldn't generate recovery codes",
       "challengeReset": "Verification challenge refreshed. Try again."
     },
     "stepUp": {

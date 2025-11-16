@@ -260,6 +260,47 @@ async def test_totp_attempt_limit_blocks_challenge(
 
 
 @pytest.mark.anyio
+async def test_login_fails_when_mfa_required_but_no_totp(async_client, user_factory):
+    password = "MissingTotp123!"
+    user = await user_factory(
+        email="missing-totp@example.com",
+        hashed_password=get_password_hash(password),
+        mfa_required=True,
+    )
+
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == translate(
+        "errors.auth.mfa_totp_missing", locale="en"
+    )
+
+
+@pytest.mark.anyio
+async def test_step_up_request_without_enrollment_returns_error(
+    async_client, user_factory
+):
+    password = "StepUpNone123!"
+    user = await user_factory(
+        email="stepup-missing@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    response = await async_client.post(
+        "/auth/mfa/step-up",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == translate(
+        "errors.auth.mfa_totp_missing", locale="en"
+    )
+
+
+@pytest.mark.anyio
 async def test_disabling_last_factor_clears_mfa_requirement(
     async_client, user_factory, db_session
 ):
@@ -324,86 +365,6 @@ async def test_disabling_last_factor_clears_mfa_requirement(
     )
     assert post_delete_login.status_code == status.HTTP_200_OK, post_delete_login.text
     assert "access_token" in post_delete_login.json()
-
-
-@pytest.mark.anyio
-async def test_recovery_code_login_flow(
-    async_client, user_factory, db_session, monkeypatch
-):
-    password = "RecoveryLoginPass123!"
-    user = await user_factory(
-        email="mfa-recovery@example.com",
-        hashed_password=get_password_hash(password),
-    )
-
-    codes = await mfa.create_recovery_codes(db_session, user=user, count=2)
-    await db_session.commit()
-
-    monkeypatch.setattr(settings, "mfa_enabled", True)
-
-    pending_response = await async_client.post(
-        "/auth/login",
-        data={"username": user.email, "password": password},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    assert pending_response.status_code == status.HTTP_202_ACCEPTED
-    pending = pending_response.json()
-    assert pending["default_method"] is None
-
-    recovery_method = _get_method_entry(pending, mfa.MFA_METHOD_RECOVERY)
-
-    success = await async_client.post(
-        "/auth/mfa/verify",
-        json={
-            "method": mfa.MFA_METHOD_RECOVERY,
-            "challenge_token": recovery_method["challenge_token"],
-            "code": codes[0],
-        },
-    )
-    assert success.status_code == status.HTTP_200_OK
-    token = success.json()["access_token"]
-    assert token
-
-    used_hash = mfa.hash_recovery_code(codes[0])
-    result = await db_session.execute(
-        select(models.MfaRecoveryCode).where(
-            models.MfaRecoveryCode.user_id == user.id,
-            models.MfaRecoveryCode.code_hash == used_hash,
-        )
-    )
-    used_record = result.scalars().one()
-    assert used_record.used_at is not None
-
-    # Attempt to reuse the same code should fail and an unused code should still work.
-    second_pending = await async_client.post(
-        "/auth/login",
-        data={"username": user.email, "password": password},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    assert second_pending.status_code == status.HTTP_202_ACCEPTED
-    second_method = _get_method_entry(second_pending.json(), mfa.MFA_METHOD_RECOVERY)
-
-    reuse = await async_client.post(
-        "/auth/mfa/verify",
-        json={
-            "method": mfa.MFA_METHOD_RECOVERY,
-            "challenge_token": second_method["challenge_token"],
-            "code": codes[0],
-        },
-    )
-    assert reuse.status_code == status.HTTP_400_BAD_REQUEST
-    assert reuse.json()["detail"] == "Invalid recovery code"
-
-    fallback = await async_client.post(
-        "/auth/mfa/verify",
-        json={
-            "method": mfa.MFA_METHOD_RECOVERY,
-            "challenge_token": second_method["challenge_token"],
-            "code": codes[1],
-        },
-    )
-    assert fallback.status_code == status.HTTP_200_OK
-    assert fallback.json()["access_token"]
 
 
 @pytest.mark.anyio

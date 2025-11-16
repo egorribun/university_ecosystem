@@ -60,10 +60,7 @@ class LoginIn(BaseModel):
 
 
 class MfaMethodChallengeOut(BaseModel):
-    method: Literal[
-        mfa.MFA_METHOD_TOTP,
-        mfa.MFA_METHOD_RECOVERY,
-    ]
+    method: Literal[mfa.MFA_METHOD_TOTP]
     challenge_token: str
     challenge_expires_at: datetime
     options: dict[str, Any] | None = None
@@ -76,7 +73,7 @@ class PendingMfaResponse(BaseModel):
     status: Literal["mfa_required"] = "mfa_required"
     user_id: int
     session_id: int | None = None
-    default_method: str | None = None
+    default_method: Literal[mfa.MFA_METHOD_TOTP] | None = None
     methods: list[MfaMethodChallengeOut]
 
 
@@ -96,10 +93,7 @@ class TotpEnrollmentConfirmIn(BaseModel):
 
 
 class MfaVerifyIn(BaseModel):
-    method: Literal[
-        mfa.MFA_METHOD_TOTP,
-        mfa.MFA_METHOD_RECOVERY,
-    ]
+    method: Literal[mfa.MFA_METHOD_TOTP]
     challenge_token: str
     code: str | None = None
 
@@ -242,19 +236,7 @@ async def _resolve_mfa_capabilities(db: AsyncSession, *, user: User) -> dict[str
         .limit(1)
     )
     totp_available = bool((await db.execute(totp_stmt)).scalars().first())
-
-    recovery_stmt = (
-        select(MfaRecoveryCode.id)
-        .where(MfaRecoveryCode.user_id == user.id)
-        .where(MfaRecoveryCode.used_at.is_(None))
-        .limit(1)
-    )
-    recovery_available = bool((await db.execute(recovery_stmt)).scalars().first())
-
-    return {
-        mfa.MFA_METHOD_TOTP: totp_available,
-        mfa.MFA_METHOD_RECOVERY: recovery_available,
-    }
+    return {mfa.MFA_METHOD_TOTP: totp_available}
 
 
 async def _collect_mfa_challenges(
@@ -266,56 +248,31 @@ async def _collect_mfa_challenges(
     session: ActiveSession | None = None,
 ) -> list[MfaMethodChallengeOut]:
     methods: list[MfaMethodChallengeOut] = []
-    if capabilities.get(mfa.MFA_METHOD_TOTP):
-        challenge = await mfa.start_totp_verification(
-            db,
-            user=user,
-            session=session,
-            locale=locale,
+    if not capabilities.get(mfa.MFA_METHOD_TOTP):
+        return methods
+    challenge = await mfa.start_totp_verification(
+        db,
+        user=user,
+        session=session,
+        locale=locale,
+    )
+    (
+        attempt_count,
+        attempt_limit,
+        remaining_attempts,
+    ) = mfa.describe_challenge_attempts(
+        challenge, default_limit=settings.mfa_totp_attempt_limit
+    )
+    methods.append(
+        MfaMethodChallengeOut(
+            method=mfa.MFA_METHOD_TOTP,
+            challenge_token=challenge.token,
+            challenge_expires_at=challenge.expires_at,
+            attempt_count=attempt_count,
+            attempt_limit=attempt_limit,
+            remaining_attempts=remaining_attempts,
         )
-        (
-            attempt_count,
-            attempt_limit,
-            remaining_attempts,
-        ) = mfa.describe_challenge_attempts(
-            challenge, default_limit=settings.mfa_totp_attempt_limit
-        )
-        methods.append(
-            MfaMethodChallengeOut(
-                method=mfa.MFA_METHOD_TOTP,
-                challenge_token=challenge.token,
-                challenge_expires_at=challenge.expires_at,
-                attempt_count=attempt_count,
-                attempt_limit=attempt_limit,
-                remaining_attempts=remaining_attempts,
-            )
-        )
-    if capabilities.get(mfa.MFA_METHOD_RECOVERY):
-        challenge = await mfa.issue_challenge(
-            db,
-            user_id=user.id,
-            session_id=session.id if session else None,
-            challenge_type=mfa.CHALLENGE_TYPE_RECOVERY,
-            locale=locale,
-            attempt_limit=settings.mfa_recovery_attempt_limit,
-        )
-        (
-            attempt_count,
-            attempt_limit,
-            remaining_attempts,
-        ) = mfa.describe_challenge_attempts(
-            challenge, default_limit=settings.mfa_recovery_attempt_limit
-        )
-        methods.append(
-            MfaMethodChallengeOut(
-                method=mfa.MFA_METHOD_RECOVERY,
-                challenge_token=challenge.token,
-                challenge_expires_at=challenge.expires_at,
-                attempt_count=attempt_count,
-                attempt_limit=attempt_limit,
-                remaining_attempts=remaining_attempts,
-            )
-        )
+    )
     return methods
 
 
@@ -663,6 +620,11 @@ async def _perform_login(
             user_id=user.id,
             reason="no_methods",
         )
+        message = translate("errors.auth.mfa_totp_missing", locale=locale)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
+    if require_mfa and not capabilities.get(mfa.MFA_METHOD_TOTP):
+        message = translate("errors.auth.mfa_totp_missing", locale=locale)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
     if require_mfa:
         methods = await _collect_mfa_challenges(
             db,
@@ -674,7 +636,7 @@ async def _perform_login(
             await db.commit()
             payload = PendingMfaResponse(
                 user_id=user.id,
-                default_method=user.mfa_default_method,
+                default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
                 methods=methods,
             )
             _audit_log(
@@ -920,11 +882,7 @@ async def verify_mfa_challenge(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    challenge_types = {
-        mfa.MFA_METHOD_TOTP: mfa.CHALLENGE_TYPE_TOTP_VERIFY,
-        mfa.MFA_METHOD_RECOVERY: mfa.CHALLENGE_TYPE_RECOVERY,
-    }
-    expected_type = challenge_types[payload.method]
+    expected_type = mfa.CHALLENGE_TYPE_TOTP_VERIFY
     try:
         challenge = await mfa.get_challenge(
             db,
@@ -988,44 +946,24 @@ async def verify_mfa_challenge(
         },
     )
     try:
-        if payload.method == mfa.MFA_METHOD_TOTP:
-            if not payload.code:
-                _audit_log(
-                    "auth.mfa.verify.failure",
-                    request,
-                    user_id=user.id,
-                    reason="missing_code",
-                )
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST, "Verification code required"
-                )
-            await mfa.verify_totp_for_user(
-                db,
-                user=user,
-                code=payload.code,
-                challenge=challenge,
-                session_id=challenge.session_id,
-                locale=locale,
+        if not payload.code:
+            _audit_log(
+                "auth.mfa.verify.failure",
+                request,
+                user_id=user.id,
+                reason="missing_code",
             )
-        else:
-            if not payload.code:
-                _audit_log(
-                    "auth.mfa.verify.failure",
-                    request,
-                    user_id=user.id,
-                    reason="missing_code",
-                )
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST, "Recovery code required"
-                )
-            await mfa.use_recovery_code(
-                db,
-                user=user,
-                code=payload.code,
-                challenge_token=payload.challenge_token,
-                session_id=challenge.session_id,
-                locale=locale,
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Verification code required"
             )
+        await mfa.verify_totp_for_user(
+            db,
+            user=user,
+            code=payload.code,
+            challenge=challenge,
+            session_id=challenge.session_id,
+            locale=locale,
+        )
     except HTTPException as exc:
         await db.commit()
         _audit_log(
@@ -1096,14 +1034,13 @@ async def request_step_up(
         session=session,
     )
     if not methods:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "No MFA methods available for step-up"
-        )
+        message = translate("errors.auth.mfa_totp_missing", locale=locale)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
     await db.commit()
     payload = PendingMfaResponse(
         user_id=user.id,
         session_id=session.id,
-        default_method=user.mfa_default_method,
+        default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
         methods=methods,
     )
     _audit_log(

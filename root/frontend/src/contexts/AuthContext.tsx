@@ -20,7 +20,7 @@ import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/pus
 import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
 import type { components } from "@/api/generated/schema"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
-import type { PendingMfaResponse, MfaMethod, MfaVerifyPayload } from "@/types/Mfa"
+import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
 import type { SupportedLanguage } from "@/contexts/LanguageContext"
 
@@ -31,7 +31,6 @@ type SetUserArg = SetStateAction<UserState>
 export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up" }
 
 export type SubmitMfaChallengePayload = {
-  method: Extract<MfaMethod, "totp" | "recovery">
   code: string
   challengeToken?: string
 }
@@ -1004,17 +1003,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setInitializing(true)
         }
 
-        const token =
-          payload.challengeToken ??
-          pending.methods.find((entry) => entry.method === (payload.method as MfaMethod))
-            ?.challenge_token
+        const activeChallenge = pending.methods[0]
+        const method = activeChallenge?.method ?? null
+        const token = payload.challengeToken ?? activeChallenge?.challenge_token ?? null
 
-        if (!token) {
+        if (!token || !method) {
           throw new Error(t("login.error"))
         }
 
         const requestPayload: MfaVerifyPayload = {
-          method: payload.method,
+          method,
           challenge_token: token,
           code: payload.code,
         }

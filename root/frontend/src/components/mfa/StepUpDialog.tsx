@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/contexts/AuthContext"
-import type { MfaMethod } from "@/types/Mfa"
-import OtpEntry, { type OtpMethod } from "./OtpEntry"
+import OtpEntry from "./OtpEntry"
 
 type StepUpDialogProps = {
   open: boolean
@@ -14,11 +13,9 @@ type StepUpDialogProps = {
   onChallengeReset?: () => void
 }
 
-type ChallengeMethod = PendingMfaState["methods"][number]
+type ChallengeMethod = PendingMfaState["methods"][number] | null
 
-const resolveMethods = (pending: PendingMfaState | null) => pending?.methods ?? []
-
-type ChallengeWithAttempts = ChallengeMethod &
+type ChallengeWithAttempts = NonNullable<ChallengeMethod> &
   Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
 
 export const StepUpDialog = ({
@@ -35,11 +32,9 @@ export const StepUpDialog = ({
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const methods = useMemo(() => resolveMethods(pending), [pending])
-  const defaultMethod = pending?.default_method ?? methods[0]?.method ?? null
-
-  const hasTotp = methods.some((entry) => entry.method === "totp")
-  const hasRecovery = methods.some((entry) => entry.method === "recovery")
+  const challenge = useMemo<ChallengeMethod>(()
+    => pending?.methods?.[0] ?? null,
+  [pending])
   const refreshChallenges = useCallback(async () => {
     const result = await requireMfa()
     setPending(result)
@@ -75,12 +70,6 @@ export const StepUpDialog = ({
     }
   }, [open, refreshChallenges, t])
 
-  const getChallenge = useCallback(
-    (method: MfaMethod): ChallengeMethod | null =>
-      methods.find((entry) => entry.method === method) ?? null,
-    [methods]
-  )
-
   const handleSubmit = useCallback(
     async (payload: SubmitMfaChallengePayload) => {
       setVerifying(true)
@@ -114,23 +103,15 @@ export const StepUpDialog = ({
     [onChallengeReset, onClose, onCompleted, refreshChallenges, submitMfaChallenge, t]
   )
 
-  const otpMethods = useMemo<OtpMethod[]>(() => {
-    const result: OtpMethod[] = []
-    if (hasTotp) result.push("totp")
-    if (hasRecovery) result.push("recovery")
-    return result
-  }, [hasRecovery, hasTotp])
-
   const handleOtpSubmit = useCallback(
-    async (method: Extract<MfaMethod, "totp" | "recovery">, code: string) => {
-      const challenge = getChallenge(method)
+    async (code: string) => {
       if (!challenge) {
         setError(t("mfa.stepUp.missingChallenge"))
         return
       }
-      await handleSubmit({ method, code, challengeToken: challenge.challenge_token })
+      await handleSubmit({ code, challengeToken: challenge.challenge_token })
     },
-    [getChallenge, handleSubmit, t]
+    [challenge, handleSubmit, t]
   )
 
   const formatRemainingAttempts = useCallback(
@@ -147,18 +128,7 @@ export const StepUpDialog = ({
     [t]
   )
 
-  const methodHelperText = useMemo<Partial<Record<OtpMethod, string>> | undefined>(() => {
-    const map: Partial<Record<OtpMethod, string>> = {}
-    const totpText = formatRemainingAttempts(getChallenge("totp"))
-    if (totpText) {
-      map.totp = totpText
-    }
-    const recoveryText = formatRemainingAttempts(getChallenge("recovery"))
-    if (recoveryText) {
-      map.recovery = recoveryText
-    }
-    return Object.keys(map).length ? map : undefined
-  }, [formatRemainingAttempts, getChallenge])
+  const helperText = useMemo(() => formatRemainingAttempts(challenge), [challenge, formatRemainingAttempts])
 
   if (!open) return null
 
@@ -183,19 +153,8 @@ export const StepUpDialog = ({
             <p className="text-sm text-page-text/70">
               {description ?? t("mfa.stepUp.description")}
             </p>
-            {otpMethods.length ? (
-              <OtpEntry
-                availableMethods={otpMethods}
-                defaultMethod={
-                  defaultMethod && otpMethods.includes(defaultMethod as OtpMethod)
-                    ? (defaultMethod as Extract<MfaMethod, "totp" | "recovery">)
-                    : otpMethods[0]
-                }
-                loading={verifying}
-                error={error}
-                methodHelperText={methodHelperText}
-                onSubmit={handleOtpSubmit}
-              />
+            {challenge ? (
+              <OtpEntry loading={verifying} error={error} helperText={helperText} onSubmit={handleOtpSubmit} />
             ) : null}
           </div>
         </div>

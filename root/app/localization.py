@@ -193,6 +193,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Превышено число попыток подтверждения. Запросите новый челлендж.",
         "en": "Too many incorrect verification attempts. Request a new challenge.",
     },
+    "errors.auth.mfa_totp_missing": {
+        "ru": "Сначала настройте приложение-аутентификатор, чтобы продолжить.",
+        "en": "Set up an authenticator app before continuing.",
+    },
     "errors.auth.mfa_step_up_required": {
         "ru": "Требуется дополнительное подтверждение входа.",
         "en": "Additional verification is required to continue.",
