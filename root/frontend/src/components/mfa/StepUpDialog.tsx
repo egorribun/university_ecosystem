@@ -101,9 +101,7 @@ export const StepUpDialog = ({
               }
             } catch (refreshError) {
               setError(
-                refreshError instanceof Error
-                  ? refreshError.message
-                  : t("mfa.stepUp.requestFailed")
+                refreshError instanceof Error ? refreshError.message : t("mfa.stepUp.requestFailed")
               )
             }
           }
@@ -114,14 +112,7 @@ export const StepUpDialog = ({
         setVerifying(false)
       }
     },
-    [
-      onChallengeReset,
-      onClose,
-      onCompleted,
-      refreshChallenges,
-      submitMfaChallenge,
-      t,
-    ]
+    [onChallengeReset, onClose, onCompleted, refreshChallenges, submitMfaChallenge, t]
   )
 
   const otpMethods = useMemo<OtpMethod[]>(() => {
@@ -147,12 +138,8 @@ export const StepUpDialog = ({
     (challenge: ChallengeMethod | null) => {
       if (!challenge) return null
       const meta = challenge as ChallengeWithAttempts
-      const limit =
-        typeof meta.attempt_limit === "number" ? meta.attempt_limit : null
-      const remaining =
-        typeof meta.remaining_attempts === "number"
-          ? meta.remaining_attempts
-          : null
+      const limit = typeof meta.attempt_limit === "number" ? meta.attempt_limit : null
+      const remaining = typeof meta.remaining_attempts === "number" ? meta.remaining_attempts : null
       if (!limit || limit <= 0 || remaining === null) {
         return null
       }

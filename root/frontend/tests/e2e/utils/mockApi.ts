@@ -257,13 +257,13 @@ export async function useMockApi(page: Page) {
       enrollments: [],
       nextId: 1,
     },
-  mfa: {
-    loginChallenge: null,
-    stepUpChallenge: createMfaChallenge({
-      includeTotp: true,
-      sessionId: 42,
-    }),
-  },
+    mfa: {
+      loginChallenge: null,
+      stepUpChallenge: createMfaChallenge({
+        includeTotp: true,
+        sessionId: 42,
+      }),
+    },
     deadLetterJobs: createDeadLetterJobs(),
   }
 

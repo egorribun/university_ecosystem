@@ -105,7 +105,7 @@ const resolveAttemptMeta = (
   const defaultLimit = 5
   const limit =
     config && Object.prototype.hasOwnProperty.call(config, "limit")
-      ? config.limit ?? null
+      ? (config.limit ?? null)
       : defaultLimit
   const countRaw = config?.count ?? 0
   const count = Number.isFinite(countRaw) ? Math.max(0, Math.floor(countRaw)) : 0

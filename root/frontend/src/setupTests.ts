@@ -60,4 +60,3 @@ if (!windowWithScroll.scrollTo) {
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
 }))
-

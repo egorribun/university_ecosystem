@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
-import {
-  ChallengeLockedError,
-  type PendingMfaState,
-  useAuth,
-} from "@/contexts/AuthContext"
+import { ChallengeLockedError, type PendingMfaState, useAuth } from "@/contexts/AuthContext"
 import {
   Box,
   Paper,
@@ -147,8 +143,7 @@ const Login = () => {
       if (!challenge) return null
       const meta = challenge as ChallengeWithAttempts
       const limit = typeof meta.attempt_limit === "number" ? meta.attempt_limit : null
-      const remaining =
-        typeof meta.remaining_attempts === "number" ? meta.remaining_attempts : null
+      const remaining = typeof meta.remaining_attempts === "number" ? meta.remaining_attempts : null
       if (!limit || limit <= 0 || remaining === null) {
         return null
       }
@@ -162,8 +157,7 @@ const Login = () => {
       return undefined
     }
     const map: Partial<Record<OtpMethod, string>> = {}
-    const totpChallenge =
-      loginChallenge.methods.find((entry) => entry.method === "totp") ?? null
+    const totpChallenge = loginChallenge.methods.find((entry) => entry.method === "totp") ?? null
     const totpText = formatRemainingAttempts(totpChallenge)
     if (totpText) {
       map.totp = totpText
