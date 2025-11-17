@@ -235,6 +235,16 @@ async def _resolve_mfa_capabilities(db: AsyncSession, *, user: User) -> dict[str
         .limit(1)
     )
     totp_available = bool((await db.execute(totp_stmt)).scalars().first())
+    if not totp_available and user.mfa_default_method == mfa.MFA_METHOD_TOTP:
+        legacy_stmt = (
+            select(MfaTotpEnrollment.id)
+            .where(MfaTotpEnrollment.user_id == user.id)
+            .where(MfaTotpEnrollment.is_active.is_(True))
+            .where(MfaTotpEnrollment.revoked_at.is_(None))
+            .where(MfaTotpEnrollment.confirmed_at.is_(None))
+            .limit(1)
+        )
+        totp_available = bool((await db.execute(legacy_stmt)).scalars().first())
     return {mfa.MFA_METHOD_TOTP: totp_available}
 
 
@@ -606,6 +616,9 @@ async def _perform_login(
     if new_hash:
         await db.refresh(user)
 
+    refreshed_user = await ensure_mfa_relationships_loaded(db, user)
+    if refreshed_user is not None:
+        user = refreshed_user
     capabilities = await _resolve_mfa_capabilities(db, user=user)
     available_methods = [method for method, enabled in capabilities.items() if enabled]
     require_mfa = bool(available_methods) or bool(user.mfa_required)

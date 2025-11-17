@@ -176,6 +176,50 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
 
 
 @pytest.mark.anyio
+async def test_totp_login_handles_legacy_records_without_confirmed_at(
+    async_client, user_factory, db_session
+):
+    password = "TotpLegacy123!"
+    user = await user_factory(
+        email="mfa-legacy@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    secret = await _enroll_totp(async_client, user, password, db_session)
+
+    result = await db_session.execute(
+        select(models.MfaTotpEnrollment)
+        .where(models.MfaTotpEnrollment.user_id == user.id)
+        .limit(1)
+    )
+    enrollment = result.scalars().first()
+    assert enrollment is not None
+    enrollment.confirmed_at = None
+    user.mfa_required = False
+    await db_session.commit()
+
+    pending_response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert pending_response.status_code == status.HTTP_202_ACCEPTED
+    pending = pending_response.json()
+    totp_method = _get_method_entry(pending, mfa.MFA_METHOD_TOTP)
+
+    totp = pyotp.TOTP(secret)
+    verify = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "method": mfa.MFA_METHOD_TOTP,
+            "challenge_token": totp_method["challenge_token"],
+            "code": totp.now(),
+        },
+    )
+    assert verify.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.anyio
 async def test_totp_challenge_expiry_blocks_verification(
     async_client, user_factory, db_session
 ):
