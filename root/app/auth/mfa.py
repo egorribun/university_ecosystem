@@ -468,7 +468,7 @@ async def start_totp_enrollment(
         user_id=user.id,
         secret=secret,
         label=label or user.email,
-        is_active=True,
+        is_active=False,
     )
     db.add(enrollment)
     await db.flush()

@@ -830,6 +830,7 @@ async def get_user_mfa_methods(
         select(models.MfaTotpEnrollment)
         .where(models.MfaTotpEnrollment.user_id == user_id)
         .where(models.MfaTotpEnrollment.is_active.is_(True))
+        .where(models.MfaTotpEnrollment.confirmed_at.is_not(None))
         .order_by(models.MfaTotpEnrollment.created_at)
     )
     recovery_rows = await db.execute(
