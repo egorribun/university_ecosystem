@@ -819,6 +819,33 @@ async def list_totp_enrollments(
     ]
 
 
+@router.delete(
+    "/mfa/totp/pending/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_pending_totp_enrollment(
+    enrollment_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    enrollment = await db.get(MfaTotpEnrollment, enrollment_id)
+    if not enrollment or enrollment.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
+    if enrollment.confirmed_at is not None or enrollment.revoked_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enrollment is not pending")
+
+    await db.delete(enrollment)
+    await db.commit()
+    _audit_log(
+        "auth.mfa.totp.pending_cancel",
+        request,
+        user_id=user.id,
+        reason="pending_cancelled",
+        extra={"enrollment_id": enrollment_id},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete("/mfa/totp/{enrollment_id}", response_model=MfaFactorStatusOut)
 async def delete_totp_enrollment(
     enrollment_id: int,

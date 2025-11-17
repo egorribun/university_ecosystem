@@ -425,6 +425,14 @@ export const handlers = [
     testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length, confirmed)
     return HttpResponse.json(confirmed)
   }),
+  http.delete("*/auth/mfa/totp/pending/:id", ({ params }) => {
+    const id = Number(params.id)
+    if (!totpDraft || totpDraft.enrollment.id !== id) {
+      return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
+    }
+    totpDraft = null
+    return HttpResponse.json(null, { status: 204 })
+  }),
   http.delete("*/auth/mfa/totp/:id", ({ params }) => {
     const id = Number(params.id)
     const index = testUser.totp_enrollments!.findIndex((entry) => entry.id === id)

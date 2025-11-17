@@ -204,6 +204,7 @@
       "totpStartFailed": "Couldn't start authenticator setup",
       "totpEnabled": "Authenticator app connected",
       "totpConfirmFailed": "Couldn't confirm authenticator code",
+      "totpCancelFailed": "Couldn't cancel authenticator setup",
       "totpDisabled": "Authenticator app removed",
       "totpDisableFailed": "Couldn't remove authenticator app",
       "challengeReset": "Verification challenge refreshed. Try again."

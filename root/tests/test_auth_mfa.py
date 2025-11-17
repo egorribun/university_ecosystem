@@ -149,6 +149,70 @@ async def test_totp_start_reuse_returns_same_secret(async_client, user_factory):
     assert reuse_payload["enrollment"]["id"] == first_payload["enrollment"]["id"]
 
 
+@pytest.mark.anyio
+async def test_pending_totp_enrollment_can_be_cancelled(
+    async_client, user_factory, db_session
+):
+    password = "TotpCancelPending123!"
+    user = await user_factory(
+        email="mfa-totp-cancel-pending@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    start_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert start_response.status_code == status.HTTP_200_OK, start_response.text
+    enrollment_id = start_response.json()["enrollment"]["id"]
+
+    cancel_response = await async_client.delete(
+        f"/auth/mfa/totp/pending/{enrollment_id}",
+        headers=headers,
+    )
+    assert cancel_response.status_code == status.HTTP_204_NO_CONTENT
+
+    await db_session.flush()
+    assert await db_session.get(models.MfaTotpEnrollment, enrollment_id) is None
+
+    restart_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert restart_response.status_code == status.HTTP_200_OK, restart_response.text
+
+
+@pytest.mark.anyio
+async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(
+    async_client, user_factory
+):
+    password = "TotpCancelConfirmed123!"
+    user = await user_factory(
+        email="mfa-totp-cancel-confirmed@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    start_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert start_response.status_code == status.HTTP_200_OK, start_response.text
+    start_payload = start_response.json()
+    enrollment_id = start_payload["enrollment"]["id"]
+
+    totp = pyotp.TOTP(start_payload["secret"])
+    confirm_response = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={"enrollment_id": enrollment_id, "code": totp.now()},
+    )
+    assert confirm_response.status_code == status.HTTP_200_OK, confirm_response.text
+
+    cancel_response = await async_client.delete(
+        f"/auth/mfa/totp/pending/{enrollment_id}",
+        headers=headers,
+    )
+    assert cancel_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert cancel_response.json()["detail"] == "Enrollment is not pending"
+
+
 def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
     for record in caplog.records:
         if record.name != logger_name:
