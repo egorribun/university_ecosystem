@@ -218,6 +218,7 @@ async def test_totp_login_handles_legacy_records_without_confirmed_at(
     )
     assert verify.status_code == status.HTTP_200_OK
 
+
 @pytest.mark.anyio
 async def test_totp_challenge_expiry_blocks_verification(
     async_client, user_factory, db_session
