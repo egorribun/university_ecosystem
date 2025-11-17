@@ -1866,10 +1866,7 @@ export default function Settings() {
           })
           return
         }
-        const message = resolveDetailMessage(
-          error,
-          t("settings:security.snackbar.totpStartFailed"),
-        )
+        const message = resolveDetailMessage(error, t("settings:security.snackbar.totpStartFailed"))
         setTotpError(message)
         setSnack({
           text: message,
@@ -1879,15 +1876,7 @@ export default function Settings() {
         setTotpBusy(false)
       }
     },
-    [
-      isStepUpError,
-      openStepUpFor,
-      resolveDetailMessage,
-      setSnack,
-      setTotpError,
-      t,
-      totpBusy,
-    ],
+    [isStepUpError, openStepUpFor, resolveDetailMessage, setSnack, setTotpError, t, totpBusy]
   )
 
   useEffect(() => {
