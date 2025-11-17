@@ -28,7 +28,11 @@ import OtpEntry from "@/components/mfa/OtpEntry"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
-import type { MfaTotpEnrollment, TotpEnrollmentStartResponse } from "@/types/Mfa"
+import type {
+  MfaTotpEnrollment,
+  TotpEnrollmentStartPayload,
+  TotpEnrollmentStartResponse,
+} from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import { Settings as SettingsIcon, Moon, Sun, Monitor } from "lucide-react"
@@ -1848,17 +1852,17 @@ export default function Settings() {
   )
 
   const handleStartTotp = useCallback(
-    async (options?: { skipStepUp?: boolean }) => {
+    async (options?: { skipStepUp?: boolean; payload?: TotpEnrollmentStartPayload }) => {
       if (totpBusy) return
       setTotpBusy(true)
       setTotpError(null)
       try {
-        const { data } = await startTotpEnrollment()
+        const { data } = await startTotpEnrollment(options?.payload)
         setTotpDraft(data)
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error)) {
           openStepUpFor(async () => {
-            await handleStartTotp({ skipStepUp: true })
+            await handleStartTotp({ skipStepUp: true, payload: options?.payload })
           })
           return
         }
@@ -1885,6 +1889,13 @@ export default function Settings() {
       totpBusy,
     ],
   )
+
+  useEffect(() => {
+    if (!pendingTotpEnrollment || totpDraft) {
+      return
+    }
+    void handleStartTotp({ payload: { reuse_existing: true } })
+  }, [handleStartTotp, pendingTotpEnrollment, totpDraft])
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {
