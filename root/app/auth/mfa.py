@@ -38,9 +38,7 @@ _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
 _TOTP_DIGITS = 6
 _MAX_ACTIVE_TOTP_ENROLLMENTS = 5
 
-TOTP_ENROLLMENT_PENDING_ERROR = (
-    "A TOTP enrollment is already pending. Confirm or reuse it before starting a new one."
-)
+TOTP_ENROLLMENT_PENDING_ERROR = "A TOTP enrollment is already pending. Confirm or reuse it before starting a new one."
 TOTP_ENROLLMENT_LIMIT_ERROR = (
     "You have reached the maximum number of active TOTP enrollments."
 )
