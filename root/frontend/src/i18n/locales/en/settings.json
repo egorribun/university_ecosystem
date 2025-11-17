@@ -199,7 +199,8 @@
       "pendingHelper": "Enter the verification code before leaving this page to finish connecting your authenticator app.",
       "added": "Added on {{value}}",
       "remove": "Remove",
-      "unnamed": "Authenticator {{index}}"
+      "unnamed": "Authenticator {{index}}",
+      "limitReached": "Only one authenticator app can be connected at a time. Remove the existing app to start over."
     },
     "snackbar": {
       "totpStartFailed": "Couldn't start authenticator setup",

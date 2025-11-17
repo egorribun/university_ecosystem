@@ -1535,6 +1535,7 @@ export default function Settings() {
   const pendingTotpId = pendingTotpEnrollment?.id ?? null
 
   const hasInteractiveMfa = activeTotp.length > 0
+  const totpLimitReached = hasInteractiveMfa
 
   const mfaDisabledMessage = useMemo(() => {
     if (hasInteractiveMfa) {
@@ -1853,7 +1854,7 @@ export default function Settings() {
 
   const handleStartTotp = useCallback(
     async (options?: { skipStepUp?: boolean; payload?: TotpEnrollmentStartPayload }) => {
-      if (totpBusy) return
+      if (totpBusy || totpLimitReached) return
       setTotpBusy(true)
       setTotpError(null)
       try {
@@ -1876,7 +1877,16 @@ export default function Settings() {
         setTotpBusy(false)
       }
     },
-    [isStepUpError, openStepUpFor, resolveDetailMessage, setSnack, setTotpError, t, totpBusy]
+    [
+      isStepUpError,
+      openStepUpFor,
+      resolveDetailMessage,
+      setSnack,
+      setTotpError,
+      t,
+      totpBusy,
+      totpLimitReached,
+    ]
   )
 
   useEffect(() => {
@@ -2808,13 +2818,19 @@ export default function Settings() {
                                 {totpError}
                               </Alert>
                             ) : null}
-                            <Button
-                              variant="contained"
-                              onClick={() => void handleStartTotp()}
-                              disabled={totpBusy}
-                            >
-                              {t("settings:security.totp.add")}
-                            </Button>
+                            {totpLimitReached ? (
+                              <Alert severity="info" variant="outlined">
+                                {t("settings:security.totp.limitReached")}
+                              </Alert>
+                            ) : (
+                              <Button
+                                variant="contained"
+                                onClick={() => void handleStartTotp()}
+                                disabled={totpBusy}
+                              >
+                                {t("settings:security.totp.add")}
+                              </Button>
+                            )}
                           </div>
                         )}
                       </AccordionSection>

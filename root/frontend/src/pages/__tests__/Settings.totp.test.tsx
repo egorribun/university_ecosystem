@@ -228,4 +228,32 @@ describe("Settings TOTP enrollment", () => {
     ).toBeVisible()
     expect(screen.queryByRole("button", { name: /^(Remove|Удалить)$/i })).not.toBeInTheDocument()
   })
+
+  it("disables additional authenticator enrollment when one is already confirmed", async () => {
+    const activeEnrollment = createPendingEnrollment({
+      label: "Main authenticator",
+      is_active: true,
+      confirmed_at: new Date().toISOString(),
+    })
+    testUser.totp_enrollments = [activeEnrollment]
+    testUser.mfa_default_method = "totp"
+    const initialUser = {
+      ...createBaseUser(),
+      totp_enrollments: [activeEnrollment],
+      mfa_default_method: "totp",
+    }
+
+    const user = userEvent.setup()
+    renderSettings({ initialUser })
+
+    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await screen.findByRole("heading", { name: matchSecurityHeading })
+
+    expect(
+      await screen.findByText(
+        /Only one authenticator app can be connected at a time|Можно подключить только одно приложение/i
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole("button", { name: matchTotpAddButton })).not.toBeInTheDocument()
+  })
 })

@@ -36,14 +36,15 @@ _RECOVERY_CODE_COUNT = 10
 _TOTP_SECRET_LENGTH = 32
 _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
 _TOTP_DIGITS = 6
-_MAX_ACTIVE_TOTP_ENROLLMENTS = 5
+_MAX_ACTIVE_TOTP_ENROLLMENTS = 1
 
 TOTP_ENROLLMENT_PENDING_ERROR = (
     "A TOTP enrollment is already pending. "
     "Confirm or reuse it before starting a new one."
 )
 TOTP_ENROLLMENT_LIMIT_ERROR = (
-    "You have reached the maximum number of active TOTP enrollments."
+    "Only one authenticator app can be connected at a time. "
+    "Remove the existing app before starting a new setup."
 )
 
 CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
@@ -513,6 +514,7 @@ async def start_totp_enrollment(
         .select_from(MfaTotpEnrollment)
         .where(MfaTotpEnrollment.user_id == user.id)
         .where(MfaTotpEnrollment.revoked_at.is_(None))
+        .where(MfaTotpEnrollment.confirmed_at.is_not(None))
     )
     active_count = await db.scalar(count_stmt)
     if active_count and active_count >= _MAX_ACTIVE_TOTP_ENROLLMENTS:
