@@ -59,6 +59,7 @@ async def _enroll_totp(async_client, user, password: str, db_session) -> str:
     assert confirm_response.status_code == status.HTTP_200_OK, confirm_response.text
     await db_session.refresh(user)
     assert user.mfa_default_method == mfa.MFA_METHOD_TOTP
+    assert user.mfa_required is True
     return secret
 
 
@@ -77,7 +78,7 @@ def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
 
 @pytest.mark.anyio
 async def test_totp_enrollment_and_verification_flow(
-    async_client, user_factory, db_session, monkeypatch
+    async_client, user_factory, db_session
 ):
     password = "TotpFlowPass123!"
     user = await user_factory(
@@ -86,8 +87,6 @@ async def test_totp_enrollment_and_verification_flow(
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
-
-    monkeypatch.setattr(settings, "mfa_enabled", True)
 
     pending_response = await async_client.post(
         "/auth/login",
@@ -151,8 +150,34 @@ async def test_totp_enrollment_and_verification_flow(
 
 
 @pytest.mark.anyio
-async def test_totp_challenge_expiry_blocks_verification(
+async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     async_client, user_factory, db_session, monkeypatch
+):
+    password = "TotpOptIn123!"
+    user = await user_factory(
+        email="mfa-toggle@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    await _enroll_totp(async_client, user, password, db_session)
+
+    monkeypatch.setattr(settings, "mfa_enabled", False)
+
+    pending_response = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert pending_response.status_code == status.HTTP_202_ACCEPTED
+    pending = pending_response.json()
+    assert pending["status"] == "mfa_required"
+    assert pending["user_id"] == user.id
+    assert pending["default_method"] == mfa.MFA_METHOD_TOTP
+
+
+@pytest.mark.anyio
+async def test_totp_challenge_expiry_blocks_verification(
+    async_client, user_factory, db_session
 ):
     password = "TotpExpiryPass123!"
     user = await user_factory(
@@ -161,8 +186,6 @@ async def test_totp_challenge_expiry_blocks_verification(
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
-
-    monkeypatch.setattr(settings, "mfa_enabled", True)
 
     pending_response = await async_client.post(
         "/auth/login",
@@ -205,8 +228,6 @@ async def test_totp_attempt_limit_blocks_challenge(
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
-
-    monkeypatch.setattr(settings, "mfa_enabled", True)
     monkeypatch.setattr(settings, "mfa_totp_attempt_limit", 2)
 
     pending_response = await async_client.post(

@@ -629,7 +629,10 @@ async def refresh_user_mfa_preferences(
         user.mfa_default_method = new_default
         changed = True
 
-    if new_default is None and user.mfa_required:
+    if new_default is not None and not user.mfa_required:
+        user.mfa_required = True
+        changed = True
+    elif new_default is None and user.mfa_required:
         user.mfa_required = False
         changed = True
 
