@@ -608,9 +608,7 @@ async def _perform_login(
 
     capabilities = await _resolve_mfa_capabilities(db, user=user)
     available_methods = [method for method, enabled in capabilities.items() if enabled]
-    require_mfa = bool(available_methods) and (
-        bool(settings.mfa_enabled) or bool(user.mfa_required)
-    )
+    require_mfa = bool(available_methods) or bool(user.mfa_required)
     if user.mfa_required and not available_methods:
         _audit_log(
             "auth.login.mfa_missing",
