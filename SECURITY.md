@@ -6,6 +6,12 @@ We actively maintain and provide security updates for the latest released versio
 ## Reporting a Vulnerability
 If you discover a vulnerability, please report it privately so we can address it promptly. We aim to acknowledge new reports within 72 hours.
 
+## Dependency Audit Notes
+
+- `npm audit --audit-level=high` (February 2025) currently reports [GHSA-5j98-mcp5-4vw2](https://github.com/advisories/GHSA-5j98-mcp5-4vw2) for the `glob` CLI that ships as a transitive dependency of `tailwindcss@3.4.18` (`tailwindcss → sucrase → glob`).
+- The upstream fix is only available in `glob@>=11.0.4`, which requires `tailwindcss@4.x`. Migrating to Tailwind 4 is a breaking change that touches the entire design system, so the dependency bump must be scheduled alongside the design system refresh.
+- The vulnerable CLI is not used anywhere in production builds (Tailwind invokes `glob` programmatically), so the remaining exposure is limited to local developer machines that manually run the `glob` binary with the `-c/--cmd` flag. We will re-run `npm audit` after the Tailwind upgrade to ensure the advisory disappears.
+
 ## Private Vulnerability Reporting
 To report a vulnerability, use the **Security** tab on GitHub and open a new **Private vulnerability report**. Issues are disabled for vulnerability discussions; instead, please submit a GitHub Security Advisory so the team can work with you directly on mitigation and disclosure.
 
