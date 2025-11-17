@@ -196,6 +196,7 @@
       "confirm": "Confirm setup",
       "pendingTitle": "Finish setup",
       "pendingDescription": "Scan the QR code and enter the verification code to activate.",
+      "pendingHelper": "Enter the verification code before leaving this page to finish connecting your authenticator app.",
       "added": "Added on {{value}}",
       "remove": "Remove",
       "unnamed": "Authenticator {{index}}"
