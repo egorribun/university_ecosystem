@@ -1515,9 +1515,21 @@ export default function Settings() {
   }, [])
 
   const activeTotp = useMemo(
-    () => (user?.totp_enrollments ?? []).filter((entry) => entry.is_active),
+    () =>
+      (user?.totp_enrollments ?? []).filter(
+        (entry) => Boolean(entry.confirmed_at) && !entry.revoked_at
+      ),
     [user?.totp_enrollments]
   )
+
+  const pendingTotpEnrollment = useMemo(
+    () =>
+      (user?.totp_enrollments ?? []).find(
+        (entry) => !entry.confirmed_at && !entry.revoked_at
+      ) ?? null,
+    [user?.totp_enrollments]
+  )
+  const pendingTotpId = pendingTotpEnrollment?.id ?? null
 
   const hasInteractiveMfa = activeTotp.length > 0
 
@@ -1860,11 +1872,12 @@ export default function Settings() {
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {
-      if (!totpDraft) return
+      const enrollmentId = totpDraft?.enrollment.id ?? pendingTotpId
+      if (!enrollmentId) return
       setTotpBusy(true)
       setTotpError(null)
       try {
-        await confirmTotpEnrollment({ enrollment_id: totpDraft.enrollment.id, code })
+        await confirmTotpEnrollment({ enrollment_id: enrollmentId, code })
         setTotpDraft(null)
         await refreshMe()
         setSnack({ text: t("settings:security.snackbar.totpEnabled"), sev: "success" })
@@ -1874,15 +1887,16 @@ export default function Settings() {
         setTotpBusy(false)
       }
     },
-    [refreshMe, resolveDetailMessage, t, totpDraft, setSnack]
+    [pendingTotpId, refreshMe, resolveDetailMessage, t, totpDraft, setSnack]
   )
 
   const handleCancelTotp = useCallback(async () => {
-    if (!totpDraft || totpBusy) return
+    const enrollmentId = totpDraft?.enrollment.id ?? pendingTotpId
+    if (!enrollmentId || totpBusy) return
     setTotpBusy(true)
     setTotpError(null)
     try {
-      await deletePendingTotpEnrollment(totpDraft.enrollment.id)
+      await deletePendingTotpEnrollment(enrollmentId)
       setTotpDraft(null)
       await refreshMe()
     } catch (error) {
@@ -1896,6 +1910,7 @@ export default function Settings() {
       setTotpBusy(false)
     }
   }, [
+    pendingTotpId,
     refreshMe,
     resolveDetailMessage,
     setSnack,
@@ -2706,7 +2721,7 @@ export default function Settings() {
                         title={t("settings:security.method.totp")}
                         subtitle={t("settings:security.totp.description")}
                       >
-                        {totpDraft ? (
+                        {pendingTotpEnrollment || totpDraft ? (
                           <div className="flex flex-col gap-4">
                             <h4 className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_86%,var(--nav-link)_14%)]">
                               {t("settings:security.totp.pendingTitle")}
@@ -2714,14 +2729,22 @@ export default function Settings() {
                             <SectionSubtitle className="text-sm">
                               {t("settings:security.totp.pendingDescription")}
                             </SectionSubtitle>
-                            <TotpQrDisplay
-                              otpauthUrl={totpDraft.otpauth_url}
-                              secret={totpDraft.secret}
-                              label={totpDraft.enrollment.label}
-                            />
+                            {totpDraft ? (
+                              <TotpQrDisplay
+                                otpauthUrl={totpDraft.otpauth_url}
+                                secret={totpDraft.secret}
+                                label={totpDraft.enrollment.label}
+                              />
+                            ) : null}
+                            {totpError ? (
+                              <Alert severity="error" variant="outlined">
+                                {totpError}
+                              </Alert>
+                            ) : null}
                             <OtpEntry
                               loading={totpBusy}
                               error={totpError}
+                              helperText={t("settings:security.totp.pendingHelper")}
                               onSubmit={handleConfirmTotp}
                             />
                             <Button

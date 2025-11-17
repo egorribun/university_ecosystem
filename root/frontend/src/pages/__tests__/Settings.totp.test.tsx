@@ -9,6 +9,7 @@ import Settings from "@/pages/Settings"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { User } from "@/types/User"
+import type { MfaTotpEnrollment } from "@/types/Mfa"
 import theme from "@/theme"
 import { createQueryClient } from "@/app/queryClient"
 import { resetTestMfa, testUser } from "@/tests/mocks/handlers"
@@ -42,9 +43,25 @@ const createBaseUser = (): User => ({
   mfa_last_verified_at: null,
 })
 
-const renderSettings = () => {
+const createPendingEnrollment = (
+  overrides: Partial<MfaTotpEnrollment> = {}
+): MfaTotpEnrollment => ({
+  id: overrides.id ?? Math.floor(Math.random() * 10_000) + 1,
+  user_id: overrides.user_id ?? testUser.id,
+  label: overrides.label ?? "Pending authenticator",
+  is_active: overrides.is_active ?? false,
+  confirmed_at: overrides.confirmed_at ?? null,
+  revoked_at: overrides.revoked_at ?? null,
+  created_at: overrides.created_at ?? new Date().toISOString(),
+})
+
+type RenderSettingsOptions = {
+  initialUser?: User
+}
+
+const renderSettings = (options?: RenderSettingsOptions) => {
   const queryClient = createQueryClient()
-  const initialUser = createBaseUser()
+  const initialUser = options?.initialUser ?? createBaseUser()
 
   const TestAuthProvider = ({ children }: PropsWithChildren) => {
     const [user, setUser] = useState<User | null>(initialUser)
@@ -141,7 +158,8 @@ describe("Settings TOTP enrollment", () => {
     await user.type(otpInput, "000000")
     await user.click(screen.getByRole("button", { name: matchTotpSubmit }))
 
-    await screen.findByText(/Invalid verification code/i)
+    const errorMessages = await screen.findAllByText(/Invalid verification code/i)
+    expect(errorMessages.length).toBeGreaterThan(0)
     expect(screen.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
   })
 
@@ -190,5 +208,30 @@ describe("Settings TOTP enrollment", () => {
     )
     expect(errorMessages.length).toBeGreaterThan(0)
     expect(screen.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
+  })
+
+  it("shows pending enrollments only inside the QR panel", async () => {
+    const pendingEnrollment = createPendingEnrollment()
+    testUser.totp_enrollments = [pendingEnrollment]
+    const initialUser = {
+      ...createBaseUser(),
+      totp_enrollments: [pendingEnrollment],
+    }
+
+    const user = userEvent.setup()
+    renderSettings({ initialUser })
+
+    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await screen.findByRole("heading", { name: matchSecurityHeading })
+
+    await screen.findByText(/Finish setup|Завершите настройку/i)
+    expect(
+      screen.getByText(
+        /Enter the verification code before leaving|Введите код из приложения перед уходом/i
+      )
+    ).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: /^(Remove|Удалить)$/i })
+    ).not.toBeInTheDocument()
   })
 })
