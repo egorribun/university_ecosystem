@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react"
+import { FormEvent, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 type OtpEntryProps = {
@@ -12,6 +12,9 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   const { t } = useTranslation("auth")
   const [code, setCode] = useState("")
   const [localError, setLocalError] = useState<string | null>(null)
+  const inputId = useId()
+  const helperId = useId()
+  const errorId = useId()
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -26,6 +29,11 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
   const derivedError = localError || error
   const derivedHelperText = derivedError ? null : (helperText ?? null)
+  const describedBy = derivedError
+    ? errorId
+    : derivedHelperText
+      ? helperId
+      : undefined
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
@@ -37,14 +45,11 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
         <p className="text-sm text-page-text/70">{t("mfa.otp.descriptions.totp")}</p>
 
         <div>
-          <label
-            htmlFor="otp-input"
-            className="block text-sm font-medium text-page-text mb-1 px-1 bg-card"
-          >
+          <label htmlFor={inputId} className="sr-only">
             {t("mfa.otp.methods.totp")}
           </label>
           <input
-            id="otp-input"
+            id={inputId}
             autoFocus
             type="text"
             value={code}
@@ -60,22 +65,33 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               disabled:bg-page-text/[0.06] disabled:border-page-text/20 disabled:cursor-not-allowed
               transition-all duration-200
             `}
+            aria-invalid={derivedError ? "true" : "false"}
+            aria-describedby={describedBy}
           />
         </div>
 
         {derivedError ? (
-          <p className="text-xs text-red-500">{derivedError}</p>
+          <p id={errorId} className="text-xs text-red-500">
+            {derivedError}
+          </p>
         ) : derivedHelperText ? (
-          <p className="text-xs text-page-text/60">{derivedHelperText}</p>
+          <p id={helperId} className="text-xs text-page-text/60">
+            {derivedHelperText}
+          </p>
         ) : null}
 
         <button
           type="submit"
           disabled={Boolean(loading)}
           className="
-            w-full px-6 py-3 text-base font-bold rounded-lg
-            bg-primary text-white hover:bg-primary/90
-            shadow-md hover:shadow-lg
+            w-full px-6 py-3 text-base font-bold rounded-xl text-white
+            bg-[color:var(--nav-link)] shadow-[0_14px_34px_rgba(15,79,170,0.26)]
+            hover:bg-[color:color-mix(in_srgb,var(--nav-link)_94%,white_6%)]
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--nav-link)_35%,transparent)]
+            focus-visible:ring-offset-2 focus-visible:ring-offset-transparent
+            dark:bg-[color:color-mix(in_srgb,var(--nav-link)_88%,rgba(10,18,32,0.92)_12%)]
+            dark:hover:bg-[color:color-mix(in_srgb,var(--nav-link)_92%,rgba(10,18,32,0.92)_8%)]
+            dark:shadow-[0_18px_38px_rgba(2,6,23,0.55)]
             transition-all duration-200
             disabled:opacity-60 disabled:cursor-not-allowed
           "
