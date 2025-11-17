@@ -337,9 +337,6 @@ const Login = () => {
                     email: activeEmail || t("auth:mfa.unknownEmail"),
                   })}
                 </h1>
-                <p className="text-base text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
-                  {t("auth:mfa.otpHint")}
-                </p>
               </div>
 
               {generalMfaError ? (
@@ -353,7 +350,7 @@ const Login = () => {
                   <OtpEntry
                     loading={mfaBusy}
                     error={mfaErrorSource === "totp" ? mfaError : null}
-                    helperText={otpHelperText ?? t("auth:mfa.otpHint")}
+                    helperText={otpHelperText ?? null}
                     onSubmit={handleOtpVerify}
                   />
                 </div>
