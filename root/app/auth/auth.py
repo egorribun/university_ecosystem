@@ -806,6 +806,7 @@ async def list_totp_enrollments(
     stmt = (
         select(MfaTotpEnrollment)
         .where(MfaTotpEnrollment.user_id == user.id)
+        .where(MfaTotpEnrollment.confirmed_at.is_not(None))
         .order_by(MfaTotpEnrollment.created_at.desc())
     )
     result = await db.execute(stmt)

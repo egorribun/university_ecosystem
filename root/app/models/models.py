@@ -253,7 +253,7 @@ class MfaTotpEnrollment(Base):
     )
     secret = Column(EncryptedString(), nullable=False)
     label = Column(String(255))
-    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    is_active = Column(Boolean, nullable=False, default=False, index=True)
     confirmed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(

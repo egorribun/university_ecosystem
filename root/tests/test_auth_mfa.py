@@ -63,6 +63,46 @@ async def _enroll_totp(async_client, user, password: str, db_session) -> str:
     return secret
 
 
+@pytest.mark.anyio
+async def test_totp_enrollment_pending_state(async_client, user_factory, db_session):
+    password = "PendingTotp123!"
+    user = await user_factory(
+        email="mfa-pending@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    start_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert start_response.status_code == status.HTTP_200_OK, start_response.text
+    start_payload = start_response.json()
+    assert start_payload["enrollment"]["is_active"] is False
+    assert start_payload["enrollment"]["confirmed_at"] is None
+
+    list_response = await async_client.get("/auth/mfa/totp", headers=headers)
+    assert list_response.status_code == status.HTTP_200_OK
+    assert list_response.json() == []
+
+    totp = pyotp.TOTP(start_payload["secret"])
+    confirm_response = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={
+            "enrollment_id": start_payload["enrollment"]["id"],
+            "code": totp.now(),
+        },
+    )
+    assert confirm_response.status_code == status.HTTP_200_OK, confirm_response.text
+
+    list_after_confirm = await async_client.get("/auth/mfa/totp", headers=headers)
+    assert list_after_confirm.status_code == status.HTTP_200_OK
+    rows = list_after_confirm.json()
+    assert len(rows) == 1
+    assert rows[0]["is_active"] is True
+    assert rows[0]["confirmed_at"] is not None
+
+
 def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
     for record in caplog.records:
         if record.name != logger_name:
