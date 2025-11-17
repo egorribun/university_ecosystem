@@ -370,6 +370,18 @@ export const handlers = [
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
   http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments ?? [])),
   http.post("*/auth/mfa/totp/start", async ({ request }) => {
+    const hasActiveTotp = Boolean(
+      testUser.totp_enrollments?.some((entry) => entry.confirmed_at && !entry.revoked_at)
+    )
+    if (hasActiveTotp) {
+      return HttpResponse.json(
+        {
+          detail:
+            "Only one authenticator app can be connected at a time. Remove the existing app to start over.",
+        },
+        { status: 400 }
+      )
+    }
     let payload: unknown = {}
     try {
       payload = await request.json()
