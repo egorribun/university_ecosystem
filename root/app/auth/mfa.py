@@ -80,6 +80,20 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def user_has_confirmed_interactive_factor(user: User) -> bool:
+    """Return True if the user has at least one confirmed interactive factor."""
+
+    if user.mfa_default_method:
+        return True
+    enrollments = getattr(user, "totp_enrollments", None)
+    if not enrollments:
+        return False
+    for enrollment in enrollments:
+        if enrollment.revoked_at is None and enrollment.confirmed_at is not None:
+            return True
+    return False
+
+
 def _base64url_encode(data: bytes) -> str:
     encoded = base64.urlsafe_b64encode(data).decode("utf-8")
     return encoded.rstrip("=")

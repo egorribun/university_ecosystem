@@ -8,6 +8,14 @@ Use this checklist to validate the end-to-end TOTP-only multi-factor authenticat
 3. Click **Set up authenticator app** and scan the QR code with an authenticator app.
 4. Enter the generated 6-digit code and confirm setup.
 5. Verify that the enrollment list now shows the authenticator with a timestamp and that the warning banner disappears.
+6. (New) Sign out and back in so the session reflects the new factor; verify that the default method is displayed as TOTP in the UI.
+
+## 1b. Adding an additional authenticator
+1. Sign back in with an account that already has a confirmed TOTP device.
+2. Navigate to **Settings → Security & MFA** and click **Set up authenticator app** again.
+3. Confirm that a **Step up verification** dialog appears instead of the QR code.
+4. Complete the step-up challenge using the existing authenticator.
+5. Verify that the QR code is displayed only after the challenge succeeds and that cancelling the dialog keeps the user on the security page without creating a new enrollment.
 
 ## 2. Login verification
 1. Sign out of the account.

@@ -213,6 +213,105 @@ async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(
     assert cancel_response.json()["detail"] == "Enrollment is not pending"
 
 
+@pytest.mark.anyio
+async def test_totp_start_requires_step_up_for_existing_factor(
+    async_client, user_factory, db_session
+):
+    password = "TotpStepUpStart123!"
+    user = await user_factory(
+        email="mfa-stepup-start@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    start_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert start_response.status_code == status.HTTP_200_OK, start_response.text
+    start_payload = start_response.json()
+    totp = pyotp.TOTP(start_payload["secret"])
+    confirm_response = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={
+            "enrollment_id": start_payload["enrollment"]["id"],
+            "code": totp.now(),
+        },
+    )
+    assert confirm_response.status_code == status.HTTP_200_OK, confirm_response.text
+    await db_session.refresh(user)
+    assert user.mfa_default_method == mfa.MFA_METHOD_TOTP
+
+    result = await db_session.execute(
+        select(models.ActiveSession)
+        .where(models.ActiveSession.user_id == user.id)
+        .order_by(models.ActiveSession.id.desc())
+    )
+    session = result.scalars().first()
+    assert session is not None
+    session.mfa_verified_at = None
+    await db_session.commit()
+
+    second_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert second_start.status_code == status.HTTP_428_PRECONDITION_REQUIRED
+    detail = second_start.json().get("detail", {})
+    assert detail.get("error") == "mfa_step_up_required"
+
+
+@pytest.mark.anyio
+async def test_totp_confirm_requires_step_up_when_session_stale(
+    async_client, user_factory, db_session
+):
+    password = "TotpStepUpConfirm123!"
+    user = await user_factory(
+        email="mfa-stepup-confirm@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    start_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert start_response.status_code == status.HTTP_200_OK, start_response.text
+    start_payload = start_response.json()
+    totp = pyotp.TOTP(start_payload["secret"])
+    confirm_response = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={
+            "enrollment_id": start_payload["enrollment"]["id"],
+            "code": totp.now(),
+        },
+    )
+    assert confirm_response.status_code == status.HTTP_200_OK, confirm_response.text
+
+    second_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert second_start.status_code == status.HTTP_200_OK, second_start.text
+    second_payload = second_start.json()
+
+    result = await db_session.execute(
+        select(models.ActiveSession)
+        .where(models.ActiveSession.user_id == user.id)
+        .order_by(models.ActiveSession.id.desc())
+    )
+    session = result.scalars().first()
+    assert session is not None
+    session.mfa_verified_at = None
+    await db_session.commit()
+
+    pending_totp = pyotp.TOTP(second_payload["secret"])
+    confirm_second = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={
+            "enrollment_id": second_payload["enrollment"]["id"],
+            "code": pending_totp.now(),
+        },
+    )
+    assert confirm_second.status_code == status.HTTP_428_PRECONDITION_REQUIRED
+    detail = confirm_second.json().get("detail", {})
+    assert detail.get("error") == "mfa_step_up_required"
+
 def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
     for record in caplog.records:
         if record.name != logger_name:

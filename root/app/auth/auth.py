@@ -16,7 +16,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
-from app.api.deps import get_current_user, require_fresh_mfa
+from app.api.deps import (
+    get_current_user,
+    require_fresh_mfa,
+    require_fresh_mfa_for_enrollment,
+)
 from app.api.users import _attach_pending_email
 from app.auth import mfa
 from app.auth.security import (
@@ -734,7 +738,11 @@ async def login_json(
     )
 
 
-@router.post("/mfa/totp/start", response_model=TotpEnrollmentStartOut)
+@router.post(
+    "/mfa/totp/start",
+    response_model=TotpEnrollmentStartOut,
+    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+)
 async def start_totp_enrollment_endpoint(
     request: Request,
     payload: TotpEnrollmentStartIn | None = None,
@@ -765,7 +773,11 @@ async def start_totp_enrollment_endpoint(
     )
 
 
-@router.post("/mfa/totp/confirm", response_model=MfaTotpEnrollmentOut)
+@router.post(
+    "/mfa/totp/confirm",
+    response_model=MfaTotpEnrollmentOut,
+    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+)
 async def confirm_totp_enrollment(
     payload: TotpEnrollmentConfirmIn,
     request: Request,
