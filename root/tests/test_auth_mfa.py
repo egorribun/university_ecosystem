@@ -103,6 +103,52 @@ async def test_totp_enrollment_pending_state(async_client, user_factory, db_sess
     assert rows[0]["confirmed_at"] is not None
 
 
+@pytest.mark.anyio
+async def test_totp_start_requires_reuse(async_client, user_factory):
+    password = "TotpReuseRequired123!"
+    user = await user_factory(
+        email="mfa-totp-reuse-required@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert first_start.status_code == status.HTTP_200_OK, first_start.text
+
+    second_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert second_start.status_code == status.HTTP_400_BAD_REQUEST
+    assert second_start.json()["detail"] == mfa.TOTP_ENROLLMENT_PENDING_ERROR
+
+
+@pytest.mark.anyio
+async def test_totp_start_reuse_returns_same_secret(async_client, user_factory):
+    password = "TotpReuseSameSecret123!"
+    user = await user_factory(
+        email="mfa-totp-reuse@example.com",
+        hashed_password=get_password_hash(password),
+    )
+
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    assert first_start.status_code == status.HTTP_200_OK, first_start.text
+    first_payload = first_start.json()
+
+    reuse_response = await async_client.post(
+        "/auth/mfa/totp/start",
+        headers=headers,
+        json={"reuse_existing": True},
+    )
+    assert reuse_response.status_code == status.HTTP_200_OK, reuse_response.text
+    reuse_payload = reuse_response.json()
+
+    assert reuse_payload["secret"] == first_payload["secret"]
+    assert reuse_payload["enrollment"]["id"] == first_payload["enrollment"]["id"]
+
+
 def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
     for record in caplog.records:
         if record.name != logger_name:

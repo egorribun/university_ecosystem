@@ -1839,14 +1839,19 @@ export default function Settings() {
       const { data } = await startTotpEnrollment()
       setTotpDraft(data)
     } catch (error) {
+      const message = resolveDetailMessage(
+        error,
+        t("settings:security.snackbar.totpStartFailed")
+      )
+      setTotpError(message)
       setSnack({
-        text: resolveDetailMessage(error, t("settings:security.snackbar.totpStartFailed")),
+        text: message,
         sev: "error",
       })
     } finally {
       setTotpBusy(false)
     }
-  }, [resolveDetailMessage, setSnack, t, totpBusy])
+  }, [resolveDetailMessage, setSnack, setTotpError, t, totpBusy])
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {
@@ -2743,6 +2748,11 @@ export default function Settings() {
                                 {t("settings:security.totp.empty")}
                               </SectionSubtitle>
                             )}
+                            {totpError ? (
+                              <Alert severity="error" variant="outlined">
+                                {totpError}
+                              </Alert>
+                            ) : null}
                             <Button
                               variant="contained"
                               onClick={() => void handleStartTotp()}

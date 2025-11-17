@@ -2466,6 +2466,8 @@ export interface components {
     TotpEnrollmentStartIn: {
       /** Label */
       label?: string | null
+      /** Reuse Existing */
+      reuse_existing?: boolean | null
     }
     /** TotpEnrollmentStartOut */
     TotpEnrollmentStartOut: {

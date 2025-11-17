@@ -78,6 +78,7 @@ class PendingMfaResponse(BaseModel):
 
 class TotpEnrollmentStartIn(BaseModel):
     label: str | None = None
+    reuse_existing: bool | None = False
 
 
 class TotpEnrollmentStartOut(BaseModel):
@@ -741,10 +742,12 @@ async def start_totp_enrollment_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     label = payload.label if payload else None
+    reuse_existing = bool(payload.reuse_existing) if payload else False
     enrollment, secret, otpauth_url = await mfa.start_totp_enrollment(
         db,
         user=user,
         label=label,
+        reuse_existing=reuse_existing,
     )
     await db.commit()
     await db.refresh(enrollment)

@@ -14,7 +14,7 @@ from typing import Any
 
 import pyotp
 from fastapi import HTTPException, status
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -36,6 +36,12 @@ _RECOVERY_CODE_COUNT = 10
 _TOTP_SECRET_LENGTH = 32
 _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
 _TOTP_DIGITS = 6
+_MAX_ACTIVE_TOTP_ENROLLMENTS = 5
+
+TOTP_ENROLLMENT_PENDING_ERROR = "A TOTP enrollment is already pending. Confirm or reuse it before starting a new one."
+TOTP_ENROLLMENT_LIMIT_ERROR = (
+    "You have reached the maximum number of active TOTP enrollments."
+)
 
 CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
 CHALLENGE_TYPE_TOTP_VERIFY = "totp-verify"
@@ -462,7 +468,39 @@ async def start_totp_enrollment(
     *,
     user: User,
     label: str | None = None,
+    reuse_existing: bool = False,
 ) -> tuple[MfaTotpEnrollment, str, str]:
+    pending_stmt = (
+        select(MfaTotpEnrollment)
+        .where(MfaTotpEnrollment.user_id == user.id)
+        .where(MfaTotpEnrollment.confirmed_at.is_(None))
+        .where(MfaTotpEnrollment.revoked_at.is_(None))
+        .order_by(MfaTotpEnrollment.created_at.desc())
+    )
+    result = await db.execute(pending_stmt)
+    pending = result.scalars().first()
+    if pending:
+        if not reuse_existing:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, TOTP_ENROLLMENT_PENDING_ERROR
+            )
+        if label and label != pending.label:
+            pending.label = label
+            await db.flush()
+        account_name = label or pending.label or user.email
+        otpauth_url = build_totp_uri(pending.secret, account_name=account_name)
+        return pending, pending.secret, otpauth_url
+
+    count_stmt = (
+        select(func.count())
+        .select_from(MfaTotpEnrollment)
+        .where(MfaTotpEnrollment.user_id == user.id)
+        .where(MfaTotpEnrollment.revoked_at.is_(None))
+    )
+    active_count = await db.scalar(count_stmt)
+    if active_count and active_count >= _MAX_ACTIVE_TOTP_ENROLLMENTS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, TOTP_ENROLLMENT_LIMIT_ERROR)
+
     secret = create_totp_secret()
     enrollment = MfaTotpEnrollment(
         user_id=user.id,
