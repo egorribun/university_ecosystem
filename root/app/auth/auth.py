@@ -819,7 +819,9 @@ async def list_totp_enrollments(
     ]
 
 
-@router.delete("/mfa/totp/pending/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/mfa/totp/pending/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_pending_totp_enrollment(
     enrollment_id: int,
     request: Request,
