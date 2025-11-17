@@ -17,7 +17,12 @@ import { usePushPreferences } from "@/hooks/usePushPreferences"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
 import { useColorScheme } from "@mui/material/styles"
 import api from "../api/client"
-import { startTotpEnrollment, confirmTotpEnrollment, deleteTotpEnrollment } from "@/api/mfa"
+import {
+  startTotpEnrollment,
+  confirmTotpEnrollment,
+  deleteTotpEnrollment,
+  deletePendingTotpEnrollment,
+} from "@/api/mfa"
 import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
@@ -1872,10 +1877,32 @@ export default function Settings() {
     [refreshMe, resolveDetailMessage, t, totpDraft, setSnack]
   )
 
-  const handleCancelTotp = useCallback(() => {
-    setTotpDraft(null)
+  const handleCancelTotp = useCallback(async () => {
+    if (!totpDraft || totpBusy) return
+    setTotpBusy(true)
     setTotpError(null)
-  }, [])
+    try {
+      await deletePendingTotpEnrollment(totpDraft.enrollment.id)
+      setTotpDraft(null)
+      await refreshMe()
+    } catch (error) {
+      const message = resolveDetailMessage(
+        error,
+        t("settings:security.snackbar.totpCancelFailed")
+      )
+      setTotpError(message)
+      setSnack({ text: message, sev: "error" })
+    } finally {
+      setTotpBusy(false)
+    }
+  }, [
+    refreshMe,
+    resolveDetailMessage,
+    setSnack,
+    t,
+    totpBusy,
+    totpDraft,
+  ])
 
   const handleDisableTotp = useCallback(
     (enrollmentId: number) => {

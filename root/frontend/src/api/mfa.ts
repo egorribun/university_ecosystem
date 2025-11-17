@@ -22,6 +22,9 @@ export const listTotpEnrollments = () => api.get<MfaTotpEnrollment[]>("/auth/mfa
 export const deleteTotpEnrollment = (enrollmentId: number) =>
   api.delete<MfaFactorStatus>(`/auth/mfa/totp/${enrollmentId}`)
 
+export const deletePendingTotpEnrollment = (enrollmentId: number) =>
+  api.delete<void>(`/auth/mfa/totp/pending/${enrollmentId}`)
+
 export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
   api.post<{ access_token: string; token_type: string }>("/auth/mfa/verify", payload)
 

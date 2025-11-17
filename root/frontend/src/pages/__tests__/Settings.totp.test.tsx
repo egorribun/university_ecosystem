@@ -144,4 +144,51 @@ describe("Settings TOTP enrollment", () => {
     await screen.findByText(/Invalid verification code/i)
     expect(screen.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
   })
+
+  it("cancels a pending TOTP enrollment", async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await screen.findByRole("heading", { name: matchSecurityHeading })
+    await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
+
+    await screen.findByText(/Finish setup|Завершите настройку/i)
+    await user.click(
+      await screen.findByRole("button", { name: /Cancel setup|Отменить настройку/i })
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Finish setup|Завершите настройку/i)
+      ).not.toBeInTheDocument()
+    )
+    expect(await screen.findByRole("button", { name: matchTotpAddButton })).toBeEnabled()
+  })
+
+  it("shows an error if pending cancellation fails", async () => {
+    server.use(
+      http.delete("*/auth/mfa/totp/pending/:id", () =>
+        HttpResponse.json({}, { status: 500 })
+      )
+    )
+
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await screen.findByRole("heading", { name: matchSecurityHeading })
+    await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
+
+    await screen.findByText(/Finish setup|Завершите настройку/i)
+    await user.click(
+      await screen.findByRole("button", { name: /Cancel setup|Отменить настройку/i })
+    )
+
+    const errorMessages = await screen.findAllByText(
+      /Couldn't cancel authenticator setup|Не удалось отменить настройку/i
+    )
+    expect(errorMessages.length).toBeGreaterThan(0)
+    expect(screen.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
+  })
 })
