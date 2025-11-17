@@ -174,6 +174,7 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     assert pending["user_id"] == user.id
     assert pending["default_method"] == mfa.MFA_METHOD_TOTP
 
+
 @pytest.mark.anyio
 async def test_totp_challenge_expiry_blocks_verification(
     async_client, user_factory, db_session
