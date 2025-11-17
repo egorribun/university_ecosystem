@@ -312,6 +312,7 @@ async def test_totp_confirm_requires_step_up_when_session_stale(
     detail = confirm_second.json().get("detail", {})
     assert detail.get("error") == "mfa_step_up_required"
 
+
 def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
     for record in caplog.records:
         if record.name != logger_name:
