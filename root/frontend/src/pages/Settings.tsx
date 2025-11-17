@@ -1847,24 +1847,44 @@ export default function Settings() {
     ]
   )
 
-  const handleStartTotp = useCallback(async () => {
-    if (totpBusy) return
-    setTotpBusy(true)
-    setTotpError(null)
-    try {
-      const { data } = await startTotpEnrollment()
-      setTotpDraft(data)
-    } catch (error) {
-      const message = resolveDetailMessage(error, t("settings:security.snackbar.totpStartFailed"))
-      setTotpError(message)
-      setSnack({
-        text: message,
-        sev: "error",
-      })
-    } finally {
-      setTotpBusy(false)
-    }
-  }, [resolveDetailMessage, setSnack, setTotpError, t, totpBusy])
+  const handleStartTotp = useCallback(
+    async (options?: { skipStepUp?: boolean }) => {
+      if (totpBusy) return
+      setTotpBusy(true)
+      setTotpError(null)
+      try {
+        const { data } = await startTotpEnrollment()
+        setTotpDraft(data)
+      } catch (error) {
+        if (!options?.skipStepUp && isStepUpError(error)) {
+          openStepUpFor(async () => {
+            await handleStartTotp({ skipStepUp: true })
+          })
+          return
+        }
+        const message = resolveDetailMessage(
+          error,
+          t("settings:security.snackbar.totpStartFailed"),
+        )
+        setTotpError(message)
+        setSnack({
+          text: message,
+          sev: "error",
+        })
+      } finally {
+        setTotpBusy(false)
+      }
+    },
+    [
+      isStepUpError,
+      openStepUpFor,
+      resolveDetailMessage,
+      setSnack,
+      setTotpError,
+      t,
+      totpBusy,
+    ],
+  )
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {

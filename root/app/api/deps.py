@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import mfa
 from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.database import get_db
@@ -74,10 +75,7 @@ async def get_current_user(
     return user
 
 
-def require_fresh_mfa(
-    request: Request,
-    _: Annotated[User, Depends(get_current_user)],
-) -> None:
+def _enforce_fresh_mfa(request: Request) -> None:
     session: ActiveSession | None = getattr(request.state, "active_session", None)
     locale = resolve_locale(request=request)
     if session is None:
@@ -112,3 +110,19 @@ def require_fresh_mfa(
                 "session_id": session.id,
             },
         )
+
+
+def require_fresh_mfa(
+    request: Request,
+    _: Annotated[User, Depends(get_current_user)],
+) -> None:
+    _enforce_fresh_mfa(request)
+
+
+def require_fresh_mfa_for_enrollment(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    if not mfa.user_has_confirmed_interactive_factor(user):
+        return
+    _enforce_fresh_mfa(request)
