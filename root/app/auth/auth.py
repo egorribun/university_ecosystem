@@ -774,8 +774,7 @@ async def confirm_totp_enrollment(
             extra={"enrollment_id": payload.enrollment_id},
         )
         raise
-    if not user.mfa_default_method:
-        user.mfa_default_method = mfa.MFA_METHOD_TOTP
+    await mfa.refresh_user_mfa_preferences(db, user=user)
     await db.commit()
     await db.refresh(updated)
     _audit_log(
