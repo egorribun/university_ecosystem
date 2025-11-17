@@ -2,11 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ShieldCheck, Sparkles, BookOpen, Eye, EyeOff, Zap } from "lucide-react"
-import {
-  ChallengeLockedError,
-  type PendingMfaState,
-  useAuth,
-} from "@/contexts/AuthContext"
+import { ChallengeLockedError, type PendingMfaState, useAuth } from "@/contexts/AuthContext"
 import OtpEntry from "@/components/mfa/OtpEntry"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
@@ -337,7 +333,9 @@ const Login = () => {
               </div>
               <div className="space-y-3">
                 <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">
-                  {t("auth:mfa.verifySubtitle", { email: activeEmail || t("auth:mfa.unknownEmail") })}
+                  {t("auth:mfa.verifySubtitle", {
+                    email: activeEmail || t("auth:mfa.unknownEmail"),
+                  })}
                 </h1>
                 <p className="text-base text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                   {t("auth:mfa.otpHint")}
@@ -389,7 +387,9 @@ const Login = () => {
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-5xl">
-            {t("auth:login.heroHeading", { defaultValue: "Добро пожаловать в кампус нового поколения" })}
+            {t("auth:login.heroHeading", {
+              defaultValue: "Добро пожаловать в кампус нового поколения",
+            })}
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
             {t("auth:login.heroDescription", {
@@ -428,7 +428,12 @@ const Login = () => {
         </div>
 
         <div className="w-full max-w-xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10">
-          <form noValidate autoComplete="on" onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <form
+            noValidate
+            autoComplete="on"
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-6"
+          >
             <div className="space-y-2 text-center">
               <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
               <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]">
@@ -439,7 +444,10 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-semibold text-[color:var(--page-text)]">
+              <label
+                htmlFor="username"
+                className="text-sm font-semibold text-[color:var(--page-text)]"
+              >
                 {t("auth:fields.email")}
               </label>
               <input
@@ -487,7 +495,11 @@ const Login = () => {
                   title={t("auth:actions.holdReveal") ?? undefined}
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden="true" />
+                  )}
                   {t("auth:actions.showPassword")}
                 </button>
               </div>
@@ -512,7 +524,10 @@ const Login = () => {
               </div>
             </div>
 
-            <div className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400" aria-live="assertive">
+            <div
+              className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400"
+              aria-live="assertive"
+            >
               {submitError}
             </div>
 

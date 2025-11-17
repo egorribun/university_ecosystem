@@ -216,7 +216,7 @@ const Register = () => {
 
   const registerStatus = registerState.status
   const registerErrorField = registerState.field
-  const registerErrorMessage = registerStatus === "error" ? registerState.error ?? "" : ""
+  const registerErrorMessage = registerStatus === "error" ? (registerState.error ?? "") : ""
 
   useEffect(() => {
     if (!registerPending && registerStatus === "error" && registerErrorField) {
@@ -326,7 +326,10 @@ const Register = () => {
                   autoComplete="name"
                   ref={fullNameRef}
                   disabled={registerPending}
-                  placeholder={t("auth:register.namePlaceholder", { defaultValue: "Имя и фамилия" }) ?? undefined}
+                  placeholder={
+                    t("auth:register.namePlaceholder", { defaultValue: "Имя и фамилия" }) ??
+                    undefined
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -346,9 +349,14 @@ const Register = () => {
                     <option value="teacher">{t("auth:register.role.teacher")}</option>
                     <option value="admin">{t("auth:register.role.admin")}</option>
                   </select>
-                  <Sparkles className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--nav-link)]" aria-hidden="true" />
+                  <Sparkles
+                    className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--nav-link)]"
+                    aria-hidden="true"
+                  />
                 </div>
-                <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">{inviteHint}</p>
+                <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">
+                  {inviteHint}
+                </p>
               </div>
             </div>
 
@@ -434,7 +442,11 @@ const Register = () => {
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                   title={t("auth:actions.holdReveal") ?? undefined}
                 >
-                  {showPass ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+                  {showPass ? (
+                    <EyeOff className="h-5 w-5" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-5 w-5" aria-hidden="true" />
+                  )}
                 </button>
               </div>
               <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">
@@ -476,7 +488,9 @@ const Register = () => {
                 </span>
               </div>
               {capsPass ? (
-                <p className="text-xs font-semibold text-amber-400">{t("auth:messages.capsLock")}</p>
+                <p className="text-xs font-semibold text-amber-400">
+                  {t("auth:messages.capsLock")}
+                </p>
               ) : null}
             </div>
 
@@ -508,15 +522,24 @@ const Register = () => {
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                   title={t("auth:actions.holdReveal") ?? undefined}
                 >
-                  {showConfirm ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+                  {showConfirm ? (
+                    <EyeOff className="h-5 w-5" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-5 w-5" aria-hidden="true" />
+                  )}
                 </button>
               </div>
               {capsConfirm ? (
-                <p className="text-xs font-semibold text-amber-400">{t("auth:messages.capsLock")}</p>
+                <p className="text-xs font-semibold text-amber-400">
+                  {t("auth:messages.capsLock")}
+                </p>
               ) : null}
             </div>
 
-            <div className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400" aria-live="assertive">
+            <div
+              className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400"
+              aria-live="assertive"
+            >
               {registerErrorMessage}
             </div>
 
