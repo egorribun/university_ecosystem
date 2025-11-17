@@ -38,8 +38,14 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       {label ? (
         <p className="text-sm text-page-text/70">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
-      <div className="p-4 rounded-lg border border-glass-border bg-card">
-        <QRCodeSVG value={otpauthUrl} size={192} />
+      <div className="p-4 rounded-lg border border-glass-border bg-white shadow-sm dark:bg-white">
+        <QRCodeSVG
+          value={otpauthUrl}
+          size={192}
+          includeMargin
+          bgColor="#ffffff"
+          fgColor="#111827"
+        />
       </div>
       <div className="flex flex-row items-center gap-2 w-full max-w-[320px]">
         <div className="relative flex-1">
