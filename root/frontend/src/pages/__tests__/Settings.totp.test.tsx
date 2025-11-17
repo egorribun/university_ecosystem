@@ -177,18 +177,14 @@ describe("Settings TOTP enrollment", () => {
     )
 
     await waitFor(() =>
-      expect(
-        screen.queryByText(/Finish setup|Завершите настройку/i)
-      ).not.toBeInTheDocument()
+      expect(screen.queryByText(/Finish setup|Завершите настройку/i)).not.toBeInTheDocument()
     )
     expect(await screen.findByRole("button", { name: matchTotpAddButton })).toBeEnabled()
   })
 
   it("shows an error if pending cancellation fails", async () => {
     server.use(
-      http.delete("*/auth/mfa/totp/pending/:id", () =>
-        HttpResponse.json({}, { status: 500 })
-      )
+      http.delete("*/auth/mfa/totp/pending/:id", () => HttpResponse.json({}, { status: 500 }))
     )
 
     const user = userEvent.setup()
@@ -230,8 +226,6 @@ describe("Settings TOTP enrollment", () => {
         /Enter the verification code before leaving|Введите код из приложения перед уходом/i
       )
     ).toBeVisible()
-    expect(
-      screen.queryByRole("button", { name: /^(Remove|Удалить)$/i })
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^(Remove|Удалить)$/i })).not.toBeInTheDocument()
   })
 })

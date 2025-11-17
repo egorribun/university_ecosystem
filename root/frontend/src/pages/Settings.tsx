@@ -1524,9 +1524,8 @@ export default function Settings() {
 
   const pendingTotpEnrollment = useMemo(
     () =>
-      (user?.totp_enrollments ?? []).find(
-        (entry) => !entry.confirmed_at && !entry.revoked_at
-      ) ?? null,
+      (user?.totp_enrollments ?? []).find((entry) => !entry.confirmed_at && !entry.revoked_at) ??
+      null,
     [user?.totp_enrollments]
   )
   const pendingTotpId = pendingTotpEnrollment?.id ?? null
@@ -1856,10 +1855,7 @@ export default function Settings() {
       const { data } = await startTotpEnrollment()
       setTotpDraft(data)
     } catch (error) {
-      const message = resolveDetailMessage(
-        error,
-        t("settings:security.snackbar.totpStartFailed")
-      )
+      const message = resolveDetailMessage(error, t("settings:security.snackbar.totpStartFailed"))
       setTotpError(message)
       setSnack({
         text: message,
@@ -1900,24 +1896,13 @@ export default function Settings() {
       setTotpDraft(null)
       await refreshMe()
     } catch (error) {
-      const message = resolveDetailMessage(
-        error,
-        t("settings:security.snackbar.totpCancelFailed")
-      )
+      const message = resolveDetailMessage(error, t("settings:security.snackbar.totpCancelFailed"))
       setTotpError(message)
       setSnack({ text: message, sev: "error" })
     } finally {
       setTotpBusy(false)
     }
-  }, [
-    pendingTotpId,
-    refreshMe,
-    resolveDetailMessage,
-    setSnack,
-    t,
-    totpBusy,
-    totpDraft,
-  ])
+  }, [pendingTotpId, refreshMe, resolveDetailMessage, setSnack, t, totpBusy, totpDraft])
 
   const handleDisableTotp = useCallback(
     (enrollmentId: number) => {
