@@ -6,8 +6,9 @@ import asyncio
 import io
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, IO
+from typing import IO, Any
 
 from fastapi import HTTPException, UploadFile, status
 
@@ -204,9 +205,7 @@ async def scan_for_malware(
             else:
                 result = await _scan_bytes_with_clamd(data)
         else:
-            raise FileScannerUnavailableError(
-                f"unsupported scanner backend: {backend}"
-            )
+            raise FileScannerUnavailableError(f"unsupported scanner backend: {backend}")
     except FileScannerPayloadTooLarge as exc:
         logger.warning(
             "File scan aborted: payload exceeded scanner limit",
@@ -269,7 +268,9 @@ async def _scan_bytes_with_clamd(data: bytes) -> _ScanResult:
     return await _run_scan(_runner)
 
 
-async def _scan_upload_with_clamd(upload: UploadFile, *, size_limit: int) -> _ScanResult:
+async def _scan_upload_with_clamd(
+    upload: UploadFile, *, size_limit: int
+) -> _ScanResult:
     await upload.seek(0)
 
     def _runner() -> tuple[str | None, int]:
@@ -286,7 +287,9 @@ async def _run_scan(
     start = time.perf_counter()
     signature, bytes_scanned = await asyncio.to_thread(runner)
     duration = time.perf_counter() - start
-    return _ScanResult(signature=signature, duration=duration, bytes_scanned=bytes_scanned)
+    return _ScanResult(
+        signature=signature, duration=duration, bytes_scanned=bytes_scanned
+    )
 
 
 async def check_file_scanner_health() -> None:
