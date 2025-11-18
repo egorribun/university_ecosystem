@@ -1,6 +1,8 @@
 import "fake-indexeddb/auto"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { http, HttpResponse } from "msw"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import { server } from "@/tests/mocks/server"
 
 vi.mock("workbox-precaching", () => ({
   cleanupOutdatedCaches: vi.fn(),
@@ -23,9 +25,17 @@ vi.mock("workbox-strategies", () => ({
   NetworkFirst: vi.fn(() => ({})),
 }))
 
-vi.mock("workbox-expiration", () => ({
-  ExpirationPlugin: vi.fn(() => ({})),
-}))
+vi.mock("workbox-expiration", () => {
+  const CacheExpiration = vi.fn(() => ({
+    updateTimestamp: vi.fn(async () => {}),
+    expireEntries: vi.fn(async () => {}),
+    delete: vi.fn(async () => {}),
+  }))
+  return {
+    ExpirationPlugin: vi.fn(() => ({})),
+    CacheExpiration,
+  }
+})
 
 const CLICK_DB_NAME = "notification-interactions"
 
@@ -121,6 +131,7 @@ type ServiceWorkerTestingApi = {
   processPendingNavigations: () => Promise<void>
   processPendingReports: () => Promise<void>
   processAllQueues: () => Promise<void>
+  handleMediaRequest: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
 
 const deleteDatabase = async () => {
@@ -239,6 +250,16 @@ const getListener = (type: string) => {
     throw new Error(`Expected listener for ${type}`)
   }
   return registered[registered.length - 1]
+}
+
+const dispatchSwMessage = async (data: Record<string, unknown>) => {
+  const listener = getListener("message")
+  const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+  listener({ data, waitUntil } as unknown as ExtendableMessageEvent)
+  const pending = waitUntil.mock.calls[0]?.[0]
+  if (pending instanceof Promise) {
+    await pending
+  }
 }
 
 describe("service worker offline queues", () => {
@@ -363,5 +384,61 @@ describe("service worker api cache controls", () => {
     }
 
     expect(cacheStorage.__store.has(cacheName)).toBe(false)
+  })
+})
+
+describe("service worker media cache controls", () => {
+  test("clears session-specific media caches when requested", async () => {
+    const scope = self as unknown as TestServiceWorkerScope
+    const cacheName = "media-private:session-alpha"
+    const cache = await scope.caches.open(cacheName)
+    await cache.put("https://example.com/media/private.png", new Response("alpha"))
+
+    await dispatchSwMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
+
+    expect(scope.caches.__store.has(cacheName)).toBe(false)
+  })
+
+  test("private media responses are not reused across sessions", async () => {
+    const sw = await loadServiceWorker()
+    const scope = self as unknown as TestServiceWorkerScope
+    const mediaUrl = "https://example.com/media/private.png"
+    let requestCount = 0
+
+    server.use(
+      http.get(mediaUrl, () => {
+        requestCount += 1
+        return HttpResponse.text(`private-response-${requestCount}`, {
+          headers: { "Cache-Control": "private" },
+        })
+      })
+    )
+
+    await dispatchSwMessage({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: "alpha",
+    })
+
+    const first = await sw.handleMediaRequest(mediaUrl)
+    await expect(first.text()).resolves.toBe("private-response-1")
+    expect(scope.caches.__store.has("media-private:alpha")).toBe(true)
+
+    await dispatchSwMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
+    expect(scope.caches.__store.has("media-private:alpha")).toBe(false)
+
+    await dispatchSwMessage({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: "beta",
+    })
+
+    server.use(
+      http.get(mediaUrl, () => {
+        return HttpResponse.error()
+      })
+    )
+
+    await expect(sw.handleMediaRequest(mediaUrl)).rejects.toThrow()
+    const betaCache = await scope.caches.open("media-private:beta")
+    await expect(betaCache.match(mediaUrl)).resolves.toBeUndefined()
   })
 })

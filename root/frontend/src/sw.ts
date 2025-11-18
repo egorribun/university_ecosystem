@@ -6,9 +6,10 @@ import {
   createHandlerBoundToURL,
 } from "workbox-precaching"
 import { clientsClaim } from "workbox-core"
+import type { RouteHandlerCallbackOptions } from "workbox-core"
 import { registerRoute, NavigationRoute } from "workbox-routing"
 import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from "workbox-strategies"
-import { ExpirationPlugin } from "workbox-expiration"
+import { CacheExpiration, ExpirationPlugin } from "workbox-expiration"
 import {
   NotificationData,
   buildNotificationDetails,
@@ -22,6 +23,9 @@ declare const self: ServiceWorkerGlobalScope & typeof globalThis
 const OFFLINE_URL = "/offline.html"
 const API_CACHE = "api-cache"
 const API_CACHE_SESSION_PREFIX = `${API_CACHE}:`
+const MEDIA_PUBLIC_CACHE = "media-public"
+const MEDIA_PRIVATE_CACHE_PREFIX = "media-private:"
+const MEDIA_CACHE_LIMITS = { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 }
 const IMG_CACHE = "img-cache"
 const BACKEND_STATIC_CACHE = "backend-static"
 const CLICK_DB_NAME = "notification-interactions"
@@ -33,13 +37,14 @@ const REPORT_SYNC_TAG = "notification-click:report"
 const PROCESS_QUEUE_MESSAGE = SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE
 
 const apiStrategies = new Map<string, StaleWhileRevalidate>()
-let apiSessionCacheHash: string | null = null
+const mediaCacheExpirations = new Map<string, CacheExpiration>()
+let sessionCacheHash: string | null = null
 
 const API_CACHE_PLUGIN = new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 })
 
 const getApiCacheName = () =>
-  apiSessionCacheHash && apiSessionCacheHash.length > 0
-    ? `${API_CACHE_SESSION_PREFIX}${apiSessionCacheHash}`
+  sessionCacheHash && sessionCacheHash.length > 0
+    ? `${API_CACHE_SESSION_PREFIX}${sessionCacheHash}`
     : API_CACHE
 
 const getApiStrategy = () => {
@@ -57,22 +62,130 @@ const getApiStrategy = () => {
   return strategy
 }
 
-const purgeApiCaches = async () => {
+const purgeSessionCaches = async () => {
   const cacheKeys = await caches.keys()
   const deletions = cacheKeys
-    .filter((key) => key === API_CACHE || key.startsWith(API_CACHE_SESSION_PREFIX))
-    .map((key) => caches.delete(key))
+    .filter(
+      (key) =>
+        key === API_CACHE ||
+        key.startsWith(API_CACHE_SESSION_PREFIX) ||
+        key.startsWith(MEDIA_PRIVATE_CACHE_PREFIX)
+    )
+    .map(async (key) => {
+      const tracker = mediaCacheExpirations.get(key)
+      if (tracker) {
+        mediaCacheExpirations.delete(key)
+        try {
+          await tracker.delete()
+        } catch {
+          /* ignore */
+        }
+      }
+      await caches.delete(key)
+    })
   apiStrategies.clear()
   await Promise.all(deletions)
 }
 
-const setApiSessionCache = (hash: unknown) => {
+const setSessionCacheKey = (hash: unknown) => {
   if (typeof hash === "string" && hash.length > 0) {
-    apiSessionCacheHash = hash
+    sessionCacheHash = hash
   } else {
-    apiSessionCacheHash = null
+    sessionCacheHash = null
   }
   apiStrategies.clear()
+}
+
+const getMediaSessionCacheName = () =>
+  sessionCacheHash && sessionCacheHash.length > 0
+    ? `${MEDIA_PRIVATE_CACHE_PREFIX}${sessionCacheHash}`
+    : null
+
+const getMediaCacheExpiration = (cacheName: string) => {
+  let expiration = mediaCacheExpirations.get(cacheName)
+  if (!expiration) {
+    expiration = new CacheExpiration(cacheName, MEDIA_CACHE_LIMITS)
+    mediaCacheExpirations.set(cacheName, expiration)
+  }
+  return expiration
+}
+
+const matchMediaCaches = async (request: Request) => {
+  const cacheNames: (string | null)[] = [getMediaSessionCacheName(), MEDIA_PUBLIC_CACHE]
+  for (const cacheName of cacheNames) {
+    if (!cacheName) continue
+    const cache = await caches.open(cacheName)
+    const match = await cache.match(request)
+    if (match) {
+      return match
+    }
+  }
+  return null
+}
+
+const hasPublicCacheControl = (response: Response) => {
+  const cacheControl = response.headers.get("Cache-Control")
+  return cacheControl ? /\bpublic\b/i.test(cacheControl) : false
+}
+
+const hasSignedUrlFlag = (response: Response) => {
+  const signedHeaders = ["x-media-signed-url", "x-signed-url", "x-media-signed"]
+  return signedHeaders.some((header) => {
+    const value = response.headers.get(header)
+    if (!value) return false
+    const normalized = value.trim().toLowerCase()
+    return normalized !== "0" && normalized !== "false"
+  })
+}
+
+const shouldTreatAsPublicMedia = (response: Response) =>
+  hasPublicCacheControl(response) || hasSignedUrlFlag(response)
+
+const cacheMediaResponse = async (
+  request: Request,
+  response: Response,
+  event?: FetchEvent
+) => {
+  if (!response.ok || request.method !== "GET") {
+    return
+  }
+  const cacheName = shouldTreatAsPublicMedia(response) ? MEDIA_PUBLIC_CACHE : getMediaSessionCacheName()
+  if (!cacheName) {
+    return
+  }
+  const cache = await caches.open(cacheName)
+  await cache.put(request, response)
+  const expiration = getMediaCacheExpiration(cacheName)
+  const maintenance = Promise.all([expiration.updateTimestamp(request.url), expiration.expireEntries()])
+  if (event) {
+    try {
+      event.waitUntil(maintenance)
+    } catch {
+      void maintenance
+    }
+  } else {
+    void maintenance
+  }
+}
+
+const mediaRouteHandler = async ({ event }: RouteHandlerCallbackOptions) => {
+  const fetchEvent = event as FetchEvent
+  const request = fetchEvent.request
+  if (request.method !== "GET") {
+    return fetch(request)
+  }
+  try {
+    const response = await fetch(request)
+    const clone = response.clone()
+    void cacheMediaResponse(request, clone, fetchEvent)
+    return response
+  } catch (error) {
+    const cached = await matchMediaCaches(request)
+    if (cached) {
+      return cached
+    }
+    throw error
+  }
 }
 
 type PendingNavigation = {
@@ -448,6 +561,7 @@ type ServiceWorkerTestingApi = {
   processPendingNavigations: typeof processPendingNavigations
   processPendingReports: typeof processPendingReports
   processAllQueues: typeof processAllQueues
+  handleMediaRequest: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
 
 declare global {
@@ -465,6 +579,14 @@ if (import.meta.env.MODE === "test") {
     processPendingNavigations,
     processPendingReports,
     processAllQueues,
+    handleMediaRequest: (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      const event = Object.assign(Object.create(null), {
+        request,
+        waitUntil: (promise: Promise<unknown>) => promise,
+      }) as FetchEvent
+      return mediaRouteHandler({ event, request, url: new URL(request.url) })
+    },
   }
 }
 
@@ -486,9 +608,9 @@ self.addEventListener("message", (event) => {
   } else if (type === PROCESS_QUEUE_MESSAGE) {
     event.waitUntil(processAllQueues())
   } else if (type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE) {
-    event.waitUntil(purgeApiCaches())
+    event.waitUntil(purgeSessionCaches())
   } else if (type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY) {
-    setApiSessionCache(message.sessionHash)
+    setSessionCacheKey(message.sessionHash)
   }
 })
 
@@ -535,12 +657,14 @@ registerRoute(
 )
 
 registerRoute(
-  ({ url }) => url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
+  ({ url }) => url.pathname.startsWith("/static/"),
   new NetworkFirst({
     cacheName: BACKEND_STATIC_CACHE,
     plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 })],
   })
 )
+
+registerRoute(({ url }) => url.pathname.startsWith("/media/"), mediaRouteHandler, "GET")
 
 registerRoute(
   ({ request }) => request.destination === "image",
