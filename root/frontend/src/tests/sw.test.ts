@@ -134,6 +134,8 @@ type ServiceWorkerTestingApi = {
   handleMediaRequest: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
 
+type SwModule = typeof import("@/sw")
+
 const deleteDatabase = async () => {
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(CLICK_DB_NAME)
@@ -214,6 +216,7 @@ const loadServiceWorker = async () => {
 let originalSelf: typeof globalThis
 let listeners: Map<string, ((event: Event) => void)[]>
 let originalCaches: CacheStorage | undefined
+let swModule: SwModule | undefined
 
 beforeEach(async () => {
   vi.resetModules()
@@ -226,7 +229,7 @@ beforeEach(async () => {
     self: created.scope,
   })
   globalWithCaches.caches = created.scope.caches
-  await import("@/sw")
+  swModule = await import("@/sw")
 })
 
 afterEach(async () => {
@@ -242,6 +245,7 @@ afterEach(async () => {
   Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, {
     self: originalSelf,
   })
+  swModule = undefined
 })
 
 const getListener = (type: string) => {
@@ -250,6 +254,23 @@ const getListener = (type: string) => {
     throw new Error(`Expected listener for ${type}`)
   }
   return registered[registered.length - 1]
+}
+
+const getSwModule = () => {
+  if (!swModule) {
+    throw new Error("SW module was not loaded")
+  }
+  return swModule
+}
+
+const getQueueModules = () => {
+  const module = getSwModule()
+  return {
+    stores: module.queueStores,
+    processors: module.queueProcessors,
+    sanitizers: module.queueSanitizers,
+    syncTags: module.queueSyncTags,
+  }
 }
 
 const dispatchSwMessage = async (data: Record<string, unknown>) => {
@@ -261,6 +282,80 @@ const dispatchSwMessage = async (data: Record<string, unknown>) => {
     await pending
   }
 }
+
+describe("queue helper module exports", () => {
+  test("sanitizes report payloads deeply", () => {
+    const { sanitizers } = getQueueModules()
+    const payload = {
+      ok: "value",
+      nested: {
+        valid: 1,
+        invalid: () => {},
+      },
+    }
+
+    const sanitized = sanitizers.sanitizeReportPayload(payload)
+
+    expect(sanitized).toEqual({
+      ok: "value",
+      nested: { valid: 1 },
+    })
+    expect("invalid" in (sanitized?.nested as Record<string, unknown>)).toBe(false)
+  })
+
+  test("report queue waits for connectivity before flushing", async () => {
+    const { stores, processors } = getQueueModules()
+    const scope = self as unknown as TestServiceWorkerScope
+    scope.navigator.setOnline(false)
+
+    await stores.storePendingReport({
+      url: "https://example.com/events",
+      reportUrl: "https://example.com/api/report",
+      timestamp: Date.now(),
+      payload: { keep: true },
+    })
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
+
+    await processors.processPendingReports()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    scope.navigator.setOnline(true)
+    await processors.processPendingReports()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(await stores.readPendingReports()).toHaveLength(0)
+  })
+})
+
+describe("background sync integration", () => {
+  test("navigation sync drains queued targets once back online", async () => {
+    const { stores, syncTags } = getQueueModules()
+    const scope = self as unknown as TestServiceWorkerScope
+    scope.navigator.setOnline(false)
+    scope.clients.openWindow = vi.fn(async () => null)
+
+    await stores.storePendingNavigation({
+      url: "https://example.com/home",
+      timestamp: Date.now(),
+    })
+
+    scope.navigator.setOnline(true)
+
+    const syncListener = getListener("sync")
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+
+    syncListener({ tag: syncTags.navigation, waitUntil } as unknown as SyncEvent)
+
+    const pending = waitUntil.mock.calls[0]?.[0]
+    if (pending instanceof Promise) {
+      await pending
+    }
+
+    expect(await stores.readPendingNavigations()).toHaveLength(0)
+    expect(scope.clients.openWindow).toHaveBeenCalledWith("https://example.com/home")
+  })
+})
 
 describe("service worker offline queues", () => {
   test("storePendingNavigation persists navigation requests", async () => {
@@ -360,6 +455,96 @@ describe("service worker offline queues", () => {
       "https://example.com/api/notifications/report",
       expect.any(Object)
     )
+  })
+
+  test("notificationclick sanitizes report payloads before sending", async () => {
+    const scope = self as unknown as TestServiceWorkerScope
+    scope.navigator.setOnline(true)
+    scope.clients.matchAll = vi.fn(async () => [])
+    scope.clients.openWindow = vi.fn(async () => null)
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
+
+    const notificationClick = getListener("notificationclick")
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    const timestamp = Date.now()
+
+    notificationClick({
+      action: undefined,
+      notification: {
+        close: vi.fn(),
+        data: {
+          url: "/sanitized",
+          reportUrl: "/api/notifications/report",
+          reportPayload: {
+            keep: "yes",
+            nested: { ok: true, drop: () => {} },
+            arr: [1, { keep: "a", drop: () => {} }],
+          },
+          notificationId: "abc",
+        },
+      },
+      waitUntil,
+      timeStamp: timestamp,
+    } as unknown as NotificationEvent)
+
+    const pending = waitUntil.mock.calls[0]?.[0]
+    if (pending instanceof Promise) {
+      await pending
+    }
+
+    const [, requestInit] = fetchMock.mock.calls[0]
+    const parsed = JSON.parse((requestInit?.body as string) ?? "{}")
+    expect(parsed.keep).toBe("yes")
+    expect(parsed.nested).toEqual({ ok: true })
+    expect(parsed.arr).toEqual([1, { keep: "a" }])
+    expect(parsed.drop).toBeUndefined()
+    expect(parsed.notificationId).toBe("abc")
+  })
+})
+
+describe("service worker push handling", () => {
+  test("in-app push notifications send toast messages to visible clients", async () => {
+    const scope = self as unknown as TestServiceWorkerScope
+    const postMessage = vi.fn()
+    scope.clients.matchAll = vi.fn(async () => [
+      {
+        postMessage,
+        visibilityState: "visible",
+      } as unknown as WindowClient,
+    ])
+
+    const pushListener = getListener("push")
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+
+    pushListener({
+      data: {
+        json: () => ({
+          title: "Campus alert",
+          body: "Tap to view",
+          url: "/alerts",
+          data: { type: "in-app" },
+        }),
+      },
+      waitUntil,
+    } as unknown as PushEvent)
+
+    const pending = waitUntil.mock.calls[0]?.[0]
+    if (pending instanceof Promise) {
+      await pending
+    }
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "PUSH_NOTIFICATION",
+        toast: expect.objectContaining({
+          title: "Campus alert",
+          body: "Tap to view",
+          url: "/alerts",
+        }),
+      })
+    )
+    expect(scope.registration.showNotification).not.toHaveBeenCalled()
   })
 })
 
