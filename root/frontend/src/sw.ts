@@ -529,8 +529,9 @@ registerRoute(
   )
 )
 
-registerRoute(({ url }) => /\/api\/(news|schedule)/.test(url.pathname), (options) =>
-  getApiStrategy().handle(options)
+registerRoute(
+  ({ url }) => /\/api\/(news|schedule)/.test(url.pathname),
+  (options) => getApiStrategy().handle(options)
 )
 
 registerRoute(
