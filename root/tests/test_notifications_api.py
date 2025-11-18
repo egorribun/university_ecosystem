@@ -7,6 +7,7 @@ from sqlalchemy import select, text, update
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.core.database import async_session
+from app.localization import translate
 from app.models.models import Notification, NotificationQueueJob
 from app.services.notifications import create_notifications_for_users
 
@@ -351,6 +352,27 @@ async def test_admin_dead_letter_requires_admin(
     )
 
     assert response.status_code == 403
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("locale", ["en", "ru"])
+async def test_admin_dead_letter_guard_localized(
+    async_client: AsyncClient, user_factory, locale: str
+):
+    password = "LocalizedAdminGuard123!"
+    hashed = get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True, role="student")
+
+    headers = await _login(async_client, user.email, password)
+    response = await async_client.get(
+        f"/notifications/admin/dead-letter?lang={locale}",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == translate(
+        "errors.notifications.admin_required", locale=locale
+    )
 
 
 @pytest.mark.anyio

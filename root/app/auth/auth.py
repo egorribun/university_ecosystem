@@ -1116,7 +1116,10 @@ async def get_session_signing_key(
     if session is None or not getattr(session, "signing_key", None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Active session missing signing key",
+            detail=translate(
+                "errors.sessions.signing_key_missing",
+                locale=resolve_locale(request=request),
+            ),
         )
     return SessionSigningKeyOut(signing_key=session.signing_key)
 
