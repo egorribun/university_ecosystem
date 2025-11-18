@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 vi.mock("workbox-precaching", () => ({
   cleanupOutdatedCaches: vi.fn(),
@@ -40,6 +41,68 @@ type PendingReport = PendingNavigation & {
   payload?: Record<string, unknown>
 }
 
+type CacheEntryStore = Map<string, Response>
+
+type CacheStorageMock = CacheStorage & { __store: Map<string, CacheEntryStore> }
+
+const resolveRequestKey = (request: RequestInfo | URL): string => {
+  if (typeof request === "string") return request
+  if (request instanceof URL) return request.toString()
+  if (request instanceof Request) return request.url
+  return String(request)
+}
+
+const createCacheInstance = (store: CacheEntryStore): Cache => {
+  const put = async (request: RequestInfo | URL, response: Response) => {
+    store.set(resolveRequestKey(request), response)
+  }
+
+  return {
+    match: async (request: RequestInfo | URL) => store.get(resolveRequestKey(request)),
+    put,
+    delete: async (request: RequestInfo | URL) => store.delete(resolveRequestKey(request)),
+    keys: async () => Array.from(store.keys()).map((url) => new Request(url)),
+    add: async (request: RequestInfo | URL) => {
+      if (typeof request === "string") {
+        const response = await fetch(request)
+        await put(request, response)
+      }
+    },
+    addAll: async (requests: (RequestInfo | URL)[]) => {
+      await Promise.all(requests.map((entry) => put(entry, new Response(null))))
+    },
+  } as Cache
+}
+
+const createCacheStorageMock = (): CacheStorageMock => {
+  const cacheStore = new Map<string, CacheEntryStore>()
+  const ensureStore = (name: string) => {
+    let store = cacheStore.get(name)
+    if (!store) {
+      store = new Map<string, Response>()
+      cacheStore.set(name, store)
+    }
+    return store
+  }
+
+  return {
+    __store: cacheStore,
+    match: async (request: RequestInfo | URL) => {
+      const key = resolveRequestKey(request)
+      for (const store of cacheStore.values()) {
+        if (store.has(key)) {
+          return store.get(key)
+        }
+      }
+      return undefined
+    },
+    has: async (name: string) => cacheStore.has(name),
+    open: async (name: string) => createCacheInstance(ensureStore(name)),
+    delete: async (name: string) => cacheStore.delete(name),
+    keys: async () => Array.from(cacheStore.keys()),
+  }
+}
+
 type ServiceWorkerTestingApi = {
   storePendingNavigation: (record: PendingNavigation) => Promise<void>
   storePendingReport: (record: PendingReport) => Promise<void>
@@ -65,6 +128,7 @@ type TestServiceWorkerScope = ServiceWorkerGlobalScope &
       openWindow?: (url: string | URL) => Promise<WindowClient | null>
     }
     navigator: Navigator & { setOnline: (value: boolean) => void }
+    caches: CacheStorageMock
   }
 
 const createServiceWorkerScope = () => {
@@ -82,6 +146,8 @@ const createServiceWorkerScope = () => {
     configurable: true,
     get: () => online,
   })
+
+  const caches = createCacheStorageMock()
 
   const scope: TestServiceWorkerScope = Object.assign(Object.create(null), {
     __WB_MANIFEST: [],
@@ -106,6 +172,7 @@ const createServiceWorkerScope = () => {
       sync: undefined,
     },
     skipWaiting: vi.fn(),
+    caches,
   })
 
   return { scope, listeners }
@@ -125,15 +192,19 @@ const loadServiceWorker = async () => {
 
 let originalSelf: typeof globalThis
 let listeners: Map<string, ((event: Event) => void)[]>
+let originalCaches: CacheStorage | undefined
 
 beforeEach(async () => {
   vi.resetModules()
   const created = createServiceWorkerScope()
   listeners = created.listeners
   originalSelf = self
+  const globalWithCaches = globalThis as typeof globalThis & { caches?: CacheStorage }
+  originalCaches = globalWithCaches.caches
   Object.assign(globalThis as typeof globalThis & { self: TestServiceWorkerScope }, {
     self: created.scope,
   })
+  globalWithCaches.caches = created.scope.caches
   await import("@/sw")
 })
 
@@ -141,6 +212,12 @@ afterEach(async () => {
   await deleteDatabase()
   vi.restoreAllMocks()
   vi.clearAllMocks()
+  const globalWithCaches = globalThis as typeof globalThis & { caches?: CacheStorage }
+  if (originalCaches) {
+    globalWithCaches.caches = originalCaches
+  } else {
+    Reflect.deleteProperty(globalWithCaches, "caches")
+  }
   Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, {
     self: originalSelf,
   })
@@ -252,5 +329,29 @@ describe("service worker offline queues", () => {
       "https://example.com/api/notifications/report",
       expect.any(Object)
     )
+  })
+})
+
+describe("service worker api cache controls", () => {
+  test("clears cached news responses after session changes", async () => {
+    const scope = self as unknown as TestServiceWorkerScope
+    const cacheStorage = scope.caches
+    const cacheName = "api-cache:session-test"
+    const cache = await cacheStorage.open(cacheName)
+    await cache.put("https://example.com/api/news", new Response(JSON.stringify({ id: 1 })))
+
+    const messageListener = getListener("message")
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+    messageListener({
+      data: { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+      waitUntil,
+    } as unknown as ExtendableMessageEvent)
+
+    const pending = waitUntil.mock.calls[0]?.[0]
+    if (pending instanceof Promise) {
+      await pending
+    }
+
+    expect(cacheStorage.__store.has(cacheName)).toBe(false)
   })
 })

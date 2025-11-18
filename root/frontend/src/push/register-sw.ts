@@ -1,9 +1,17 @@
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
 import { createTrustedScriptURL } from "../utils/trustedTypes"
 import { logError } from "@/app/logger"
+import {
+  SERVICE_WORKER_MESSAGE_TYPES,
+  type ServiceWorkerMessage,
+} from "@/constants/serviceWorkerMessages"
 
-const SKIP_WAITING_MESSAGE = { type: "SKIP_WAITING" } as const
-const PROCESS_QUEUE_MESSAGE = { type: "PROCESS_NOTIFICATION_CLICK_QUEUE" } as const
+const SKIP_WAITING_MESSAGE: ServiceWorkerMessage = {
+  type: SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING,
+}
+const PROCESS_QUEUE_MESSAGE: ServiceWorkerMessage = {
+  type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE,
+}
 
 const notifyUpdateAvailable = (registration: ServiceWorkerRegistration) => {
   const detail: ServiceWorkerUpdateEventDetail = {

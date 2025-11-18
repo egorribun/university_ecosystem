@@ -23,6 +23,10 @@ import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
 import type { SupportedLanguage } from "@/contexts/LanguageContext"
+import {
+  SERVICE_WORKER_MESSAGE_TYPES,
+  type ApiCacheControlMessage,
+} from "@/constants/serviceWorkerMessages"
 
 type UserState = User | null
 
@@ -243,6 +247,16 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
 }
 
 const utf8 = new TextEncoder()
+
+const bytesToHex = (bytes: Uint8Array): string =>
+  Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+
+const hashSessionIdentifier = (value: string): string => {
+  const digest = sha256(utf8.encode(value))
+  return bytesToHex(digest)
+}
 
 const signSnapshot = (payload: CacheSignaturePayload, key: string): string => {
   const json = JSON.stringify(payload)
@@ -491,16 +505,84 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const userStateRef = useRef<UserState>(userState)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
+  const sessionCacheHashRef = useRef<string | null>(null)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
   const [initializing, setInitializing] = useState<boolean>(() => userState == null)
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
 
-  const updateSessionSigningKey = useCallback((value: string | null) => {
-    sessionSigningKeyRef.current = value
-    setSessionSigningKeyState(value)
-    persistSessionSigningKey(value)
+  const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
+    if (typeof navigator === "undefined") {
+      return
+    }
+    const container: ServiceWorkerContainer | undefined = navigator.serviceWorker
+    if (!container) {
+      return
+    }
+
+    const postTo = (target: ServiceWorker | null | undefined) => {
+      if (!target) return
+      try {
+        target.postMessage(message)
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn("Failed to post message to service worker", error)
+        }
+      }
+    }
+
+    if (container.controller) {
+      postTo(container.controller)
+      return
+    }
+
+    const ready = container.ready
+    if (ready && typeof ready.then === "function") {
+      ready
+        .then((registration) => {
+          postTo(registration?.active ?? null)
+        })
+        .catch((error) => {
+          if (import.meta.env.DEV) {
+            console.warn("Failed to deliver message to service worker", error)
+          }
+        })
+    }
   }, [])
+
+  const sendSessionCacheUpdate = useCallback(
+    (
+      signingKey: string | null,
+      { purge = false, force = false }: { purge?: boolean; force?: boolean } = {}
+    ) => {
+      const nextHash = signingKey ? hashSessionIdentifier(signingKey) : null
+      if (!force && sessionCacheHashRef.current === nextHash) {
+        return
+      }
+
+      sessionCacheHashRef.current = nextHash
+
+      if (purge) {
+        sendServiceWorkerMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
+      }
+
+      sendServiceWorkerMessage({
+        type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+        sessionHash: nextHash ?? undefined,
+      })
+    },
+    [sendServiceWorkerMessage]
+  )
+
+  const updateSessionSigningKey = useCallback(
+    (value: string | null) => {
+      sessionSigningKeyRef.current = value
+      setSessionSigningKeyState(value)
+      persistSessionSigningKey(value)
+      sendSessionCacheUpdate(value, { purge: true })
+    },
+    [sendSessionCacheUpdate]
+  )
 
   const ensureSessionSigningKey = useCallback(async () => {
     if (sessionSigningKeyRef.current) {
@@ -587,6 +669,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       persistUserToCache(userState, sessionSigningKey)
     }
   }, [sessionSigningKey, userState])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
+  }, [sendSessionCacheUpdate])
 
   useEffect(() => {
     if (cachedUserRef.current !== null) {
