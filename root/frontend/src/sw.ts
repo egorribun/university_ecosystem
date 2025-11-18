@@ -141,22 +141,23 @@ const hasSignedUrlFlag = (response: Response) => {
 const shouldTreatAsPublicMedia = (response: Response) =>
   hasPublicCacheControl(response) || hasSignedUrlFlag(response)
 
-const cacheMediaResponse = async (
-  request: Request,
-  response: Response,
-  event?: FetchEvent
-) => {
+const cacheMediaResponse = async (request: Request, response: Response, event?: FetchEvent) => {
   if (!response.ok || request.method !== "GET") {
     return
   }
-  const cacheName = shouldTreatAsPublicMedia(response) ? MEDIA_PUBLIC_CACHE : getMediaSessionCacheName()
+  const cacheName = shouldTreatAsPublicMedia(response)
+    ? MEDIA_PUBLIC_CACHE
+    : getMediaSessionCacheName()
   if (!cacheName) {
     return
   }
   const cache = await caches.open(cacheName)
   await cache.put(request, response)
   const expiration = getMediaCacheExpiration(cacheName)
-  const maintenance = Promise.all([expiration.updateTimestamp(request.url), expiration.expireEntries()])
+  const maintenance = Promise.all([
+    expiration.updateTimestamp(request.url),
+    expiration.expireEntries(),
+  ])
   if (event) {
     try {
       event.waitUntil(maintenance)
