@@ -265,6 +265,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Уведомление не найдено",
         "en": "Notification not found",
     },
+    "errors.notifications.admin_required": {
+        "ru": "Доступно только администраторам",
+        "en": "Administrator privileges are required",
+    },
     "errors.push.not_configured": {
         "ru": "Web push не настроен",
         "en": "Web push is not configured",
@@ -384,6 +388,18 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "errors.sessions.not_found": {
         "ru": "Сессия не найдена",
         "en": "Session not found",
+    },
+    "errors.sessions.signing_key_missing": {
+        "ru": "Активная сессия не содержит ключ подписи",
+        "en": "The active session is missing a signing key",
+    },
+    "errors.profile_cache.invalid_envelope": {
+        "ru": "Некорректный конверт кэша профиля",
+        "en": "Invalid profile cache envelope",
+    },
+    "errors.profile_cache.invalid_signature": {
+        "ru": "Некорректная подпись конверта профиля",
+        "en": "Invalid profile cache envelope signature",
     },
     "notifications.push.test.title_default": {
         "ru": "Тестовое веб-push уведомление",

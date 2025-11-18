@@ -29,6 +29,39 @@ async def _login(async_client, email: str, password: str):
     )
 
 
+@pytest.mark.parametrize("locale", ["en", "ru"])
+async def test_session_signing_key_missing_localized(
+    async_client, user_factory, db_session, locale: str
+):
+    password = "SessionKeyLocale123!"
+    user = await _create_active_user(user_factory, password)
+
+    response = await _login(async_client, user.email, password)
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    session = (
+        await db_session.execute(
+            select(ActiveSession)
+            .where(ActiveSession.user_id == user.id)
+            .order_by(ActiveSession.id.desc())
+        )
+    ).scalars().first()
+    assert session is not None
+    session.signing_key = ""
+    await db_session.commit()
+
+    signing_key_response = await async_client.get(
+        f"/auth/session/signing-key?lang={locale}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert signing_key_response.status_code == 400
+    assert signing_key_response.json()["detail"] == translate(
+        "errors.sessions.signing_key_missing", locale=locale
+    )
+
+
 @pytest.fixture
 def configure_cookie_security(monkeypatch):
     def _configure(value):

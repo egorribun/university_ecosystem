@@ -60,11 +60,12 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     if not raw_envelope:
         return
 
+    locale = resolve_locale(request=request)
     session = getattr(request.state, "active_session", None)
     if session is None or not getattr(session, "signing_key", None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Active session is missing profile signing key",
+            detail=translate("errors.sessions.signing_key_missing", locale=locale),
         )
 
     try:
@@ -72,20 +73,22 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     except json.JSONDecodeError as exc:  # pragma: no cover - invalid client input
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid profile cache envelope",
+            detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
         ) from exc
 
     if not isinstance(candidate, dict):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid profile cache envelope",
+            detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
         )
 
     signature = candidate.get("signature")
     if not isinstance(signature, str) or not signature:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid profile cache envelope signature",
+            detail=translate(
+                "errors.profile_cache.invalid_signature", locale=locale
+            ),
         )
 
     payload = {
@@ -101,7 +104,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid profile cache envelope",
+            detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
         )
 
     payload_json = json.dumps(payload, separators=(",", ":"))
@@ -115,7 +118,9 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     if not hmac.compare_digest(signature, expected_signature):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid profile cache envelope signature",
+            detail=translate(
+                "errors.profile_cache.invalid_signature", locale=locale
+            ),
         )
 
 

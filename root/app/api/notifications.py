@@ -55,9 +55,15 @@ _MISSING_COLUMN_MARKERS = (
 )
 
 
-async def _require_admin_user(user: User = Depends(get_current_user)) -> User:
+async def _require_admin_user(
+    request: Request, user: User = Depends(get_current_user)
+) -> User:
+    locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.notifications.admin_required", locale=locale),
+        )
     return user
 
 
