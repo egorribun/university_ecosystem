@@ -100,6 +100,15 @@ have two options:
 With Redis enabled you can test cache hits, TTL expirations, and distributed
 rate limiting behavior exactly as it will run in production.
 
+#### Schedule API caching & conditional GETs
+
+The schedule endpoint (`GET /schedule/{group_id}`) emits entity tags when the
+cache backend is enabled. Each response sets `Cache-Control: private,
+max-age=300` and an `Expires` header 5 minutes in the future so API consumers
+can reuse data between polls. Send the previously observed `ETag` value via
+`If-None-Match` to receive a `304 Not Modified` response with the same cache
+headers whenever the schedule has not changed.
+
 ### 4. Run services manually (alternative)
 
 #### Backend (FastAPI)

@@ -1,4 +1,6 @@
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from functools import lru_cache
 from typing import Any
 
@@ -30,11 +32,23 @@ def _get_vary_helper() -> Callable[[Response, str], None]:
     return _ensure_vary_header
 
 
+_SCHEDULE_CACHE_TTL_SECONDS = 300
+_SCHEDULE_CACHE_CONTROL = f"private, max-age={_SCHEDULE_CACHE_TTL_SECONDS}"
+
+
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
 
 def _schedule_cache_key(group_id: int) -> str:
     return f"schedule:group:{group_id}"
+
+
+def _set_schedule_cache_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = _SCHEDULE_CACHE_CONTROL
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        seconds=_SCHEDULE_CACHE_TTL_SECONDS
+    )
+    response.headers["Expires"] = format_datetime(expires_at, usegmt=True)
 
 
 def _localize_schedule_payload(
@@ -80,6 +94,7 @@ async def get_schedule(
     locale = resolve_locale(request=request)
     _get_vary_helper()(response, "Accept-Language")
     response.headers["Content-Language"] = locale
+    _set_schedule_cache_headers(response)
     cache = get_cache()
     cache_key = _schedule_cache_key(group_id)
     if cache.enabled:
@@ -90,6 +105,7 @@ async def get_schedule(
                 cached_response = Response(status_code=status.HTTP_304_NOT_MODIFIED)
                 cached_response.headers["ETag"] = etag_header
                 _get_vary_helper()(cached_response, "Accept-Language")
+                _set_schedule_cache_headers(cached_response)
                 return cached_response
             response.headers["ETag"] = etag_header
             return _localize_schedule_payload(cached.payload, locale=locale)
@@ -100,7 +116,9 @@ async def get_schedule(
     localized_payload = _localize_schedule_payload(payload, locale=locale)
 
     if cache.enabled:
-        entry = await cache.set(cache_key, payload)
+        entry = await cache.set(
+            cache_key, payload, ttl=_SCHEDULE_CACHE_TTL_SECONDS
+        )
         response.headers["ETag"] = format_etag(entry.etag)
     return localized_payload
 
