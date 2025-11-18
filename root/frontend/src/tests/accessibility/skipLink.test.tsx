@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import type { ReactElement } from "react"
+import type { ContextType, ReactElement } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -38,6 +38,8 @@ vi.mock("@/components/WeatherWidget", () => ({
   default: () => <div data-testid="stub-weather-widget" />,
 }))
 
+type AuthContextValue = ContextType<typeof AuthContext>
+
 const baseUser: User = {
   id: 1,
   email: "student@example.com",
@@ -74,7 +76,7 @@ const baseUser: User = {
   mfa_challenges: [],
 }
 
-const baseAuthValue = {
+const baseAuthValue: AuthContextValue = {
   isAuth: true,
   login: vi.fn(),
   logout: vi.fn(),
@@ -88,7 +90,7 @@ const baseAuthValue = {
   resetEtagCache: vi.fn(),
 }
 
-const unauthenticatedAuthValue = {
+const unauthenticatedAuthValue: AuthContextValue = {
   ...baseAuthValue,
   isAuth: false,
   user: null,
