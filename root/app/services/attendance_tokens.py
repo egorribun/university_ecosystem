@@ -180,8 +180,10 @@ def verify_token(
     calculated = compute_secret_hmac(payload.secret)
     if not hmac.compare_digest(calculated, expected_hmac):
         raise AttendanceTokenInvalid("Token secret is not active")
+    ttl_window = max(1, payload.expires_at - payload.issued_at)
+    valid_until = payload.expires_at + ttl_window
     moment = now or _now()
-    if moment.timestamp() >= payload.expires_at:
+    if moment.timestamp() >= valid_until:
         raise AttendanceTokenExpired("Token has expired")
     return payload
 
