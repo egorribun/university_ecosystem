@@ -314,6 +314,14 @@ async function deleteRecord(storeName: string, id: number): Promise<void> {
   })
 }
 
+export const queueDbModule = {
+  hasIndexedDbSupport,
+  openDatabase,
+  addRecord,
+  getAllRecords,
+  deleteRecord,
+}
+
 function sanitizeValue(value: unknown, depth = 0): unknown {
   if (value === null || value === undefined) {
     return value
@@ -360,6 +368,11 @@ function sanitizeReportPayload(value: unknown): Record<string, unknown> | undefi
     return sanitized as Record<string, unknown>
   }
   return undefined
+}
+
+export const queueSanitizers = {
+  sanitizeValue,
+  sanitizeReportPayload,
 }
 
 async function storePendingNavigation(record: PendingNavigation): Promise<void> {
@@ -410,6 +423,15 @@ async function removePendingReport(id: number): Promise<void> {
   } catch (error) {
     logError("SW: failed to remove queued click report", error)
   }
+}
+
+export const queueStores = {
+  storePendingNavigation,
+  storePendingReport,
+  readPendingNavigations,
+  readPendingReports,
+  removePendingNavigation,
+  removePendingReport,
 }
 
 function isOnline(): boolean {
@@ -561,6 +583,17 @@ async function processPendingReports(): Promise<void> {
 async function processAllQueues(): Promise<void> {
   await processPendingNavigations()
   await processPendingReports()
+}
+
+export const queueProcessors = {
+  processPendingNavigations,
+  processPendingReports,
+  processAllQueues,
+}
+
+export const queueSyncTags = {
+  navigation: NAVIGATION_SYNC_TAG,
+  report: REPORT_SYNC_TAG,
 }
 
 type ServiceWorkerTestingApi = {
