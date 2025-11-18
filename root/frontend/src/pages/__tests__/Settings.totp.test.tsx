@@ -78,6 +78,7 @@ const renderSettings = (options?: RenderSettingsOptions) => {
           pendingMfa: null,
           submitMfaChallenge: vi.fn(),
           requireMfa: vi.fn(),
+          resetEtagCache: vi.fn(),
         }}
       >
         {children}

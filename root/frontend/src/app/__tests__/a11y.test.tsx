@@ -110,6 +110,7 @@ const createWrapper = (route = "/dashboard") => {
     pendingMfa: null,
     submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
     requireMfa: vi.fn().mockResolvedValue(null),
+    resetEtagCache: vi.fn(),
   }
 
   const Wrapper = ({ children }: PropsWithChildren) => (
