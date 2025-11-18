@@ -357,11 +357,8 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <a href="#main" className="skip-link">
-        {t("common:skipToMain")}
-      </a>
       <PageFadeIn>
-        <section id="main" className={heroSectionClass}>
+        <section className={heroSectionClass}>
           <div aria-hidden="true" className="pointer-events-none absolute inset-0">
             {heroBackdropLayers.map((layer, index) => (
               <div key={index} className={layer} />

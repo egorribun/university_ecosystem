@@ -10,6 +10,7 @@ import spotifyLogo from "../assets/spotify_icon.png"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
+import Layout from "../components/Layout"
 import {
   CircularProgress,
   Snackbar,
@@ -659,7 +660,7 @@ export default function Profile() {
   const snackMessage = snack?.key ? t(`profile:snackbar.${snack.key}`) : snack?.message || ""
 
   return (
-    <>
+    <Layout>
       {/* Seamless tiled background */}
       <div className="profile-background" aria-hidden>
         <div
@@ -674,8 +675,7 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
-          <main
-            id="main"
+          <section
             className="profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
@@ -1241,7 +1241,7 @@ export default function Profile() {
                 </div>
               </motion.div>
             </div>
-          </main>
+          </section>
         </motion.div>
       </PageFadeIn>
 
@@ -1348,6 +1348,6 @@ export default function Profile() {
           {snackMessage}
         </Alert>
       </Snackbar>
-    </>
+    </Layout>
   )
 }
