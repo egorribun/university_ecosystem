@@ -15,11 +15,13 @@ import {
   parsePushEventData,
 } from "@/push/notification-helpers"
 import { logError, logWarning } from "@/app/logger"
+import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis
 
 const OFFLINE_URL = "/offline.html"
 const API_CACHE = "api-cache"
+const API_CACHE_SESSION_PREFIX = `${API_CACHE}:`
 const IMG_CACHE = "img-cache"
 const BACKEND_STATIC_CACHE = "backend-static"
 const CLICK_DB_NAME = "notification-interactions"
@@ -28,7 +30,50 @@ const NAVIGATION_STORE = "pending-navigations"
 const REPORT_STORE = "pending-reports"
 const NAVIGATION_SYNC_TAG = "notification-click:navigation"
 const REPORT_SYNC_TAG = "notification-click:report"
-const PROCESS_QUEUE_MESSAGE = "PROCESS_NOTIFICATION_CLICK_QUEUE"
+const PROCESS_QUEUE_MESSAGE = SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE
+
+const apiStrategies = new Map<string, StaleWhileRevalidate>()
+let apiSessionCacheHash: string | null = null
+
+const API_CACHE_PLUGIN = new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 })
+
+const getApiCacheName = () =>
+  apiSessionCacheHash && apiSessionCacheHash.length > 0
+    ? `${API_CACHE_SESSION_PREFIX}${apiSessionCacheHash}`
+    : API_CACHE
+
+const getApiStrategy = () => {
+  const cacheName = getApiCacheName()
+  const existing = apiStrategies.get(cacheName)
+  if (existing) {
+    return existing
+  }
+
+  const strategy = new StaleWhileRevalidate({
+    cacheName,
+    plugins: [API_CACHE_PLUGIN],
+  })
+  apiStrategies.set(cacheName, strategy)
+  return strategy
+}
+
+const purgeApiCaches = async () => {
+  const cacheKeys = await caches.keys()
+  const deletions = cacheKeys
+    .filter((key) => key === API_CACHE || key.startsWith(API_CACHE_SESSION_PREFIX))
+    .map((key) => caches.delete(key))
+  apiStrategies.clear()
+  await Promise.all(deletions)
+}
+
+const setApiSessionCache = (hash: unknown) => {
+  if (typeof hash === "string" && hash.length > 0) {
+    apiSessionCacheHash = hash
+  } else {
+    apiSessionCacheHash = null
+  }
+  apiStrategies.clear()
+}
 
 type PendingNavigation = {
   id?: number
@@ -434,11 +479,16 @@ self.addEventListener("message", (event) => {
     return
   }
 
-  const type = (event.data as { type?: string }).type
-  if (type === "SKIP_WAITING") {
+  const message = event.data as { type?: string; sessionHash?: unknown }
+  const type = message.type
+  if (type === SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING) {
     void self.skipWaiting()
   } else if (type === PROCESS_QUEUE_MESSAGE) {
     event.waitUntil(processAllQueues())
+  } else if (type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE) {
+    event.waitUntil(purgeApiCaches())
+  } else if (type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY) {
+    setApiSessionCache(message.sessionHash)
   }
 })
 
@@ -481,10 +531,7 @@ registerRoute(
 
 registerRoute(
   ({ url }) => /\/api\/(news|schedule)/.test(url.pathname),
-  new StaleWhileRevalidate({
-    cacheName: API_CACHE,
-    plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 })],
-  })
+  (options) => getApiStrategy().handle(options)
 )
 
 registerRoute(
