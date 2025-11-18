@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.api.schedule import _SCHEDULE_CACHE_CONTROL
 from app.localization import translate, translate_lesson_type
 from app.models import models
 from app.services.ical import generate_schedule_ics
@@ -188,6 +189,8 @@ async def test_schedule_endpoint_preserves_existing_vary_values(
     }
     fresh_response = await async_client.get(f"/schedule/{group.id}", headers=headers)
     assert fresh_response.status_code == 200
+    assert fresh_response.headers.get("Cache-Control") == _SCHEDULE_CACHE_CONTROL
+    assert fresh_response.headers.get("Expires")
     fresh_vary_values = {
         value.strip()
         for value in fresh_response.headers.get("Vary", "").split(",")
@@ -203,6 +206,8 @@ async def test_schedule_endpoint_preserves_existing_vary_values(
         headers={**headers, "If-None-Match": etag},
     )
     assert cached_response.status_code == 304
+    assert cached_response.headers.get("Cache-Control") == _SCHEDULE_CACHE_CONTROL
+    assert cached_response.headers.get("Expires")
     cached_vary_values = {
         value.strip()
         for value in cached_response.headers.get("Vary", "").split(",")
