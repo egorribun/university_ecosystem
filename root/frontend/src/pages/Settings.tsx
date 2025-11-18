@@ -81,6 +81,18 @@ const toServerTime = (value: string | null): string | null => {
   return trimmed
 }
 
+const securityStatusChipClassName = cn(
+  "font-semibold tracking-tight",
+  "text-[color:color-mix(in_srgb,var(--page-text)_92%,rgba(15,79,170,0.16)_8%)]",
+  "border border-[color:color-mix(in_srgb,var(--glass-border)_86%,transparent)]",
+  "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.1)_6%)]",
+  "shadow-[0_16px_40px_rgba(15,40,85,0.12)] backdrop-blur",
+  "dark:text-[color:color-mix(in_srgb,var(--page-text)_96%,rgba(148,163,184,0.45)_4%)]",
+  "dark:border-[rgba(148,163,184,0.35)]",
+  "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_80%,rgba(2,6,23,0.9)_20%)]",
+  "dark:shadow-[0_20px_50px_rgba(2,6,23,0.55)]"
+)
+
 // Tailwind CSS components
 
 function SectionCard({
@@ -2727,8 +2739,16 @@ export default function Settings() {
                     ) : null}
 
                     <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                      <Chip size="small" label={defaultMethodText} className="font-semibold" />
-                      <Chip size="small" label={lastVerifiedText} className="font-semibold" />
+                      <Chip
+                        size="small"
+                        label={defaultMethodText}
+                        className={securityStatusChipClassName}
+                      />
+                      <Chip
+                        size="small"
+                        label={lastVerifiedText}
+                        className={securityStatusChipClassName}
+                      />
                     </div>
 
                     <div className="flex flex-col gap-3 mt-3">
