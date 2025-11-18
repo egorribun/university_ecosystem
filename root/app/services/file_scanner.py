@@ -168,7 +168,7 @@ async def scan_for_malware(
 ) -> None:
     """Scan ``payload`` for malware and raise an HTTP error when threats are found."""
 
-    if isinstance(payload, (bytes, bytearray, memoryview)):
+    if isinstance(payload, (bytes | bytearray | memoryview)):
         data = bytes(payload)
         if not data:
             return
