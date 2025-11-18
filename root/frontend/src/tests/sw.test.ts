@@ -59,6 +59,16 @@ const createCacheInstance = (store: CacheEntryStore): Cache => {
 
   return {
     match: async (request: RequestInfo | URL) => store.get(resolveRequestKey(request)),
+    matchAll: async (
+      request?: RequestInfo | URL,
+      _options?: CacheQueryOptions
+    ): Promise<readonly Response[]> => {
+      if (typeof request === "undefined") {
+        return Array.from(store.values())
+      }
+      const match = store.get(resolveRequestKey(request))
+      return match ? [match] : []
+    },
     put,
     delete: async (request: RequestInfo | URL) => store.delete(resolveRequestKey(request)),
     keys: async () => Array.from(store.keys()).map((url) => new Request(url)),
