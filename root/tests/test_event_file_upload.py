@@ -146,6 +146,42 @@ async def test_upload_event_file_rejects_large_payload(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_upload_event_file_respects_scanner_limit(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    payload = b"x" * 1024
+    upload = UploadFile(
+        filename="notes.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
+    monkeypatch.setattr(settings, "event_file_scanner_enabled", True)
+    monkeypatch.setattr(
+        settings,
+        "event_file_scanner_max_size_mb",
+        (len(payload) - 1) / (1024 * 1024),
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
+
+    assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
+    assert excinfo.value.detail == translate("errors.files.too_large", locale="en")
+    folder = tmp_path / "event_files"
+    assert not folder.exists()
+
+
+@pytest.mark.anyio("asyncio")
 async def test_upload_event_file_rejects_forbidden_type(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -228,8 +264,11 @@ async def test_upload_event_file_rejects_infected_payload(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
-        assert data == payload
+    async def fake_scan(
+        scanned, *, locale: str | None = None, size_bytes: int | None = None
+    ) -> None:
+        assert scanned is upload
+        assert size_bytes == len(payload)
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=translate("errors.files.infected", locale=locale),
@@ -301,8 +340,12 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
 
     calls: list[tuple[bytes, str | None]] = []
 
-    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
-        calls.append((data, locale))
+    async def fake_scan(
+        scanned, *, locale: str | None = None, size_bytes: int | None = None
+    ) -> None:
+        calls.append((scanned, locale, size_bytes))
+        assert scanned is upload
+        assert size_bytes == len(payload)
         return None
 
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
@@ -312,7 +355,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     )
 
     assert result.event_id == event.id
-    assert calls and calls[0][0] == payload
+    assert calls and calls[0][0] is upload
     stored_path = tmp_path / "event_files" / result.file_url.rsplit("/", 1)[-1]
     assert stored_path.exists()
     assert stored_path.read_bytes() == payload

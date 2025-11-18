@@ -365,6 +365,8 @@ class Settings(BaseSettings):
     event_file_scanner_port: int = 3310
     event_file_scanner_socket: str = ""
     event_file_scanner_timeout: float = 30.0
+    event_file_scanner_max_size_mb: float = Field(default=25.0, ge=0.0)
+    event_file_scanner_max_duration_sec: float = Field(default=10.0, ge=0.0)
 
     @field_validator("auto_create_schema", mode="before")
     @classmethod

@@ -346,7 +346,7 @@ async def save_attachment(
 
     ext_for_name = f".{chosen_ext_without_dot}" if chosen_ext_without_dot else ""
     name = _gen_name(prefix, ext_for_name)
-    await scan_for_malware(data, locale=locale)
+    await scan_for_malware(upload, locale=locale, size_bytes=len(data))
     sanitized_subdir = subdir.strip("/ ")
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
