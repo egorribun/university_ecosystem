@@ -87,6 +87,7 @@ const authValue: AuthContextValue = {
   pendingMfa: null,
   submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
   requireMfa: vi.fn().mockResolvedValue(null),
+  resetEtagCache: vi.fn(),
 }
 
 describe("Events caching", () => {

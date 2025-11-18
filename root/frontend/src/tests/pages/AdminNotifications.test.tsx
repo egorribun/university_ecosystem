@@ -59,6 +59,7 @@ const authValue = {
   pendingMfa: null,
   submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
   requireMfa: vi.fn().mockResolvedValue(null),
+  resetEtagCache: vi.fn(),
 }
 
 type RenderResult = { queryClient: QueryClient }

@@ -17,7 +17,7 @@ import type { TFunction } from "i18next"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
-import api, { API_UNAUTHORIZED_EVENT } from "../api/client"
+import api, { API_UNAUTHORIZED_EVENT, resetEtagCache } from "../api/client"
 import type { components } from "@/api/generated/schema"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
@@ -50,6 +50,7 @@ type AuthContextType = {
   pendingMfa: PendingMfaState | null
   submitMfaChallenge: (payload: SubmitMfaChallengePayload) => Promise<void>
   requireMfa: () => Promise<PendingMfaState | null>
+  resetEtagCache: () => void
 }
 
 export class ChallengeLockedError extends Error {
@@ -80,6 +81,7 @@ export const AuthContext = createContext<AuthContextType>({
   pendingMfa: null,
   submitMfaChallenge: async () => {},
   requireMfa: async () => null,
+  resetEtagCache,
 })
 
 export const useAuth = () => useContext(AuthContext)
@@ -695,6 +697,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const handleUnauthorized = useCallback(
     ({ broadcast = true, persist = true }: HandleUnauthorizedOptions = {}) => {
+      resetEtagCache()
       sessionSigningKeyPromiseRef.current = null
       updateSessionSigningKey(null)
       clearProfile({ persist })
@@ -888,6 +891,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         signingKey?: string | null
       } = {}
     ) => {
+      resetEtagCache()
       let resolvedProfile: User | null = profile ?? null
       let signingKeyPromise: Promise<string | null> | null = null
 
@@ -1235,6 +1239,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         console.error("Failed to unsubscribe push subscription on logout", error)
       } finally {
+        resetEtagCache()
         handleUnauthorized()
         setAuthOperation(false)
       }
@@ -1258,6 +1263,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       pendingMfa,
       submitMfaChallenge,
       requireMfa,
+      resetEtagCache,
     }),
     [
       isAuth,
@@ -1270,6 +1276,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       pendingMfa,
       submitMfaChallenge,
       requireMfa,
+      resetEtagCache,
     ]
   )
 
