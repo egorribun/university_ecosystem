@@ -55,6 +55,11 @@ type CacheEntryStore = Map<string, Response>
 
 type CacheStorageMock = CacheStorage & { __store: Map<string, CacheEntryStore> }
 
+type SyncEvent = Event & {
+  tag: string
+  waitUntil: (promise: Promise<unknown>) => void
+}
+
 const resolveRequestKey = (request: RequestInfo | URL): string => {
   if (typeof request === "string") return request
   if (request instanceof URL) return request.toString()
@@ -345,7 +350,12 @@ describe("background sync integration", () => {
     const syncListener = getListener("sync")
     const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
 
-    syncListener({ tag: syncTags.navigation, waitUntil } as unknown as SyncEvent)
+    const syncEvent = Object.assign(new Event("sync"), {
+      tag: syncTags.navigation,
+      waitUntil,
+    }) as SyncEvent
+
+    syncListener(syncEvent)
 
     const pending = waitUntil.mock.calls[0]?.[0]
     if (pending instanceof Promise) {
