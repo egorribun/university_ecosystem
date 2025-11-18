@@ -60,10 +60,9 @@ describe("useEventsListQuery", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     )
 
-    const { result } = renderHook(
-      () => useEventsListQuery({ language: "ru", is_active: true }),
-      { wrapper }
-    )
+    const { result } = renderHook(() => useEventsListQuery({ language: "ru", is_active: true }), {
+      wrapper,
+    })
 
     await waitFor(() => expect(result.current.events).toEqual(firstUserEvents))
 
