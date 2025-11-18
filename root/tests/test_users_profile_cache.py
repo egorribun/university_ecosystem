@@ -32,12 +32,16 @@ async def test_profile_cache_missing_signing_key_localized(
 
     token = await _login(async_client, user.email, password)
     session = (
-        await db_session.execute(
-            select(ActiveSession)
-            .where(ActiveSession.user_id == user.id)
-            .order_by(ActiveSession.id.desc())
+        (
+            await db_session.execute(
+                select(ActiveSession)
+                .where(ActiveSession.user_id == user.id)
+                .order_by(ActiveSession.id.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert session is not None
     session.signing_key = ""
     await db_session.commit()

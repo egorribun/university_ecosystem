@@ -86,9 +86,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     if not isinstance(signature, str) or not signature:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate(
-                "errors.profile_cache.invalid_signature", locale=locale
-            ),
+            detail=translate("errors.profile_cache.invalid_signature", locale=locale),
         )
 
     payload = {
@@ -118,9 +116,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     if not hmac.compare_digest(signature, expected_signature):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate(
-                "errors.profile_cache.invalid_signature", locale=locale
-            ),
+            detail=translate("errors.profile_cache.invalid_signature", locale=locale),
         )
 
 

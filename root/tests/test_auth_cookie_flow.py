@@ -41,12 +41,16 @@ async def test_session_signing_key_missing_localized(
     token = response.json()["access_token"]
 
     session = (
-        await db_session.execute(
-            select(ActiveSession)
-            .where(ActiveSession.user_id == user.id)
-            .order_by(ActiveSession.id.desc())
+        (
+            await db_session.execute(
+                select(ActiveSession)
+                .where(ActiveSession.user_id == user.id)
+                .order_by(ActiveSession.id.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert session is not None
     session.signing_key = ""
     await db_session.commit()

@@ -7,8 +7,8 @@ from sqlalchemy import select, text, update
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.core.database import async_session
-from app.models.models import Notification, NotificationQueueJob
 from app.localization import translate
+from app.models.models import Notification, NotificationQueueJob
 from app.services.notifications import create_notifications_for_users
 
 
