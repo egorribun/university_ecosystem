@@ -1,5 +1,5 @@
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from functools import lru_cache
 from typing import Any
@@ -45,9 +45,7 @@ def _schedule_cache_key(group_id: int) -> str:
 
 def _set_schedule_cache_headers(response: Response) -> None:
     response.headers["Cache-Control"] = _SCHEDULE_CACHE_CONTROL
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        seconds=_SCHEDULE_CACHE_TTL_SECONDS
-    )
+    expires_at = datetime.now(UTC) + timedelta(seconds=_SCHEDULE_CACHE_TTL_SECONDS)
     response.headers["Expires"] = format_datetime(expires_at, usegmt=True)
 
 
@@ -116,9 +114,7 @@ async def get_schedule(
     localized_payload = _localize_schedule_payload(payload, locale=locale)
 
     if cache.enabled:
-        entry = await cache.set(
-            cache_key, payload, ttl=_SCHEDULE_CACHE_TTL_SECONDS
-        )
+        entry = await cache.set(cache_key, payload, ttl=_SCHEDULE_CACHE_TTL_SECONDS)
         response.headers["ETag"] = format_etag(entry.etag)
     return localized_payload
 
