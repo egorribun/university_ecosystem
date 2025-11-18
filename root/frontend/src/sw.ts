@@ -151,13 +151,22 @@ const cacheMediaResponse = async (request: Request, response: Response, event?: 
   if (!cacheName) {
     return
   }
-  const cache = await caches.open(cacheName)
-  await cache.put(request, response)
+
+  try {
+    const cache = await caches.open(cacheName)
+    await cache.put(request, response)
+  } catch (error) {
+    logWarning("SW: failed to cache media response", error)
+    return
+  }
+
   const expiration = getMediaCacheExpiration(cacheName)
   const maintenance = Promise.all([
     expiration.updateTimestamp(request.url),
     expiration.expireEntries(),
-  ])
+  ]).catch((error) => {
+    logWarning("SW: failed to update media cache expiration", error)
+  })
   if (event) {
     try {
       event.waitUntil(maintenance)

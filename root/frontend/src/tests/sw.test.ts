@@ -441,4 +441,63 @@ describe("service worker media cache controls", () => {
     const betaCache = await scope.caches.open("media-private:beta")
     await expect(betaCache.match(mediaUrl)).resolves.toBeUndefined()
   })
+
+  test("public media responses fall back to the shared cache when offline", async () => {
+    const sw = await loadServiceWorker()
+    const scope = self as unknown as TestServiceWorkerScope
+    const mediaUrl = "https://example.com/media/banner.png"
+    let requestCount = 0
+
+    server.use(
+      http.get(mediaUrl, () => {
+        requestCount += 1
+        if (requestCount === 1) {
+          return HttpResponse.text("public-response", {
+            headers: { "Cache-Control": "public, max-age=60" },
+          })
+        }
+        return HttpResponse.error()
+      })
+    )
+
+    const first = await sw.handleMediaRequest(mediaUrl)
+    await expect(first.text()).resolves.toBe("public-response")
+    expect(scope.caches.__store.has("media-public")).toBe(true)
+
+    const second = await sw.handleMediaRequest(mediaUrl)
+    await expect(second.text()).resolves.toBe("public-response")
+  })
+
+  test("signed media responses are cached publicly even during authenticated sessions", async () => {
+    const sw = await loadServiceWorker()
+    const scope = self as unknown as TestServiceWorkerScope
+    const mediaUrl = "https://example.com/media/signed.png"
+
+    await dispatchSwMessage({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: "gamma",
+    })
+
+    server.use(
+      http.get(mediaUrl, () =>
+        HttpResponse.text("signed-media", {
+          headers: { "x-media-signed-url": "true" },
+        })
+      )
+    )
+
+    const first = await sw.handleMediaRequest(mediaUrl)
+    await expect(first.text()).resolves.toBe("signed-media")
+    expect(scope.caches.__store.has("media-public")).toBe(true)
+    expect(scope.caches.__store.has("media-private:gamma")).toBe(false)
+
+    server.use(
+      http.get(mediaUrl, () => {
+        return HttpResponse.error()
+      })
+    )
+
+    const second = await sw.handleMediaRequest(mediaUrl)
+    await expect(second.text()).resolves.toBe("signed-media")
+  })
 })
