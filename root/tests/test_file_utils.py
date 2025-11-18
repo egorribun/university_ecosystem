@@ -187,8 +187,11 @@ async def test_save_attachment_prefers_detected_type(monkeypatch):
 
     backend = RecordingStorage()
 
-    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
-        assert data == payload
+    async def fake_scan(
+        scanned, *, locale: str | None = None, size_bytes: int | None = None
+    ) -> None:
+        assert isinstance(scanned, UploadFile)
+        assert size_bytes == len(payload)
 
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
     monkeypatch.setattr(files, "storage_backend", backend)
@@ -225,8 +228,11 @@ async def test_save_attachment_falls_back_to_declared_type(monkeypatch):
 
     backend = RecordingStorage()
 
-    async def fake_scan(data: bytes, *, locale: str | None = None) -> None:
-        assert data == payload
+    async def fake_scan(
+        scanned, *, locale: str | None = None, size_bytes: int | None = None
+    ) -> None:
+        assert isinstance(scanned, UploadFile)
+        assert size_bytes == len(payload)
 
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
     monkeypatch.setattr(files, "storage_backend", backend)

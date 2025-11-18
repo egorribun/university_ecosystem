@@ -195,7 +195,9 @@ async def test_healthcheck_file_scanner_uses_lightweight_probe(
     async def _fake_health_check() -> None:
         return None
 
-    async def _forbidden_scan(data: bytes, *, locale=None) -> None:  # pragma: no cover
+    async def _forbidden_scan(
+        _payload, *, locale=None, size_bytes: int | None = None
+    ) -> None:  # pragma: no cover
         raise AssertionError("health check should not trigger file scanning")
 
     monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
