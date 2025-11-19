@@ -18,6 +18,9 @@ bower_components
 .lock-wscript
 build/Release
 node_modules/
+root/node_modules/
+root/frontend/node_modules/
+root/frontend/dev-dist/
 jspm_packages/
 web_modules/
 *.tsbuildinfo
