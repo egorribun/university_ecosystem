@@ -48,9 +48,6 @@ class User(Base):
     mfa_required = Column(Boolean, default=False, nullable=False, index=True)
     mfa_default_method = Column(String(64))
     mfa_last_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    mfa_recovery_codes_generated_at = Column(
-        DateTime(timezone=True), nullable=True, index=True
-    )
 
     avatar_url = Column(String)
     cover_url = Column(String)
@@ -115,12 +112,6 @@ class User(Base):
     )
     totp_enrollments = relationship(
         "MfaTotpEnrollment",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    recovery_codes = relationship(
-        "MfaRecoveryCode",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -263,27 +254,6 @@ class MfaTotpEnrollment(Base):
     user = relationship("User", back_populates="totp_enrollments")
 
     __table_args__ = (Index("ix_mfa_totp_enrollments_active", "user_id", "is_active"),)
-
-
-class MfaRecoveryCode(Base):
-    __tablename__ = "mfa_recovery_codes"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    code_hash = Column(String(255), nullable=False)
-    used_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    label = Column(String(255))
-
-    user = relationship("User", back_populates="recovery_codes")
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "code_hash", name="uq_mfa_recovery_codes_hash"),
-    )
 
 
 class MfaChallenge(Base):

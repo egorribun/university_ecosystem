@@ -102,7 +102,6 @@ async def _reset_user_mfa(
             extra={
                 "notify": "false" if not notify else "true",
                 "totp_deleted": str(stats.totp_deleted),
-                "recovery_deleted": str(stats.recovery_codes_deleted),
                 "challenges_revoked": str(stats.challenges_revoked),
             },
         )
@@ -120,7 +119,6 @@ async def _async_main(args: argparse.Namespace) -> None:
         user.id,
         {
             "totp_deleted": stats.totp_deleted,
-            "recovery_deleted": stats.recovery_codes_deleted,
             "challenges_revoked": stats.challenges_revoked,
             "fields_cleared": stats.fields_cleared,
         },

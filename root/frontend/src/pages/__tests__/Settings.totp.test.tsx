@@ -38,7 +38,6 @@ vi.mock("@/hooks/usePushPreferences", () => ({
 const createBaseUser = (): User => ({
   ...testUser,
   totp_enrollments: [],
-  recovery_codes: [],
   mfa_default_method: null,
   mfa_last_verified_at: null,
 })

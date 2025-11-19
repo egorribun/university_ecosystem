@@ -175,40 +175,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/auth/mfa/recovery": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List Recovery Codes */
-    get: operations["list_recovery_codes_auth_mfa_recovery_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/auth/mfa/recovery/regenerate": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Regenerate Recovery Codes */
-    post: operations["regenerate_recovery_codes_auth_mfa_recovery_regenerate_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/auth/mfa/verify": {
     parameters: {
       query?: never
@@ -1828,22 +1794,6 @@ export interface components {
       /** Remaining Attempts */
       remaining_attempts?: number | null
     }
-    /** MfaRecoveryCodeOut */
-    MfaRecoveryCodeOut: {
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
-      /** Used At */
-      used_at?: string | null
-      /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string
-      /** Label */
-      label?: string | null
-    }
     /** MfaTotpEnrollmentOut */
     MfaTotpEnrollmentOut: {
       /** Id */
@@ -2592,8 +2542,6 @@ export interface components {
     UserMfaMethodsOut: {
       /** Totp Enrollments */
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Recovery Codes */
-      recovery_codes?: components["schemas"]["MfaRecoveryCodeOut"][]
       /** Pending Challenges */
       pending_challenges?: components["schemas"]["MfaChallengeOut"][]
     }
@@ -2673,12 +2621,8 @@ export interface components {
       mfa_default_method?: string | null
       /** Mfa Last Verified At */
       mfa_last_verified_at?: string | null
-      /** Mfa Recovery Codes Generated At */
-      mfa_recovery_codes_generated_at?: string | null
       /** Totp Enrollments */
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Recovery Codes */
-      recovery_codes?: components["schemas"]["MfaRecoveryCodeOut"][]
       /** Mfa Challenges */
       mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
     }
@@ -3038,46 +2982,6 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  list_recovery_codes_auth_mfa_recovery_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MfaRecoveryCodeOut"][]
-        }
-      }
-    }
-  }
-  regenerate_recovery_codes_auth_mfa_recovery_regenerate_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
         }
       }
     }

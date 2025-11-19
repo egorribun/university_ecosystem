@@ -89,14 +89,6 @@ class MfaTotpEnrollmentOut(OrmModel):
     created_at: datetime
 
 
-class MfaRecoveryCodeOut(OrmModel):
-    id: int
-    user_id: int
-    used_at: datetime | None = None
-    created_at: datetime
-    label: str | None = None
-
-
 class MfaChallengeOut(OrmModel):
     id: int
     user_id: int
@@ -124,9 +116,7 @@ class UserOut(OrmModel, UserBase):
     mfa_required: bool = False
     mfa_default_method: str | None = None
     mfa_last_verified_at: datetime | None = None
-    mfa_recovery_codes_generated_at: datetime | None = None
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    recovery_codes: list[MfaRecoveryCodeOut] = Field(default_factory=list)
     mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
 
 
@@ -140,7 +130,6 @@ class UserAdminUpdate(BaseModel):
 
 class UserMfaMethodsOut(BaseModel):
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    recovery_codes: list[MfaRecoveryCodeOut] = Field(default_factory=list)
     pending_challenges: list[MfaChallengeOut] = Field(default_factory=list)
 
 

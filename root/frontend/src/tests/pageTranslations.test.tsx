@@ -74,9 +74,7 @@ const {
     mfa_required: false,
     mfa_default_method: null,
     mfa_last_verified_at: null,
-    mfa_recovery_codes_generated_at: null,
     totp_enrollments: [],
-    recovery_codes: [],
     mfa_challenges: [],
   }
 

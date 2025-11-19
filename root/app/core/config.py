@@ -274,7 +274,6 @@ class Settings(BaseSettings):
     mfa_challenge_max_attempts: int = 5
     mfa_step_up_ttl_seconds: int = 300
     mfa_totp_attempt_limit: int = 5
-    mfa_recovery_attempt_limit: int = 5
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
@@ -502,10 +501,7 @@ class Settings(BaseSettings):
         field_name = getattr(info, "field_name", None) or "mfa_value"
         return _validate_positive_int(value, label=field_name.upper())
 
-    @field_validator(
-        "mfa_totp_attempt_limit",
-        "mfa_recovery_attempt_limit",
-    )
+    @field_validator("mfa_totp_attempt_limit")
     @classmethod
     def _validate_mfa_attempt_limits(cls, value: int, info: FieldValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_attempt_limit"

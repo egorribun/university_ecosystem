@@ -834,11 +834,6 @@ async def get_user_mfa_methods(
         .where(models.MfaTotpEnrollment.confirmed_at.is_not(None))
         .order_by(models.MfaTotpEnrollment.created_at)
     )
-    recovery_rows = await db.execute(
-        select(models.MfaRecoveryCode)
-        .where(models.MfaRecoveryCode.user_id == user_id)
-        .order_by(models.MfaRecoveryCode.created_at)
-    )
     challenge_rows = await db.execute(
         select(models.MfaChallenge)
         .where(models.MfaChallenge.user_id == user_id)
@@ -848,7 +843,6 @@ async def get_user_mfa_methods(
     _audit_log("users.mfa.inspect", request, user_id=user_id, reason="admin_view")
     return schemas.UserMfaMethodsOut(
         totp_enrollments=list(totp_rows.scalars().all()),
-        recovery_codes=list(recovery_rows.scalars().all()),
         pending_challenges=list(challenge_rows.scalars().all()),
     )
 
