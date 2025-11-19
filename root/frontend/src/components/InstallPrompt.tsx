@@ -33,7 +33,8 @@ interface BeforeInstallPromptEvent extends Event {
 type NavigatorStandalone = Navigator & { standalone?: boolean }
 
 const DISMISS_TTL = 1000 * 60 * 60 * 24 * 7
-const DISMISS_STORAGE_KEY = "ecosystem.pwa.install.dismissedAt"
+const PWA_DISMISS_STORAGE_KEY = "ecosystem.pwa.install.dismissedAt"
+const PUSH_DISMISS_STORAGE_KEY = "ecosystem.push.education.dismissedAt"
 
 const isStandalone = () => {
   if (typeof window === "undefined") return false
@@ -45,9 +46,9 @@ const isStandalone = () => {
   )
 }
 
-const readDismissedAt = () => {
+const readDismissedAt = (key: string) => {
   try {
-    const raw = localStorage.getItem(DISMISS_STORAGE_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return 0
     const parsed = Number(raw)
     return Number.isFinite(parsed) ? parsed : 0
@@ -56,17 +57,17 @@ const readDismissedAt = () => {
   }
 }
 
-const rememberDismiss = () => {
+const rememberDismiss = (key: string) => {
   try {
-    localStorage.setItem(DISMISS_STORAGE_KEY, String(Date.now()))
+    localStorage.setItem(key, String(Date.now()))
   } catch {
     /* ignore */
   }
 }
 
-const clearDismissed = () => {
+const clearDismissed = (key: string) => {
   try {
-    localStorage.removeItem(DISMISS_STORAGE_KEY)
+    localStorage.removeItem(key)
   } catch {
     /* ignore */
   }
@@ -75,11 +76,13 @@ const clearDismissed = () => {
 export default function InstallPrompt() {
   const { t } = useTranslation(["system", "navigation", "notifications"])
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [visible, setVisible] = useState(false)
+  const [installVisible, setInstallVisible] = useState(false)
+  const [pushVisible, setPushVisible] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [updateToastOpen, setUpdateToastOpen] = useState(false)
   const [feedback, setFeedback] = useState<NotificationToast | null>(null)
-  const suppressUntilRef = useRef<number>(0)
+  const installSuppressUntilRef = useRef<number>(0)
+  const pushSuppressUntilRef = useRef<number>(0)
   const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
 
   const isEligible = useMemo(() => !isStandalone(), [])
@@ -119,17 +122,17 @@ export default function InstallPrompt() {
   useEffect(() => {
     if (!isEligible) return
 
-    suppressUntilRef.current = readDismissedAt() + DISMISS_TTL
+    installSuppressUntilRef.current = readDismissedAt(PWA_DISMISS_STORAGE_KEY) + DISMISS_TTL
 
     const handleBeforeInstallPrompt = (event: Event) => {
       const now = Date.now()
-      if (suppressUntilRef.current && now < suppressUntilRef.current) {
+      if (installSuppressUntilRef.current && now < installSuppressUntilRef.current) {
         return
       }
 
       event.preventDefault()
       setDeferredPrompt(event as BeforeInstallPromptEvent)
-      setVisible(true)
+      setInstallVisible(true)
     }
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
@@ -143,8 +146,8 @@ export default function InstallPrompt() {
     if (!isEligible) return
 
     const onAppInstalled = () => {
-      clearDismissed()
-      setVisible(false)
+      clearDismissed(PWA_DISMISS_STORAGE_KEY)
+      setInstallVisible(false)
       setDeferredPrompt(null)
     }
 
@@ -153,11 +156,18 @@ export default function InstallPrompt() {
   }, [isEligible])
 
   useEffect(() => {
-    if (!pushSupported) return
-    if (notificationPermission === "granted") return
+    if (!pushSuppressUntilRef.current) {
+      pushSuppressUntilRef.current = readDismissedAt(PUSH_DISMISS_STORAGE_KEY) + DISMISS_TTL
+    }
+
+    if (pushSupported && notificationPermission === "granted") {
+      setPushVisible(false)
+      return
+    }
+
     const now = Date.now()
-    if (suppressUntilRef.current && now < suppressUntilRef.current) return
-    setVisible(true)
+    if (pushSuppressUntilRef.current && now < pushSuppressUntilRef.current) return
+    setPushVisible(true)
   }, [notificationPermission, pushSupported])
 
   const handleInstall = useCallback(async () => {
@@ -167,19 +177,19 @@ export default function InstallPrompt() {
       await deferredPrompt.prompt()
       const choice = await deferredPrompt.userChoice
       if (choice.outcome === "accepted") {
-        clearDismissed()
-        setVisible(false)
+        clearDismissed(PWA_DISMISS_STORAGE_KEY)
+        setInstallVisible(false)
         setDeferredPrompt(null)
       } else {
-        suppressUntilRef.current = Date.now() + DISMISS_TTL
-        rememberDismiss()
-        setVisible(false)
+        installSuppressUntilRef.current = Date.now() + DISMISS_TTL
+        rememberDismiss(PWA_DISMISS_STORAGE_KEY)
+        setInstallVisible(false)
         setDeferredPrompt(null)
       }
     } catch {
-      suppressUntilRef.current = Date.now() + DISMISS_TTL
-      rememberDismiss()
-      setVisible(false)
+      installSuppressUntilRef.current = Date.now() + DISMISS_TTL
+      rememberDismiss(PWA_DISMISS_STORAGE_KEY)
+      setInstallVisible(false)
       setDeferredPrompt(null)
     } finally {
       setInstalling(false)
@@ -195,11 +205,17 @@ export default function InstallPrompt() {
     [disableNotifications, enableNotifications, pushBusy, pushInitializing]
   )
 
-  const handleClose = useCallback(() => {
-    suppressUntilRef.current = Date.now() + DISMISS_TTL
-    rememberDismiss()
-    setVisible(false)
+  const handleInstallDismiss = useCallback(() => {
+    installSuppressUntilRef.current = Date.now() + DISMISS_TTL
+    rememberDismiss(PWA_DISMISS_STORAGE_KEY)
+    setInstallVisible(false)
     setDeferredPrompt(null)
+  }, [])
+
+  const handlePushDismiss = useCallback(() => {
+    pushSuppressUntilRef.current = Date.now() + DISMISS_TTL
+    rememberDismiss(PUSH_DISMISS_STORAGE_KEY)
+    setPushVisible(false)
   }, [])
 
   const handleFeedbackClose = useCallback(() => {
@@ -217,19 +233,15 @@ export default function InstallPrompt() {
     setUpdateToastOpen(false)
   }, [])
 
-  if (!isEligible && !updateToastOpen) return null
+  const showInstallPanel = installVisible && Boolean(deferredPrompt)
+  const showPushPanel = pushVisible
+  const shouldRenderPrompt = showInstallPanel || showPushPanel
+
+  if (!shouldRenderPrompt && !updateToastOpen && !feedback) return null
 
   return (
     <>
-      <Slide
-        direction="up"
-        in={
-          visible &&
-          (Boolean(deferredPrompt) || (pushSupported && notificationPermission !== "granted"))
-        }
-        mountOnEnter
-        unmountOnExit
-      >
+      <Slide direction="up" in={shouldRenderPrompt} mountOnEnter unmountOnExit>
         <Paper
           elevation={8}
           role="dialog"
@@ -249,23 +261,21 @@ export default function InstallPrompt() {
                 : "0px 18px 45px rgba(11, 99, 244, 0.16)",
           }}
         >
-          <Stack spacing={2.5} alignItems="flex-start">
-            <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
-              <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
-                {deferredPrompt
-                  ? t("system:installPrompt.installTitle", { appName })
-                  : t("system:installPrompt.title", { appName })}
-              </Typography>
-              <IconButton
-                aria-label={t("system:installPrompt.closeOffer")}
-                onClick={handleClose}
-                size="small"
-              >
-                <CloseIcon fontSize="small" />
-              </IconButton>
-            </Stack>
-            {deferredPrompt ? (
-              <>
+          <Stack spacing={showInstallPanel && showPushPanel ? 2.5 : 1.5} alignItems="flex-start">
+            {showInstallPanel && (
+              <Stack spacing={2} sx={{ width: "100%" }}>
+                <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
+                  <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
+                    {t("system:installPrompt.installTitle", { appName })}
+                  </Typography>
+                  <IconButton
+                    aria-label={t("system:installPrompt.closeOffer")}
+                    onClick={handleInstallDismiss}
+                    size="small"
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
                 <Typography variant="body2" sx={{ opacity: 0.85 }}>
                   {t("system:installPrompt.description")}
                 </Typography>
@@ -279,168 +289,171 @@ export default function InstallPrompt() {
                   >
                     {t("system:installPrompt.install")}
                   </Button>
-                  <Button variant="text" color="inherit" onClick={handleClose}>
+                  <Button variant="text" color="inherit" onClick={handleInstallDismiss}>
                     {t("system:installPrompt.later")}
                   </Button>
                 </Stack>
-              </>
-            ) : (
-              <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                {t("system:installPrompt.manageNotifications")}
-              </Typography>
+              </Stack>
             )}
-            {(pushSupported || notificationPermission !== "granted") && (
-              <>
-                <Divider sx={{ width: "100%" }} />
-                <Stack spacing={1.2} sx={{ width: "100%" }}>
-                  <Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 700, color: "var(--page-text)" }}
-                  >
+            {showInstallPanel && showPushPanel && <Divider sx={{ width: "100%" }} />}
+            {showPushPanel && (
+              <Stack spacing={1.2} sx={{ width: "100%" }}>
+                <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
+                  <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
                     {t("system:installPrompt.notificationsTitle")}
                   </Typography>
-                  {!pushSupported ? (
-                    <Alert severity="warning" variant="outlined">
-                      {t("system:installPrompt.unsupported")}
+                  <IconButton
+                    aria-label={t("system:installPrompt.notificationsClose")}
+                    onClick={handlePushDismiss}
+                    size="small"
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+                <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                  {t("system:installPrompt.manageNotifications")}
+                </Typography>
+                {!pushSupported ? (
+                  <Alert severity="warning" variant="outlined">
+                    {t("system:installPrompt.unsupported")}
+                  </Alert>
+                ) : notificationPermission === "denied" ? (
+                  <Stack spacing={1}>
+                    <Alert severity="error" variant="outlined">
+                      {t("system:installPrompt.blocked", { appName })}
                     </Alert>
-                  ) : notificationPermission === "denied" ? (
-                    <Stack spacing={1}>
-                      <Alert severity="error" variant="outlined">
-                        {t("system:installPrompt.blocked", { appName })}
+                    {safariIOS && (
+                      <Alert severity="info" variant="outlined">
+                        <Trans
+                          i18nKey="system:installPrompt.safariGuide"
+                          components={{
+                            link: (
+                              <Link
+                                href={safariGuideUrl}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              />
+                            ),
+                          }}
+                        />
                       </Alert>
-                      {safariIOS && (
-                        <Alert severity="info" variant="outlined">
-                          <Trans
-                            i18nKey="system:installPrompt.safariGuide"
-                            components={{
-                              link: (
-                                <Link
-                                  href={safariGuideUrl}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                />
-                              ),
-                            }}
-                          />
-                        </Alert>
-                      )}
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => void enableNotifications()}
-                          disabled={pushBusy}
-                        >
-                          {t("system:installPrompt.check")}
-                        </Button>
-                        <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
-                          {t("system:installPrompt.status", { status: permissionText })}
-                        </Typography>
-                      </Stack>
-                    </Stack>
-                  ) : notificationPermission === "default" ? (
-                    <Stack spacing={1}>
-                      <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                        {t("system:installPrompt.defaultPermissionDescription")}
+                    )}
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => void enableNotifications()}
+                        disabled={pushBusy}
+                      >
+                        {t("system:installPrompt.check")}
+                      </Button>
+                      <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
+                        {t("system:installPrompt.status", { status: permissionText })}
                       </Typography>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => void enableNotifications()}
-                          disabled={pushBusy || pushInitializing}
-                        >
-                          {t("system:installPrompt.allow")}
-                        </Button>
-                        <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
-                          {t("system:installPrompt.status", { status: permissionText })}
-                        </Typography>
-                      </Stack>
-                      {safariIOS && (
-                        <Alert severity="info" variant="outlined">
-                          <Trans
-                            i18nKey="system:installPrompt.safariGuide"
-                            components={{
-                              link: (
-                                <Link
-                                  href={safariGuideUrl}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                />
-                              ),
-                            }}
-                          />
-                        </Alert>
-                      )}
                     </Stack>
-                  ) : (
-                    <Stack spacing={1.5}>
-                      <FormControl component="fieldset" variant="standard">
-                        <FormGroup>
+                  </Stack>
+                ) : notificationPermission === "default" ? (
+                  <Stack spacing={1}>
+                    <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
+                      {t("system:installPrompt.defaultPermissionDescription")}
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => void enableNotifications()}
+                        disabled={pushBusy || pushInitializing}
+                      >
+                        {t("system:installPrompt.allow")}
+                      </Button>
+                      <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
+                        {t("system:installPrompt.status", { status: permissionText })}
+                      </Typography>
+                    </Stack>
+                    {safariIOS && (
+                      <Alert severity="info" variant="outlined">
+                        <Trans
+                          i18nKey="system:installPrompt.safariGuide"
+                          components={{
+                            link: (
+                              <Link
+                                href={safariGuideUrl}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              />
+                            ),
+                          }}
+                        />
+                      </Alert>
+                    )}
+                  </Stack>
+                ) : (
+                  <Stack spacing={1.5}>
+                    <FormControl component="fieldset" variant="standard">
+                      <FormGroup>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={notificationsEnabled}
+                              onChange={handleNotificationsToggle}
+                              disabled={pushBusy || pushInitializing}
+                            />
+                          }
+                          label={
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                              sx={{ color: "var(--page-text)" }}
+                            >
+                              {notificationsEnabled ? (
+                                <NotificationsActiveIcon fontSize="small" />
+                              ) : (
+                                <NotificationsOffIcon fontSize="small" />
+                              )}
+                              <span>{t("system:installPrompt.toggleLabel")}</span>
+                            </Stack>
+                          }
+                        />
+                      </FormGroup>
+                      <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                        {t("system:installPrompt.browserPermission", { status: permissionText })}
+                      </FormHelperText>
+                    </FormControl>
+                    <FormControl
+                      component="fieldset"
+                      variant="standard"
+                      disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                      sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
+                    >
+                      <FormGroup>
+                        {topicKeys.map((key) => (
                           <FormControlLabel
+                            key={key}
                             control={
                               <Switch
-                                checked={notificationsEnabled}
-                                onChange={handleNotificationsToggle}
-                                disabled={pushBusy || pushInitializing}
+                                checked={topicState[key]}
+                                onChange={handleTopicToggle(key)}
+                                disabled={!notificationsEnabled || pushBusy || pushInitializing}
                               />
                             }
                             label={
-                              <Stack
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                                sx={{ color: "var(--page-text)" }}
-                              >
-                                {notificationsEnabled ? (
-                                  <NotificationsActiveIcon fontSize="small" />
-                                ) : (
-                                  <NotificationsOffIcon fontSize="small" />
-                                )}
-                                <span>{t("system:installPrompt.toggleLabel")}</span>
-                              </Stack>
+                              <span style={{ color: "var(--page-text)" }}>
+                                {t(`notifications:topics.${key}`)}
+                              </span>
                             }
                           />
-                        </FormGroup>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          {t("system:installPrompt.browserPermission", { status: permissionText })}
-                        </FormHelperText>
-                      </FormControl>
-                      <FormControl
-                        component="fieldset"
-                        variant="standard"
-                        disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                        sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
-                      >
-                        <FormGroup>
-                          {topicKeys.map((key) => (
-                            <FormControlLabel
-                              key={key}
-                              control={
-                                <Switch
-                                  checked={topicState[key]}
-                                  onChange={handleTopicToggle(key)}
-                                  disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                                />
-                              }
-                              label={
-                                <span style={{ color: "var(--page-text)" }}>
-                                  {t(`notifications:topics.${key}`)}
-                                </span>
-                              }
-                            />
-                          ))}
-                        </FormGroup>
-                        <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                          {t("system:installPrompt.activeTopics", {
-                            topics: selectedTopicsDescription,
-                          })}
-                        </FormHelperText>
-                      </FormControl>
-                    </Stack>
-                  )}
-                </Stack>
-              </>
+                        ))}
+                      </FormGroup>
+                      <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
+                        {t("system:installPrompt.activeTopics", {
+                          topics: selectedTopicsDescription,
+                        })}
+                      </FormHelperText>
+                    </FormControl>
+                  </Stack>
+                )}
+              </Stack>
             )}
           </Stack>
         </Paper>
