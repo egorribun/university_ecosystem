@@ -13,6 +13,8 @@ import {
   type ReactNode,
   type CSSProperties,
 } from "react"
+import { Alert } from "@mui/material"
+import { isAxiosError } from "axios"
 import { createNews, uploadNewsImage } from "@/api/news"
 import ArticleIcon from "@mui/icons-material/Article"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
@@ -78,6 +80,7 @@ const News = () => {
   const [addOpen, setAddOpen] = useState(false)
   const [newsData, setNewsData] = useState(initialNews)
   const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
@@ -138,9 +141,36 @@ const News = () => {
     [imagePreview]
   )
 
+  const resolveCreateError = useCallback(
+    (error: unknown) => {
+      const fallback =
+        t("news:notifications.savedError", { defaultValue: "Failed to save the news" }) ??
+        "Failed to save the news"
+
+      if (isAxiosError(error)) {
+        const data = error.response?.data
+        if (typeof data === "string" && data.trim()) return data
+        if (data && typeof data === "object") {
+          const detail = (data as { detail?: unknown }).detail
+          if (typeof detail === "string" && detail.trim()) return detail
+          const message = (data as { message?: unknown }).message
+          if (typeof message === "string" && message.trim()) return message
+        }
+      }
+
+      if (error instanceof Error && error.message?.trim()) {
+        return error.message
+      }
+
+      return fallback
+    },
+    [t]
+  )
+
   const handleAddNews = useCallback(async () => {
     if (adding) return
     setAdding(true)
+    setAddError(null)
     try {
       let image_url = ""
       if (imageFile) {
@@ -166,14 +196,17 @@ const News = () => {
       }
       void refetchNews()
       if (imageInputRef.current) imageInputRef.current.value = ""
+    } catch (error) {
+      setAddError(resolveCreateError(error))
     } finally {
       setAdding(false)
     }
-  }, [adding, imageFile, imagePreview, newsData, refetchNews])
+  }, [adding, imageFile, imagePreview, newsData, refetchNews, resolveCreateError])
 
   const handleCloseDialog = useCallback(() => {
     setAddOpen(false)
     setNewsData(initialNews)
+    setAddError(null)
     setImageFile(null)
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview)
@@ -301,6 +334,12 @@ const News = () => {
                   void handleAddNews()
                 }}
               >
+                {addError ? (
+                  <Alert severity="error" variant="outlined">
+                    {addError}
+                  </Alert>
+                ) : null}
+
                 <Field label={t("news:form.title") ?? ""} htmlFor="news-title" required>
                   <input
                     id="news-title"

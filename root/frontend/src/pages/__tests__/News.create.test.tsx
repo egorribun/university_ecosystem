@@ -1,0 +1,119 @@
+import type { ReactNode } from "react"
+import userEvent from "@testing-library/user-event"
+import { render, screen, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("@/api/news", () => ({
+  createNews: vi.fn(),
+  uploadNewsImage: vi.fn(),
+}))
+
+vi.mock("@/components/Dialog", () => {
+  const MockDialog = ({
+    open,
+    children,
+    footer,
+    title,
+  }: {
+    open: boolean
+    children: ReactNode
+    footer?: ReactNode
+    title?: ReactNode
+  }) => {
+    if (!open) return null
+    return (
+      <div role="dialog">
+        {title ? <h2>{title}</h2> : null}
+        <div>{children}</div>
+        {footer}
+      </div>
+    )
+  }
+
+  MockDialog.displayName = "MockDialog"
+
+  return {
+    __esModule: true,
+    default: MockDialog,
+  }
+})
+
+vi.mock("@/hooks/useNewsFeed", () => ({
+  useNewsFeed: () => ({
+    data: [],
+    isPending: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+}))
+
+vi.mock("../../contexts/AuthContext", () => ({
+  useAuth: () => ({
+    user: { id: 1, role: "admin" },
+  }),
+}))
+
+vi.mock("../../contexts/LanguageContext", () => ({
+  useLanguage: () => ({
+    language: "en" as const,
+    setLanguage: vi.fn(),
+    available: ["en", "ru"] as const,
+  }),
+}))
+
+import News from "../News"
+import { createNews } from "@/api/news"
+
+const createNewsMock = vi.mocked(createNews)
+
+const renderNews = () => {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  })
+
+  return render(
+    <QueryClientProvider client={client}>
+      <News />
+    </QueryClientProvider>
+  )
+}
+
+describe("News creation dialog", () => {
+  beforeEach(() => {
+    createNewsMock.mockReset()
+  })
+
+  it("keeps the dialog open and surfaces errors when creation fails", async () => {
+    const user = userEvent.setup()
+    const errorMessage = "Title already exists"
+
+    createNewsMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { data: { detail: errorMessage } },
+    })
+
+    renderNews()
+
+    const addButtons = screen.getAllByRole("button", { name: /\+ add news/i })
+    await user.click(addButtons[0]!)
+
+    const dialog = await screen.findByRole("dialog")
+
+    const titleInput = await within(dialog).findByLabelText(/^Title(?! \()/)
+    const contentInput = await within(dialog).findByLabelText(/^News text(?! \()/)
+
+    await user.type(titleInput, "Test headline")
+    await user.type(contentInput, "Test content body")
+
+    await user.click(screen.getByRole("button", { name: /publish/i }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent(errorMessage)
+    expect(titleInput).toHaveValue("Test headline")
+    expect(contentInput).toHaveValue("Test content body")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+})
