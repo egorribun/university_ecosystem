@@ -35,14 +35,12 @@ from app.localization import resolve_locale, translate
 from app.models.models import (
     ActiveSession,
     FailedLoginAttempt,
-    MfaRecoveryCode,
     MfaTotpEnrollment,
     User,
 )
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas.schemas import (
     MfaFactorStatusOut,
-    MfaRecoveryCodeOut,
     MfaTotpEnrollmentOut,
     SessionSigningKeyOut,
     TokenWithProfile,
@@ -887,44 +885,6 @@ async def delete_totp_enrollment(
         },
     )
     return payload
-
-
-@router.get("/mfa/recovery", response_model=list[MfaRecoveryCodeOut])
-async def list_recovery_codes(
-    _: None = Depends(require_fresh_mfa),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = (
-        select(MfaRecoveryCode)
-        .where(MfaRecoveryCode.user_id == user.id)
-        .order_by(MfaRecoveryCode.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    return [MfaRecoveryCodeOut.model_validate(record) for record in result.scalars()]
-
-
-@router.post("/mfa/recovery/regenerate")
-async def regenerate_recovery_codes(
-    request: Request,
-    _: None = Depends(require_fresh_mfa),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    codes = await mfa.create_recovery_codes(db, user=user)
-    await db.commit()
-    await db.refresh(user)
-    _audit_log(
-        "auth.mfa.recovery.regenerated",
-        request,
-        user_id=user.id,
-        reason="issued",
-        extra={"generated_at": getattr(user, "mfa_recovery_codes_generated_at", None)},
-    )
-    return {
-        "codes": codes,
-        "generated_at": user.mfa_recovery_codes_generated_at,
-    }
 
 
 @router.post("/mfa/verify", response_model=TokenWithProfile)

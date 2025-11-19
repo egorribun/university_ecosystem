@@ -7,13 +7,11 @@ from .models import User
 
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
-    "recovery_codes",
     "mfa_challenges",
 )
 
 USER_MFA_LOAD_OPTIONS: tuple = (
     selectinload(User.totp_enrollments),
-    selectinload(User.recovery_codes),
     selectinload(User.mfa_challenges),
 )
 

@@ -637,7 +637,6 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     await mfa.complete_totp_enrollment(
         db_session, enrollment=enrollment, code=pyotp.TOTP(secret).now()
     )
-    await mfa.create_recovery_codes(db_session, user=target, count=2)
     await mfa.issue_challenge(
         db_session,
         user_id=target.id,
@@ -678,13 +677,6 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     assert result.scalars().all() == []
 
     result = await db_session.execute(
-        select(models.MfaRecoveryCode).where(
-            models.MfaRecoveryCode.user_id == target.id
-        )
-    )
-    assert result.scalars().all() == []
-
-    result = await db_session.execute(
         select(models.MfaChallenge).where(models.MfaChallenge.user_id == target.id)
     )
     assert result.scalars().all() == []
@@ -693,7 +685,6 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     assert target.mfa_required is False
     assert target.mfa_default_method is None
     assert target.mfa_last_verified_at is None
-    assert target.mfa_recovery_codes_generated_at is None
 
     assert notifications == [{"user_ids": [target.id]}]
 
@@ -716,7 +707,6 @@ async def test_reset_mfa_command_resets_state(
     await mfa.complete_totp_enrollment(
         db_session, enrollment=enrollment, code=pyotp.TOTP(secret).now()
     )
-    await mfa.create_recovery_codes(db_session, user=user, count=1)
     await mfa.issue_challenge(
         db_session,
         user_id=user.id,
@@ -745,7 +735,6 @@ async def test_reset_mfa_command_resets_state(
 
     assert reset_user.id == user.id
     assert stats.totp_deleted == 1
-    assert stats.recovery_codes_deleted == 1
     assert stats.challenges_revoked == 1
     assert stats.fields_cleared is True
     assert stats.changed is True
@@ -757,10 +746,6 @@ async def test_reset_mfa_command_resets_state(
     )
     assert result.scalars().all() == []
     result = await db_session.execute(
-        select(models.MfaRecoveryCode).where(models.MfaRecoveryCode.user_id == user.id)
-    )
-    assert result.scalars().all() == []
-    result = await db_session.execute(
         select(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id)
     )
     assert result.scalars().all() == []
@@ -769,7 +754,6 @@ async def test_reset_mfa_command_resets_state(
     assert user.mfa_required is False
     assert user.mfa_default_method is None
     assert user.mfa_last_verified_at is None
-    assert user.mfa_recovery_codes_generated_at is None
 
     assert notifications == [[user.id]]
 
@@ -799,7 +783,6 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
 
     assert stats.changed is False
     assert stats.totp_deleted == 0
-    assert stats.recovery_codes_deleted == 0
     assert stats.challenges_revoked == 0
 
     audit_event = _find_audit_event(caplog, "app.users.audit", "users.mfa.reset")

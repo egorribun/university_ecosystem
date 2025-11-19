@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import logging
 import secrets
@@ -20,19 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.rate_limit import RateLimitExceeded, enforce_rate_limit
 from app.localization import translate
-from app.models.models import (
-    ActiveSession,
-    MfaChallenge,
-    MfaRecoveryCode,
-    MfaTotpEnrollment,
-    User,
-)
+from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 from app.utils import ratelimit as ratelimit_utils
 
-_RECOVERY_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-_RECOVERY_CODE_LENGTH = 10
-_RECOVERY_CODE_CHUNK = 5
-_RECOVERY_CODE_COUNT = 10
 _TOTP_SECRET_LENGTH = 32
 _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
 _TOTP_DIGITS = 6
@@ -49,10 +38,7 @@ TOTP_ENROLLMENT_LIMIT_ERROR = (
 
 CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
 CHALLENGE_TYPE_TOTP_VERIFY = "totp-verify"
-CHALLENGE_TYPE_RECOVERY = "recovery-code"
-
 MFA_METHOD_TOTP = "totp"
-MFA_METHOD_RECOVERY = "recovery"
 
 
 audit_logger = logging.getLogger("app.users.audit")
@@ -61,7 +47,6 @@ audit_logger = logging.getLogger("app.users.audit")
 @dataclass(slots=True)
 class MfaResetStats:
     totp_deleted: int = 0
-    recovery_codes_deleted: int = 0
     challenges_revoked: int = 0
     fields_cleared: bool = False
 
@@ -70,7 +55,6 @@ class MfaResetStats:
         return any(
             (
                 self.totp_deleted,
-                self.recovery_codes_deleted,
                 self.challenges_revoked,
                 self.fields_cleared,
             )
@@ -103,37 +87,6 @@ def _base64url_encode(data: bytes) -> str:
 def _base64url_decode(data: str) -> bytes:
     padding = "=" * ((4 - len(data) % 4) % 4)
     return base64.urlsafe_b64decode(data + padding)
-
-
-def _normalize_recovery_code(value: str) -> str:
-    normalized = "".join(ch for ch in value if ch.isalnum())
-    return normalized.upper()
-
-
-def hash_recovery_code(value: str) -> str:
-    normalized = _normalize_recovery_code(value)
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    return digest
-
-
-def generate_recovery_codes(count: int = _RECOVERY_CODE_COUNT) -> list[str]:
-    codes: list[str] = []
-    seen_hashes: set[str] = set()
-    while len(codes) < count:
-        raw = "".join(
-            secrets.choice(_RECOVERY_CODE_ALPHABET)
-            for _ in range(_RECOVERY_CODE_LENGTH)
-        )
-        grouped = "-".join(
-            raw[index : index + _RECOVERY_CODE_CHUNK]
-            for index in range(0, len(raw), _RECOVERY_CODE_CHUNK)
-        )
-        digest = hash_recovery_code(grouped)
-        if digest in seen_hashes:
-            continue
-        seen_hashes.add(digest)
-        codes.append(grouped)
-    return codes
 
 
 def create_totp_secret(length: int = _TOTP_SECRET_LENGTH) -> str:
@@ -411,76 +364,6 @@ async def purge_expired_challenges(
     return int(result.rowcount or 0)
 
 
-async def create_recovery_codes(
-    db: AsyncSession,
-    *,
-    user: User,
-    count: int = _RECOVERY_CODE_COUNT,
-) -> list[str]:
-    await db.execute(delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == user.id))
-    codes = generate_recovery_codes(count)
-    now = _utcnow()
-    for code in codes:
-        digest = hash_recovery_code(code)
-        record = MfaRecoveryCode(user_id=user.id, code_hash=digest)
-        db.add(record)
-    user.mfa_recovery_codes_generated_at = now
-    await db.flush()
-    return codes
-
-
-async def use_recovery_code(
-    db: AsyncSession,
-    *,
-    user: User,
-    code: str,
-    challenge_token: str | None = None,
-    session_id: int | None = None,
-    locale: str | None = None,
-) -> tuple[MfaRecoveryCode, MfaChallenge | None]:
-    challenge: MfaChallenge | None = None
-    limit: int | None = None
-    if challenge_token:
-        challenge = await get_challenge(
-            db,
-            token=challenge_token,
-            challenge_type=CHALLENGE_TYPE_RECOVERY,
-            user_id=user.id,
-            session_id=session_id,
-            consume=False,
-        )
-        limit = _extract_attempt_limit(challenge, settings.mfa_recovery_attempt_limit)
-        await _ensure_challenge_not_locked(
-            db,
-            challenge,
-            method=MFA_METHOD_RECOVERY,
-            limit=limit,
-            locale=locale,
-        )
-    normalized_hash = hash_recovery_code(code)
-    stmt = (
-        select(MfaRecoveryCode)
-        .where(MfaRecoveryCode.user_id == user.id)
-        .where(MfaRecoveryCode.code_hash == normalized_hash)
-    )
-    result = await db.execute(stmt)
-    record = result.scalars().first()
-    if not record or record.used_at is not None:
-        await _register_failed_attempt(
-            db,
-            challenge,
-            method=MFA_METHOD_RECOVERY,
-            limit=limit,
-            locale=locale,
-        )
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid recovery code")
-    if challenge is not None:
-        await consume_challenge(db, challenge)
-    record.used_at = _utcnow()
-    await db.flush()
-    return record, challenge
-
-
 async def start_totp_enrollment(
     db: AsyncSession,
     *,
@@ -717,15 +600,11 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
     totp_result = await db.execute(
         delete(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
     )
-    recovery_result = await db.execute(
-        delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == user.id)
-    )
     challenge_result = await db.execute(
         delete(MfaChallenge).where(MfaChallenge.user_id == user.id)
     )
 
     stats.totp_deleted = int(totp_result.rowcount or 0)
-    stats.recovery_codes_deleted = int(recovery_result.rowcount or 0)
     stats.challenges_revoked = int(challenge_result.rowcount or 0)
 
     if user.mfa_required:
@@ -736,9 +615,6 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
         stats.fields_cleared = True
     if user.mfa_last_verified_at is not None:
         user.mfa_last_verified_at = None
-        stats.fields_cleared = True
-    if user.mfa_recovery_codes_generated_at is not None:
-        user.mfa_recovery_codes_generated_at = None
         stats.fields_cleared = True
 
     await db.flush()

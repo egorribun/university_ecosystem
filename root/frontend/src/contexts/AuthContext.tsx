@@ -115,7 +115,6 @@ type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url"> &
       | "mfa_required"
       | "mfa_default_method"
       | "mfa_last_verified_at"
-      | "mfa_recovery_codes_generated_at"
     >
   >
 
@@ -337,9 +336,7 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   mfa_required: Boolean(snapshot.mfa_required),
   mfa_default_method: snapshot.mfa_default_method ?? null,
   mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
-  mfa_recovery_codes_generated_at: snapshot.mfa_recovery_codes_generated_at ?? null,
   totp_enrollments: [],
-  recovery_codes: [],
   mfa_challenges: [],
 })
 
@@ -428,7 +425,6 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         mfa_required: value.mfa_required,
         mfa_default_method: value.mfa_default_method,
         mfa_last_verified_at: value.mfa_last_verified_at,
-        mfa_recovery_codes_generated_at: value.mfa_recovery_codes_generated_at,
       }
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,

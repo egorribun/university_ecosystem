@@ -2,7 +2,6 @@ import api from "./client"
 import type {
   MfaFactorStatus,
   MfaTotpEnrollment,
-  MfaRecoveryCode,
   PendingMfaResponse,
   TotpEnrollmentConfirmPayload,
   TotpEnrollmentStartPayload,
@@ -29,8 +28,3 @@ export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
   api.post<{ access_token: string; token_type: string }>("/auth/mfa/verify", payload)
 
 export const requestStepUpChallenge = () => api.post<StepUpResponse>("/auth/mfa/step-up")
-
-export const regenerateRecoveryCodes = () =>
-  api.post<{ codes: string[]; generated_at: string | null }>("/auth/mfa/recovery/regenerate")
-
-export const listRecoveryCodes = () => api.get<MfaRecoveryCode[]>("/auth/mfa/recovery")

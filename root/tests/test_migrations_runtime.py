@@ -95,16 +95,17 @@ def test_alembic_upgrade_head(tmp_path, dbname):
         "timezone",
         "mfa_required",
         "mfa_default_method",
-        "mfa_recovery_codes_generated_at",
     }.issubset(user_columns)
+    assert "mfa_recovery_codes_generated_at" not in user_columns
     assert insp.has_table("push_subscriptions")
 
     for table_name in {
         "mfa_totp_enrollments",
-        "mfa_recovery_codes",
         "mfa_challenges",
     }:
         assert insp.has_table(table_name)
+
+    assert not insp.has_table("mfa_recovery_codes")
 
     assert not insp.has_table("mfa_webauthn_credentials")
 
@@ -114,16 +115,6 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     )
     challenge_fks = insp.get_foreign_keys("mfa_challenges")
     assert any(fk["referred_table"] == "active_sessions" for fk in challenge_fks)
-
-    recovery_columns = {col["name"] for col in insp.get_columns("mfa_recovery_codes")}
-    assert {"user_id", "code_hash", "used_at"}.issubset(recovery_columns)
-    recovery_fks = insp.get_foreign_keys("mfa_recovery_codes")
-    assert any(fk["referred_table"] == "users" for fk in recovery_fks)
-    recovery_uniques = {
-        constraint["name"]
-        for constraint in insp.get_unique_constraints("mfa_recovery_codes")
-    }
-    assert "uq_mfa_recovery_codes_hash" in recovery_uniques
     engine.dispose()
 
 
