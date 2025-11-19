@@ -128,6 +128,8 @@ npm run dev -- --host
 ```
 The dev server exposes the UI at http://localhost:5173 and proxies API calls to the backend origin configured via `VITE_BACKEND_ORIGIN`.
 
+> Frontend dependencies and build outputs are intentionally excluded from the repository. Run `npm install` to restore `node_modules` and `npm run build` (or `npm run dev`) to regenerate any `dev-dist` artifacts locally.
+
 #### Notifications worker
 ```bash
 cd root
