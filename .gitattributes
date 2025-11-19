@@ -10,3 +10,7 @@
 *.zip binary
 *.tar.gz binary
 *.woff* binary
+
+# Exclude dependency installs from archives and prevent accidental tracking
+root/node_modules/ export-ignore
+root/frontend/node_modules/ export-ignore
