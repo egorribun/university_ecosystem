@@ -87,6 +87,7 @@
     "install": "Install",
     "later": "Later",
     "closeOffer": "Dismiss offer",
+    "notificationsClose": "Hide notifications guide",
     "manageNotifications": "Manage notifications so you never miss important updates.",
     "notificationsTitle": "Notifications",
     "unsupported": "Push notifications are not available in this browser.",
