@@ -162,11 +162,7 @@ async def record_enqueue_failure(
     )
     async with _failed_enqueue_lock:
         _failed_enqueue_records.append(record)
-        while len(_failed_enqueue_records) > _FAILED_ENQUEUE_HISTORY_LIMIT:
-            dropped = _failed_enqueue_records.popleft()
-            logger.debug(
-                "Discarding oldest failed enqueue record", extra={"job": dropped.job}
-            )
+        _trim_failed_enqueue_history("record_enqueue_failure")
 
 
 async def get_failed_enqueue_records() -> list[FailedEnqueueRecord]:
@@ -221,8 +217,21 @@ async def retry_failed_enqueues(limit: int | None = None) -> int:
         async with _failed_enqueue_lock:
             for record in failures:
                 _failed_enqueue_records.append(record)
+            _trim_failed_enqueue_history("retry_failed_enqueues")
 
     return successes
+
+
+def _trim_failed_enqueue_history(context: str) -> None:
+    """Ensure failed enqueue history does not exceed its configured limit."""
+
+    while len(_failed_enqueue_records) > _FAILED_ENQUEUE_HISTORY_LIMIT:
+        dropped = _failed_enqueue_records.popleft()
+        logger.warning(
+            "Failed enqueue history exceeded limit during %s; dropped oldest record",
+            context,
+            extra={"dropped_job": dropped.job, "dropped_source": dropped.source},
+        )
 
 
 async def _ensure_worker() -> None:

@@ -232,6 +232,41 @@ async def test_notification_queue_records_drops_when_saturated(
 
 
 @pytest.mark.anyio
+async def test_retry_failed_enqueues_respects_history_limit(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def _always_fail(job: notification_queue.NotificationJob) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(notification_queue, "_enqueue_job", _always_fail)
+
+    async with notification_queue._failed_enqueue_lock:
+        notification_queue._failed_enqueue_records.clear()
+        for record_id in range(notification_queue._FAILED_ENQUEUE_HISTORY_LIMIT + 10):
+            notification_queue._failed_enqueue_records.append(
+                notification_queue.FailedEnqueueRecord(
+                    job=notification_queue.NotificationJob(
+                        kind="event", record_id=record_id, locale=None
+                    ),
+                    error=None,
+                    source="test",
+                    occurred_at=datetime.now(UTC),
+                )
+            )
+
+    try:
+        await notification_queue.retry_failed_enqueues()
+        async with notification_queue._failed_enqueue_lock:
+            assert (
+                len(notification_queue._failed_enqueue_records)
+                == notification_queue._FAILED_ENQUEUE_HISTORY_LIMIT
+            )
+    finally:
+        async with notification_queue._failed_enqueue_lock:
+            notification_queue._failed_enqueue_records.clear()
+
+
+@pytest.mark.anyio
 async def test_notification_queue_records_processing_latency(
     monkeypatch: pytest.MonkeyPatch,
 ):
