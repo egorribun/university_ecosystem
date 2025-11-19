@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "202509250001"
@@ -68,7 +69,8 @@ def downgrade() -> None:
             )
         if (
             "ix_users_mfa_recovery_codes_generated_at" not in user_indexes
-            and "mfa_recovery_codes_generated_at" in _column_names(inspector, _USERS_TABLE)
+            and "mfa_recovery_codes_generated_at"
+            in _column_names(inspector, _USERS_TABLE)
         ):
             op.create_index(
                 "ix_users_mfa_recovery_codes_generated_at",
@@ -90,11 +92,16 @@ def downgrade() -> None:
             sa.Column("code_hash", sa.String(length=255), nullable=False),
             sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column(
-                "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
             ),
             sa.Column("label", sa.String(length=255), nullable=True),
             sa.PrimaryKeyConstraint("id"),
-            sa.UniqueConstraint("user_id", "code_hash", name="uq_mfa_recovery_codes_hash"),
+            sa.UniqueConstraint(
+                "user_id", "code_hash", name="uq_mfa_recovery_codes_hash"
+            ),
         )
         op.create_index(f"ix_{_RECOVERY_TABLE}_user_id", _RECOVERY_TABLE, ["user_id"])
         op.create_index(f"ix_{_RECOVERY_TABLE}_used_at", _RECOVERY_TABLE, ["used_at"])
