@@ -408,3 +408,69 @@ async def test_registering_for_event_invalidates_stats_cache(
     flattened = [key for call in invalidated for key in call]
     assert any(key.startswith("stats:attendance") for key in flattened)
     assert any(key.startswith("stats:participation") for key in flattened)
+
+
+@pytest.mark.anyio
+async def test_stats_cache_invalidation_includes_default_and_custom_periods(fake_cache):
+    user_id = 77
+    kind = "attendance"
+
+    await stats_cache.set_cached_stats(
+        cache=fake_cache,
+        kind=kind,
+        user_id=user_id,
+        period_key="default",
+        payload={"value": "default"},
+    )
+    await stats_cache.set_cached_stats(
+        cache=fake_cache,
+        kind=kind,
+        user_id=user_id,
+        period_key="7d",
+        payload={"value": "custom"},
+    )
+
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="default",
+        )
+        is not None
+    )
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="7d",
+        )
+        is not None
+    )
+
+    await stats_cache.invalidate_user_stats_cache(
+        cache=fake_cache,
+        user_ids=user_id,
+        kinds=(kind,),
+        period_keys=("7D",),
+    )
+
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="default",
+        )
+        is None
+    )
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="7d",
+        )
+        is None
+    )

@@ -11,6 +11,11 @@ _STATS_KNOWN_KINDS = ("attendance", "grades", "participation")
 _DEFAULT_PERIOD_KEYS = ("30d", "90d", "180d")
 
 
+def _normalize_period_key(period_key: str | None) -> str:
+    normalized = (period_key or "").strip().lower()
+    return normalized or "default"
+
+
 def _ensure_cache(cache: BaseCache | None) -> BaseCache:
     return cache or get_cache()
 
@@ -26,7 +31,7 @@ def resolve_period_key(period_key: str | None, period_days: int | None) -> str:
 
 def _make_cache_key(kind: str, user_id: int, period_key: str) -> str:
     normalized_kind = kind.strip().lower()
-    normalized_period = period_key.strip().lower() or "default"
+    normalized_period = _normalize_period_key(period_key)
     return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{int(user_id)}:{normalized_period}"
 
 
@@ -88,12 +93,12 @@ async def invalidate_user_stats_cache(
     )
     if not selected_kinds:
         return
-    chosen_periods = tuple(
-        {
-            (period or "").strip().lower() or "default"
-            for period in (period_keys or _DEFAULT_PERIOD_KEYS)
-        }
-    )
+    normalized_periods = {
+        _normalize_period_key(period)
+        for period in (period_keys if period_keys else _DEFAULT_PERIOD_KEYS)
+    }
+    normalized_periods.add("default")
+    chosen_periods = tuple(normalized_periods)
     keys: list[str] = []
     for user_id in unique_users:
         for kind in selected_kinds:
