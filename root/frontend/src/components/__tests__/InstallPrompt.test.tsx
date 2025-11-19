@@ -32,10 +32,7 @@ const createPushPreferencesState = () => ({
   selectedTopicsDescription: "",
   enableNotifications: vi.fn(),
   disableNotifications: vi.fn(),
-  handleTopicToggle:
-    () =>
-    () =>
-      undefined,
+  handleTopicToggle: () => () => undefined,
   safariIOS: false,
   safariGuideUrl: "",
 })
@@ -82,7 +79,7 @@ describe("InstallPrompt", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("system:installPrompt.installTitle navigation:brandName"),
+        screen.getByText("system:installPrompt.installTitle navigation:brandName")
       ).toBeInTheDocument()
       expect(screen.getByText("system:installPrompt.manageNotifications")).toBeInTheDocument()
     })
@@ -95,7 +92,7 @@ describe("InstallPrompt", () => {
     })
 
     expect(
-      screen.getByText("system:installPrompt.installTitle navigation:brandName"),
+      screen.getByText("system:installPrompt.installTitle navigation:brandName")
     ).toBeInTheDocument()
   })
 
@@ -105,7 +102,7 @@ describe("InstallPrompt", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("system:installPrompt.installTitle navigation:brandName"),
+        screen.getByText("system:installPrompt.installTitle navigation:brandName")
       ).toBeInTheDocument()
       expect(screen.getByText("system:installPrompt.manageNotifications")).toBeInTheDocument()
     })
@@ -115,7 +112,7 @@ describe("InstallPrompt", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText("system:installPrompt.installTitle navigation:brandName"),
+        screen.queryByText("system:installPrompt.installTitle navigation:brandName")
       ).not.toBeInTheDocument()
     })
 
@@ -137,9 +134,7 @@ describe("InstallPrompt", () => {
       })
 
       const user = userEvent.setup()
-      const closeButton = await screen.findByLabelText(
-        "system:installPrompt.notificationsClose",
-      )
+      const closeButton = await screen.findByLabelText("system:installPrompt.notificationsClose")
       await user.click(closeButton)
       initial.unmount()
 
@@ -150,7 +145,7 @@ describe("InstallPrompt", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("system:installPrompt.installTitle navigation:brandName"),
+          screen.getByText("system:installPrompt.installTitle navigation:brandName")
         ).toBeInTheDocument()
       })
       expect(screen.queryByText("system:installPrompt.manageNotifications")).not.toBeInTheDocument()
@@ -181,7 +176,7 @@ describe("InstallPrompt", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("system:installPrompt.installTitle navigation:brandName"),
+          screen.getByText("system:installPrompt.installTitle navigation:brandName")
         ).toBeInTheDocument()
       })
 
@@ -198,7 +193,7 @@ describe("InstallPrompt", () => {
         expect(screen.getByText("system:installPrompt.manageNotifications")).toBeInTheDocument()
       })
       expect(
-        screen.queryByText("system:installPrompt.installTitle navigation:brandName"),
+        screen.queryByText("system:installPrompt.installTitle navigation:brandName")
       ).not.toBeInTheDocument()
       suppressedRender.unmount()
 
@@ -208,7 +203,7 @@ describe("InstallPrompt", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("system:installPrompt.installTitle navigation:brandName"),
+          screen.getByText("system:installPrompt.installTitle navigation:brandName")
         ).toBeInTheDocument()
       })
 
