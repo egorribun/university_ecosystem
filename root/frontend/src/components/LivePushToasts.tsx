@@ -31,6 +31,9 @@ const VALID_SEVERITIES: readonly SnackbarSeverity[] = [
   "error",
 ] as const
 
+const BUFFER_STORAGE_KEY = "livePushToastBuffer"
+const MAX_BUFFER_SIZE = 20
+
 const resolveSeverity = (toast: ActiveToast | null): SnackbarSeverity => {
   if (!toast?.data || typeof toast.data !== "object") return DEFAULT_SEVERITY
   const rawSeverity = (toast.data as { severity?: unknown }).severity
@@ -47,16 +50,81 @@ const buildToastId = (toast: ToastPayload) => {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+const toActiveToast = (toast: ToastPayload): ActiveToast | null => {
+  const hasContent = Boolean(toast.title?.trim() || toast.body?.trim())
+  if (!hasContent) return null
+  return { ...toast, id: buildToastId(toast) }
+}
+
+let memoryBuffer: ActiveToast[] = []
+
+const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
+  if (!Array.isArray(buffer)) return []
+  return buffer.filter((item): item is ActiveToast => {
+    return Boolean(item && typeof item === "object" && typeof (item as ActiveToast).id === "string")
+  })
+}
+
+const readBuffer = (): ActiveToast[] => {
+  if (typeof window === "undefined") return memoryBuffer
+  try {
+    const raw = window.localStorage?.getItem(BUFFER_STORAGE_KEY)
+    if (!raw) {
+      memoryBuffer = []
+      return memoryBuffer
+    }
+    const parsed = JSON.parse(raw) as unknown
+    memoryBuffer = sanitizeBuffer(parsed)
+    return memoryBuffer
+  } catch {
+    memoryBuffer = []
+    return memoryBuffer
+  }
+}
+
+const writeBuffer = (buffer: ActiveToast[]) => {
+  memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage?.setItem(BUFFER_STORAGE_KEY, JSON.stringify(memoryBuffer))
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+const bufferToast = (toast: ActiveToast) => {
+  const existing = readBuffer()
+  const deduped = existing.filter((item) => item.id !== toast.id)
+  deduped.push(toast)
+  writeBuffer(deduped)
+}
+
+const consumeBufferedToasts = (): ActiveToast[] => {
+  const buffered = [...readBuffer()]
+  if (buffered.length === 0) return []
+  writeBuffer([])
+  return buffered
+}
+
 export default function LivePushToasts() {
   const { t } = useTranslation("notifications")
   const [queue, setQueue] = useState<ActiveToast[]>([])
   const [current, setCurrent] = useState<ActiveToast | null>(null)
   const [open, setOpen] = useState(false)
 
-  const enqueue = useCallback((toast: ToastPayload) => {
-    const hasContent = Boolean(toast.title?.trim() || toast.body?.trim())
-    if (!hasContent) return
-    setQueue((prev) => [...prev, { ...toast, id: buildToastId(toast) }])
+  const enqueue = useCallback((toast: ToastPayload | ActiveToast) => {
+    const normalized =
+      typeof (toast as ActiveToast).id === "string" && (toast as ActiveToast).id.trim()
+        ? (toast as ActiveToast)
+        : toActiveToast(toast as ToastPayload)
+    if (!normalized) return
+    setQueue((prev) => [...prev, normalized])
+  }, [])
+
+  const flushBufferedToasts = useCallback(() => {
+    const buffered = consumeBufferedToasts()
+    if (buffered.length === 0) return
+    setQueue((prev) => [...prev, ...buffered])
   }, [])
 
   useEffect(() => {
@@ -68,13 +136,35 @@ export default function LivePushToasts() {
       if (!data || typeof data !== "object") return
       if (data.type !== "PUSH_NOTIFICATION") return
       if (!data.toast) return
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return
-      enqueue(data.toast)
+
+      const normalized = toActiveToast(data.toast)
+      if (!normalized) return
+
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        bufferToast(normalized)
+        return
+      }
+
+      enqueue(normalized)
     }
 
     navigator.serviceWorker.addEventListener("message", handleMessage)
     return () => navigator.serviceWorker.removeEventListener("message", handleMessage)
   }, [enqueue])
+
+  useEffect(() => {
+    if (typeof document === "undefined") return
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return
+      flushBufferedToasts()
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    handleVisibilityChange()
+
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [flushBufferedToasts])
 
   useEffect(() => {
     if (current || queue.length === 0) return
