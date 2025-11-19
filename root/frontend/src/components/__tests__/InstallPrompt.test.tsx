@@ -8,13 +8,6 @@ const DISMISS_TTL = 1000 * 60 * 60 * 24 * 7
 
 const mockUsePushPreferences = vi.fn()
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface Window {
-    matchMedia: (query: string) => MediaQueryList
-  }
-}
-
 vi.mock("@/hooks/usePushPreferences", () => ({
   usePushPreferences: (...args: unknown[]) => mockUsePushPreferences(...args),
 }))
