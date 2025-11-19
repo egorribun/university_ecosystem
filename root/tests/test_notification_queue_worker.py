@@ -242,9 +242,7 @@ async def test_retry_failed_enqueues_respects_history_limit(
 
     async with notification_queue._failed_enqueue_lock:
         notification_queue._failed_enqueue_records.clear()
-        for record_id in range(
-            notification_queue._FAILED_ENQUEUE_HISTORY_LIMIT + 10
-        ):
+        for record_id in range(notification_queue._FAILED_ENQUEUE_HISTORY_LIMIT + 10):
             notification_queue._failed_enqueue_records.append(
                 notification_queue.FailedEnqueueRecord(
                     job=notification_queue.NotificationJob(
