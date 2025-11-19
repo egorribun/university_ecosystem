@@ -109,14 +109,7 @@ const isAscii = (value: string) => {
 }
 
 type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url"> &
-  Partial<
-    Pick<
-      User,
-      | "mfa_required"
-      | "mfa_default_method"
-      | "mfa_last_verified_at"
-    >
-  >
+  Partial<Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at">>
 
 type CachedProfileEnvelope = {
   version: number
