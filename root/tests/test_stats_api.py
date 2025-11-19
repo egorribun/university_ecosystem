@@ -430,18 +430,24 @@ async def test_stats_cache_invalidation_includes_default_and_custom_periods(fake
         payload={"value": "custom"},
     )
 
-    assert await stats_cache.get_cached_stats(
-        cache=fake_cache,
-        kind=kind,
-        user_id=user_id,
-        period_key="default",
-    ) is not None
-    assert await stats_cache.get_cached_stats(
-        cache=fake_cache,
-        kind=kind,
-        user_id=user_id,
-        period_key="7d",
-    ) is not None
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="default",
+        )
+        is not None
+    )
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="7d",
+        )
+        is not None
+    )
 
     await stats_cache.invalidate_user_stats_cache(
         cache=fake_cache,
@@ -450,15 +456,21 @@ async def test_stats_cache_invalidation_includes_default_and_custom_periods(fake
         period_keys=("7D",),
     )
 
-    assert await stats_cache.get_cached_stats(
-        cache=fake_cache,
-        kind=kind,
-        user_id=user_id,
-        period_key="default",
-    ) is None
-    assert await stats_cache.get_cached_stats(
-        cache=fake_cache,
-        kind=kind,
-        user_id=user_id,
-        period_key="7d",
-    ) is None
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="default",
+        )
+        is None
+    )
+    assert (
+        await stats_cache.get_cached_stats(
+            cache=fake_cache,
+            kind=kind,
+            user_id=user_id,
+            period_key="7d",
+        )
+        is None
+    )
