@@ -660,7 +660,7 @@ export default function Profile() {
   const snackMessage = snack?.key ? t(`profile:snackbar.${snack.key}`) : snack?.message || ""
 
   return (
-    <Layout>
+    <Layout className="!bg-transparent">
       {/* Seamless tiled background */}
       <div className="profile-background" aria-hidden>
         <div
