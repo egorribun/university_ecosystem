@@ -219,13 +219,11 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               referrerPolicy="no-referrer"
               onLoad={handleImageLoad}
               onError={handleImageError}
-              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${
-                imageLoaded ? "opacity-100" : "opacity-0"
-              } ${
-                prefersReduce || reduced
+              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"
+                } ${prefersReduce || reduced
                   ? ""
                   : "scale-[1.012] transition-transform duration-[900ms] cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
-              }`}
+                }`}
             />
           ) : (
             <div className="w-full h-full rounded-lg bg-[#2a2a2a] flex items-center justify-center">
@@ -235,9 +233,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         </div>
         <div className="min-w-0 flex flex-col gap-1.5" aria-live="polite">
           <h3
-            className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${
-              imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
-            }`}
+            className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
+              }`}
           >
             {data.track_name || "—"}
           </h3>
@@ -338,8 +335,8 @@ export default function Profile() {
   const prevSpotifyConnectedRef = useRef(spotifyConnected)
   const showNowPlaying = Boolean(
     spotifyConnected &&
-      nowPlaying &&
-      (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
+    nowPlaying &&
+    (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
   )
   const location = useLocation()
   const navigate = useNavigate()
@@ -660,7 +657,7 @@ export default function Profile() {
   const snackMessage = snack?.key ? t(`profile:snackbar.${snack.key}`) : snack?.message || ""
 
   return (
-    <Layout>
+    <Layout className="!bg-transparent">
       {/* Seamless tiled background */}
       <div className="profile-background" aria-hidden>
         <div
@@ -803,10 +800,10 @@ export default function Profile() {
                                 isTest || reduced
                                   ? { duration: 0 }
                                   : {
-                                      delay: idx * 0.09,
-                                      duration: 0.56,
-                                      ease: [0.22, 0.61, 0.36, 1],
-                                    }
+                                    delay: idx * 0.09,
+                                    duration: 0.56,
+                                    ease: [0.22, 0.61, 0.36, 1],
+                                  }
                               }
                             >
                               <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full border border-white/30 dark:border-white/25 bg-white/20 dark:bg-white/15 text-white text-xs sm:text-sm font-bold tracking-wide transition-all duration-300 hover:scale-105 hover:shadow-md hover:bg-white/28 dark:hover:bg-white/22">
@@ -1211,10 +1208,10 @@ export default function Profile() {
                                           isTest || reduced
                                             ? { duration: 0 }
                                             : {
-                                                delay: idx * 0.09,
-                                                duration: 0.5,
-                                                ease: [0.22, 0.61, 0.36, 1],
-                                              }
+                                              delay: idx * 0.09,
+                                              duration: 0.5,
+                                              ease: [0.22, 0.61, 0.36, 1],
+                                            }
                                         }
                                         onClick={() =>
                                           setAchOpen({
