@@ -127,7 +127,6 @@ describe("Navbar", () => {
     expect(document.body.classList.contains("blurred")).toBe(true)
     expect(document.body.style.overflow).toBe("hidden")
 
-
     await user.tab()
     expect(drawer).toContainElement(document.activeElement as HTMLElement)
 
