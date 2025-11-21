@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { ShieldCheck, Sparkles, BookOpen, Eye, EyeOff, Zap } from "lucide-react"
 import { ChallengeLockedError, type PendingMfaState, useAuth } from "@/contexts/AuthContext"
 import OtpEntry from "@/components/mfa/OtpEntry"
+import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 type ChallengeWithAttempts = ChallengeMethod &
@@ -323,7 +324,7 @@ const Login = () => {
   if (loginChallenge) {
     return (
       <div className="relative min-h-screen w-full bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,var(--nav-link)/0.28,transparent_58%)]" />
+        <ParticleAuthBackground />
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
           <div className="w-full max-w-2xl rounded-[2rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(255,255,255,0.08)_5%)] p-8 shadow-[0_35px_80px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
             <div className="flex flex-col items-center gap-6 text-center">
@@ -377,7 +378,7 @@ const Login = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,var(--nav-link)/0.24,transparent_58%),radial-gradient(circle_at_bottom,var(--glass-highlight)/0.18,transparent_65%)]" />
+      <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <div className="w-full rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.1)_6%)] p-8 shadow-[0_30px_90px_rgba(15,23,42,0.28)] backdrop-blur-3xl lg:p-12">
           <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--nav-link)_30%)]">
