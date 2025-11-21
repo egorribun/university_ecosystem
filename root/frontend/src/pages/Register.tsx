@@ -2,6 +2,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
+import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import api from "../api/client"
 
 const COMMON_EMAIL_DOMAINS = [
@@ -274,7 +275,7 @@ const Register = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,var(--nav-link)/0.22,transparent_60%),radial-gradient(circle_at_bottom,var(--glass-tint-1)/0.18,transparent_65%)]" />
+      <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <div className="w-full rounded-[2.8rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.12)_6%)] p-8 shadow-[0_35px_100px_rgba(15,23,42,0.3)] backdrop-blur-3xl lg:p-12">
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.35em] text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--nav-link)_30%)]">
@@ -469,20 +470,18 @@ const Register = () => {
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <span
-                  className={`${chipClass} ${
-                    minLenOk
-                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
-                  }`}
+                  className={`${chipClass} ${minLenOk
+                    ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
+                    : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                    }`}
                 >
                   {t("auth:register.passwordChip.minLength")}
                 </span>
                 <span
-                  className={`${chipClass} ${
-                    matchOk
-                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
-                  }`}
+                  className={`${chipClass} ${matchOk
+                    ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
+                    : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                    }`}
                 >
                   {t("auth:register.passwordChip.match")}
                 </span>
