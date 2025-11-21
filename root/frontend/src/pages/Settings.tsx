@@ -8,6 +8,7 @@ import React, {
   FocusEvent,
   type CSSProperties,
 } from "react"
+import ReactDOM from "react-dom"
 import { isAxiosError } from "axios"
 import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
 import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
@@ -587,12 +588,13 @@ function FormControlLabel({
       htmlFor={inputId}
       className={cn(
         "group inline-flex items-center gap-2.5 rounded-full px-2.5 py-1.5",
-        "cursor-pointer transition-colors duration-200",
+        "cursor-pointer transition-all duration-200",
+        "border-2",
         "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)]",
         "dark:hover:bg-[rgba(255,255,255,0.06)]",
         selected
-          ? "bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)]"
-          : "bg-transparent",
+          ? "bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)] border-[color:color-mix(in_srgb,var(--nav-link)_40%,transparent)]"
+          : "border-transparent hover:border-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] dark:hover:border-[rgba(255,255,255,0.15)]",
         className
       )}
     >
@@ -642,21 +644,36 @@ function Radio({
   id?: string
 }) {
   return (
-    <input
-      type="radio"
-      checked={checked}
-      onChange={onChange}
-      value={value}
-      name={name}
-      id={id}
-      className={cn(
-        "h-4 w-4 cursor-pointer border transition-all duration-200",
-        "accent-[color:var(--nav-link)]",
-        "border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)]",
-        "focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
-        "dark:border-[rgba(148,163,184,0.32)]"
-      )}
-    />
+    <div className="relative inline-flex items-center justify-center">
+      <input
+        type="radio"
+        checked={checked}
+        onChange={onChange}
+        value={value}
+        name={name}
+        id={id}
+        className="peer sr-only"
+      />
+      <div
+        className={cn(
+          "h-4 w-4 cursor-pointer rounded-full border-2 transition-all duration-200",
+          "flex items-center justify-center",
+          "border-[color:var(--nav-link)]",
+          "peer-focus-visible:outline-none peer-focus-visible:shadow-[var(--shadow-focus)]",
+          "peer-checked:border-[color:var(--nav-link)] peer-checked:bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)]",
+          "dark:border-[color:var(--nav-link)]",
+          "dark:peer-checked:border-[color:var(--nav-link)] dark:peer-checked:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+        )}
+      >
+        <div
+          className={cn(
+            "h-2 w-2 rounded-full transition-all duration-200",
+            "bg-[color:var(--nav-link)]",
+            checked ? "scale-100 opacity-100" : "scale-0 opacity-0"
+          )}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -859,6 +876,17 @@ function Dialog({
   fullWidth?: boolean
   children: React.ReactNode
 }) {
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = ""
+    }
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }, [open])
+
   if (!open) return null
 
   const maxWidthClasses =
@@ -870,17 +898,18 @@ function Dialog({
       xl: "max-w-xl",
     }[maxWidth] || "max-w-md"
 
-  return (
+  const dialogContent = (
     <div
       role="presentation"
       className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-center justify-center bg-[color:rgba(12,21,34,0.38)]/90 backdrop-blur-[14px] p-4"
+      style={{ position: "fixed" }}
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          "glass glass--panel glass--sheen relative overflow-hidden rounded-[24px]",
+          "glass glass--panel relative overflow-hidden rounded-[24px]",
           "border border-[color:var(--glass-border)]",
           "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
           "shadow-[0_34px_88px_rgba(15,40,85,0.18)]",
@@ -894,6 +923,12 @@ function Dialog({
       </div>
     </div>
   )
+
+  if (typeof document !== "undefined") {
+    return ReactDOM.createPortal(dialogContent, document.body)
+  }
+
+  return dialogContent
 }
 
 function DialogTitle({ children }: { children: React.ReactNode }) {
@@ -913,7 +948,7 @@ function DialogContent({ children }: { children: React.ReactNode }) {
 }
 
 function DialogActions({ children }: { children: React.ReactNode }) {
-  return <div className="flex justify-end gap-2 px-6 pb-6 pt-2">{children}</div>
+  return <div className="flex justify-end gap-3 px-6 pb-6 pt-2">{children}</div>
 }
 
 function Snackbar({
@@ -2922,13 +2957,16 @@ export default function Settings() {
               <p className="text-sm">{t("settings:account.logout.dialogDescription")}</p>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setConfirmLogout(false)}>{t("common:buttons.cancel")}</Button>
+              <Button onClick={() => setConfirmLogout(false)} className="!px-5 !py-2.5">
+                {t("common:buttons.cancel")}
+              </Button>
               <Button
                 color="error"
                 onClick={async () => {
                   setConfirmLogout(false)
                   await logout()
                 }}
+                className="!px-5 !py-2.5"
               >
                 {t("settings:account.logout.confirm")}
               </Button>

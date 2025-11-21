@@ -258,17 +258,25 @@ const Navbar = () => {
                 type="button"
                 className="burger-btn"
                 style={{
-                  background: "none",
-                  border: "none",
+                  background:
+                    "linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04))",
+                  border: "1px solid rgba(255, 255, 255, 0.18)",
                   padding: 0,
                   width: burgerBtnSize,
                   height: burgerBtnSize,
+                  minWidth: burgerBtnSize,
+                  minHeight: burgerBtnSize,
+                  maxWidth: burgerBtnSize,
+                  maxHeight: burgerBtnSize,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  color: "#fff",
-                  borderRadius: 10,
+                  color: "rgba(255, 255, 255, 0.92)",
+                  borderRadius: 12,
+                  flexShrink: 0,
+                  boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.24)",
+                  backdropFilter: "saturate(160%) blur(12px)",
                 }}
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
@@ -279,18 +287,55 @@ const Navbar = () => {
                 ref={burgerBtnRef}
               >
                 <svg
-                  width={burgerIcon}
-                  height={burgerIcon}
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
+                  style={{
+                    overflow: "visible",
+                  }}
                 >
-                  <line x1="4" y1="7" x2="22" y2="7" />
-                  <line x1="4" y1="13" x2="22" y2="13" />
-                  <line x1="4" y1="19" x2="22" y2="19" />
+                  <line
+                    x1="4"
+                    y1="8"
+                    x2="20"
+                    y2="8"
+                    style={{
+                      transformOrigin: "12px 8px",
+                      transform: mobileMenu
+                        ? "translateY(4px) rotate(45deg)"
+                        : "translateY(0) rotate(0)",
+                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                  />
+                  <line
+                    x1="4"
+                    y1="12"
+                    x2="20"
+                    y2="12"
+                    style={{
+                      opacity: mobileMenu ? 0 : 1,
+                      transition: "opacity 0.2s ease-in-out",
+                    }}
+                  />
+                  <line
+                    x1="4"
+                    y1="16"
+                    x2="20"
+                    y2="16"
+                    style={{
+                      transformOrigin: "12px 16px",
+                      transform: mobileMenu
+                        ? "translateY(-4px) rotate(-45deg)"
+                        : "translateY(0) rotate(0)",
+                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                  />
                 </svg>
               </button>
             </div>
@@ -466,135 +511,81 @@ const Navbar = () => {
         >
           <nav
             ref={drawerTrapRef}
+            className="mobile-drawer-content"
             style={{
-              width: 270,
-              maxWidth: "88vw",
-              background: navBgColor,
-              height: "100vh",
-              boxShadow: "2px 0 22px #0003",
-              padding: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              transition: prefersReducedMotion
-                ? "none"
-                : "transform 0.35s cubic-bezier(.52,1.29,.47,.97)",
               transform: mobileMenu ? "translateX(0)" : "translateX(-120%)",
-              justifyContent: "flex-start",
-              position: "relative",
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div
-              style={{
-                width: "100%",
-                padding: "18px 0 10px 22px",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                borderBottom: "1px solid #ede2d2",
-              }}
-            >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: "#fff",
-                  boxShadow: "0 0 6px rgba(0,0,0,0.10)",
-                }}
-              >
-                <img
-                  src={guuLogo}
-                  alt={t("navigation:brandAlt")}
-                  width={24}
-                  height={24}
-                  style={{ objectFit: "contain" }}
-                  loading="lazy"
-                  decoding="async"
-                />
-              </div>
-              <span
-                style={{
-                  color: navTextColor,
-                  fontWeight: 800,
-                  fontSize: "clamp(15px, 4.5vw, 18px)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {t("navigation:brandName")}
-              </span>
-            </div>
-            <button
-              type="button"
-              style={{
-                position: "absolute",
-                top: 9,
-                right: 10,
-                background: "none",
-                border: "none",
-                fontSize: 27,
-                color: navTextColor,
-                cursor: "pointer",
-              }}
-              aria-label={t("navigation:aria.close")}
-              onClick={() => setMobileMenu(false)}
-              ref={closeButtonRef}
-            >
-              ×
-            </button>
             <ul
               style={{
                 display: "flex",
                 flexDirection: "column",
                 listStyle: "none",
-                gap: "10px",
+                gap: "4px",
                 margin: 0,
-                padding: "16px 0 0 24px",
+                padding: 0,
                 flex: 1,
                 width: "100%",
+                overflowY: "auto",
               }}
             >
               {menuLinks.map((item) => (
-                <li key={item.to}>
+                <li key={item.to} style={{ width: "100%" }}>
                   <Link
                     to={item.to}
-                    className={`menu-link${isActive(item.to) ? " active" : ""}`}
-                    onPointerDown={markScrollFromBottom}
-                    onClick={(e) => {
-                      setMobileMenu(false)
-                      if (isSameTarget(item.to)) {
-                        e.preventDefault()
-                        scrollToTop(prefersReducedMotion ? "auto" : "smooth")
-                      }
-                    }}
+                    onClick={() => setMobileMenu(false)}
+                    className={`menu-link${isSamePath(item.to) ? " active" : ""}`}
+                    style={{ width: "100%" }}
                   >
                     {item.label}
                   </Link>
                 </li>
               ))}
               {isAuth && user && (
-                <li>
+                <li style={{ width: "100%", marginTop: "4px" }}>
                   <button
                     type="button"
-                    className="menu-link settings"
-                    onPointerDown={markScrollFromBottom}
+                    className="menu-link"
                     onClick={(e) => {
                       e.stopPropagation()
                       setMobileMenu(false)
                       go("/settings")
                     }}
+                    style={{
+                      width: "100%",
+                      justifyContent: "flex-start",
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      height: "auto",
+                      background: "transparent",
+                      border: "1px solid transparent",
+                      boxShadow: "none",
+                      backdropFilter: "none",
+                      cursor: "pointer",
+                      fontSize: "16px",
+                    }}
                     aria-label={t("navigation:menu.settings")}
-                    title={t("navigation:menu.settings")}
                   >
                     {t("navigation:menu.settings")}
                   </button>
                 </li>
               )}
             </ul>
+
+            <div
+              style={{
+                padding: "24px 0",
+                width: "100%",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div
+                style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", textAlign: "center" }}
+              >
+                © {new Date().getFullYear()} {t("navigation:brandName")}
+              </div>
+            </div>
           </nav>
         </div>
       )}
