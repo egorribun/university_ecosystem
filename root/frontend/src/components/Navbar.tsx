@@ -11,6 +11,16 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useScrollRestoration from "@/hooks/useScrollRestoration"
 import { useAppShell } from "@/contexts/AppShellContext"
+import DashboardIcon from "@mui/icons-material/Dashboard"
+import ArticleIcon from "@mui/icons-material/Article"
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
+import EventNoteIcon from "@mui/icons-material/EventNote"
+import TimelineIcon from "@mui/icons-material/Timeline"
+import MapIcon from "@mui/icons-material/Map"
+import NotificationsIcon from "@mui/icons-material/Notifications"
+import AutoStoriesIcon from "@mui/icons-material/AutoStories"
+import PeopleIcon from "@mui/icons-material/People"
+import SettingsIcon from "@mui/icons-material/Settings"
 
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL
 
@@ -31,6 +41,7 @@ function parseCacheVersion(input: unknown): number | undefined {
 const Navbar = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const pathname = location.pathname
   const { user, isAuth, loading } = useAuth()
   const { t } = useTranslation(["navigation"])
   const { setOverlayState } = useAppShell()
@@ -90,17 +101,25 @@ const Navbar = () => {
 
   const menuLinks = useMemo(() => {
     const base = [
-      { to: "/dashboard", label: t("navigation:menu.dashboard") },
-      { to: "/news", label: t("navigation:menu.news") },
-      { to: "/schedule", label: t("navigation:menu.schedule") },
-      { to: "/events", label: t("navigation:menu.events") },
-      { to: "/activity", label: t("navigation:menu.activity") },
-      { to: "/map", label: t("navigation:menu.map") },
+      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: DashboardIcon },
+      { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },
+      { to: "/schedule", label: t("navigation:menu.schedule"), icon: CalendarMonthIcon },
+      { to: "/events", label: t("navigation:menu.events"), icon: EventNoteIcon },
+      { to: "/activity", label: t("navigation:menu.activity"), icon: TimelineIcon },
+      { to: "/map", label: t("navigation:menu.map"), icon: MapIcon },
     ]
     if (user?.role === "admin") {
-      base.push({ to: "/admin/notifications", label: t("navigation:menu.notificationsAdmin") })
-      base.push({ to: "/admin/stories", label: t("navigation:menu.stories") })
-      base.push({ to: "/admin/users", label: t("navigation:menu.users") })
+      base.push({
+        to: "/admin/notifications",
+        label: t("navigation:menu.notificationsAdmin"),
+        icon: NotificationsIcon,
+      })
+      base.push({
+        to: "/admin/stories",
+        label: t("navigation:menu.stories"),
+        icon: AutoStoriesIcon,
+      })
+      base.push({ to: "/admin/users", label: t("navigation:menu.users"), icon: PeopleIcon })
     }
     return base
   }, [t, user?.role])
@@ -110,10 +129,18 @@ const Navbar = () => {
     : t("navigation:aria.profileAvatar")
   const profileTitle = t("navigation:aria.openProfile")
 
-  const isActive = (to: string) => {
-    if (to === "/dashboard" && location.pathname === "/") return true
-    return location.pathname === to || location.pathname.startsWith(to + "/")
-  }
+  const isActive = useCallback(
+    (to: string) => {
+      // Special case: dashboard is active for / or /dashboard
+      if (to === "/dashboard") {
+        return pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/")
+      }
+
+      // For other routes: exact match only
+      return pathname === to
+    },
+    [pathname]
+  )
 
   const isSameTarget = useCallback((to: string) => isSamePath(to), [isSamePath])
 
@@ -520,7 +547,7 @@ const Navbar = () => {
                 display: "flex",
                 flexDirection: "column",
                 listStyle: "none",
-                gap: "4px",
+                gap: "8px",
                 margin: 0,
                 padding: 0,
                 flex: 1,
@@ -528,59 +555,69 @@ const Navbar = () => {
                 overflowY: "auto",
               }}
             >
-              {menuLinks.map((item) => (
-                <li key={item.to} style={{ width: "100%" }}>
-                  <Link
-                    to={item.to}
-                    onClick={() => setMobileMenu(false)}
-                    className={`menu-link${isSamePath(item.to) ? " active" : ""}`}
-                    style={{ width: "100%" }}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
+              {menuLinks.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.to)
+                return (
+                  <li key={item.to}>
+                    <Link
+                      to={item.to}
+                      onClick={() => setMobileMenu(false)}
+                      onFocus={(e) => {
+                        // Remove focus from non-active items to prevent focus styling
+                        if (!active) {
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      className={`menu-link${active ? " active" : ""}`}
+                    >
+                      {Icon && (
+                        <Icon
+                          style={{
+                            fontSize: "20px",
+                            opacity: 0.9,
+                          }}
+                        />
+                      )}
+                      {item.label}
+                    </Link>
+                  </li>
+                )
+              })}
               {isAuth && user && (
-                <li style={{ width: "100%", marginTop: "4px" }}>
+                <li style={{ marginTop: "4px" }}>
                   <button
                     type="button"
-                    className="menu-link"
+                    className={`menu-link${isActive("/settings") ? " active" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       setMobileMenu(false)
                       go("/settings")
                     }}
+                    onFocus={(e) => {
+                      if (!isActive("/settings")) {
+                        e.currentTarget.blur()
+                      }
+                    }}
                     style={{
-                      width: "100%",
-                      justifyContent: "flex-start",
-                      padding: "10px 14px",
-                      borderRadius: "10px",
-                      height: "auto",
-                      background: "transparent",
-                      border: "1px solid transparent",
-                      boxShadow: "none",
-                      backdropFilter: "none",
                       cursor: "pointer",
-                      fontSize: "16px",
                     }}
                     aria-label={t("navigation:menu.settings")}
                   >
+                    <SettingsIcon
+                      style={{
+                        fontSize: "20px",
+                        opacity: 0.9,
+                      }}
+                    />
                     {t("navigation:menu.settings")}
                   </button>
                 </li>
               )}
             </ul>
 
-            <div
-              style={{
-                padding: "24px 0",
-                width: "100%",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              <div
-                style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", textAlign: "center" }}
-              >
+            <div className="mobile-drawer-footer">
+              <div className="mobile-drawer-copyright">
                 © {new Date().getFullYear()} {t("navigation:brandName")}
               </div>
             </div>
