@@ -726,6 +726,7 @@ async def _perform_login(
         session = None
     _set_access_token_cookie(response, token)
 
+    # Check if we should trust this device
     if trust_device:
         client_ip, user_agent = _extract_client_info(request)
         td_token, td_expires = await mfa.create_trusted_device_token(
