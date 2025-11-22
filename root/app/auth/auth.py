@@ -8,7 +8,6 @@ from typing import Any, Literal, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
-from cryptography.fernet import Fernet, InvalidToken
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
@@ -49,7 +48,6 @@ from app.schemas.schemas import (
     UserOut,
 )
 from app.utils.ratelimit import sensitive_route_limit
-
 
 logger = logging.getLogger("app.auth")
 
@@ -645,9 +643,7 @@ async def _perform_login(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
     if require_mfa:
         # Check for trusted device cookie
-        trusted_device_token = request.cookies.get(
-            settings.trusted_device_cookie_name
-        )
+        trusted_device_token = request.cookies.get(settings.trusted_device_cookie_name)
         is_trusted = False
         if trusted_device_token:
             is_trusted = await mfa.verify_trusted_device_token(
