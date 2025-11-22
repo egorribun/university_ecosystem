@@ -53,14 +53,6 @@ from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
 
-# Fernet key should be securely generated and stored (for demo, generate a key if missing)
-# Production: move key generation and storage to a secure config such as environment variable
-if hasattr(settings, "trusted_device_fernet_key"):
-    _FERNET_KEY = settings.trusted_device_fernet_key
-else:
-    # WARNING: Replace this with a securely generated, persistent key!
-    _FERNET_KEY = Fernet.generate_key()
-fernet = Fernet(_FERNET_KEY)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -653,17 +645,14 @@ async def _perform_login(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
     if require_mfa:
         # Check for trusted device cookie
-        trusted_device_token = request.cookies.get(settings.trusted_device_cookie_name)
+        trusted_device_token = request.cookies.get(
+            settings.trusted_device_cookie_name
+        )
         is_trusted = False
         if trusted_device_token:
-            try:
-                decrypted_trusted_device_token = fernet.decrypt(trusted_device_token.encode()).decode()
-            except (InvalidToken, AttributeError):  # also handle NoneType for .encode()
-                decrypted_trusted_device_token = None
-            if decrypted_trusted_device_token:
-                is_trusted = await mfa.verify_trusted_device_token(
-                    db, user=user, token=decrypted_trusted_device_token
-                )
+            is_trusted = await mfa.verify_trusted_device_token(
+                db, user=user, token=trusted_device_token
+            )
             if is_trusted:
                 _audit_log(
                     "auth.login.mfa_bypassed",
@@ -730,13 +719,11 @@ async def _perform_login(
     if trust_device:
         client_ip, user_agent = _extract_client_info(request)
         td_token, td_expires = await mfa.create_trusted_device_token(
-        # Encrypt the trusted device token before storing in cookie
-        encrypted_td_token = fernet.encrypt(td_token.encode()).decode()
             db, user=user, user_agent=user_agent, ip_address=client_ip
         )
         response.set_cookie(
             settings.trusted_device_cookie_name,
-            encrypted_td_token,
+            td_token,
             httponly=True,
             secure=settings.cookie_secure,
             samesite="strict",
