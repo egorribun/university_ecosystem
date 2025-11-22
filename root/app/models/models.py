@@ -128,6 +128,12 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    trusted_devices = relationship(
+        "TrustedDevice",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def spotify_connected(self) -> bool:
@@ -621,3 +627,22 @@ class UserPushTopic(Base):
     )
 
     user = relationship("User", back_populates="push_topic_preferences")
+
+
+class TrustedDevice(Base):
+    __tablename__ = "trusted_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash = Column(String(128), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    user_agent = Column(String(512), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user = relationship("User", back_populates="trusted_devices")

@@ -2,6 +2,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
+import { motion } from "framer-motion"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import api from "../api/client"
 
@@ -277,7 +278,12 @@ const Register = () => {
     <div className="relative min-h-screen w-full overflow-hidden bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
       <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
-        <div className="w-full rounded-[2.8rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.12)_6%)] p-8 shadow-[0_35px_100px_rgba(15,23,42,0.3)] backdrop-blur-3xl lg:p-12">
+        <motion.div
+          initial={{ x: -200 }}
+          animate={{ x: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="w-full rounded-[2.8rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.12)_6%)] p-8 shadow-[0_35px_100px_rgba(15,23,42,0.3)] backdrop-blur-3xl lg:p-12"
+        >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.35em] text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--nav-link)_30%)]">
             <Crown className="h-5 w-5" aria-hidden="true" />
             {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать" })}
@@ -309,9 +315,14 @@ const Register = () => {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="w-full max-w-2xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_35px_80px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10">
+        <motion.div
+          initial={{ y: 200 }}
+          animate={{ y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+          className="w-full max-w-2xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_35px_80px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
+        >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2">
@@ -470,20 +481,18 @@ const Register = () => {
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <span
-                  className={`${chipClass} ${
-                    minLenOk
-                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
-                  }`}
+                  className={`${chipClass} ${minLenOk
+                    ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
+                    : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                    }`}
                 >
                   {t("auth:register.passwordChip.minLength")}
                 </span>
                 <span
-                  className={`${chipClass} ${
-                    matchOk
-                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
-                  }`}
+                  className={`${chipClass} ${matchOk
+                    ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
+                    : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                    }`}
                 >
                   {t("auth:register.passwordChip.match")}
                 </span>
@@ -569,7 +578,7 @@ const Register = () => {
               </Link>
             </div>
           </form>
-        </div>
+        </motion.div>
       </div>
     </div>
   )

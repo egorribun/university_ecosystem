@@ -274,6 +274,8 @@ class Settings(BaseSettings):
     mfa_challenge_max_attempts: int = 5
     mfa_step_up_ttl_seconds: int = 300
     mfa_totp_attempt_limit: int = 5
+    trusted_device_expire_days: int = 30
+    trusted_device_cookie_name: str = "trusted_device"
     security_csp: str = ""
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
