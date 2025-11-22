@@ -692,10 +692,16 @@ async def _perform_login(
             "ip_address": client_ip,
             "user_agent": user_agent,
             "last_seen_at": now,
-            "mfa_required": bool(user.mfa_required) and not is_trusted if 'is_trusted' in locals() else bool(user.mfa_required),
+            "mfa_required": (
+                bool(user.mfa_required) and not is_trusted
+                if "is_trusted" in locals()
+                else bool(user.mfa_required)
+            ),
             "mfa_method": user.mfa_default_method,
-            "mfa_completed_at": now if 'is_trusted' in locals() and is_trusted else None,
-            "mfa_verified_at": now if 'is_trusted' in locals() and is_trusted else None,
+            "mfa_completed_at": (
+                now if "is_trusted" in locals() and is_trusted else None
+            ),
+            "mfa_verified_at": now if "is_trusted" in locals() and is_trusted else None,
         },
     )
     if isinstance(token_result, tuple):
@@ -1032,7 +1038,7 @@ async def verify_mfa_challenge(
     await mfa.record_mfa_success(db, user=user, session=session, method=payload.method)
     token = await _mint_access_token(db, session)
     _set_access_token_cookie(response, token)
-    
+
     if payload.trust_device:
         client_ip, user_agent = _extract_client_info(request)
         td_token, td_expires = await mfa.create_trusted_device_token(

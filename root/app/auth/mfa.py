@@ -654,9 +654,7 @@ async def create_trusted_device_token(
 ) -> tuple[str, datetime]:
     """Issue a new trusted device token for the user."""
     token = secrets.token_urlsafe(48)
-    token_hash = _base64url_encode(
-        hashlib.sha256(token.encode("utf-8")).digest()
-    )
+    token_hash = _base64url_encode(hashlib.sha256(token.encode("utf-8")).digest())
     now = _utcnow()
     expires_at = now + timedelta(days=settings.trusted_device_expire_days)
 
@@ -682,11 +680,9 @@ async def verify_trusted_device_token(
     """Check if the provided token is valid for the user."""
     if not token:
         return False
-    
+
     try:
-        token_hash = _base64url_encode(
-            hashlib.sha256(token.encode("utf-8")).digest()
-        )
+        token_hash = _base64url_encode(hashlib.sha256(token.encode("utf-8")).digest())
     except Exception:
         return False
 
