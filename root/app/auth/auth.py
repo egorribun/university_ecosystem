@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
@@ -58,6 +58,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+    trust_device: bool = False
 
 
 class MfaMethodChallengeOut(BaseModel):
@@ -98,6 +99,7 @@ class MfaVerifyIn(BaseModel):
     method: Literal[mfa.MFA_METHOD_TOTP]
     challenge_token: str
     code: str | None = None
+    trust_device: bool = False
 
 
 def _token_cookie_expiration() -> tuple[int | None, datetime | None]:
@@ -491,6 +493,7 @@ async def _perform_login(
     request: Request,
     response: Response,
     db: AsyncSession,
+    trust_device: bool = False,
 ) -> dict[str, str] | JSONResponse:
     normalized_email = email.strip().lower()
     base_locale = resolve_locale(request=request)
@@ -639,30 +642,46 @@ async def _perform_login(
         message = translate("errors.auth.mfa_totp_missing", locale=locale)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
     if require_mfa:
-        methods = await _collect_mfa_challenges(
-            db,
-            user=user,
-            locale=locale,
-            capabilities=capabilities,
-        )
-        if methods:
-            await db.commit()
-            payload = PendingMfaResponse(
-                user_id=user.id,
-                default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
-                methods=methods,
+        # Check for trusted device cookie
+        trusted_device_token = request.cookies.get(settings.trusted_device_cookie_name)
+        is_trusted = False
+        if trusted_device_token:
+            is_trusted = await mfa.verify_trusted_device_token(
+                db, user=user, token=trusted_device_token
             )
-            _audit_log(
-                "auth.login.mfa_required",
-                request,
-                user_id=user.id,
-                reason="challenge_issued",
-                extra={"methods": [entry.method for entry in methods]},
+            if is_trusted:
+                _audit_log(
+                    "auth.login.mfa_bypassed",
+                    request,
+                    user_id=user.id,
+                    reason="trusted_device",
+                )
+
+        if not is_trusted:
+            methods = await _collect_mfa_challenges(
+                db,
+                user=user,
+                locale=locale,
+                capabilities=capabilities,
             )
-            return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED,
-                content=payload.model_dump(mode="json"),
-            )
+            if methods:
+                await db.commit()
+                payload = PendingMfaResponse(
+                    user_id=user.id,
+                    default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
+                    methods=methods,
+                )
+                _audit_log(
+                    "auth.login.mfa_required",
+                    request,
+                    user_id=user.id,
+                    reason="challenge_issued",
+                    extra={"methods": [entry.method for entry in methods]},
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_202_ACCEPTED,
+                    content=payload.model_dump(mode="json"),
+                )
 
     client_ip, user_agent = _extract_client_info(request)
     now = datetime.now(UTC)
@@ -673,10 +692,10 @@ async def _perform_login(
             "ip_address": client_ip,
             "user_agent": user_agent,
             "last_seen_at": now,
-            "mfa_required": bool(user.mfa_required),
+            "mfa_required": bool(user.mfa_required) and not is_trusted if 'is_trusted' in locals() else bool(user.mfa_required),
             "mfa_method": user.mfa_default_method,
-            "mfa_completed_at": now,
-            "mfa_verified_at": now,
+            "mfa_completed_at": now if 'is_trusted' in locals() and is_trusted else None,
+            "mfa_verified_at": now if 'is_trusted' in locals() and is_trusted else None,
         },
     )
     if isinstance(token_result, tuple):
@@ -685,6 +704,22 @@ async def _perform_login(
         token = cast(str, token_result)
         session = None
     _set_access_token_cookie(response, token)
+
+    if trust_device:
+        client_ip, user_agent = _extract_client_info(request)
+        td_token, td_expires = await mfa.create_trusted_device_token(
+            db, user=user, user_agent=user_agent, ip_address=client_ip
+        )
+        response.set_cookie(
+            settings.trusted_device_cookie_name,
+            td_token,
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="strict",
+            expires=td_expires,
+            path="/",
+        )
+
     _audit_log(
         "auth.login.success",
         request,
@@ -703,6 +738,7 @@ async def _perform_login(
 async def login(
     response: Response,
     request: Request,
+    trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_db),
 ):
@@ -712,6 +748,7 @@ async def login(
         request,
         response,
         db,
+        trust_device=trust_device,
     )
 
 
@@ -733,6 +770,7 @@ async def login_json(
         request,
         response,
         db,
+        trust_device=payload.trust_device,
     )
 
 
@@ -994,6 +1032,22 @@ async def verify_mfa_challenge(
     await mfa.record_mfa_success(db, user=user, session=session, method=payload.method)
     token = await _mint_access_token(db, session)
     _set_access_token_cookie(response, token)
+    
+    if payload.trust_device:
+        client_ip, user_agent = _extract_client_info(request)
+        td_token, td_expires = await mfa.create_trusted_device_token(
+            db, user=user, user_agent=user_agent, ip_address=client_ip
+        )
+        response.set_cookie(
+            settings.trusted_device_cookie_name,
+            td_token,
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="strict",
+            expires=td_expires,
+            path="/",
+        )
+
     await db.commit()
     _audit_log(
         "auth.mfa.verify.success",

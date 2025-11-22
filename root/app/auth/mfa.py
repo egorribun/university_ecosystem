@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import secrets
@@ -19,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.rate_limit import RateLimitExceeded, enforce_rate_limit
 from app.localization import translate
-from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
+from app.models.models import (
+    ActiveSession,
+    MfaChallenge,
+    MfaTotpEnrollment,
+    TrustedDevice,
+    User,
+)
 from app.utils import ratelimit as ratelimit_utils
 
 _TOTP_SECRET_LENGTH = 32
@@ -636,3 +643,72 @@ async def record_mfa_success(
         session.mfa_method = method[:64]
         session.mfa_verified_at = now
     await db.flush()
+
+
+async def create_trusted_device_token(
+    db: AsyncSession,
+    *,
+    user: User,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> tuple[str, datetime]:
+    """Issue a new trusted device token for the user."""
+    token = secrets.token_urlsafe(48)
+    token_hash = _base64url_encode(
+        hashlib.sha256(token.encode("utf-8")).digest()
+    )
+    now = _utcnow()
+    expires_at = now + timedelta(days=settings.trusted_device_expire_days)
+
+    device = TrustedDevice(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        last_used_at=now,
+        user_agent=user_agent[:512] if user_agent else None,
+        ip_address=ip_address[:64] if ip_address else None,
+    )
+    db.add(device)
+    await db.flush()
+    return token, expires_at
+
+
+async def verify_trusted_device_token(
+    db: AsyncSession,
+    *,
+    user: User,
+    token: str,
+) -> bool:
+    """Check if the provided token is valid for the user."""
+    if not token:
+        return False
+    
+    try:
+        token_hash = _base64url_encode(
+            hashlib.sha256(token.encode("utf-8")).digest()
+        )
+    except Exception:
+        return False
+
+    stmt = (
+        select(TrustedDevice)
+        .where(TrustedDevice.user_id == user.id)
+        .where(TrustedDevice.token_hash == token_hash)
+    )
+    result = await db.execute(stmt)
+    device = result.scalars().first()
+
+    if not device:
+        return False
+
+    now = _utcnow()
+    if device.expires_at <= now:
+        # Clean up expired token
+        await db.delete(device)
+        await db.flush()
+        return False
+
+    # Update usage stats
+    device.last_used_at = now
+    await db.flush()
+    return True

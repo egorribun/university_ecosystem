@@ -37,11 +37,12 @@ export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up"
 export type SubmitMfaChallengePayload = {
   code: string
   challengeToken?: string
+  trustDevice?: boolean
 }
 
 type AuthContextType = {
   isAuth: boolean
-  login: (email: string, password: string) => Promise<PendingMfaState | null>
+  login: (email: string, password: string, trustDevice?: boolean) => Promise<PendingMfaState | null>
   logout: () => Promise<void>
   user: UserState
   loading: boolean
@@ -73,13 +74,13 @@ const noopSetUser: Dispatch<SetUserArg> = (_value) => {
 export const AuthContext = createContext<AuthContextType>({
   isAuth: false,
   login: async () => null,
-  logout: async () => {},
+  logout: async () => { },
   user: null,
   loading: false,
   setUser: noopSetUser,
-  refresh: async () => {},
+  refresh: async () => { },
   pendingMfa: null,
-  submitMfaChallenge: async () => {},
+  submitMfaChallenge: async () => { },
   requireMfa: async () => null,
   resetEtagCache,
 })
@@ -186,7 +187,7 @@ const formatLockoutDuration = (
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -770,7 +771,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
@@ -968,10 +969,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const login = useCallback(
-    async (email: string, password: string): Promise<PendingMfaState | null> => {
+    async (email: string, password: string, trustDevice?: boolean): Promise<PendingMfaState | null> => {
       const payload = new URLSearchParams()
       payload.append("username", email.trim())
       payload.append("password", password)
+      if (trustDevice) {
+        payload.append("trust_device", "true")
+      }
 
       const controller = new AbortController()
       activeRequestRef.current?.abort()
@@ -1095,6 +1099,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           method,
           challenge_token: token,
           code: payload.code,
+          trust_device: payload.trustDevice,
         }
 
         const skipPushSync = Boolean(pending.session_id)

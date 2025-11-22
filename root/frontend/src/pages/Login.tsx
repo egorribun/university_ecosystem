@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ShieldCheck, Sparkles, BookOpen, Eye, EyeOff, Zap } from "lucide-react"
+import { motion } from "framer-motion"
 import { ChallengeLockedError, type PendingMfaState, useAuth } from "@/contexts/AuthContext"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
@@ -97,8 +98,8 @@ const Login = () => {
   const { login, pendingMfa, submitMfaChallenge } = useAuth()
 
   const savedEmail = useRef<string>(localStorage.getItem("auth:lastEmail") || "")
-  const [remember, setRemember] = useState<boolean>(
-    () => localStorage.getItem("auth:remember") === "1"
+  const [trustDevice, setTrustDevice] = useState<boolean>(
+    () => localStorage.getItem("auth:trustDevice") === "1"
   )
   const [caps, setCaps] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -213,13 +214,13 @@ const Login = () => {
     setSubmitting(true)
     setPendingEmail(username)
     try {
-      const challenge = await login(username, passwordValue)
+      const challenge = await login(username, passwordValue, trustDevice)
 
-      if (remember) {
+      if (trustDevice) {
         localStorage.setItem("auth:lastEmail", username)
         savedEmail.current = username
       }
-      localStorage.setItem("auth:remember", remember ? "1" : "0")
+      localStorage.setItem("auth:trustDevice", trustDevice ? "1" : "0")
 
       if (challenge) {
         setMfaError(null)
@@ -258,6 +259,7 @@ const Login = () => {
         await submitMfaChallenge({
           code,
           challengeToken: challenge.challenge_token,
+          trustDevice,
         })
         navigate("/dashboard")
       } catch (err) {
@@ -380,7 +382,12 @@ const Login = () => {
     <div className="relative min-h-screen w-full overflow-hidden bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
       <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
-        <div className="w-full rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.1)_6%)] p-8 shadow-[0_30px_90px_rgba(15,23,42,0.28)] backdrop-blur-3xl lg:p-12">
+        <motion.div
+          initial={{ x: -200 }}
+          animate={{ x: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="w-full rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.1)_6%)] p-8 shadow-[0_30px_90px_rgba(15,23,42,0.28)] backdrop-blur-3xl lg:p-12"
+        >
           <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--nav-link)_30%)]">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
@@ -423,9 +430,14 @@ const Login = () => {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="w-full max-w-xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10">
+        <motion.div
+          initial={{ y: 200 }}
+          animate={{ y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+          className="w-full max-w-xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
+        >
           <form
             noValidate
             autoComplete="on"
@@ -533,11 +545,11 @@ const Login = () => {
               <input
                 type="checkbox"
                 className="size-5 rounded-lg border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)] bg-transparent accent-[color:var(--nav-link)]"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
+                checked={trustDevice}
+                onChange={(e) => setTrustDevice(e.target.checked)}
                 disabled={submitting}
               />
-              {t("auth:actions.rememberEmail")}
+              {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
             </label>
 
             <button
@@ -573,9 +585,9 @@ const Login = () => {
               </div>
             </div>
           </form>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </div >
   )
 }
 
