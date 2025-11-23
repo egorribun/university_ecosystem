@@ -1,22 +1,21 @@
-from datetime import datetime
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 import uuid
-from sqlalchemy import func, select, and_, or_
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models.chat import Chat, Message, chat_participants, Attachment
+from app.core.database import get_db
+from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
-from app.schemas.chat import ChatCreate, ChatResponse, MessageCreate, MessageResponse
+from app.schemas.chat import ChatCreate, ChatResponse, MessageResponse
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
 
-@router.get("", response_model=List[ChatResponse])
+@router.get("", response_model=list[ChatResponse])
 async def get_chats(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -47,11 +46,14 @@ async def get_chats(
     chat_responses = []
     for chat in chats:
         # Sort messages to find the last one
-        sorted_messages = sorted(chat.messages, key=lambda m: m.created_at, reverse=True)
+        sorted_messages = sorted(
+            chat.messages, key=lambda m: m.created_at, reverse=True
+        )
         last_message = sorted_messages[0] if sorted_messages else None
-        
+
         unread_count = sum(
-            1 for m in chat.messages 
+            1
+            for m in chat.messages
             if not m.read_status and m.sender_id != current_user.id
         )
 
@@ -95,7 +97,7 @@ async def create_chat(
     # Check if chat already exists
     # This is a bit complex in SQL, simpler to fetch user's chats and check in python for now
     # or use a specific query. For MVP, let's try to find a chat with exactly these 2 participants.
-    
+
     # Find chats where both users are participants
     query = (
         select(Chat)
@@ -133,7 +135,7 @@ async def create_chat(
     )
 
 
-@router.get("/{chat_id}/messages", response_model=List[MessageResponse])
+@router.get("/{chat_id}/messages", response_model=list[MessageResponse])
 async def get_messages(
     chat_id: str,
     current_user: User = Depends(get_current_user),
@@ -165,7 +167,7 @@ async def get_messages(
 async def send_message(
     chat_id: str,
     content: str = Form(...),
-    files: List[UploadFile] = File(default=[]),
+    files: list[UploadFile] = File(default=[]),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
@@ -207,38 +209,38 @@ async def send_message(
             file_ext = os.path.splitext(file.filename)[1]
             unique_filename = f"{uuid.uuid4()}{file_ext}"
             file_path = os.path.join(UPLOAD_DIR, unique_filename)
-            
+
             # Save file
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            
+
             # Determine file type
-            file_type = 'file'
-            if file.content_type.startswith('image/'):
-                file_type = 'image'
-            elif file.content_type.startswith('video/'):
-                file_type = 'video'
+            file_type = "file"
+            if file.content_type.startswith("image/"):
+                file_type = "image"
+            elif file.content_type.startswith("video/"):
+                file_type = "video"
 
             # Create attachment record
             # URL should be accessible from frontend. Assuming static files are served from /static
             url = f"http://localhost:8000/static/uploads/{unique_filename}"
-            
+
             attachment = Attachment(
                 message_id=message.id,
                 url=url,
                 file_type=file_type,
                 filename=file.filename,
-                size=file.size or 0
+                size=file.size or 0,
             )
             session.add(attachment)
-    
+
     # Update chat updated_at
     chat.updated_at = datetime.utcnow()
     session.add(chat)
 
     await session.commit()
     await session.refresh(message)
-    
+
     # Eager load sender and attachments for response
     await session.refresh(message, ["sender", "attachments"])
 
@@ -262,14 +264,11 @@ async def mark_read(
         raise HTTPException(status_code=403, detail="Not a participant")
 
     # Update unread messages sent by others
-    query = (
-        select(Message)
-        .where(
-            and_(
-                Message.chat_id == chat_id,
-                Message.sender_id != current_user.id,
-                Message.read_status == False
-            )
+    query = select(Message).where(
+        and_(
+            Message.chat_id == chat_id,
+            Message.sender_id != current_user.id,
+            Message.read_status == False,
         )
     )
     result = await session.execute(query)

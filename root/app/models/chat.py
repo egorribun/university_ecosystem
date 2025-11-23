@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime
-from typing import List
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Table, Boolean, Integer
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -35,7 +34,7 @@ class Chat(Base):
     participants = relationship(
         "User", secondary=chat_participants, backref="chats", lazy="selectin"
     )
-    messages: Mapped[List["Message"]] = relationship(
+    messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="chat", cascade="all, delete-orphan", lazy="selectin"
     )
 
@@ -61,8 +60,11 @@ class Message(Base):
     # Relationships
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
     sender = relationship("User", lazy="joined")
-    attachments: Mapped[List["Attachment"]] = relationship(
-        "Attachment", back_populates="message", cascade="all, delete-orphan", lazy="selectin"
+    attachments: Mapped[list["Attachment"]] = relationship(
+        "Attachment",
+        back_populates="message",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
 
@@ -76,7 +78,9 @@ class Attachment(Base):
         ForeignKey("messages.id", ondelete="CASCADE"), nullable=False
     )
     url: Mapped[str] = mapped_column(String, nullable=False)
-    file_type: Mapped[str] = mapped_column(String, nullable=False)  # 'image', 'video', 'file'
+    file_type: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # 'image', 'video', 'file'
     filename: Mapped[str] = mapped_column(String, nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

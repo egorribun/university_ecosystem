@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -7,11 +6,11 @@ from pydantic import BaseModel, ConfigDict
 # Simplified User schema for chat participants (avoids lazy-loaded relationships)
 class ChatParticipant(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     email: str
     full_name: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
     is_active: bool
 
 
@@ -40,8 +39,8 @@ class MessageResponse(MessageBase):
     sender_id: int
     created_at: datetime
     read_status: bool
-    sender: Optional[ChatParticipant] = None
-    attachments: List[AttachmentResponse] = []
+    sender: ChatParticipant | None = None
+    attachments: list[AttachmentResponse] = []
 
     class Config:
         from_attributes = True
@@ -57,8 +56,8 @@ class ChatCreate(ChatBase):
 
 class ChatResponse(ChatBase):
     id: str
-    participants: List[ChatParticipant]
-    last_message: Optional[MessageResponse] = None
+    participants: list[ChatParticipant]
+    last_message: MessageResponse | None = None
     unread_count: int = 0
     created_at: datetime
     updated_at: datetime

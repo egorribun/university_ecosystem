@@ -755,17 +755,17 @@ async def get_users(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    
+
     # Use search param as full_name if provided
     name_query = search if search else full_name
-    
+
     return await crud.get_users(
-        db, 
-        full_name=name_query, 
-        group_id=group_id, 
+        db,
+        full_name=name_query,
+        group_id=group_id,
         role=role,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
