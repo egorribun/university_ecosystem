@@ -851,6 +851,8 @@ async def get_users(
     group_id: int | None = None,
     full_name: str | None = None,
     role: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
 ) -> list[models.User]:
     stmt = select(models.User).options(*USER_MFA_LOAD_OPTIONS)
     if group_id:
@@ -859,6 +861,10 @@ async def get_users(
         stmt = stmt.where(models.User.full_name.ilike(f"%{full_name}%"))
     if role:
         stmt = stmt.where(models.User.role == role)
+    if limit:
+        stmt = stmt.limit(limit)
+    if offset:
+        stmt = stmt.offset(offset)
     result = await db.execute(stmt)
     return result.scalars().all()
 

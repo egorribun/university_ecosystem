@@ -381,6 +381,11 @@ api.interceptors.request.use(async (config) => {
     }
   }
 
+  // Automatically remove Content-Type for FormData to let the browser set the boundary
+  if (config.data instanceof FormData) {
+    headers.delete("Content-Type")
+  }
+
   config.headers = headers
 
   return config
@@ -461,10 +466,10 @@ type EmptyObject = Record<never, never>
 
 type ExtractPathParams<Op> = Op extends unknown
   ? Op extends { parameters?: { path: infer Params } }
-    ? Params extends Record<string, unknown>
-      ? Params
-      : never
-    : never
+  ? Params extends Record<string, unknown>
+  ? Params
+  : never
+  : never
   : never
 
 type MethodsForPath<P extends ApiPath> = {
@@ -477,66 +482,66 @@ type PathParamsOf<P extends ApiPath> = [ExtractPathParams<MethodsForPath<P>>] ex
 
 type QueryParamsOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
-    ? EmptyObject
-    : OperationFor<P, M> extends { parameters?: { query?: infer Query } }
-      ? Query extends Record<string, unknown>
-        ? Query
-        : EmptyObject
-      : EmptyObject
+  ? EmptyObject
+  : OperationFor<P, M> extends { parameters?: { query?: infer Query } }
+  ? Query extends Record<string, unknown>
+  ? Query
+  : EmptyObject
+  : EmptyObject
 
 type HeaderParamsOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
-    ? EmptyObject
-    : OperationFor<P, M> extends { parameters?: { header?: infer Header } }
-      ? Header extends Record<string, unknown>
-        ? Header
-        : EmptyObject
-      : EmptyObject
+  ? EmptyObject
+  : OperationFor<P, M> extends { parameters?: { header?: infer Header } }
+  ? Header extends Record<string, unknown>
+  ? Header
+  : EmptyObject
+  : EmptyObject
 
 type NormalizeContent<Content> =
   Content extends Record<string, unknown>
-    ? {
-        [K in keyof Content]: K extends "application/json"
-          ? Content[K]
-          : K extends "multipart/form-data"
-            ? Content[K] | FormData
-            : K extends "application/x-www-form-urlencoded"
-              ? Content[K] | URLSearchParams
-              : Content[K]
-      }[keyof Content]
-    : never
+  ? {
+    [K in keyof Content]: K extends "application/json"
+    ? Content[K]
+    : K extends "multipart/form-data"
+    ? Content[K] | FormData
+    : K extends "application/x-www-form-urlencoded"
+    ? Content[K] | URLSearchParams
+    : Content[K]
+  }[keyof Content]
+  : never
 
 type RequestBodyOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
-    ? undefined
-    : OperationFor<P, M> extends { requestBody?: { content: infer Content } }
-      ? NormalizeContent<Content>
-      : OperationFor<P, M> extends { requestBody: { content: infer Content } }
-        ? NormalizeContent<Content>
-        : undefined
+  ? undefined
+  : OperationFor<P, M> extends { requestBody?: { content: infer Content } }
+  ? NormalizeContent<Content>
+  : OperationFor<P, M> extends { requestBody: { content: infer Content } }
+  ? NormalizeContent<Content>
+  : undefined
 
 type SuccessStatus = 200 | 201 | 202 | 203 | 204 | 205 | 206
 
 type ResponseContent<Response> = Response extends { content: infer Content }
   ? Content extends Record<string, unknown>
-    ? "application/json" extends keyof Content
-      ? Content["application/json"]
-      : Content[keyof Content]
-    : unknown
+  ? "application/json" extends keyof Content
+  ? Content["application/json"]
+  : Content[keyof Content]
+  : unknown
   : unknown
 
 type ResponseDataOf<P extends ApiPath, M extends ApiMethod> =
   OperationFor<P, M> extends never
-    ? unknown
-    : OperationFor<P, M> extends { responses: infer Responses }
-      ? {
-          [S in keyof Responses & (SuccessStatus | "default")]: ResponseContent<Responses[S]>
-        }[keyof Responses & (SuccessStatus | "default")] extends infer Result
-        ? Result extends never
-          ? unknown
-          : Result
-        : unknown
-      : unknown
+  ? unknown
+  : OperationFor<P, M> extends { responses: infer Responses }
+  ? {
+    [S in keyof Responses & (SuccessStatus | "default")]: ResponseContent<Responses[S]>
+  }[keyof Responses & (SuccessStatus | "default")] extends infer Result
+  ? Result extends never
+  ? unknown
+  : Result
+  : unknown
+  : unknown
 
 type ApiRequestHeaders<P extends ApiPath, M extends ApiMethod> = HeaderParamsOf<P, M> &
   Partial<Record<string, string | number | boolean | null | undefined>>

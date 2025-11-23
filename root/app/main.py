@@ -20,6 +20,7 @@ from app.api.spotify import router as spotify_router
 from app.api.stats import router as stats_router
 from app.api.stories import router as stories_router
 from app.api.users import router as users_router
+from app.api.chat import router as chat_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import Base, async_session, engine, wait_db
@@ -436,3 +437,4 @@ app.include_router(news_router)
 app.include_router(stories_router)
 app.include_router(schedule_api_router)
 app.include_router(stats_router)
+app.include_router(chat_router)
