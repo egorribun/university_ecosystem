@@ -315,8 +315,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     </svg>
                   </button>
                 </div>
-              )
-          ))}
+              ))}
         </div>
       )}
       <div className="flex items-end gap-2 bg-gray-100 dark:bg-gray-800/50 p-2 rounded-2xl border border-transparent focus-within:border-blue-500/50 focus-within:bg-white dark:focus-within:bg-gray-800 transition-all duration-200">
