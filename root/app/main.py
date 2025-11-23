@@ -15,7 +15,6 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-
 from app.api.chat import router as chat_router
 from app.api.events import router as events_router
 from app.api.news import router as news_router
@@ -34,7 +33,6 @@ from app.core.observability import configure_observability, shutdown_observabili
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import get_cache, shutdown_cache
-from app.models.models import NotificationQueueJob
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
@@ -308,7 +306,7 @@ async def root():
     return {"status": "ok"}
 
 
-@lru_cache()
+@lru_cache
 def _get_alembic_script() -> ScriptDirectory:
     project_root = Path(__file__).resolve().parents[1]
     config = Config(str(project_root / "alembic.ini"))
