@@ -83,6 +83,7 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
           className="chip-weather focus-visible:outline-none focus-visible:shadow-[var(--ue-focus-ring)]"
           aria-live="polite"
           aria-label={ariaLabel}
+          role="status"
           tabIndex={0}
           data-animation={data.animation}
         >

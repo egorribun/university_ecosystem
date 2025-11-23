@@ -19,6 +19,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return
     # Alter sender_id column type from VARCHAR to INTEGER
     op.execute(
         "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER "

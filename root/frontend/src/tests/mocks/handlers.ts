@@ -364,6 +364,15 @@ export const handlers = [
   http.get("*/auth/session/signing-key", () =>
     HttpResponse.json({ signing_key: "test-session-signing-key" })
   ),
+  http.get("https://api.open-meteo.com/v1/forecast", () =>
+    HttpResponse.json({
+      current: {
+        temperature_2m: 18.2,
+        weather_code: 1,
+        time: nowIso(),
+      },
+    })
+  ),
   http.get("*/users/me", () => HttpResponse.json(testUser)),
   http.get("*/stories", () => HttpResponse.json(testStories)),
   http.get("*/news", () => HttpResponse.json(testNewsItems)),

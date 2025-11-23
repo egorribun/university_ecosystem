@@ -1,4 +1,13 @@
-import { useId, useState, useRef, KeyboardEvent, ClipboardEvent, useEffect } from "react"
+import {
+  useId,
+  useState,
+  useRef,
+  KeyboardEvent,
+  ClipboardEvent,
+  useCallback,
+  useEffect,
+} from "react"
+import { Button } from "@mui/material"
 import { useTranslation } from "react-i18next"
 
 type OtpEntryProps = {
@@ -16,6 +25,16 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const helperId = useId()
   const errorId = useId()
+  const code = digits.join("")
+
+  const submitCode = useCallback(async () => {
+    if (loading || code.length !== 6) {
+      setLocalError(t("mfa.otp.validation.required"))
+      return
+    }
+    setLocalError(null)
+    await onSubmit(code)
+  }, [code, loading, onSubmit, t])
 
   const handleChange = (index: number, value: string) => {
     // Only allow digits
@@ -89,22 +108,15 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
     }
   }
 
-  // Auto-submit when all 6 digits are filled
-  useEffect(() => {
-    const code = digits.join("")
-    if (code.length === 6 && !loading) {
-      // Small delay to show the last digit before submitting
-      const timer = setTimeout(async () => {
-        setLocalError(null)
-        await onSubmit(code)
-      }, 300)
-      return () => clearTimeout(timer)
-    }
-  }, [digits, loading, onSubmit])
-
   const derivedError = localError || error
   const derivedHelperText = derivedError ? null : (helperText ?? null)
   const describedBy = derivedError ? errorId : derivedHelperText ? helperId : undefined
+
+  useEffect(() => {
+    if (!error) return
+    setDigits(["", "", "", "", "", ""])
+    inputRefs.current[0]?.focus()
+  }, [error])
 
   return (
     <div className="w-full">
@@ -115,12 +127,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         <p className="text-sm text-center text-page-text/70">{t("mfa.otp.descriptions.totp")}</p>
 
-        <div
-          className="flex gap-2 justify-center"
-          aria-describedby={describedBy}
-          role="group"
-          aria-label={t("mfa.otp.methods.totp")}
-        >
+        <div className="flex gap-2 justify-center" aria-describedby={describedBy} role="group">
           {digits.map((digit, index) => (
             <input
               key={index}
@@ -133,6 +140,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               value={digit}
               autoFocus={index === 0}
               disabled={Boolean(loading)}
+              aria-label={index === 0 ? t("mfa.otp.methods.totp") : undefined}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               onPaste={index === 0 ? handlePaste : undefined}
@@ -175,6 +183,17 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
           </div>
         )}
+
+        <div className="flex justify-center">
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => void submitCode()}
+            disabled={loading || code.length !== 6}
+          >
+            {loading ? t("mfa.otp.submitting") : t("mfa.otp.submit")}
+          </Button>
+        </div>
       </div>
     </div>
   )
