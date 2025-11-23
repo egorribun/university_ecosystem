@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import and_, select
@@ -235,7 +235,7 @@ async def send_message(
             session.add(attachment)
 
     # Update chat updated_at
-    chat.updated_at = datetime.now(timezone.utc)
+    chat.updated_at = datetime.now(UTC)
     session.add(chat)
 
     await session.commit()
