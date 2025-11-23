@@ -114,8 +114,10 @@ def _enforce_fresh_mfa(request: Request) -> None:
 
 def require_fresh_mfa(
     request: Request,
-    _: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_user)],
 ) -> None:
+    if not mfa.user_has_confirmed_interactive_factor(user):
+        return
     _enforce_fresh_mfa(request)
 
 
