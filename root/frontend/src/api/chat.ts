@@ -55,11 +55,6 @@ export const chatApi = {
                 formData.append('files', file)
             })
         }
-        // Log FormData entries for debugging
-        // @ts-expect-error - FormData.entries() iterator type
-        for (const pair of formData.entries()) {
-            console.log('FormData entry:', pair[0], pair[1]);
-        }
         const response = await client.post<Message>(`/chats/${chatId}/messages`, formData)
         return response.data
     },
