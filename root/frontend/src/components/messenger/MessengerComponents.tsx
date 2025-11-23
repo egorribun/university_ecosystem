@@ -48,7 +48,15 @@ export const ContactList: React.FC<ContactListProps> = ({
             {contacts.map((contact) => (
                 <div
                     key={contact.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelect(contact.id)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onSelect(contact.id)
+                        }
+                    }}
                     className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${selectedId === contact.id
                         ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
                         : "hover:bg-gray-100 dark:hover:bg-gray-800"
