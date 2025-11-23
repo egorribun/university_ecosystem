@@ -49,23 +49,6 @@ export const chatApi = {
         console.log('chatApi.sendMessage:', { chatId, content, filesCount: files?.length })
         const formData = new FormData()
         formData.append('content', content)
-        if (files && files.length > 0) {
-            files.forEach(file => {
-                console.log('Appending file:', file.name, file.type, file.size)
-                formData.append('files', file)
-            })
-        }
-        // Log FormData entries for debugging
-        // @ts-expect-error - FormData.entries() is not recognized in TypeScript
-        for (const pair of formData.entries()) {
-            console.log('FormData entry:', pair[0], pair[1]);
-        }
-        const response = await client.post<Message>(`/chats/${chatId}/messages`, formData)
-        return response.data
-    },
-
-    markRead: async (chatId: string) => {
-        const response = await client.post(`/chats/${chatId}/read`)
         return response.data
     },
 }

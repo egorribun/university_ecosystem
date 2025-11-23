@@ -296,32 +296,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 </div>
                 <textarea
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Write a message..."
-                    className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-32 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500"
-                    rows={1}
-                    style={{ minHeight: "24px" }}
-                />
-                <button
-                    onClick={handleSend}
-                    disabled={!text.trim() && selectedFiles.length === 0}
-                    className={`p-2 rounded-xl transition-all duration-200 ${text.trim() || selectedFiles.length > 0
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transform hover:scale-105"
-                        : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
-                        }`}
+                    className="w-5 h-5"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="w-5 h-5"
-                    >
-                        <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                    </svg>
-                </button>
-            </div>
+                    <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                </svg>
+            </button>
         </div>
+        </div >
     )
 }
 
