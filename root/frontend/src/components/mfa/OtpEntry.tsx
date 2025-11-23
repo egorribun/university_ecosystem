@@ -1,4 +1,12 @@
-import { useId, useState, useRef, KeyboardEvent, ClipboardEvent, useCallback, useEffect } from "react"
+import {
+  useId,
+  useState,
+  useRef,
+  KeyboardEvent,
+  ClipboardEvent,
+  useCallback,
+  useEffect,
+} from "react"
 import { Button } from "@mui/material"
 import { useTranslation } from "react-i18next"
 
@@ -119,11 +127,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         <p className="text-sm text-center text-page-text/70">{t("mfa.otp.descriptions.totp")}</p>
 
-        <div
-          className="flex gap-2 justify-center"
-          aria-describedby={describedBy}
-          role="group"
-        >
+        <div className="flex gap-2 justify-center" aria-describedby={describedBy} role="group">
           {digits.map((digit, index) => (
             <input
               key={index}
