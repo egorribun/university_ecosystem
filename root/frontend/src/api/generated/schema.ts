@@ -1374,6 +1374,74 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/chats": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Chats
+     * @description Get all chats for the current user.
+     */
+    get: operations["get_chats_chats_get"]
+    put?: never
+    /**
+     * Create Chat
+     * @description Create a new chat with a user. If a chat already exists, return it.
+     */
+    post: operations["create_chat_chats_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/chats/{chat_id}/messages": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Messages
+     * @description Get messages for a chat.
+     */
+    get: operations["get_messages_chats__chat_id__messages_get"]
+    put?: never
+    /**
+     * Send Message
+     * @description Send a message to a chat.
+     */
+    post: operations["send_message_chats__chat_id__messages_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/chats/{chat_id}/read": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Mark Read
+     * @description Mark all messages in a chat as read.
+     */
+    post: operations["mark_read_chats__chat_id__read_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -1439,8 +1507,26 @@ export interface components {
       /** Topics */
       topics?: string[]
     }
+    /** AttachmentResponse */
+    AttachmentResponse: {
+      /** Id */
+      id: string
+      /** Url */
+      url: string
+      /** File Type */
+      file_type: string
+      /** Filename */
+      filename: string
+      /** Size */
+      size: number
+    }
     /** Body_login_auth_login_post */
     Body_login_auth_login_post: {
+      /**
+       * Trust Device
+       * @default false
+       */
+      trust_device: boolean
       /** Grant Type */
       grant_type?: string | null
       /** Username */
@@ -1462,6 +1548,16 @@ export interface components {
        * Format: password
        */
       client_secret?: string | null
+    }
+    /** Body_send_message_chats__chat_id__messages_post */
+    Body_send_message_chats__chat_id__messages_post: {
+      /** Content */
+      content: string
+      /**
+       * Files
+       * @default []
+       */
+      files: string[]
     }
     /** Body_upload_avatar_users_me_avatar_post */
     Body_upload_avatar_users_me_avatar_post: {
@@ -1510,6 +1606,47 @@ export interface components {
        * Format: binary
        */
       file: string
+    }
+    /** ChatCreate */
+    ChatCreate: {
+      /** Participant Id */
+      participant_id: number
+    }
+    /** ChatParticipant */
+    ChatParticipant: {
+      /** Id */
+      id: number
+      /** Email */
+      email: string
+      /** Full Name */
+      full_name: string
+      /** Avatar Url */
+      avatar_url?: string | null
+      /** Is Active */
+      is_active: boolean
+    }
+    /** ChatResponse */
+    ChatResponse: {
+      /** Id */
+      id: string
+      /** Participants */
+      participants: components["schemas"]["ChatParticipant"][]
+      last_message?: components["schemas"]["MessageResponse"] | null
+      /**
+       * Unread Count
+       * @default 0
+       */
+      unread_count: number
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string
     }
     /** DisableUserPushRequest */
     DisableUserPushRequest: {
@@ -1722,6 +1859,35 @@ export interface components {
       email: string
       /** Password */
       password: string
+      /**
+       * Trust Device
+       * @default false
+       */
+      trust_device: boolean
+    }
+    /** MessageResponse */
+    MessageResponse: {
+      /** Content */
+      content: string
+      /** Id */
+      id: string
+      /** Chat Id */
+      chat_id: string
+      /** Sender Id */
+      sender_id: number
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /** Read Status */
+      read_status: boolean
+      sender?: components["schemas"]["ChatParticipant"] | null
+      /**
+       * Attachments
+       * @default []
+       */
+      attachments: components["schemas"]["AttachmentResponse"][]
     }
     /** MfaChallengeOut */
     MfaChallengeOut: {
@@ -1825,6 +1991,11 @@ export interface components {
       challenge_token: string
       /** Code */
       code?: string | null
+      /**
+       * Trust Device
+       * @default false
+       */
+      trust_device: boolean
     }
     /** NewsCreate */
     NewsCreate: {
@@ -4430,8 +4601,11 @@ export interface operations {
     parameters: {
       query?: {
         full_name?: string | null
+        search?: string | null
         group_id?: number | null
         role?: string | null
+        limit?: number | null
+        offset?: number | null
       }
       header?: never
       path?: never
@@ -5612,6 +5786,156 @@ export interface operations {
       }
       header?: never
       path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_chats_chats_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ChatResponse"][]
+        }
+      }
+    }
+  }
+  create_chat_chats_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChatCreate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ChatResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_messages_chats__chat_id__messages_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MessageResponse"][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  send_message_chats__chat_id__messages_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_send_message_chats__chat_id__messages_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MessageResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  mark_read_chats__chat_id__read_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
       cookie?: never
     }
     requestBody?: never
