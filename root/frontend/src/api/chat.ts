@@ -56,7 +56,7 @@ export const chatApi = {
             })
         }
         // Log FormData entries for debugging
-        // @ts-ignore
+        // @ts-expect-error - FormData.entries() is not recognized in TypeScript
         for (const pair of formData.entries()) {
             console.log('FormData entry:', pair[0], pair[1]);
         }

@@ -43,17 +43,6 @@ export const ContactList: React.FC<ContactListProps> = ({
     selectedId,
     onSelect,
 }) => {
-    return (
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {contacts.map((contact) => (
-                <div
-                    key={contact.id}
-                    onClick={() => onSelect(contact.id)}
-                    className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${selectedId === contact.id
-                        ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
-                        : "hover:bg-gray-100 dark:hover:bg-gray-800"
-                        }`}
-                >
                     <div className="relative flex-shrink-0">
                         <img
                             src={contact.avatar || undefined}
@@ -77,14 +66,16 @@ export const ContactList: React.FC<ContactListProps> = ({
                             {contact.lastMessage}
                         </p>
                     </div>
-                    {contact.unread > 0 && (
-                        <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold rounded-full ${selectedId === contact.id ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}>
-                            {contact.unread}
-                        </span>
-                    )}
-                </div>
+    {
+        contact.unread > 0 && (
+            <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold rounded-full ${selectedId === contact.id ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}>
+                {contact.unread}
+            </span>
+        )
+    }
+                </div >
             ))}
-        </div>
+        </div >
     )
 }
 
