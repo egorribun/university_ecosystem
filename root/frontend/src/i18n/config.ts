@@ -29,6 +29,8 @@ import adminEn from "./locales/en/admin.json" assert { type: "json" }
 import adminRu from "./locales/ru/admin.json" assert { type: "json" }
 import storiesEn from "./locales/en/stories.json" assert { type: "json" }
 import storiesRu from "./locales/ru/stories.json" assert { type: "json" }
+import messengerEn from "./locales/en/messenger.json" assert { type: "json" }
+import messengerRu from "./locales/ru/messenger.json" assert { type: "json" }
 
 export const defaultNS = "common"
 
@@ -48,6 +50,7 @@ export const resources = {
     notifications: notificationsEn,
     admin: adminEn,
     stories: storiesEn,
+    messenger: messengerEn,
   },
   ru: {
     common: commonRu,
@@ -64,6 +67,7 @@ export const resources = {
     notifications: notificationsRu,
     admin: adminRu,
     stories: storiesRu,
+    messenger: messengerRu,
   },
 } as const
 
