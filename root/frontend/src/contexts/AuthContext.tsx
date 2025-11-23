@@ -74,13 +74,13 @@ const noopSetUser: Dispatch<SetUserArg> = (_value) => {
 export const AuthContext = createContext<AuthContextType>({
   isAuth: false,
   login: async () => null,
-  logout: async () => { },
+  logout: async () => {},
   user: null,
   loading: false,
   setUser: noopSetUser,
-  refresh: async () => { },
+  refresh: async () => {},
   pendingMfa: null,
-  submitMfaChallenge: async () => { },
+  submitMfaChallenge: async () => {},
   requireMfa: async () => null,
   resetEtagCache,
 })
@@ -187,7 +187,7 @@ const formatLockoutDuration = (
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -771,7 +771,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ; (async () => {
+    ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
@@ -969,7 +969,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const login = useCallback(
-    async (email: string, password: string, trustDevice?: boolean): Promise<PendingMfaState | null> => {
+    async (
+      email: string,
+      password: string,
+      trustDevice?: boolean
+    ): Promise<PendingMfaState | null> => {
       const payload = new URLSearchParams()
       payload.append("username", email.trim())
       payload.append("password", password)

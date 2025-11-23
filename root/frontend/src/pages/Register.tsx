@@ -481,18 +481,20 @@ const Register = () => {
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <span
-                  className={`${chipClass} ${minLenOk
-                    ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                    : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
-                    }`}
+                  className={`${chipClass} ${
+                    minLenOk
+                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
+                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                  }`}
                 >
                   {t("auth:register.passwordChip.minLength")}
                 </span>
                 <span
-                  className={`${chipClass} ${matchOk
-                    ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                    : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
-                    }`}
+                  className={`${chipClass} ${
+                    matchOk
+                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
+                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                  }`}
                 >
                   {t("auth:register.passwordChip.match")}
                 </span>

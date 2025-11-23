@@ -23,7 +23,7 @@ export default function Footer() {
         marginTop: location.pathname.startsWith("/messenger") ? "-64px" : undefined,
         borderTop: location.pathname.startsWith("/messenger") ? "none" : undefined,
         position: location.pathname.startsWith("/messenger") ? "relative" : undefined,
-        zIndex: location.pathname.startsWith("/messenger") ? 10 : undefined
+        zIndex: location.pathname.startsWith("/messenger") ? 10 : undefined,
       }}
     >
       <div className="footer-inner">
