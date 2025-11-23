@@ -59,6 +59,16 @@ async def get_current_user(
         expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at <= now:
         raise credentials_exception
+
+    ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
+    if ttl > 0 and session.mfa_verified_at is not None:
+        verified_at = session.mfa_verified_at
+        if verified_at.tzinfo is None:
+            verified_at = verified_at.replace(tzinfo=UTC)
+        if now - verified_at > timedelta(seconds=ttl):
+            session.mfa_verified_at = None
+            await db.commit()
+
     update_last_seen = False
     last_seen_at = session.last_seen_at
     if last_seen_at is None:
