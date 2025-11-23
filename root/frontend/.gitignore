@@ -1,0 +1,9 @@
+# Local dependencies and build outputs
+node_modules/
+dev-dist/
+dist/
+.vite/
+.vitest/
+playwright-report/
+test-results/
+blob-report/
