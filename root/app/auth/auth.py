@@ -844,6 +844,13 @@ async def confirm_totp_enrollment(
         )
         raise
     await mfa.refresh_user_mfa_preferences(db, user=user)
+    session: ActiveSession | None = getattr(request.state, "active_session", None)
+    await mfa.record_mfa_success(
+        db,
+        user=user,
+        session=session,
+        method=mfa.MFA_METHOD_TOTP,
+    )
     await db.commit()
     await db.refresh(updated)
     _audit_log(
