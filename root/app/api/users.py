@@ -741,17 +741,32 @@ async def get_users(
     request: Request,
     db: AsyncSession = Depends(get_db),
     full_name: str | None = Query(None),
+    search: str | None = Query(None),
     group_id: int | None = Query(None),
     role: str | None = Query(None),
+    limit: int | None = Query(None, ge=1, le=100),
+    offset: int | None = Query(None, ge=0),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
+    # Allow admins to list all users, or any authenticated user to search
+    if user.role != "admin" and not search and not full_name:
         raise HTTPException(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    return await crud.get_users(db, full_name=full_name, group_id=group_id, role=role)
+
+    # Use search param as full_name if provided
+    name_query = search if search else full_name
+
+    return await crud.get_users(
+        db,
+        full_name=name_query,
+        group_id=group_id,
+        role=role,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @users_router.patch("/{user_id}", response_model=schemas.UserOut)

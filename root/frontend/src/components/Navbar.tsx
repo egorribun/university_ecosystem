@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext"
 import guuLogo from "../assets/guu_logo.png"
 import SmartImage from "@/components/SmartImage"
 import NotificationsBell from "@/components/NotificationsBell"
+import MessengerButton from "@/components/MessengerButton"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useTranslation } from "react-i18next"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -250,6 +251,7 @@ const Navbar = () => {
 
           {isMobile ? (
             <div style={{ display: "flex", alignItems: "center", marginLeft: "auto", gap: "6px" }}>
+              <MessengerButton />
               <NotificationsBell />
               {isAuth && user && !loading ? (
                 <SmartImage
@@ -440,6 +442,7 @@ const Navbar = () => {
                   whiteSpace: "nowrap",
                 }}
               >
+                <MessengerButton />
                 <NotificationsBell />
                 <SmartImage
                   srcRaw={hasAvatar ? avatarSource : avatarFallback}

@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.gzip import GZipMiddleware
 
+from app.api.chat import router as chat_router
 from app.api.events import router as events_router
 from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
@@ -436,3 +437,4 @@ app.include_router(news_router)
 app.include_router(stories_router)
 app.include_router(schedule_api_router)
 app.include_router(stats_router)
+app.include_router(chat_router)

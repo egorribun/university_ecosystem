@@ -39,6 +39,7 @@ const AdminNotifications = lazy(() => import("./pages/AdminNotifications"))
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
 const ResetPassword = lazy(() => import("./pages/ResetPassword"))
 const Settings = lazy(() => import("./pages/Settings"))
+const Messenger = lazy(() => import("./pages/Messenger"))
 
 function AppContent() {
   const location = useLocation()
@@ -108,6 +109,7 @@ function AppContent() {
           <Route path="/map" element={<PrivateRoute>{wrap(<MapPage />)}</PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
+          <Route path="/messenger" element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>} />
           <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
           <Route
             path="/admin/notifications"

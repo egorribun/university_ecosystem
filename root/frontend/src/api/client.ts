@@ -381,6 +381,11 @@ api.interceptors.request.use(async (config) => {
     }
   }
 
+  // Automatically remove Content-Type for FormData to let the browser set the boundary
+  if (config.data instanceof FormData) {
+    headers.delete("Content-Type")
+  }
+
   config.headers = headers
 
   return config

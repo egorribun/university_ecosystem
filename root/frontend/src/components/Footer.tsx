@@ -15,7 +15,17 @@ export default function Footer() {
   const { t } = useTranslation(["navigation"])
 
   return (
-    <footer className="footer-root" role="contentinfo">
+    <footer
+      className="footer-root"
+      role="contentinfo"
+      style={{
+        minHeight: location.pathname.startsWith("/messenger") ? "400px" : "150px",
+        marginTop: location.pathname.startsWith("/messenger") ? "-64px" : undefined,
+        borderTop: location.pathname.startsWith("/messenger") ? "none" : undefined,
+        position: location.pathname.startsWith("/messenger") ? "relative" : undefined,
+        zIndex: location.pathname.startsWith("/messenger") ? 10 : undefined,
+      }}
+    >
       <div className="footer-inner">
         <div className="footer-grid">
           <div className="footer-brand">
