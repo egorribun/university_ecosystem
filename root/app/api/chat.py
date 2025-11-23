@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import and_, select
@@ -95,8 +95,7 @@ async def create_chat(
         )
 
     # Check if chat already exists
-    # This is a bit complex in SQL, simpler to fetch user's chats and check in python for now
-    # or use a specific query. For MVP, let's try to find a chat with exactly these 2 participants.
+    # Simpler to fetch user's chats and check in python for now.
 
     # Find chats where both users are participants
     query = (
@@ -222,7 +221,8 @@ async def send_message(
                 file_type = "video"
 
             # Create attachment record
-            # URL should be accessible from frontend. Assuming static files are served from /static
+            # URL should be accessible from frontend.
+            # Assuming static files are served from /static
             url = f"http://localhost:8000/static/uploads/{unique_filename}"
 
             attachment = Attachment(
@@ -235,7 +235,7 @@ async def send_message(
             session.add(attachment)
 
     # Update chat updated_at
-    chat.updated_at = datetime.utcnow()
+    chat.updated_at = datetime.now(timezone.utc)
     session.add(chat)
 
     await session.commit()
@@ -268,7 +268,7 @@ async def mark_read(
         and_(
             Message.chat_id == chat_id,
             Message.sender_id != current_user.id,
-            Message.read_status == False,
+            Message.read_status.is_(False),
         )
     )
     result = await session.execute(query)
