@@ -235,7 +235,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     if (fileInputRef.current) {
       switch (type) {
         case "photo":
-          fileInputRef.current.accept = "image/*"
+          fileInputRef.current.accept = "image/png,image/jpeg,image/gif,image/webp"
           break
         case "document":
           fileInputRef.current.accept = ".pdf,.doc,.docx,.txt"
@@ -251,7 +251,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
-      setSelectedFiles((prev) => [...prev, ...Array.from(files)])
+      const filteredFiles = Array.from(files).filter(
+        (file) => !(file.type === "image/svg+xml")
+      )
+      setSelectedFiles((prev) => [...prev, ...filteredFiles])
     }
     // Reset input value to allow selecting the same file again
     if (fileInputRef.current) {
@@ -267,14 +270,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     <div className="flex-shrink-0 p-4 bg-white dark:bg-[#0b111e] border-t border-gray-200 dark:border-gray-800 z-10">
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-2 custom-scrollbar">
-          {selectedFiles.map((file, index) => (
-            <div key={index} className="relative flex-shrink-0 group">
-              {file.type.startsWith("image/") ? (
-                <img
-                  src={URL.createObjectURL(file)}
-                  alt={file.name}
-                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                />
+          {selectedFiles.map((file, index) =>
+            file.type === "image/svg+xml" ? null : (
+              <div key={index} className="relative flex-shrink-0 group">
+                {file.type.startsWith("image/") ? (
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                  />
               ) : (
                 <div className="w-16 h-16 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                   <svg
