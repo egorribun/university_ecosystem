@@ -65,10 +65,11 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               onSelect(contact.id)
             }
           }}
-          className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${selectedId === contact.id
+          className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${
+            selectedId === contact.id
               ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
               : "hover:bg-gray-100 dark:hover:bg-gray-800"
-            }`}
+          }`}
         >
           <div className="relative flex-shrink-0">
             <img
@@ -137,10 +138,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.isMe ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[75%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm text-sm md:text-base relative group ${msg.isMe
+              className={`max-w-[75%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm text-sm md:text-base relative group ${
+                msg.isMe
                   ? "bg-blue-600 text-white rounded-br-none"
                   : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none border border-gray-100 dark:border-gray-700"
-                }`}
+              }`}
             >
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="mb-2 space-y-2">
@@ -183,8 +185,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
               )}
               <p>{msg.text}</p>
               <span
-                className={`text-[10px] block text-right mt-1 opacity-70 ${msg.isMe ? "text-blue-100" : "text-gray-400"
-                  }`}
+                className={`text-[10px] block text-right mt-1 opacity-70 ${
+                  msg.isMe ? "text-blue-100" : "text-gray-400"
+                }`}
               >
                 {msg.timestamp}
               </span>
@@ -249,9 +252,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     const files = e.target.files
     if (files && files.length > 0) {
       const filteredFiles = Array.from(files).filter(
-        (file) =>
-          !(file.type === "image/svg+xml") &&
-          !file.name.toLowerCase().endsWith(".svg")
+        (file) => !(file.type === "image/svg+xml") && !file.name.toLowerCase().endsWith(".svg")
       )
       setSelectedFiles((prev) => [...prev, ...filteredFiles])
     }
@@ -270,52 +271,48 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) =>
-            (file.type === "image/svg+xml" ||
-              file.name.toLowerCase().endsWith(".svg"))
-              ? null
-              : (
-                <div key={index} className="relative flex-shrink-0 group">
-                  {file.type.startsWith("image/")
-                    ? (
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={file.name}
-                        className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                      />
-                    )
-                    : (
-                      <div className="w-16 h-16 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={1.5}
-                          stroke="currentColor"
-                          className="w-8 h-8 text-gray-400"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                  >
+            file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg") ? null : (
+              <div key={index} className="relative flex-shrink-0 group">
+                {file.type.startsWith("image/") ? (
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                  />
+                ) : (
+                  <div className="w-16 h-16 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-3 h-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="w-8 h-8 text-gray-400"
                     >
-                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                      />
                     </svg>
-                  </button>
-                </div>
-              ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => removeFile(index)}
+                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="w-3 h-3"
+                  >
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+            )
+          )}
         </div>
       )}
       <div className="flex items-end gap-2 bg-gray-100 dark:bg-gray-800/50 p-2 rounded-2xl border border-transparent focus-within:border-blue-500/50 focus-within:bg-white dark:focus-within:bg-gray-800 transition-all duration-200">
@@ -419,10 +416,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         <button
           onClick={handleSend}
           disabled={!text.trim() && selectedFiles.length === 0}
-          className={`p-2 rounded-xl transition-all duration-200 ${text.trim() || selectedFiles.length > 0
+          className={`p-2 rounded-xl transition-all duration-200 ${
+            text.trim() || selectedFiles.length > 0
               ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transform hover:scale-105"
               : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
-            }`}
+          }`}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
