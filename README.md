@@ -203,6 +203,15 @@ is revoked the account's MFA requirements are cleared automatically until a new 
 added. Because recovery codes are no longer issued or accepted, administrators should ensure
 everyone keeps their authenticator registered before enabling "MFA required" on an account.
 
+Key environment variables for TOTP MFA:
+
+- `MFA_ENABLED` toggles whether users may enroll or must satisfy TOTP challenges.
+- `MFA_TOTP_ISSUER` controls the issuer/label presented by authenticator apps.
+- `MFA_CHALLENGE_TTL_SECONDS` sets how long a TOTP challenge remains valid.
+- `MFA_CHALLENGE_MAX_ATTEMPTS` caps incorrect code attempts per challenge.
+- `MFA_STEP_UP_TTL_SECONDS` defines how long a successful step-up remains trusted.
+- `MFA_TOTP_ATTEMPT_LIMIT` caps failed verification attempts per user.
+
 ## Image uploads
 
 Uploaded profile photos and news images are limited to **5&nbsp;MB**. The backend
