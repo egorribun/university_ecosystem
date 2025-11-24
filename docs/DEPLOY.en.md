@@ -181,6 +181,7 @@ server {
   - For a Unix socket, provide the path via `EVENT_FILE_SCANNER_SOCKET` (takes precedence over host/port).
   - The connection timeout is configured via `EVENT_FILE_SCANNER_TIMEOUT` (seconds).
   - The `/healthz` endpoint verifies availability with a lightweight `PING` command and does not upload probe data.
+  - It also marks `db` as `error` when `alembic_version` differs from the current `head`, and `notification_queue` as `error` when the `notification_queue_jobs` table is missing or the queue schema is not applied.
   - When the scanner is unavailable, upload requests return HTTP 503, and when a threat is detected they return HTTP 422 with a localized message.
 - Email delivery (such as password resets) must be non-blocking. The backend uses `anyio.to_thread.run_sync` so SMTP calls run in a separate thread and do not block the event loop; avoid calling SMTP directly from coroutines when customizing.
 

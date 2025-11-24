@@ -68,6 +68,10 @@ the API and worker containers start. You can rerun migrations on demand with:
 docker compose run --rm backend alembic upgrade head
 ```
 
+> The `/healthz` endpoint reports `db=error` when the `alembic_version` table
+> does not match the current Alembic `head`, and `notification_queue=error`
+> when the `notification_queue_jobs` table or related schema is missing.
+
 ### 3. Run the full stack with Docker (recommended)
 
 ```bash

@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.gzip import GZipMiddleware
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.api.chat import router as chat_router
 from app.api.events import router as events_router
 from app.api.news import router as news_router
@@ -29,7 +33,6 @@ from app.core.observability import configure_observability, shutdown_observabili
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.deps.cache import get_cache, shutdown_cache
-from app.models.models import NotificationQueueJob
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
 from app.routers.schedule import router as schedule_router
@@ -303,33 +306,21 @@ async def root():
     return {"status": "ok"}
 
 
-_MISSING_TABLE_SQLSTATES = {
-    "42P01",  # PostgreSQL undefined_table
-    "42S02",  # MySQL/MariaDB ER_NO_SUCH_TABLE
-}
+@lru_cache
+def _get_alembic_script() -> ScriptDirectory:
+    project_root = Path(__file__).resolve().parents[1]
+    config = Config(str(project_root / "alembic.ini"))
+    config.set_main_option("script_location", str(project_root / "alembic"))
+    return ScriptDirectory.from_config(config)
 
 
-def _is_missing_table_error(exc: OperationalError) -> bool:
-    """Return True if the OperationalError represents a missing table."""
-
-    orig = getattr(exc, "orig", None)
-    if orig is not None:
-        sqlstate = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
-        # Keep this list in sync with supported backends' SQLSTATEs.
-        if sqlstate in _MISSING_TABLE_SQLSTATES:
-            return True
-
-        message = str(orig).lower()
-    else:
-        message = str(exc).lower()
-
-    missing_table_fragments = (
-        "no such table",
-        "does not exist",
-        "doesn't exist",
-        "unknown table",
-    )
-    return any(fragment in message for fragment in missing_table_fragments)
+async def _migrations_are_current() -> bool:
+    script = _get_alembic_script()
+    expected_heads = set(script.get_heads())
+    async with engine.connect() as conn:
+        result = await conn.execute(text("SELECT version_num FROM alembic_version"))
+        current_versions = {row[0] for row in result}
+    return current_versions == expected_heads
 
 
 @app.get("/healthz")
@@ -342,7 +333,16 @@ async def healthz():
             await conn.execute(text("SELECT 1"))
     except Exception:
         db_status = "error"
+    else:
+        try:
+            migrations_current = await _migrations_are_current()
+            if not migrations_current:
+                db_status = "error"
+        except Exception:
+            db_status = "error"
     statuses["db"] = db_status
+    if db_status == "error":
+        statuses["db_migrations"] = "error"
 
     cache_status = "disabled"
     try:
@@ -390,12 +390,9 @@ async def healthz():
     else:
         try:
             async with async_session() as session:
-                await session.execute(
-                    select(func.count()).select_from(NotificationQueueJob)
-                )
-        except OperationalError as exc:
-            if not _is_missing_table_error(exc):
-                queue_status = "error"
+                await session.execute(text("SELECT 1 FROM notification_queue_jobs"))
+        except OperationalError:
+            queue_status = "error"
         except Exception:
             queue_status = "error"
     statuses["notification_queue"] = queue_status
