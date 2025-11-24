@@ -233,6 +233,13 @@ class UserService:
         )
         if reset_stats is not None:
             if reset_stats.changed:
+                # Log MFA reset audit event
+                _audit_log(
+                    "users.mfa.reset",
+                    request,
+                    user_id=updated_user.id,
+                    reason="admin_reset",
+                )
                 target_locale = resolve_locale(request=request, user=updated_user)
                 title = translate("notifications.mfa.reset.title", locale=target_locale)
                 body = translate("notifications.mfa.reset.body", locale=target_locale)
