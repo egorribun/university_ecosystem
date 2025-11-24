@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.api.users import _hash_token
+from app.services.auth_service import _hash_token
 from app.auth.security import get_password_hash
 from app.models import models
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES

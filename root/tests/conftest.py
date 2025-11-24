@@ -208,7 +208,7 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        main, "start_notifications_scheduler", _start_notifications_scheduler
+        "app.core.lifespan.start_notifications_scheduler", _start_notifications_scheduler
     )
 
     async def _start_notifications_retention_scheduler(
@@ -220,8 +220,7 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        main,
-        "start_notifications_retention_scheduler",
+        "app.core.lifespan.start_notifications_retention_scheduler",
         _start_notifications_retention_scheduler,
     )
 
@@ -234,7 +233,7 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        main, "start_session_cleanup_scheduler", _start_session_cleanup_scheduler
+        "app.core.lifespan.start_session_cleanup_scheduler", _start_session_cleanup_scheduler
     )
 
     async def _start_story_cleanup_scheduler(
@@ -246,7 +245,7 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        main, "start_story_cleanup_scheduler", _start_story_cleanup_scheduler
+        "app.core.lifespan.start_story_cleanup_scheduler", _start_story_cleanup_scheduler
     )
 
     async def _start_password_reset_cleanup_scheduler(
@@ -258,10 +257,14 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        main,
-        "start_password_reset_cleanup_scheduler",
+        "app.core.lifespan.start_password_reset_cleanup_scheduler",
         _start_password_reset_cleanup_scheduler,
     )
+
+    async def _mock_migrations_current() -> bool:
+        return True
+
+    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)
 
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
