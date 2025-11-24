@@ -229,7 +229,6 @@ class UserService:
             user_id=updated_user.id,
             reason="admin_update",
         )
-        reset_requested = bool(getattr(data, "reset_mfa", False))
         if reset_stats is not None:
             if reset_stats.changed:
                 target_locale = resolve_locale(request=request, user=updated_user)
