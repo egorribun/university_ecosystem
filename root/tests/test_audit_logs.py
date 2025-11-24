@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services.auth_service import _hash_token
 from app.auth.security import get_password_hash
 from app.models import models
+from app.services.auth_service import _hash_token
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
 pytestmark = pytest.mark.anyio("asyncio")

@@ -21,7 +21,6 @@ from app.api.deps import (
     require_fresh_mfa,
     require_fresh_mfa_for_enrollment,
 )
-from app.services.auth_service import attach_pending_email
 from app.auth import mfa
 from app.auth.security import (
     create_access_token,
@@ -47,6 +46,7 @@ from app.schemas.schemas import (
     UserCreate,
     UserOut,
 )
+from app.services.auth_service import attach_pending_email
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")

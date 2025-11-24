@@ -109,9 +109,12 @@ async def test_email_change_requires_confirmation(
         return None
 
     monkeypatch.setattr(
-        "app.services.auth_service.secrets.token_urlsafe", lambda *_args, **_kwargs: token_value
+        "app.services.auth_service.secrets.token_urlsafe",
+        lambda *_args, **_kwargs: token_value,
     )
-    monkeypatch.setattr("app.services.auth_service._send_reset_email_blocking", fake_blocking)
+    monkeypatch.setattr(
+        "app.services.auth_service._send_reset_email_blocking", fake_blocking
+    )
 
     response = await async_client.post(
         "/users/me/email",
@@ -443,8 +446,12 @@ async def test_forgot_password_sends_email_via_thread(
     def fake_blocking(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.services.auth_service.anyio.to_thread.run_sync", fake_run_sync)
-    monkeypatch.setattr("app.services.auth_service._send_reset_email_blocking", fake_blocking)
+    monkeypatch.setattr(
+        "app.services.auth_service.anyio.to_thread.run_sync", fake_run_sync
+    )
+    monkeypatch.setattr(
+        "app.services.auth_service._send_reset_email_blocking", fake_blocking
+    )
 
     response = await async_client.post("/password/forgot", json={"email": user.email})
 

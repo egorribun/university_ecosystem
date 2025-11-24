@@ -10,7 +10,10 @@ from app import crud
 from app.api.utils import save_upload
 from app.localization import resolve_locale, translate
 from app.models import models
-from app.models.user_loaders import USER_MFA_LOAD_OPTIONS, ensure_mfa_relationships_loaded
+from app.models.user_loaders import (
+    USER_MFA_LOAD_OPTIONS,
+    ensure_mfa_relationships_loaded,
+)
 from app.schemas import schemas
 from app.services.auth_service import attach_pending_email
 from app.services.notifications import create_notifications_for_users
@@ -90,7 +93,9 @@ class UserService:
         request: Request,
     ) -> models.User:
         locale = resolve_locale(request=request, user=user)
-        url = await save_upload(file, "avatars", f"user_{user.id}_avatar", locale=locale)
+        url = await save_upload(
+            file, "avatars", f"user_{user.id}_avatar", locale=locale
+        )
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         previous_url = db_user.avatar_url
         db_user.avatar_url = url
@@ -219,7 +224,10 @@ class UserService:
             )
         updated_user, reset_stats = await crud.admin_update_user(db, user_id, data)
         _audit_log(
-            "users.admin_update", request, user_id=updated_user.id, reason="admin_update"
+            "users.admin_update",
+            request,
+            user_id=updated_user.id,
+            reason="admin_update",
         )
         reset_requested = bool(getattr(data, "reset_mfa", False))
         if reset_stats is not None:

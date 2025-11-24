@@ -3,7 +3,6 @@ import hashlib
 import hmac
 import json
 import logging
-from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -24,7 +23,6 @@ from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
 from app.services.auth_service import AuthService, attach_pending_email
-from app.services.notifications import create_notifications_for_users
 from app.services.user_service import UserService
 from app.utils.ratelimit import sensitive_route_limit
 
@@ -126,7 +124,9 @@ async def reset_password(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    await AuthService.perform_password_reset(db, payload.token, payload.password, request)
+    await AuthService.perform_password_reset(
+        db, payload.token, payload.password, request
+    )
     return {"ok": True}
 
 
@@ -269,6 +269,7 @@ async def update_user_admin(
     user: models.User = Depends(get_current_user),
 ):
     return await UserService.admin_update_user(db, user_id, data, request, user)
+
 
 router.include_router(users_router)
 router.include_router(password_router)

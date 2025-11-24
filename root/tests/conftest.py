@@ -208,7 +208,8 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_scheduler", _start_notifications_scheduler
+        "app.core.lifespan.start_notifications_scheduler",
+        _start_notifications_scheduler,
     )
 
     async def _start_notifications_retention_scheduler(
@@ -233,7 +234,8 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        "app.core.lifespan.start_session_cleanup_scheduler", _start_session_cleanup_scheduler
+        "app.core.lifespan.start_session_cleanup_scheduler",
+        _start_session_cleanup_scheduler,
     )
 
     async def _start_story_cleanup_scheduler(
@@ -245,7 +247,8 @@ async def async_client(
         return _stop
 
     monkeypatch.setattr(
-        "app.core.lifespan.start_story_cleanup_scheduler", _start_story_cleanup_scheduler
+        "app.core.lifespan.start_story_cleanup_scheduler",
+        _start_story_cleanup_scheduler,
     )
 
     async def _start_password_reset_cleanup_scheduler(

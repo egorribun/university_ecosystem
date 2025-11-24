@@ -14,7 +14,10 @@ from app.auth.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.localization import resolve_locale, translate
 from app.models import models
-from app.models.user_loaders import USER_MFA_LOAD_OPTIONS, ensure_mfa_relationships_loaded
+from app.models.user_loaders import (
+    USER_MFA_LOAD_OPTIONS,
+    ensure_mfa_relationships_loaded,
+)
 from app.schemas import schemas
 from app.services.session_cleanup import revoke_sessions_matching
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
@@ -233,7 +236,9 @@ class AuthService:
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=translate("errors.password.invalid_or_expired_link", locale=locale),
+                detail=translate(
+                    "errors.password.invalid_or_expired_link", locale=locale
+                ),
             )
         expires_at = rec.expires_at
         if expires_at.tzinfo is None:
@@ -248,7 +253,9 @@ class AuthService:
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=translate("errors.password.invalid_or_expired_link", locale=locale),
+                detail=translate(
+                    "errors.password.invalid_or_expired_link", locale=locale
+                ),
             )
         user = await db.get(models.User, rec.user_id)
         if not user or not getattr(user, "is_active", True):
@@ -266,7 +273,9 @@ class AuthService:
         try:
             user.hashed_password = get_password_hash(new_password, locale=locale)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            )
         rec.used = True
         await db.execute(
             update(models.PasswordResetToken)
@@ -334,10 +343,10 @@ class AuthService:
         await db.refresh(db_user)
         await ensure_mfa_relationships_loaded(db, db_user)
         await attach_pending_email(db, db_user)
-        
+
         # Also attach to the current user object if it's different instance
         if user is not db_user:
-             await attach_pending_email(db, user)
+            await attach_pending_email(db, user)
 
         base = settings.app_base_url_clean
         confirm_link = f"{base}/settings/email-confirm?token={token}"
@@ -378,7 +387,9 @@ class AuthService:
         if record is None or record.user_id != user.id or record.used:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=translate("errors.users.email_confirmation_invalid", locale=locale),
+                detail=translate(
+                    "errors.users.email_confirmation_invalid", locale=locale
+                ),
             )
 
         expires_at = record.expires_at
@@ -387,7 +398,9 @@ class AuthService:
         if expires_at <= now:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=translate("errors.users.email_confirmation_invalid", locale=locale),
+                detail=translate(
+                    "errors.users.email_confirmation_invalid", locale=locale
+                ),
             )
 
         existing = await db.execute(
@@ -410,7 +423,9 @@ class AuthService:
             await attach_pending_email(db, user)
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=translate("errors.users.email_confirmation_conflict", locale=locale),
+                detail=translate(
+                    "errors.users.email_confirmation_conflict", locale=locale
+                ),
             )
 
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
@@ -434,8 +449,8 @@ class AuthService:
         await ensure_mfa_relationships_loaded(db, db_user)
         await attach_pending_email(db, db_user)
         if user is not db_user:
-             await attach_pending_email(db, user)
-        
+            await attach_pending_email(db, user)
+
         # Update current user object as well for immediate response
         user.email = record.new_email
 
@@ -489,10 +504,10 @@ class AuthService:
         await db.commit()
         await db.refresh(db_user)
         await ensure_mfa_relationships_loaded(db, db_user)
-        
+
         # Update current user object
         user.hashed_password = hashed_password
-        
+
         _audit_log(
             "users.password.changed",
             request,

@@ -53,6 +53,7 @@ except Exception:
 
 app = FastAPI(lifespan=lifespan)
 
+
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
     return JSONResponse(
@@ -63,6 +64,7 @@ async def app_exception_handler(request: Request, exc: AppException):
             "payload": exc.payload,
         },
     )
+
 
 configure_observability(app, engine=engine)
 configure_metrics(app)
