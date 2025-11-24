@@ -151,15 +151,16 @@ def _audit_log(
     **kwargs: Any,
 ) -> None:
     # Helper to replicate the audit logging from users.py
-    # Ideally this should be a shared utility, but for now we'll use the logger
-    extra = {
+    # Log JSON payload for test compatibility
+    import json
+    payload = {
         "event": event,
-        "user_id": user_id,
+        "user_id": str(user_id) if user_id else None,
         "ip": request.client.host if request.client else None,
         "path": request.url.path,
         **kwargs,
     }
-    audit_logger.log(level, event, extra=extra)
+    audit_logger.log(level, json.dumps(payload), extra=payload)
 
 
 class AuthService:

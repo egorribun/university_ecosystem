@@ -23,8 +23,12 @@ from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
 from app.services.auth_service import AuthService, attach_pending_email
+from app.services.notifications import create_notifications_for_users
 from app.services.user_service import UserService
 from app.utils.ratelimit import sensitive_route_limit
+
+# Export for test compatibility
+__all__ = ["create_notifications_for_users"]
 
 logger = logging.getLogger(__name__)
 

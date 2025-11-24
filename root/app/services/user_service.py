@@ -30,14 +30,16 @@ def _audit_log(
     level: int = logging.INFO,
     **kwargs: Any,
 ) -> None:
-    extra = {
+    import json
+
+    payload = {
         "event": event,
-        "user_id": user_id,
+        "user_id": str(user_id) if user_id else None,
         "ip": request.client.host if request.client else None,
         "path": request.url.path,
         **kwargs,
     }
-    audit_logger.log(level, event, extra=extra)
+    audit_logger.log(level, json.dumps(payload), extra=payload)
 
 
 class UserService:
