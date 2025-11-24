@@ -1,107 +1,105 @@
-import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import Skeleton from "@mui/material/Skeleton";
-import { useAuth } from "../contexts/AuthContext";
-import guuLogo from "../assets/guu_logo.png";
-import SmartImage from "@/components/SmartImage";
-import NotificationsBell from "@/components/NotificationsBell";
-import MessengerButton from "@/components/MessengerButton";
-import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders";
-import { useTranslation } from "react-i18next";
-import useMediaQuery from "@/hooks/useMediaQuery";
-import useFocusTrap from "@/hooks/useFocusTrap";
-import useScrollRestoration from "@/hooks/useScrollRestoration";
-import { useAppShell } from "@/contexts/AppShellContext";
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import ArticleIcon from "@mui/icons-material/Article";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import EventNoteIcon from "@mui/icons-material/EventNote";
-import TimelineIcon from "@mui/icons-material/Timeline";
-import MapIcon from "@mui/icons-material/Map";
-import NotificationsIcon from "@mui/icons-material/Notifications";
-import AutoStoriesIcon from "@mui/icons-material/AutoStories";
-import PeopleIcon from "@mui/icons-material/People";
-import SettingsIcon from "@mui/icons-material/Settings";
-import { cn } from "@/utils/cn";
-import { MobileMenu } from "@/components/navbar/MobileMenu";
+import { Link, useNavigate, useLocation } from "react-router-dom"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import Skeleton from "@mui/material/Skeleton"
+import { useAuth } from "../contexts/AuthContext"
+import guuLogo from "../assets/guu_logo.png"
+import SmartImage from "@/components/SmartImage"
+import NotificationsBell from "@/components/NotificationsBell"
+import MessengerButton from "@/components/MessengerButton"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import useFocusTrap from "@/hooks/useFocusTrap"
+import useScrollRestoration from "@/hooks/useScrollRestoration"
+import { useAppShell } from "@/contexts/AppShellContext"
+import DashboardIcon from "@mui/icons-material/Dashboard"
+import ArticleIcon from "@mui/icons-material/Article"
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
+import EventNoteIcon from "@mui/icons-material/EventNote"
+import TimelineIcon from "@mui/icons-material/Timeline"
+import MapIcon from "@mui/icons-material/Map"
+import NotificationsIcon from "@mui/icons-material/Notifications"
+import AutoStoriesIcon from "@mui/icons-material/AutoStories"
+import PeopleIcon from "@mui/icons-material/People"
+import SettingsIcon from "@mui/icons-material/Settings"
+import { cn } from "@/utils/cn"
+import { MobileMenu } from "@/components/navbar/MobileMenu"
 
-const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL;
+const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL
 
 function parseCacheVersion(input: unknown): number | undefined {
-  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "number" && Number.isFinite(input)) return input
   if (typeof input === "string") {
-    const numeric = Number(input);
-    if (!Number.isNaN(numeric)) return numeric;
-    const parsed = Date.parse(input);
-    if (!Number.isNaN(parsed)) return parsed;
+    const numeric = Number(input)
+    if (!Number.isNaN(numeric)) return numeric
+    const parsed = Date.parse(input)
+    if (!Number.isNaN(parsed)) return parsed
   }
-  return undefined;
+  return undefined
 }
 
 const Navbar = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const pathname = location.pathname;
-  const { user, isAuth, loading } = useAuth();
-  const { t } = useTranslation(["navigation"]);
-  const { setOverlayState } = useAppShell();
+  const navigate = useNavigate()
+  const location = useLocation()
+  const pathname = location.pathname
+  const { user, isAuth, loading } = useAuth()
+  const { t } = useTranslation(["navigation"])
+  const { setOverlayState } = useAppShell()
 
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false)
 
-  const isMobile = useMediaQuery("(max-width: 1350px)");
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(
-    location.pathname
-  );
-  const prevIsMobile = useRef(isMobile);
-  const navRef = useRef<HTMLElement | null>(null);
-  const burgerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const isMobile = useMediaQuery("(max-width: 1350px)")
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(location.pathname)
+  const prevIsMobile = useRef(isMobile)
+  const navRef = useRef<HTMLElement | null>(null)
+  const burgerBtnRef = useRef<HTMLButtonElement | null>(null)
   const drawerTrapRef = useFocusTrap<HTMLDivElement>({
     active: mobileMenu && isMobile,
     onDeactivate: () => setMobileMenu(false),
-  });
+  })
 
   useEffect(() => {
-    if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false);
-    prevIsMobile.current = isMobile;
-  }, [isMobile]);
+    if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false)
+    prevIsMobile.current = isMobile
+  }, [isMobile])
 
   useEffect(() => {
-    setMobileMenu(false);
-  }, [location.pathname]);
+    setMobileMenu(false)
+  }, [location.pathname])
 
   useEffect(() => {
     if (mobileMenu && isMobile) {
       setOverlayState("mobile-drawer", {
         scrollLocked: true,
         blurred: !prefersReducedMotion,
-      });
+      })
     } else {
-      setOverlayState("mobile-drawer", null);
+      setOverlayState("mobile-drawer", null)
     }
     return () => {
-      setOverlayState("mobile-drawer", null);
-    };
-  }, [isMobile, mobileMenu, prefersReducedMotion, setOverlayState]);
+      setOverlayState("mobile-drawer", null)
+    }
+  }, [isMobile, mobileMenu, prefersReducedMotion, setOverlayState])
 
   useEffect(() => {
-    if (prefersReducedMotion) return;
-    navRef.current?.classList.add("navbar-animate-in");
-  }, [prefersReducedMotion]);
+    if (prefersReducedMotion) return
+    navRef.current?.classList.add("navbar-animate-in")
+  }, [prefersReducedMotion])
 
   const avatarCacheV = useMemo(() => {
     const raw =
       (user as any)?.avatar_updated_at ??
       (user as any)?.avatar_version ??
       (user as any)?.updated_at ??
-      undefined;
-    return parseCacheVersion(raw);
-  }, [user]);
+      undefined
+    return parseCacheVersion(raw)
+  }, [user])
 
-  const avatarFallback = AVATAR_FALLBACK;
+  const avatarFallback = AVATAR_FALLBACK
 
-  const avatarSource = user?.avatar_url || "";
-  const hasAvatar = Boolean(avatarSource);
+  const avatarSource = user?.avatar_url || ""
+  const hasAvatar = Boolean(avatarSource)
 
   const menuLinks = useMemo(() => {
     const base = [
@@ -111,66 +109,62 @@ const Navbar = () => {
       { to: "/events", label: t("navigation:menu.events"), icon: EventNoteIcon },
       { to: "/activity", label: t("navigation:menu.activity"), icon: TimelineIcon },
       { to: "/map", label: t("navigation:menu.map"), icon: MapIcon },
-    ];
+    ]
     if (user?.role === "admin") {
       base.push({
         to: "/admin/notifications",
         label: t("navigation:menu.notificationsAdmin"),
         icon: NotificationsIcon,
-      });
+      })
       base.push({
         to: "/admin/stories",
         label: t("navigation:menu.stories"),
         icon: AutoStoriesIcon,
-      });
+      })
       base.push({
         to: "/admin/users",
         label: t("navigation:menu.users"),
         icon: PeopleIcon,
-      });
+      })
     }
-    return base;
-  }, [t, user?.role]);
+    return base
+  }, [t, user?.role])
 
   const profileAlt = user?.full_name
     ? t("navigation:aria.profileAvatarNamed", { name: user.full_name })
-    : t("navigation:aria.profileAvatar");
-  const profileTitle = t("navigation:aria.openProfile");
+    : t("navigation:aria.profileAvatar")
+  const profileTitle = t("navigation:aria.openProfile")
 
   const isActive = useCallback(
     (to: string) => {
       if (to === "/dashboard") {
-        return (
-          pathname === "/" ||
-          pathname === "/dashboard" ||
-          pathname.startsWith("/dashboard/")
-        );
+        return pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/")
       }
-      return pathname === to;
+      return pathname === to
     },
     [pathname]
-  );
+  )
 
-  const isSameTarget = useCallback((to: string) => isSamePath(to), [isSamePath]);
+  const isSameTarget = useCallback((to: string) => isSamePath(to), [isSamePath])
 
   const go = useCallback(
     (to: string) => {
       if (isSameTarget(to)) {
-        scrollToTop(prefersReducedMotion ? "auto" : "smooth");
+        scrollToTop(prefersReducedMotion ? "auto" : "smooth")
       } else {
-        markScrollFromBottom();
-        navigate(to);
+        markScrollFromBottom()
+        navigate(to)
       }
     },
     [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]
-  );
+  )
 
-  const logoWrapSize = isMobile ? 44 : 52;
-  const logoImgSize = isMobile ? 34 : 42;
-  const titleFont = isMobile ? "clamp(16px, 5.2vw, 20px)" : "clamp(18px, 1.6vw, 22px)";
-  const rightNameFont = isMobile ? "clamp(14px, 4.5vw, 16px)" : "1.01rem";
-  const avatarSize = isMobile ? "clamp(30px, 8vw, 36px)" : "36px";
-  const burgerBtnSize = isMobile ? "clamp(44px, 10.5vw, 48px)" : "40px";
+  const logoWrapSize = isMobile ? 44 : 52
+  const logoImgSize = isMobile ? 34 : 42
+  const titleFont = isMobile ? "clamp(16px, 5.2vw, 20px)" : "clamp(18px, 1.6vw, 22px)"
+  const rightNameFont = isMobile ? "clamp(14px, 4.5vw, 16px)" : "1.01rem"
+  const avatarSize = isMobile ? "clamp(30px, 8vw, 36px)" : "36px"
+  const burgerBtnSize = isMobile ? "clamp(44px, 10.5vw, 48px)" : "40px"
 
   return (
     <>
@@ -195,8 +189,8 @@ const Navbar = () => {
             onPointerDown={markScrollFromBottom}
             onClick={(e) => {
               if (isSameTarget("/dashboard")) {
-                e.preventDefault();
-                scrollToTop(prefersReducedMotion ? "auto" : "smooth");
+                e.preventDefault()
+                scrollToTop(prefersReducedMotion ? "auto" : "smooth")
               }
             }}
             style={{ gap: isMobile ? "8px" : "10px" }}
@@ -264,9 +258,7 @@ const Navbar = () => {
                 }}
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
-                  mobileMenu
-                    ? t("navigation:aria.closeMenu")
-                    : t("navigation:aria.openMenu")
+                  mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
                 }
                 aria-expanded={mobileMenu}
                 aria-controls="mobile-drawer"
@@ -333,8 +325,8 @@ const Navbar = () => {
                     onPointerDown={markScrollFromBottom}
                     onClick={(e) => {
                       if (isSameTarget(item.to)) {
-                        e.preventDefault();
-                        scrollToTop(prefersReducedMotion ? "auto" : "smooth");
+                        e.preventDefault()
+                        scrollToTop(prefersReducedMotion ? "auto" : "smooth")
                       }
                     }}
                   >
@@ -426,7 +418,7 @@ const Navbar = () => {
         />
       )}
     </>
-  );
-};
+  )
+}
 
-export default Navbar;
+export default Navbar

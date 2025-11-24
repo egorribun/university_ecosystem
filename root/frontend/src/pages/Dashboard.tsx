@@ -1,113 +1,113 @@
-import { useMemo, useCallback, type CSSProperties } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useCallback, type CSSProperties } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
+import { useQueryClient } from "@tanstack/react-query"
 
-import Layout from "../components/Layout";
-import PageFadeIn from "../components/PageFadeIn";
-import DashboardStories from "@/components/DashboardStories";
-import WeatherWidget from "@/components/WeatherWidget";
-import { Badge, Button, Card } from "@/components/ui";
-import { useAuth } from "../contexts/AuthContext";
-import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext";
-import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories";
-import { useClock } from "@/hooks/useClock";
-import { cn } from "@/utils/cn";
-import type { StoryItem } from "@/types/Story";
+import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
+import DashboardStories from "@/components/DashboardStories"
+import WeatherWidget from "@/components/WeatherWidget"
+import { Badge, Button, Card } from "@/components/ui"
+import { useAuth } from "../contexts/AuthContext"
+import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
+import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories"
+import { useClock } from "@/hooks/useClock"
+import { cn } from "@/utils/cn"
+import type { StoryItem } from "@/types/Story"
 
 // Extracted Components
-import { ScheduleCard } from "@/components/dashboard/ScheduleCard";
-import { NewsCard } from "@/components/dashboard/NewsCard";
-import { EventsCard } from "@/components/dashboard/EventsCard";
+import { ScheduleCard } from "@/components/dashboard/ScheduleCard"
+import { NewsCard } from "@/components/dashboard/NewsCard"
+import { EventsCard } from "@/components/dashboard/EventsCard"
 
 const fadeDelayStyle = (value: string): CSSProperties =>
-  ({ "--fade-delay": value }) as CSSProperties;
+  ({ "--fade-delay": value }) as CSSProperties
 
 function getGreetingKey(hour: number): "morning" | "afternoon" | "evening" | "night" {
-  if (hour >= 4 && hour < 12) return "morning";
-  if (hour >= 12 && hour < 17) return "afternoon";
-  if (hour >= 17 && hour <= 23) return "evening";
-  return "night";
+  if (hour >= 4 && hour < 12) return "morning"
+  if (hour >= 12 && hour < 17) return "afternoon"
+  if (hour >= 17 && hour <= 23) return "evening"
+  return "night"
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const isNarrow = useMediaQuery("(max-width:1100px)");
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const navigate = useNavigate();
-  const { language } = useLanguage();
-  const locale = getLocaleForLanguage(language);
-  const { t } = useTranslation(["dashboard", "common", "navigation"]);
-  const { hh, mm, dateStr, time } = useClock(locale);
+  const { user } = useAuth()
+  const isNarrow = useMediaQuery("(max-width:1100px)")
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const navigate = useNavigate()
+  const { language } = useLanguage()
+  const locale = getLocaleForLanguage(language)
+  const { t } = useTranslation(["dashboard", "common", "navigation"])
+  const { hh, mm, dateStr, time } = useClock(locale)
 
-  const greetingKey = useMemo(() => getGreetingKey(time.getHours()), [time]);
-  const greeting = t(`dashboard:greeting.${greetingKey}`);
+  const greetingKey = useMemo(() => getGreetingKey(time.getHours()), [time])
+  const greeting = t(`dashboard:greeting.${greetingKey}`)
 
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient()
 
-  const dashboardStoriesQuery = useDashboardStories();
-  const stories: StoryItem[] = dashboardStoriesQuery.data ?? [];
-  const loadingStories = dashboardStoriesQuery.isLoading && stories.length === 0;
+  const dashboardStoriesQuery = useDashboardStories()
+  const stories: StoryItem[] = dashboardStoriesQuery.data ?? []
+  const loadingStories = dashboardStoriesQuery.isLoading && stories.length === 0
 
   const prefetchStories = useCallback(() => {
-    void prefetchDashboardStories(queryClient);
-  }, [queryClient]);
+    void prefetchDashboardStories(queryClient)
+  }, [queryClient])
 
   const handleStoryOpen = useCallback(() => {
-    prefetchStories();
-  }, [prefetchStories]);
+    prefetchStories()
+  }, [prefetchStories])
 
   const headerGradientClass = cn(
     "transition-[background] duration-700",
     isNarrow
       ? "bg-[linear-gradient(135deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
       : "bg-[linear-gradient(125deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
-  );
+  )
 
   const heroSectionClass = cn(
     "relative flex min-h-screen w-full flex-col overflow-hidden",
     "px-4 pb-16 pt-10 text-page-foreground sm:px-8 md:px-12 lg:px-16",
     "bg-[linear-gradient(145deg,var(--hero-grad-start),var(--hero-grad-end))]"
-  );
+  )
 
   const heroBackdropLayers = useMemo(() => {
     const layers = [
       "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,var(--dash-hero-radial-top),transparent_78%)] mix-blend-soft-light",
       "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,var(--dash-hero-radial-bottom),transparent_78%)]",
-    ];
+    ]
 
-    const orbSize = isNarrow ? "h-[28rem] w-[28rem]" : "h-[46rem] w-[46rem]";
+    const orbSize = isNarrow ? "h-[28rem] w-[28rem]" : "h-[46rem] w-[46rem]"
     layers.push(
       `absolute -top-56 left-1/2 ${orbSize} -translate-x-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-orb),transparent)] blur-[210px]`
-    );
+    )
 
     if (!isNarrow) {
       layers.push(
         prefersReducedMotion
           ? "absolute bottom-[-16rem] right-[10%] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] opacity-70 blur-[180px]"
           : "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] blur-[210px]"
-      );
+      )
     }
 
     if (!prefersReducedMotion && !isNarrow) {
       layers.push(
         "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-80 blur-[220px]"
-      );
+      )
     } else if (!isNarrow) {
       layers.push(
         "absolute -left-24 top-1/2 h-[26rem] w-[26rem] -translate-y-1/2 rounded-full bg-[conic-gradient(from_140deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),transparent_85%)] opacity-60 blur-[200px]"
-      );
+      )
     }
 
-    return layers;
-  }, [isNarrow, prefersReducedMotion]);
+    return layers
+  }, [isNarrow, prefersReducedMotion])
 
-  const showHeaderMotion = !prefersReducedMotion && !isNarrow;
+  const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
   const panelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]";
+    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]"
   const panelHover =
-    "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]";
+    "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
 
   return (
     <Layout>
@@ -236,8 +236,8 @@ export default function Dashboard() {
         </section>
       </PageFadeIn>
     </Layout>
-  );
+  )
 }
 
 // Helper for useMediaQuery since it was imported from hooks
-import useMediaQuery from "@/hooks/useMediaQuery";
+import useMediaQuery from "@/hooks/useMediaQuery"
