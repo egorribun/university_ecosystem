@@ -153,6 +153,7 @@ def _audit_log(
     # Helper to replicate the audit logging from users.py
     # Log JSON payload for test compatibility
     import json
+
     payload = {
         "event": event,
         "user_id": str(user_id) if user_id else None,
