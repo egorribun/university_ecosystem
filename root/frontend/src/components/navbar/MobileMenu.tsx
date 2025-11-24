@@ -34,8 +34,6 @@ export function MobileMenu({
 }: MobileMenuProps) {
   const { t } = useTranslation(["navigation"])
 
-  if (!isOpen) return null
-
   return (
     <div
       id="mobile-drawer"
@@ -44,6 +42,9 @@ export function MobileMenu({
         isOpen ? "pointer-events-auto bg-black/25" : "pointer-events-none bg-transparent",
         !prefersReducedMotion && "transition-[background] duration-200"
       )}
+      style={{
+        pointerEvents: isOpen ? "auto" : "none",
+      }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
