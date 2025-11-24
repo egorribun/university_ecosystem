@@ -104,7 +104,7 @@ export function ScheduleCard({
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 
-  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => { })
+  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
 
   const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
     if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
