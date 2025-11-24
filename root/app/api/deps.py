@@ -93,6 +93,11 @@ def _enforce_fresh_mfa(request: Request) -> None:
             status.HTTP_403_FORBIDDEN,
             detail=translate("errors.forbidden", locale=locale),
         )
+
+    ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
+    if ttl == 0:
+        return
+
     verified_at = session.mfa_verified_at
     if verified_at is None:
         message = translate("errors.auth.mfa_step_up_required", locale=locale)
@@ -104,11 +109,10 @@ def _enforce_fresh_mfa(request: Request) -> None:
                 "session_id": session.id,
             },
         )
+
     if verified_at.tzinfo is None:
         verified_at = verified_at.replace(tzinfo=UTC)
-    ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
-    if ttl == 0:
-        return
+
     now = datetime.now(UTC)
     if now - verified_at > timedelta(seconds=ttl):
         message = translate("errors.auth.mfa_step_up_required", locale=locale)

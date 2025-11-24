@@ -8,7 +8,6 @@ import pytest
 from fastapi import status
 from sqlalchemy import select
 
-from app.api import users as users_api
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
@@ -654,8 +653,7 @@ async def test_admin_reset_endpoint_clears_mfa_state(
         return len(kwargs.get("user_ids", []))
 
     monkeypatch.setattr(
-        users_api,
-        "create_notifications_for_users",
+        "app.services.user_service.create_notifications_for_users",
         fake_create_notifications_for_users,
     )
 

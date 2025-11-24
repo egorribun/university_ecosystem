@@ -13,6 +13,7 @@ from app.api import users
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
+from app.utils.files import delete_static_file
 
 
 def _make_png_bytes(color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
@@ -108,9 +109,12 @@ async def test_email_change_requires_confirmation(
         return None
 
     monkeypatch.setattr(
-        "app.api.users.secrets.token_urlsafe", lambda *_args, **_kwargs: token_value
+        "app.services.auth_service.secrets.token_urlsafe",
+        lambda *_args, **_kwargs: token_value,
     )
-    monkeypatch.setattr("app.api.users._send_reset_email_blocking", fake_blocking)
+    monkeypatch.setattr(
+        "app.services.auth_service._send_reset_email_blocking", fake_blocking
+    )
 
     response = await async_client.post(
         "/users/me/email",
@@ -295,13 +299,13 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
     delete_calls: list[str] = []
-    original_delete = users.delete_static_file
+    original_delete = delete_static_file
 
     async def tracking_delete(url: str) -> None:
         delete_calls.append(url)
         await original_delete(url)
 
-    monkeypatch.setattr(users, "delete_static_file", tracking_delete)
+    monkeypatch.setattr("app.services.user_service.delete_static_file", tracking_delete)
 
     async def failing_commit(*_args, **_kwargs):
         raise RuntimeError("commit failed")
@@ -336,13 +340,13 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
     delete_calls: list[str] = []
-    original_delete = users.delete_static_file
+    original_delete = delete_static_file
 
     async def tracking_delete(url: str) -> None:
         delete_calls.append(url)
         await original_delete(url)
 
-    monkeypatch.setattr(users, "delete_static_file", tracking_delete)
+    monkeypatch.setattr("app.services.user_service.delete_static_file", tracking_delete)
 
     async def failing_commit(*_args, **_kwargs):
         raise RuntimeError("commit failed")
@@ -442,8 +446,12 @@ async def test_forgot_password_sends_email_via_thread(
     def fake_blocking(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.users.anyio.to_thread.run_sync", fake_run_sync)
-    monkeypatch.setattr("app.api.users._send_reset_email_blocking", fake_blocking)
+    monkeypatch.setattr(
+        "app.services.auth_service.anyio.to_thread.run_sync", fake_run_sync
+    )
+    monkeypatch.setattr(
+        "app.services.auth_service._send_reset_email_blocking", fake_blocking
+    )
 
     response = await async_client.post("/password/forgot", json={"email": user.email})
 

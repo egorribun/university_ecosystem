@@ -148,8 +148,9 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_notification_queue_missing_table(
-    async_client, missing_table_operational_error
+    async_client, missing_table_operational_error, monkeypatch
 ):
+    monkeypatch.setattr(main.settings, "notifications_queue_in_memory_only", True)
     response = await async_client.get("/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_200_OK

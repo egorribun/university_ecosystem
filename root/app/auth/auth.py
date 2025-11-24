@@ -21,7 +21,6 @@ from app.api.deps import (
     require_fresh_mfa,
     require_fresh_mfa_for_enrollment,
 )
-from app.api.users import _attach_pending_email
 from app.auth import mfa
 from app.auth.security import (
     create_access_token,
@@ -47,6 +46,7 @@ from app.schemas.schemas import (
     UserCreate,
     UserOut,
 )
+from app.services.auth_service import attach_pending_email
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
@@ -215,7 +215,7 @@ async def _build_token_response(
     refreshed_user = await ensure_mfa_relationships_loaded(db, user)
     if refreshed_user is not None:
         user = refreshed_user
-    enriched_user = await _attach_pending_email(db, user)
+    enriched_user = await attach_pending_email(db, user)
     if enriched_user is not None:
         user = enriched_user
     session_payload: SessionSigningKeyOut | None = None

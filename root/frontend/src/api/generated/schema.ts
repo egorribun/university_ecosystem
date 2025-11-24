@@ -798,40 +798,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/password/forgot": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Forgot Password */
-    post: operations["forgot_password_password_forgot_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/password/reset": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Reset Password */
-    post: operations["reset_password_password_reset_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/users/me": {
     parameters: {
       query?: never
@@ -965,43 +931,41 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    /** Delete User */
-    delete: operations["delete_user_users__user_id__delete"]
+    delete?: never
     options?: never
     head?: never
     /** Update User Admin */
     patch: operations["update_user_admin_users__user_id__patch"]
     trace?: never
   }
-  "/users/{user_id}/mfa": {
+  "/password/forgot": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** Get User Mfa Methods */
-    get: operations["get_user_mfa_methods_users__user_id__mfa_get"]
+    get?: never
     put?: never
-    post?: never
+    /** Forgot Password */
+    post: operations["forgot_password_password_forgot_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/groups": {
+  "/password/reset": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** Get Groups */
-    get: operations["get_groups_groups_get"]
+    get?: never
     put?: never
-    /** Create Group */
-    post: operations["create_group_groups_post"]
+    /** Reset Password */
+    post: operations["reset_password_password_reset_post"]
     delete?: never
     options?: never
     head?: never
@@ -1824,26 +1788,6 @@ export interface components {
        * Format: email
        */
       email: string
-    }
-    /** GroupCreate */
-    GroupCreate: {
-      /** Name */
-      name: string
-      /** Course */
-      course?: number | null
-      /** Faculty */
-      faculty?: string | null
-    }
-    /** GroupOut */
-    GroupOut: {
-      /** Id */
-      id: number
-      /** Name */
-      name: string
-      /** Course */
-      course?: number | null
-      /** Faculty */
-      faculty?: string | null
     }
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -2708,13 +2652,6 @@ export interface components {
     UserEmailConfirmIn: {
       /** Token */
       token: string
-    }
-    /** UserMfaMethodsOut */
-    UserMfaMethodsOut: {
-      /** Totp Enrollments */
-      totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Pending Challenges */
-      pending_challenges?: components["schemas"]["MfaChallengeOut"][]
     }
     /** UserOut */
     UserOut: {
@@ -4273,72 +4210,6 @@ export interface operations {
       }
     }
   }
-  forgot_password_password_forgot_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ForgotPasswordIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  reset_password_password_reset_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ResetPasswordIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
   me_users_me_get: {
     parameters: {
       query?: never
@@ -4666,35 +4537,6 @@ export interface operations {
       }
     }
   }
-  delete_user_users__user_id__delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        user_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
   update_user_admin_users__user_id__patch: {
     parameters: {
       query?: never
@@ -4730,16 +4572,18 @@ export interface operations {
       }
     }
   }
-  get_user_mfa_methods_users__user_id__mfa_get: {
+  forgot_password_password_forgot_post: {
     parameters: {
       query?: never
       header?: never
-      path: {
-        user_id: number
-      }
+      path?: never
       cookie?: never
     }
-    requestBody?: never
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ForgotPasswordIn"]
+      }
+    }
     responses: {
       /** @description Successful Response */
       200: {
@@ -4747,7 +4591,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["UserMfaMethodsOut"]
+          "application/json": unknown
         }
       }
       /** @description Validation Error */
@@ -4761,27 +4605,7 @@ export interface operations {
       }
     }
   }
-  get_groups_groups_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["GroupOut"][]
-        }
-      }
-    }
-  }
-  create_group_groups_post: {
+  reset_password_password_reset_post: {
     parameters: {
       query?: never
       header?: never
@@ -4790,7 +4614,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        "application/json": components["schemas"]["GroupCreate"]
+        "application/json": components["schemas"]["ResetPasswordIn"]
       }
     }
     responses: {
@@ -4800,7 +4624,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["GroupOut"]
+          "application/json": unknown
         }
       }
       /** @description Validation Error */
