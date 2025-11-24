@@ -654,8 +654,7 @@ async def test_admin_reset_endpoint_clears_mfa_state(
         return len(kwargs.get("user_ids", []))
 
     monkeypatch.setattr(
-        users_api,
-        "create_notifications_for_users",
+        "app.services.user_service.create_notifications_for_users",
         fake_create_notifications_for_users,
     )
 
