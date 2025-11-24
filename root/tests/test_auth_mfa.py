@@ -8,7 +8,6 @@ import pytest
 from fastapi import status
 from sqlalchemy import select
 
-from app.api import users as users_api
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
