@@ -27,7 +27,10 @@ export function ScheduleCard({
   const { t } = useTranslation(["dashboard", "common"])
 
   const shouldLoadSchedule = userRole === "student" && Boolean(userGroupId)
-  const dashboardScheduleQuery = useDashboardSchedule(userRole ?? null, userGroupId ?? null)
+  const dashboardScheduleQuery = useDashboardSchedule(
+    (userRole as "student" | "teacher" | "admin" | null) ?? null,
+    userGroupId ?? null
+  )
   const schedule: DashboardLesson[] = dashboardScheduleQuery.data ?? []
   const loadingSched = shouldLoadSchedule
     ? dashboardScheduleQuery.isLoading && schedule.length === 0
@@ -101,7 +104,7 @@ export function ScheduleCard({
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 
-  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
+  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => { })
 
   const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
     if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {

@@ -18,7 +18,7 @@ interface MobileMenuProps {
   user: any
   isAuth: boolean
   prefersReducedMotion: boolean
-  drawerTrapRef: React.RefObject<HTMLDivElement>
+  drawerTrapRef: React.RefObject<HTMLDivElement | null>
 }
 
 export function MobileMenu({
