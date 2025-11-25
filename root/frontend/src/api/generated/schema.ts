@@ -972,6 +972,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/groups": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Groups */
+    get: operations["get_groups_groups_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/events": {
     parameters: {
       query?: never
@@ -1788,6 +1805,17 @@ export interface components {
        * Format: email
        */
       email: string
+    }
+    /** GroupOut */
+    GroupOut: {
+      /** Id */
+      id: number
+      /** Name */
+      name: string
+      /** Course */
+      course?: number | null
+      /** Faculty */
+      faculty?: string | null
     }
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -4634,6 +4662,26 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_groups_groups_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["GroupOut"][]
         }
       }
     }
