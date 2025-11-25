@@ -1238,14 +1238,4 @@ async def logout(
             )
 
     _clear_access_token_cookie(response)
-    if extra:
-        for key, value in extra.items():
-            if value is None:
-                continue
-            if isinstance(value, datetime):
-                payload[key] = value.isoformat()
-            elif isinstance(value, str | int | float | bool):
-                payload[key] = value
-            else:
-                payload[key] = str(value)
-    logger.log(level, json.dumps(payload, ensure_ascii=False))
+
