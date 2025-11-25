@@ -400,8 +400,8 @@ export const handlers = [
 
     const label =
       payload &&
-      typeof payload === "object" &&
-      typeof (payload as { label?: unknown }).label === "string"
+        typeof payload === "object" &&
+        typeof (payload as { label?: unknown }).label === "string"
         ? ((payload as { label?: string }).label as string)
         : null
 
@@ -518,7 +518,12 @@ export const handlers = [
       })
     }
 
-    return HttpResponse.json({ access_token: "test-access-token", token_type: "bearer" })
+    return HttpResponse.json({
+      access_token: "test-access-token",
+      token_type: "bearer",
+      user: testUser,
+      session: { signing_key: "test-session-key" },
+    })
   }),
   http.delete("*/auth/sessions/:id", ({ params }) => {
     const id = Number(params.id)
@@ -571,9 +576,9 @@ export const handlers = [
 
     const startIndex = decodedCursor
       ? (() => {
-          const index = sortedEvents.findIndex((event) => event.id === decodedCursor.id)
-          return index >= 0 ? index + 1 : 0
-        })()
+        const index = sortedEvents.findIndex((event) => event.id === decodedCursor.id)
+        return index >= 0 ? index + 1 : 0
+      })()
       : 0
 
     const slice = sortedEvents.slice(startIndex, startIndex + limit)
@@ -647,7 +652,12 @@ export const handlers = [
       return HttpResponse.json(loginChallenge, { status: 202 })
     }
 
-    return HttpResponse.json({ access_token: "test-access-token", username })
+    return HttpResponse.json({
+      access_token: "test-access-token",
+      token_type: "bearer",
+      user: testUser,
+      session: { signing_key: "test-session-key" },
+    })
   }),
   http.post("*/password/forgot", async () => HttpResponse.json({ ok: true })),
   http.post("*/password/reset", async ({ request }) => {

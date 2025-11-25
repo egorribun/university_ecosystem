@@ -19,32 +19,17 @@ from app.services.auth_service import attach_pending_email
 from app.services.notifications import create_notifications_for_users
 from app.utils.files import delete_static_file
 
+from app.services.audit_service import AuditService
+
 logger = logging.getLogger(__name__)
-audit_logger = logging.getLogger("app.users.audit")
-
-
-def _audit_log(
-    event: str,
-    request: Request,
-    user_id: int | None = None,
-    level: int = logging.INFO,
-    **kwargs: Any,
-) -> None:
-    import json
-
-    payload = {
-        "event": event,
-        "user_id": str(user_id) if user_id else None,
-        "ip": request.client.host if request.client else None,
-        "path": request.url.path,
-        **kwargs,
-    }
-    audit_logger.log(level, json.dumps(payload), extra=payload)
 
 
 class UserService:
-    @staticmethod
+    def __init__(self, audit: AuditService):
+        self.audit = audit
+
     async def update_user_profile(
+        self,
         db: AsyncSession,
         user: models.User,
         data: schemas.UserProfileUpdate,
@@ -79,16 +64,23 @@ class UserService:
 
             update_fields["email"] = validated_email
 
+        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
+        
         for field, value in update_fields.items():
-            setattr(db_user, field, value)
+            if field in preferences_fields:
+                if not db_user.preferences:
+                    db_user.preferences = models.UserPreferences(user_id=db_user.id)
+                setattr(db_user.preferences, field, value)
+            else:
+                setattr(db_user, field, value)
         await db.commit()
         await db.refresh(db_user)
         await ensure_mfa_relationships_loaded(db, db_user)
         await attach_pending_email(db, db_user)
         return db_user
 
-    @staticmethod
     async def upload_avatar(
+        self,
         db: AsyncSession,
         user: models.User,
         file: UploadFile,
@@ -117,8 +109,8 @@ class UserService:
             raise
         return db_user
 
-    @staticmethod
     async def upload_cover(
+        self,
         db: AsyncSession,
         user: models.User,
         file: UploadFile,
@@ -145,8 +137,8 @@ class UserService:
             raise
         return db_user
 
-    @staticmethod
     async def create_user(
+        self,
         db: AsyncSession,
         data: schemas.UserCreate,
         request: Request,
@@ -178,8 +170,8 @@ class UserService:
         user = await crud.create_user(db, data)
         return user
 
-    @staticmethod
     async def get_users(
+        self,
         db: AsyncSession,
         request: Request,
         current_user: models.User,
@@ -210,8 +202,8 @@ class UserService:
             offset=offset,
         )
 
-    @staticmethod
     async def admin_update_user(
+        self,
         db: AsyncSession,
         user_id: int,
         data: schemas.UserAdminUpdate,
@@ -225,7 +217,7 @@ class UserService:
                 detail=translate("errors.forbidden", locale=locale),
             )
         updated_user, reset_stats = await crud.admin_update_user(db, user_id, data)
-        _audit_log(
+        self.audit.log(
             "users.admin_update",
             request,
             user_id=updated_user.id,
@@ -234,7 +226,7 @@ class UserService:
         if reset_stats is not None:
             if reset_stats.changed:
                 # Log MFA reset audit event
-                _audit_log(
+                self.audit.log(
                     "users.mfa.reset",
                     request,
                     user_id=updated_user.id,
@@ -252,8 +244,8 @@ class UserService:
                 )
         return updated_user
 
-    @staticmethod
     async def delete_avatar(
+        self,
         db: AsyncSession,
         user: models.User,
     ) -> models.User:
@@ -266,8 +258,8 @@ class UserService:
         await ensure_mfa_relationships_loaded(db, db_user)
         return db_user
 
-    @staticmethod
     async def delete_cover(
+        self,
         db: AsyncSession,
         user: models.User,
     ) -> models.User:

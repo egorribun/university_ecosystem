@@ -2,7 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
-import { ChallengeLockedError, type PendingMfaState } from "@/contexts/AuthContext"
+import { ChallengeLockedError } from "@/contexts/AuthContext"
+import type { PendingMfaState } from "@/types/Auth"
 
 type RequireMfaFn = () => Promise<PendingMfaState | null>
 
@@ -56,7 +57,7 @@ describe("StepUpDialog", () => {
 
     const user = userEvent.setup()
 
-    render(<StepUpDialog open onClose={() => {}} onChallengeReset={onChallengeReset} />)
+    render(<StepUpDialog open onClose={() => { }} onChallengeReset={onChallengeReset} />)
 
     const input = await screen.findByLabelText("Authenticator code")
     expect(await screen.findByText("2 attempts remaining")).toBeInTheDocument()

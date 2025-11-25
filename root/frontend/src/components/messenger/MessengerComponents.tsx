@@ -16,6 +16,8 @@ import CloseIcon from "@mui/icons-material/Close"
 import { useQuery } from "@tanstack/react-query"
 import client from "../../api/client"
 import type { User } from "../../types/User"
+import SmartImage from "@/components/SmartImage"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 export interface Contact {
   id: string
@@ -41,6 +43,7 @@ export interface Message {
   text: string
   timestamp: string
   isMe: boolean
+  status?: "sent" | "read"
   attachments?: Attachment[]
 }
 
@@ -65,15 +68,15 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               onSelect(contact.id)
             }
           }}
-          className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${
-            selectedId === contact.id
-              ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
-              : "hover:bg-gray-100 dark:hover:bg-gray-800"
-          }`}
+          className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${selectedId === contact.id
+            ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
+            : "hover:bg-gray-100 dark:hover:bg-gray-800"
+            }`}
         >
           <div className="relative flex-shrink-0">
-            <img
-              src={contact.avatar || undefined}
+            <SmartImage
+              srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
+              fallback={AVATAR_PLACEHOLDER_URL}
               alt={contact.name}
               className="w-12 h-12 rounded-full object-cover bg-gray-200"
             />
@@ -138,11 +141,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.isMe ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[75%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm text-sm md:text-base relative group ${
-                msg.isMe
-                  ? "bg-blue-600 text-white rounded-br-none"
-                  : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none border border-gray-100 dark:border-gray-700"
-              }`}
+              className={`max-w-[75%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm text-sm md:text-base relative group ${msg.isMe
+                ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-br-none"
+                : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none border border-gray-100 dark:border-gray-700"
+                }`}
             >
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="mb-2 space-y-2">
@@ -160,7 +162,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                           href={att.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`flex items-center gap-2 p-2 rounded-lg ${msg.isMe ? "bg-blue-500/50 hover:bg-blue-500/70" : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"} transition-colors`}
+                          className={`flex items-center gap-2 p-2 rounded-lg ${msg.isMe
+                            ? "bg-blue-500/50 hover:bg-blue-500/70"
+                            : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                            } transition-colors`}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -183,14 +188,60 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                   ))}
                 </div>
               )}
-              <p>{msg.text}</p>
-              <span
-                className={`text-[10px] block text-right mt-1 opacity-70 ${
-                  msg.isMe ? "text-blue-100" : "text-gray-400"
-                }`}
-              >
-                {msg.timestamp}
-              </span>
+              <p className="break-words">{msg.text}</p>
+              <div className="flex items-center justify-end gap-1 mt-1">
+                <span
+                  className={`text-[10px] ${msg.isMe ? "text-blue-100" : "text-gray-400"
+                    }`}
+                >
+                  {msg.timestamp}
+                </span>
+                {msg.isMe && (
+                  <span className={msg.isMe ? "text-blue-100" : "text-gray-400"}>
+                    {msg.status === "read" ? (
+                      <div className="flex -space-x-1">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="w-3 h-3"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="w-3 h-3"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </div>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-3 h-3"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -416,11 +467,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         <button
           onClick={handleSend}
           disabled={!text.trim() && selectedFiles.length === 0}
-          className={`p-2 rounded-xl transition-all duration-200 ${
-            text.trim() || selectedFiles.length > 0
-              ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transform hover:scale-105"
-              : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
-          }`}
+          className={`p-2 rounded-xl transition-all duration-200 ${text.trim() || selectedFiles.length > 0
+            ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transform hover:scale-105"
+            : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
+            }`}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

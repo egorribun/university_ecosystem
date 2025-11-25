@@ -49,8 +49,8 @@ const normalizeNowPlaying = (input: RawNowPlaying): NowPlaying | null => {
 
   const artists = Array.isArray(input.artists)
     ? input.artists
-        .map((artist) => toNullableString(artist))
-        .filter((artist): artist is string => Boolean(artist))
+      .map((artist) => toNullableString(artist))
+      .filter((artist): artist is string => Boolean(artist))
     : []
 
   const durationMs = toNullableNumber(input.duration_ms)
@@ -132,15 +132,10 @@ export const fetchNowPlaying = async () => {
 }
 
 const computeInterval = (data: NowPlaying | null) => {
-  if (!data) return 10_000
-  if (!data.is_playing) return 6_000
-  if (data.duration_ms != null && data.progress_ms != null) {
-    const remaining = Math.max(0, data.duration_ms - data.progress_ms)
-    if (remaining <= 5_000) return 1_000
-    if (remaining <= 15_000) return 1_500
-    return Math.max(2_000, Math.min(4_000, Math.floor(remaining / 3)))
-  }
-  return 1_500
+  if (!data) return 3_000
+  if (!data.is_playing) return 2_000
+  // Lightning-fast polling - check every 500ms for maximum responsiveness
+  return 500
 }
 
 export const useNowPlaying = (enabled: boolean) => {

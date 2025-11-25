@@ -17,7 +17,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_fresh_mfa
+from app.api.deps import get_current_user, require_fresh_mfa, get_user_service, get_auth_service
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models import models
@@ -114,8 +114,9 @@ async def forgot_password(
     request: Request,
     bg: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
-    await AuthService.initiate_password_reset(db, payload.email, request, bg)
+    await auth_service.initiate_password_reset(db, payload.email, request, bg)
     return {"ok": True}
 
 
@@ -127,8 +128,9 @@ async def reset_password(
     payload: schemas.ResetPasswordIn,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
-    await AuthService.perform_password_reset(
+    await auth_service.perform_password_reset(
         db, payload.token, payload.password, request
     )
     return {"ok": True}
@@ -151,8 +153,9 @@ async def update_me(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.update_user_profile(db, user, data, request)
+    return await service.update_user_profile(db, user, data, request)
 
 
 @users_router.post("/me/email", response_model=schemas.UserOut)
@@ -163,8 +166,9 @@ async def change_email(
     _: None = Depends(require_fresh_mfa),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
-    return await AuthService.initiate_email_change(db, user, payload, request, bg)
+    return await auth_service.initiate_email_change(db, user, payload, request, bg)
 
 
 @users_router.post("/me/email/confirm", response_model=schemas.UserOut)
@@ -173,8 +177,9 @@ async def confirm_email_change(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
-    return await AuthService.confirm_email_change(db, user, payload.token, request)
+    return await auth_service.confirm_email_change(db, user, payload.token, request)
 
 
 @users_router.post("/me/password", response_model=schemas.PasswordChangeOut)
@@ -184,8 +189,9 @@ async def change_password(
     _: None = Depends(require_fresh_mfa),
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
-    ok, revoked = await AuthService.change_password(db, user, payload, request)
+    ok, revoked = await auth_service.change_password(db, user, payload, request)
     return schemas.PasswordChangeOut(ok=ok, revoked_sessions=revoked)
 
 
@@ -196,8 +202,9 @@ async def upload_avatar(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.upload_avatar(db, user, file, request)
+    return await service.upload_avatar(db, user, file, request)
 
 
 @users_router.post("/me/cover", response_model=schemas.UserOut)
@@ -207,8 +214,9 @@ async def upload_cover(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.upload_cover(db, user, file, request)
+    return await service.upload_cover(db, user, file, request)
 
 
 @users_router.delete("/me/avatar", response_model=schemas.UserOut)
@@ -216,8 +224,9 @@ async def delete_avatar(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.delete_avatar(db, user)
+    return await service.delete_avatar(db, user)
 
 
 @users_router.delete("/me/cover", response_model=schemas.UserOut)
@@ -225,8 +234,9 @@ async def delete_cover(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.delete_cover(db, user)
+    return await service.delete_cover(db, user)
 
 
 @users_router.post("", response_model=schemas.UserOut)
@@ -235,8 +245,9 @@ async def create_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.create_user(db, data, request, user)
+    return await service.create_user(db, data, request, user)
 
 
 @users_router.get("", response_model=list[schemas.UserOut])
@@ -250,8 +261,9 @@ async def get_users(
     limit: int | None = Query(None, ge=1, le=100),
     offset: int | None = Query(None, ge=0),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.get_users(
+    return await service.get_users(
         db,
         request,
         user,
@@ -271,10 +283,21 @@ async def update_user_admin(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
 ):
-    return await UserService.admin_update_user(db, user_id, data, request, user)
+    return await service.admin_update_user(db, user_id, data, request, user)
+
+
+@groups_router.get("", response_model=list[schemas.GroupOut])
+async def get_groups(
+    db: AsyncSession = Depends(get_db),
+):
+    from app import crud
+    groups = await crud.get_groups(db)
+    return groups
 
 
 router.include_router(users_router)
+
 router.include_router(password_router)
 router.include_router(groups_router)

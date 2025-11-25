@@ -22,8 +22,9 @@ from app.schemas import schemas
 from app.services.session_cleanup import revoke_sessions_matching
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
 
+from app.services.audit_service import AuditService
+
 logger = logging.getLogger(__name__)
-audit_logger = logging.getLogger("app.users.audit")
 
 
 def _hash_token(token: str) -> str:
@@ -143,30 +144,15 @@ async def attach_pending_email(
     return user
 
 
-def _audit_log(
-    event: str,
-    request: Request,
-    user_id: int | None = None,
-    level: int = logging.INFO,
-    **kwargs: Any,
-) -> None:
-    # Helper to replicate the audit logging from users.py
-    # Log JSON payload for test compatibility
-    import json
 
-    payload = {
-        "event": event,
-        "user_id": str(user_id) if user_id else None,
-        "ip": request.client.host if request.client else None,
-        "path": request.url.path,
-        **kwargs,
-    }
-    audit_logger.log(level, json.dumps(payload), extra=payload)
 
 
 class AuthService:
-    @staticmethod
+    def __init__(self, audit: AuditService):
+        self.audit = audit
+
     async def initiate_password_reset(
+        self,
         db: AsyncSession,
         email: str,
         request: Request,
@@ -198,22 +184,22 @@ class AuthService:
                 user.full_name or "",
                 locale,
             )
-            _audit_log(
+            self.audit.log(
                 "password.reset.initiated",
                 request,
                 user_id=user.id,
                 reason="initiated",
             )
         else:
-            _audit_log(
+            self.audit.log(
                 "password.reset.initiated",
                 request,
                 level=logging.WARNING,
                 reason="user_not_found",
             )
 
-    @staticmethod
     async def perform_password_reset(
+        self,
         db: AsyncSession,
         token: str,
         new_password: str,
@@ -230,7 +216,7 @@ class AuthService:
         rec = result.scalar_one_or_none()
         now = datetime.now(UTC)
         if not rec:
-            _audit_log(
+            self.audit.log(
                 "password.reset.failed",
                 request,
                 level=logging.WARNING,
@@ -246,7 +232,7 @@ class AuthService:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if expires_at < now:
-            _audit_log(
+            self.audit.log(
                 "password.reset.failed",
                 request,
                 level=logging.WARNING,
@@ -261,7 +247,7 @@ class AuthService:
             )
         user = await db.get(models.User, rec.user_id)
         if not user or not getattr(user, "is_active", True):
-            _audit_log(
+            self.audit.log(
                 "password.reset.failed",
                 request,
                 level=logging.WARNING,
@@ -288,15 +274,15 @@ class AuthService:
             .values(used=True)
         )
         await db.commit()
-        _audit_log(
+        self.audit.log(
             "password.reset.completed",
             request,
             user_id=rec.user_id,
             reason="completed",
         )
 
-    @staticmethod
     async def initiate_email_change(
+        self,
         db: AsyncSession,
         user: models.User,
         payload: schemas.UserEmailChangeIn,
@@ -360,7 +346,7 @@ class AuthService:
             locale,
         )
 
-        _audit_log(
+        self.audit.log(
             "users.email.change_requested",
             request,
             user_id=user.id,
@@ -369,8 +355,8 @@ class AuthService:
         )
         return db_user
 
-    @staticmethod
     async def confirm_email_change(
+        self,
         db: AsyncSession,
         user: models.User,
         token: str,
@@ -456,7 +442,7 @@ class AuthService:
         # Update current user object as well for immediate response
         user.email = record.new_email
 
-        _audit_log(
+        self.audit.log(
             "users.email.changed",
             request,
             user_id=user.id,
@@ -465,8 +451,8 @@ class AuthService:
         )
         return db_user
 
-    @staticmethod
     async def change_password(
+        self,
         db: AsyncSession,
         user: models.User,
         payload: schemas.UserPasswordChangeIn,
@@ -510,7 +496,7 @@ class AuthService:
         # Update current user object
         user.hashed_password = hashed_password
 
-        _audit_log(
+        self.audit.log(
             "users.password.changed",
             request,
             user_id=user.id,

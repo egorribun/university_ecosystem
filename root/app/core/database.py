@@ -25,7 +25,7 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
         "pool_pre_ping": True,
         "echo": False,
     }
-    if current_settings.is_development:
+    if current_settings.is_development and current_settings.database_url.startswith("sqlite"):
         kwargs["poolclass"] = NullPool
     else:
         if current_settings.database_pool_size is not None:

@@ -12,15 +12,7 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useScrollRestoration from "@/hooks/useScrollRestoration"
 import { useAppShell } from "@/contexts/AppShellContext"
-import DashboardIcon from "@mui/icons-material/Dashboard"
-import ArticleIcon from "@mui/icons-material/Article"
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
-import EventNoteIcon from "@mui/icons-material/EventNote"
-import TimelineIcon from "@mui/icons-material/Timeline"
-import MapIcon from "@mui/icons-material/Map"
-import NotificationsIcon from "@mui/icons-material/Notifications"
-import AutoStoriesIcon from "@mui/icons-material/AutoStories"
-import PeopleIcon from "@mui/icons-material/People"
+import { getNavigationConfig } from "@/config/navigation"
 import SettingsIcon from "@mui/icons-material/Settings"
 import { cn } from "@/utils/cn"
 import { MobileMenu } from "@/components/navbar/MobileMenu"
@@ -102,32 +94,7 @@ const Navbar = () => {
   const hasAvatar = Boolean(avatarSource)
 
   const menuLinks = useMemo(() => {
-    const base = [
-      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: DashboardIcon },
-      { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },
-      { to: "/schedule", label: t("navigation:menu.schedule"), icon: CalendarMonthIcon },
-      { to: "/events", label: t("navigation:menu.events"), icon: EventNoteIcon },
-      { to: "/activity", label: t("navigation:menu.activity"), icon: TimelineIcon },
-      { to: "/map", label: t("navigation:menu.map"), icon: MapIcon },
-    ]
-    if (user?.role === "admin") {
-      base.push({
-        to: "/admin/notifications",
-        label: t("navigation:menu.notificationsAdmin"),
-        icon: NotificationsIcon,
-      })
-      base.push({
-        to: "/admin/stories",
-        label: t("navigation:menu.stories"),
-        icon: AutoStoriesIcon,
-      })
-      base.push({
-        to: "/admin/users",
-        label: t("navigation:menu.users"),
-        icon: PeopleIcon,
-      })
-    }
-    return base
+    return getNavigationConfig(t, user?.role)
   }, [t, user?.role])
 
   const profileAlt = user?.full_name
@@ -159,12 +126,9 @@ const Navbar = () => {
     [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]
   )
 
-  const logoWrapSize = isMobile ? 44 : 52
-  const logoImgSize = isMobile ? 34 : 42
-  const titleFont = isMobile ? "clamp(16px, 5.2vw, 20px)" : "clamp(18px, 1.6vw, 22px)"
-  const rightNameFont = isMobile ? "clamp(14px, 4.5vw, 16px)" : "1.01rem"
-  const avatarSize = isMobile ? "clamp(30px, 8vw, 36px)" : "36px"
-  const burgerBtnSize = isMobile ? "clamp(44px, 10.5vw, 48px)" : "40px"
+
+
+  const avatarSize = isMobile ? "clamp(32px, 8vw, 36px)" : "36px"
 
   return (
     <>
@@ -179,13 +143,16 @@ const Navbar = () => {
         <div
           className={cn(
             "flex w-full min-w-0 items-center justify-start gap-0 box-border",
-            isMobile ? "px-2.5" : "px-4"
+            isMobile ? "pl-2.5 pr-1.5" : "px-4"
           )}
         >
           <Link
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
-            className="brand inline-flex min-w-0 items-center rounded-xl p-1.5 no-underline"
+            className={cn(
+              "brand inline-flex min-w-0 items-center rounded-xl p-1.5 no-underline",
+              isMobile ? "gap-2" : "gap-2.5"
+            )}
             onPointerDown={markScrollFromBottom}
             onClick={(e) => {
               if (isSameTarget("/dashboard")) {
@@ -193,35 +160,27 @@ const Navbar = () => {
                 scrollToTop(prefersReducedMotion ? "auto" : "smooth")
               }
             }}
-            style={{ gap: isMobile ? "8px" : "10px" }}
           >
             <div
-              className="flex items-center justify-center rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)]"
-              style={{
-                width: `${logoWrapSize}px`,
-                height: `${logoWrapSize}px`,
-              }}
+              className="flex items-center justify-center rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[44px] h-[44px] min-[1351px]:w-[52px] min-[1351px]:h-[52px]"
             >
               <img
                 src={guuLogo}
                 alt={t("navigation:brandAlt")}
-                width={logoImgSize}
-                height={logoImgSize}
-                className="object-contain"
+                className="object-contain w-[34px] h-[34px] min-[1351px]:w-[42px] min-[1351px]:h-[42px]"
                 loading="eager"
                 decoding="async"
               />
             </div>
             <span
-              className="whitespace-nowrap font-extrabold tracking-wide text-white"
-              style={{ fontSize: titleFont }}
+              className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(16px,5.2vw,20px)] min-[1351px]:text-[clamp(18px,1.6vw,22px)]"
             >
               {t("navigation:brandName")}
             </span>
           </Link>
 
           {isMobile ? (
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-2.5">
               <MessengerButton />
               <NotificationsBell />
               {isAuth && user && !loading ? (
@@ -231,11 +190,7 @@ const Navbar = () => {
                   fallback={avatarFallback}
                   alt={profileAlt}
                   title={profileTitle}
-                  className="block cursor-pointer rounded-full border border-[#d7d7d7] bg-white object-cover"
-                  style={{
-                    width: avatarSize,
-                    height: avatarSize,
-                  }}
+                  className="block cursor-pointer rounded-full border border-[#d7d7d7] bg-white object-cover w-[clamp(32px,8vw,36px)] h-[clamp(32px,8vw,36px)]"
                   onClick={() => go("/profile")}
                 />
               ) : (
@@ -245,17 +200,12 @@ const Navbar = () => {
                   height={avatarSize}
                   sx={{ bgcolor: "rgba(255,255,255,0.32)" }}
                   aria-hidden="true"
+                  className="w-[clamp(32px,8vw,36px)] h-[clamp(32px,8vw,36px)]"
                 />
               )}
               <button
                 type="button"
-                className="burger-btn flex shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/18 bg-gradient-to-b from-white/12 to-white/5 p-0 text-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-md backdrop-saturate-150"
-                style={{
-                  width: burgerBtnSize,
-                  height: burgerBtnSize,
-                  minWidth: burgerBtnSize,
-                  minHeight: burgerBtnSize,
-                }}
+                className="burger-btn ml-3 flex shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/18 bg-gradient-to-b from-white/12 to-white/5 p-0 text-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-md backdrop-saturate-150 w-[clamp(32px,8vw,36px)] h-[clamp(32px,8vw,36px)] min-w-[clamp(32px,8vw,36px)] min-h-[clamp(32px,8vw,36px)]"
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
                   mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
@@ -265,8 +215,8 @@ const Navbar = () => {
                 ref={burgerBtnRef}
               >
                 <svg
-                  width="24"
-                  height="24"
+                  width="20"
+                  height="20"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -274,7 +224,7 @@ const Navbar = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
-                  className="overflow-visible"
+                  className="overflow-visible stroke-white"
                 >
                   <line
                     x1="4"
@@ -379,8 +329,7 @@ const Navbar = () => {
                   onClick={() => go("/profile")}
                   aria-label={profileTitle}
                   title={profileTitle}
-                  className="cursor-pointer border-none bg-transparent p-0 m-0 font-semibold text-white font-[family-name:var(--font-ui)] tracking-[var(--ls-ui)] leading-[var(--lh-ui)]"
-                  style={{ fontSize: rightNameFont }}
+                  className="cursor-pointer border-none bg-transparent p-0 m-0 font-semibold text-white font-[family-name:var(--font-ui)] tracking-[var(--ls-ui)] leading-[var(--lh-ui)] text-[1.01rem]"
                 >
                   {user.full_name}
                 </button>
