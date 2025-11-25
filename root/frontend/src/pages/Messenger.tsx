@@ -128,9 +128,9 @@ export default function Messenger() {
       lastMessage: chat.last_message?.content || "",
       lastMessageTime: chat.last_message
         ? new Date(chat.last_message.created_at).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
+            hour: "2-digit",
+            minute: "2-digit",
+          })
         : "",
       unread: chat.unread_count,
       online: false, // TODO: Real online status
@@ -152,8 +152,9 @@ export default function Messenger() {
     >
       {/* Sidebar */}
       <div
-        className={`${showList ? "flex" : "hidden"
-          } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
+        className={`${
+          showList ? "flex" : "hidden"
+        } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
       >
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-[#0b111e]/80 backdrop-blur-md z-10">
           <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -197,8 +198,9 @@ export default function Messenger() {
 
       {/* Chat Area */}
       <div
-        className={`${showChat ? "flex" : "hidden"
-          } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
+        className={`${
+          showChat ? "flex" : "hidden"
+        } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
       >
         {selectedChatId && activeChat ? (
           <>

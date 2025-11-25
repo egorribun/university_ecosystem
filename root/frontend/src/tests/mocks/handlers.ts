@@ -400,8 +400,8 @@ export const handlers = [
 
     const label =
       payload &&
-        typeof payload === "object" &&
-        typeof (payload as { label?: unknown }).label === "string"
+      typeof payload === "object" &&
+      typeof (payload as { label?: unknown }).label === "string"
         ? ((payload as { label?: string }).label as string)
         : null
 
@@ -576,9 +576,9 @@ export const handlers = [
 
     const startIndex = decodedCursor
       ? (() => {
-        const index = sortedEvents.findIndex((event) => event.id === decodedCursor.id)
-        return index >= 0 ? index + 1 : 0
-      })()
+          const index = sortedEvents.findIndex((event) => event.id === decodedCursor.id)
+          return index >= 0 ? index + 1 : 0
+        })()
       : 0
 
     const slice = sortedEvents.slice(startIndex, startIndex + limit)

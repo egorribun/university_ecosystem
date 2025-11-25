@@ -15,13 +15,13 @@ const noopSetUser = () => {
 export const AuthContext = createContext<AuthContextType>({
   isAuth: false,
   login: async () => null,
-  logout: async () => { },
+  logout: async () => {},
   user: null,
   loading: false,
   setUser: noopSetUser,
-  refresh: async () => { },
+  refresh: async () => {},
   pendingMfa: null,
-  submitMfaChallenge: async () => { },
+  submitMfaChallenge: async () => {},
   requireMfa: async () => null,
   resetEtagCache,
 })
@@ -79,17 +79,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       requireMfa,
       resetEtagCache,
     }),
-    [
-      user,
-      login,
-      logout,
-      loading,
-      setUser,
-      refresh,
-      pendingMfa,
-      submitMfaChallenge,
-      requireMfa,
-    ]
+    [user, login, logout, loading, setUser, refresh, pendingMfa, submitMfaChallenge, requireMfa]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

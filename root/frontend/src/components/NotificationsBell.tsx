@@ -50,14 +50,14 @@ export default function NotificationsBell() {
         onClick={(e) => setAnchor(e.currentTarget)}
         aria-label={t("system:notificationsBell.open")}
         sx={{
-          width: 'clamp(32px, 8vw, 36px)',
-          height: 'clamp(32px, 8vw, 36px)',
+          width: "clamp(32px, 8vw, 36px)",
+          height: "clamp(32px, 8vw, 36px)",
           padding: 0,
-          color: 'rgba(255, 255, 255, 0.92)'
+          color: "rgba(255, 255, 255, 0.92)",
         }}
       >
         <Badge badgeContent={unreadCount || 0} color="error">
-          <NotificationsIcon sx={{ color: 'inherit' }} />
+          <NotificationsIcon sx={{ color: "inherit" }} />
         </Badge>
       </IconButton>
       <Popover

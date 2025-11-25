@@ -126,8 +126,6 @@ const Navbar = () => {
     [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]
   )
 
-
-
   const avatarSize = isMobile ? "clamp(32px, 8vw, 36px)" : "36px"
 
   return (
@@ -161,9 +159,7 @@ const Navbar = () => {
               }
             }}
           >
-            <div
-              className="flex items-center justify-center rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[44px] h-[44px] min-[1351px]:w-[52px] min-[1351px]:h-[52px]"
-            >
+            <div className="flex items-center justify-center rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[44px] h-[44px] min-[1351px]:w-[52px] min-[1351px]:h-[52px]">
               <img
                 src={guuLogo}
                 alt={t("navigation:brandAlt")}
@@ -172,9 +168,7 @@ const Navbar = () => {
                 decoding="async"
               />
             </div>
-            <span
-              className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(16px,5.2vw,20px)] min-[1351px]:text-[clamp(18px,1.6vw,22px)]"
-            >
+            <span className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(16px,5.2vw,20px)] min-[1351px]:text-[clamp(18px,1.6vw,22px)]">
               {t("navigation:brandName")}
             </span>
           </Link>

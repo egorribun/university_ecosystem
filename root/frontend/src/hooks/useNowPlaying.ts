@@ -49,8 +49,8 @@ const normalizeNowPlaying = (input: RawNowPlaying): NowPlaying | null => {
 
   const artists = Array.isArray(input.artists)
     ? input.artists
-      .map((artist) => toNullableString(artist))
-      .filter((artist): artist is string => Boolean(artist))
+        .map((artist) => toNullableString(artist))
+        .filter((artist): artist is string => Boolean(artist))
     : []
 
   const durationMs = toNullableNumber(input.duration_ms)

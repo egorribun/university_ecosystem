@@ -72,13 +72,15 @@
   --dash-panel-bg-muted: color-mix(in srgb, white 97%, var(--nav-link) 3%);
   --dash-panel-border: color-mix(in srgb, white 62%, var(--nav-link) 38%);
   --dash-panel-shadow: 0 34px 110px -70px color-mix(in srgb, var(--nav-link-hover) 45%, transparent);
-  --dash-panel-shadow-soft: 0 28px 96px -68px color-mix(in srgb, var(--nav-link-hover) 32%, transparent);
+  --dash-panel-shadow-soft: 0 28px 96px -68px
+    color-mix(in srgb, var(--nav-link-hover) 32%, transparent);
   --dash-panel-item-bg: color-mix(in srgb, white 96%, var(--nav-link) 4%);
   --dash-panel-item-bg-alt: color-mix(in srgb, white 94%, var(--nav-link) 6%);
   --dash-panel-item-divider: color-mix(in srgb, white 76%, var(--nav-link) 24%);
   --dash-panel-item-hover: color-mix(in srgb, white 88%, var(--nav-link) 12%);
   --dash-panel-item-ring: color-mix(in srgb, white 68%, var(--nav-link) 32%);
-  --dash-panel-hover-shadow: 0 70px 160px -90px color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
+  --dash-panel-hover-shadow: 0 70px 160px -90px
+    color-mix(in srgb, var(--nav-link-hover) 55%, transparent);
   --dash-highlight-opacity: 0.58;
   --dash-glass-sheen-start: color-mix(in srgb, white 65%, transparent);
   --dash-glass-sheen-end: color-mix(in srgb, white 12%, transparent);
@@ -521,12 +523,12 @@ h3 {
     0 1.5px 8px 0 #0001;
 }
 
-.theme-switch input:checked+.theme-slider .theme-knob {
+.theme-switch input:checked + .theme-slider .theme-knob {
   left: 37px;
   background: #181a1e;
 }
 
-.theme-switch input:checked+.theme-slider {
+.theme-switch input:checked + .theme-slider {
   background: #363d49;
 }
 
@@ -614,7 +616,6 @@ body.dark .card-hover:focus-within {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .card-hover,
   .menu-link,
   .burger-btn,
@@ -942,9 +943,11 @@ body.dark .menu-link:not(.logout):focus {
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--glass-highlight) 45%, transparent),
     0 14px 32px -20px color-mix(in srgb, var(--nav-link-hover) 48%, transparent);
-  background-image: linear-gradient(135deg,
-      color-mix(in srgb, var(--glass-highlight) 50%, transparent) 0%,
-      transparent 72%);
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--glass-highlight) 50%, transparent) 0%,
+    transparent 72%
+  );
 }
 
 .chip-clock {
@@ -1059,7 +1062,6 @@ body.dark .chip-weather__icon {
 
 @media (prefers-reduced-motion: no-preference) {
   @keyframes weather-icon-glow {
-
     0%,
     100% {
       transform: scale(1);
@@ -1073,7 +1075,6 @@ body.dark .chip-weather__icon {
   }
 
   @keyframes weather-icon-breeze {
-
     0%,
     100% {
       transform: translate3d(0, 0, 0);
@@ -1085,7 +1086,6 @@ body.dark .chip-weather__icon {
   }
 
   @keyframes weather-icon-drizzle {
-
     0%,
     100% {
       transform: translate3d(0, 0, 0);
@@ -1115,7 +1115,6 @@ body.dark .chip-weather__icon {
   }
 
   @keyframes weather-icon-storm {
-
     0%,
     100% {
       transform: translate3d(0, 0, 0);
@@ -1177,10 +1176,12 @@ body.dark .MuiTooltip-tooltip {
 }
 
 .gradient-card-btn {
-  background: linear-gradient(98deg,
-      var(--fed-blue-60v) 10%,
-      var(--fed-blue-70v) 55%,
-      var(--fed-blue-80v) 100%);
+  background: linear-gradient(
+    98deg,
+    var(--fed-blue-60v) 10%,
+    var(--fed-blue-70v) 55%,
+    var(--fed-blue-80v) 100%
+  );
   color: #fff !important;
   font-weight: 800;
   border: none;
@@ -1271,11 +1272,13 @@ body.dark .option-card .MuiTypography-root {
   background:
     radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.18), transparent 60%),
     radial-gradient(140% 220% at 110% 10%, rgba(17, 47, 78, 0.18), transparent 62%),
-    linear-gradient(112deg,
+    linear-gradient(
+      112deg,
       var(--fed-blue-90v) 0%,
       var(--fed-blue-80v) 28%,
       var(--fed-blue-70v) 58%,
-      var(--fed-blue-60v) 100%);
+      var(--fed-blue-60v) 100%
+    );
   transition:
     background var(--anim-slow),
     box-shadow 0.27s,
@@ -1301,7 +1304,8 @@ body.dark .option-card .MuiTypography-root {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 32%) no-repeat;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 32%)
+    no-repeat;
   mix-blend-mode: overlay;
   opacity: 0.55;
 }
@@ -1447,11 +1451,13 @@ body.dark .mobile-drawer-content {
   background:
     radial-gradient(120% 180% at -10% -20%, rgba(105, 169, 220, 0.16), transparent 58%),
     radial-gradient(140% 220% at 110% 10%, rgba(11, 17, 23, 0.36), transparent 62%),
-    linear-gradient(112deg,
+    linear-gradient(
+      112deg,
       rgba(10, 21, 36, 0.98) 0%,
       rgba(11, 43, 71, 0.98) 26%,
       rgba(18, 62, 103, 0.98) 56%,
-      rgba(31, 85, 144, 0.98) 100%);
+      rgba(31, 85, 144, 0.98) 100%
+    );
   backdrop-filter: blur(20px);
 }
 
@@ -1598,7 +1604,7 @@ body:not(.dark) .menu-btn-settings:focus-visible {
     z-index: 2;
   }
 
-  body.blurred #root>*:not(.mobile-drawer):not(.navbar-root):not(.settings-modal) {
+  body.blurred #root > *:not(.mobile-drawer):not(.navbar-root):not(.settings-modal) {
     filter: blur(7px) brightness(0.95);
     transition: filter 0.25s cubic-bezier(0.42, 0, 0.58, 1);
     pointer-events: none;
@@ -1606,7 +1612,7 @@ body:not(.dark) .menu-btn-settings:focus-visible {
   }
 }
 
-body.blurred #root>*:not(.navbar-root):not(.mobile-drawer):not(.settings-modal) {
+body.blurred #root > *:not(.navbar-root):not(.mobile-drawer):not(.settings-modal) {
   filter: blur(7px) brightness(0.95);
   transition: filter 0.25s cubic-bezier(0.42, 0, 0.58, 1);
   pointer-events: none;
@@ -1653,11 +1659,13 @@ body.blurred #root>*:not(.navbar-root):not(.mobile-drawer):not(.settings-modal) 
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg,
-      var(--glass-tint-1),
-      var(--glass-tint-2) 38%,
-      var(--glass-tint-3) 64%,
-      transparent);
+  background: linear-gradient(
+    180deg,
+    var(--glass-tint-1),
+    var(--glass-tint-2) 38%,
+    var(--glass-tint-3) 64%,
+    transparent
+  );
 }
 
 .glass--panel:not(.map-head)::after {
@@ -1719,21 +1727,27 @@ body.blurred #root>*:not(.navbar-root):not(.mobile-drawer):not(.settings-modal) 
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(140% 120% at -15% -25%,
+    radial-gradient(
+      140% 120% at -15% -25%,
       rgba(255, 255, 255, 0.32),
       rgba(255, 255, 255, 0.12) 45%,
-      rgba(255, 255, 255, 0) 70%),
-    radial-gradient(160% 140% at 115% 125%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    radial-gradient(
+      160% 140% at 115% 125%,
       rgba(255, 255, 255, 0.24),
       rgba(255, 255, 255, 0.1) 50%,
-      rgba(255, 255, 255, 0) 75%),
+      rgba(255, 255, 255, 0) 75%
+    ),
     radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       rgba(255, 255, 255, 0.22) 0%,
       rgba(255, 255, 255, 0.14) 25%,
       rgba(255, 255, 255, 0.08) 50%,
       rgba(255, 255, 255, 0.04) 75%,
-      rgba(255, 255, 255, 0.02) 100%);
+      rgba(255, 255, 255, 0.02) 100%
+    );
   border: 1px solid rgba(255, 255, 255, 0.52);
   -webkit-backdrop-filter: saturate(200%) brightness(1.08);
   backdrop-filter: saturate(200%) brightness(1.08);
@@ -1754,21 +1768,27 @@ body.blurred #root>*:not(.navbar-root):not(.mobile-drawer):not(.settings-modal) 
 
 body.dark .map-head {
   background:
-    radial-gradient(140% 120% at -15% -25%,
+    radial-gradient(
+      140% 120% at -15% -25%,
       rgba(255, 255, 255, 0.24),
       rgba(255, 255, 255, 0.1) 45%,
-      rgba(255, 255, 255, 0) 70%),
-    radial-gradient(160% 140% at 115% 125%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    radial-gradient(
+      160% 140% at 115% 125%,
       rgba(255, 255, 255, 0.18),
       rgba(255, 255, 255, 0.08) 50%,
-      rgba(255, 255, 255, 0) 75%),
+      rgba(255, 255, 255, 0) 75%
+    ),
     radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       rgba(255, 255, 255, 0.16) 0%,
       rgba(255, 255, 255, 0.1) 25%,
       rgba(255, 255, 255, 0.06) 50%,
       rgba(255, 255, 255, 0.03) 75%,
-      rgba(255, 255, 255, 0.015) 100%);
+      rgba(255, 255, 255, 0.015) 100%
+    );
   border: 1px solid rgba(255, 255, 255, 0.42);
   -webkit-backdrop-filter: saturate(200%) brightness(1.12);
   backdrop-filter: saturate(200%) brightness(1.12);
@@ -1789,22 +1809,28 @@ body.dark .map-head {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       rgba(255, 255, 255, 0.45) 0%,
       rgba(255, 255, 255, 0.28) 15%,
       rgba(255, 255, 255, 0.18) 30%,
       rgba(255, 255, 255, 0.1) 50%,
       rgba(255, 255, 255, 0.05) 70%,
       rgba(255, 255, 255, 0.02) 85%,
-      transparent 100%),
-    radial-gradient(90% 160% at -5% -20%,
+      transparent 100%
+    ),
+    radial-gradient(
+      90% 160% at -5% -20%,
       rgba(255, 255, 255, 0.35),
       rgba(255, 255, 255, 0.15) 40%,
-      transparent 70%),
-    radial-gradient(70% 120% at 105% 5%,
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 120% at 105% 5%,
       rgba(255, 255, 255, 0.25),
       rgba(255, 255, 255, 0.1) 45%,
-      transparent 70%),
+      transparent 70%
+    ),
     radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.2), transparent 50%);
   mix-blend-mode: overlay;
   opacity: 0.85;
@@ -1812,22 +1838,28 @@ body.dark .map-head {
 
 body.dark .map-head::before {
   background:
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       rgba(255, 255, 255, 0.35) 0%,
       rgba(255, 255, 255, 0.22) 15%,
       rgba(255, 255, 255, 0.14) 30%,
       rgba(255, 255, 255, 0.08) 50%,
       rgba(255, 255, 255, 0.04) 70%,
       rgba(255, 255, 255, 0.015) 85%,
-      transparent 100%),
-    radial-gradient(90% 160% at -5% -20%,
+      transparent 100%
+    ),
+    radial-gradient(
+      90% 160% at -5% -20%,
       rgba(255, 255, 255, 0.28),
       rgba(255, 255, 255, 0.12) 40%,
-      transparent 70%),
-    radial-gradient(70% 120% at 105% 5%,
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 120% at 105% 5%,
       rgba(255, 255, 255, 0.2),
       rgba(255, 255, 255, 0.08) 45%,
-      transparent 70%),
+      transparent 70%
+    ),
     radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.16), transparent 50%);
   opacity: 0.75;
 }
@@ -1841,24 +1873,30 @@ body.dark .map-head::before {
   height: 240px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 28% 22%,
+    radial-gradient(
+      circle at 28% 22%,
       rgba(255, 255, 255, 0.65) 0%,
       rgba(255, 255, 255, 0.45) 18%,
       rgba(255, 255, 255, 0.3) 32%,
       rgba(255, 255, 255, 0.18) 45%,
       rgba(255, 255, 255, 0.1) 58%,
-      rgba(255, 255, 255, 0) 75%),
-    conic-gradient(from 205deg at 28% 18%,
+      rgba(255, 255, 255, 0) 75%
+    ),
+    conic-gradient(
+      from 205deg at 28% 18%,
       rgba(255, 255, 255, 0.5) 0%,
       rgba(255, 255, 255, 0.35) 12%,
       rgba(255, 255, 255, 0.22) 25%,
       rgba(255, 255, 255, 0.12) 38%,
       rgba(255, 255, 255, 0.06) 50%,
-      transparent 65%),
-    radial-gradient(ellipse 120% 80% at 35% 15%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 120% 80% at 35% 15%,
       rgba(255, 255, 255, 0.4) 0%,
       rgba(255, 255, 255, 0.2) 30%,
-      transparent 60%);
+      transparent 60%
+    );
   opacity: 0.95;
   mix-blend-mode: screen;
   pointer-events: none;
@@ -1867,29 +1905,35 @@ body.dark .map-head::before {
 
 body.dark .map-head::after {
   background:
-    radial-gradient(circle at 28% 22%,
+    radial-gradient(
+      circle at 28% 22%,
       rgba(255, 255, 255, 0.5) 0%,
       rgba(255, 255, 255, 0.35) 18%,
       rgba(255, 255, 255, 0.22) 32%,
       rgba(255, 255, 255, 0.14) 45%,
       rgba(255, 255, 255, 0.08) 58%,
-      rgba(255, 255, 255, 0) 75%),
-    conic-gradient(from 205deg at 28% 18%,
+      rgba(255, 255, 255, 0) 75%
+    ),
+    conic-gradient(
+      from 205deg at 28% 18%,
       rgba(255, 255, 255, 0.4) 0%,
       rgba(255, 255, 255, 0.28) 12%,
       rgba(255, 255, 255, 0.18) 25%,
       rgba(255, 255, 255, 0.1) 38%,
       rgba(255, 255, 255, 0.05) 50%,
-      transparent 65%),
-    radial-gradient(ellipse 120% 80% at 35% 15%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 120% 80% at 35% 15%,
       rgba(255, 255, 255, 0.3) 0%,
       rgba(255, 255, 255, 0.15) 30%,
-      transparent 60%);
+      transparent 60%
+    );
   opacity: 0.8;
   filter: brightness(1.15);
 }
 
-.map-head>* {
+.map-head > * {
   position: relative;
   z-index: 2;
 }
@@ -1965,7 +2009,6 @@ body.dark .map-controls-glass .glass--btn[aria-pressed="false"] .MuiSvgIcon-root
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-
   .glass,
   .glass--btn,
   .glass--panel,
@@ -2030,10 +2073,12 @@ body.dark .glass:not(.map-head) {
 
 .glass--panel:not(.map-head)::before {
   background:
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       rgba(255, 255, 255, 0.06),
       rgba(255, 255, 255, 0.02) 42%,
-      transparent 72%),
+      transparent 72%
+    ),
     radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.12), transparent 62%);
 }
 
@@ -2045,10 +2090,12 @@ body.dark .glass:not(.map-head) {
   border-radius: 50%;
   background:
     radial-gradient(closest-side, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 62%),
-    conic-gradient(from 210deg at 26% 18%,
+    conic-gradient(
+      from 210deg at 26% 18%,
       rgba(255, 255, 255, 0.28),
       rgba(255, 255, 255, 0.12) 16%,
-      transparent 34%);
+      transparent 34%
+    );
   filter: blur(1px);
   opacity: 0.5;
   mix-blend-mode: screen;
@@ -2111,10 +2158,12 @@ body.dark .glass:not(.map-head) {
   position: absolute;
   inset: -40%;
   pointer-events: none;
-  background: linear-gradient(105deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.36) 48%,
-      transparent 66%);
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.36) 48%,
+    transparent 66%
+  );
   transform: translateX(-20%) rotate(10deg);
   transition:
     transform 0.65s cubic-bezier(0.22, 0.61, 0.36, 1),
@@ -2177,7 +2226,7 @@ body.dark .glass:not(.map-head) {
   }
 }
 
-.map-page>iframe,
+.map-page > iframe,
 .map-page .map-iframe,
 .map-page iframe {
   position: absolute;
@@ -2308,7 +2357,8 @@ body.dark .map-head .map-btn--reset:hover {
   border-color: rgba(255, 255, 255, 0.36);
 }
 
-:where(button,
+:where(
+  button,
   [role="button"],
   a,
   input,
@@ -2319,7 +2369,8 @@ body.dark .map-head .map-btn--reset:hover {
   .MuiOutlinedInput-root,
   .MuiSelect-root,
   .MuiCheckbox-root,
-  .MuiRadio-root):focus-visible {
+  .MuiRadio-root
+):focus-visible {
   box-shadow: var(--shadow-focus) !important;
   outline: none;
 }
@@ -2435,7 +2486,6 @@ body.dark .profile-edit .Mui-focused .MuiOutlinedInput-notchedOutline {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .glass--btn,
   .glass--panel,
   .gradient-card-btn,
@@ -2569,9 +2619,11 @@ body.dark .contact-links svg {
 }
 
 body:not(.dark) .profile-panel {
-  background: linear-gradient(170deg,
-      rgba(255, 255, 255, 0.94),
-      rgba(240, 247, 255, 0.88)) !important;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(240, 247, 255, 0.88)
+  ) !important;
   border: 1px solid color-mix(in srgb, var(--nav-link) 18%, transparent) !important;
   box-shadow:
     0 30px 84px -56px rgba(15, 40, 85, 0.28),
@@ -2595,9 +2647,11 @@ body.dark .profile-panel::before {
 }
 
 body:not(.dark) .profile-panel--primary {
-  background: linear-gradient(175deg,
-      rgba(255, 255, 255, 0.97),
-      rgba(233, 242, 255, 0.9)) !important;
+  background: linear-gradient(
+    175deg,
+    rgba(255, 255, 255, 0.97),
+    rgba(233, 242, 255, 0.9)
+  ) !important;
   border-color: color-mix(in srgb, var(--nav-link) 26%, transparent) !important;
   box-shadow:
     0 36px 94px -58px color-mix(in srgb, var(--nav-link) 34%, transparent),
@@ -2618,9 +2672,11 @@ body:not(.dark) .profile-panel--hero::before {
 }
 
 body:not(.dark) .profile-panel--compact {
-  background: linear-gradient(165deg,
-      rgba(255, 255, 255, 0.99),
-      rgba(232, 241, 255, 0.9)) !important;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.99),
+    rgba(232, 241, 255, 0.9)
+  ) !important;
   border-color: color-mix(in srgb, var(--nav-link) 20%, transparent) !important;
   box-shadow:
     0 26px 72px -50px rgba(15, 79, 170, 0.28),
@@ -2632,9 +2688,11 @@ body:not(.dark) .profile-panel--compact::before {
 }
 
 body:not(.dark) .profile-panel--editor {
-  background: linear-gradient(172deg,
-      rgba(255, 255, 255, 0.98),
-      rgba(228, 239, 252, 0.9)) !important;
+  background: linear-gradient(
+    172deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(228, 239, 252, 0.9)
+  ) !important;
   border-color: color-mix(in srgb, var(--nav-link) 24%, transparent) !important;
 }
 
@@ -2954,16 +3012,22 @@ body.dark .chip-gradient {
   position: absolute;
   inset: -2px;
   border-radius: 50%;
-  background: conic-gradient(from 210deg at 50% 50%,
-      var(--accent-dyn, #b3d8ff),
-      var(--fed-blue-60v),
-      var(--accent-dyn, #b3d8ff));
-  -webkit-mask: radial-gradient(farthest-side,
-      rgba(0, 0, 0, 0) calc(100% - 6px),
-      rgba(0, 0, 0, 1) calc(100% - 6px));
-  mask: radial-gradient(farthest-side,
-      rgba(0, 0, 0, 0) calc(100% - 6px),
-      rgba(0, 0, 0, 1) calc(100% - 6px));
+  background: conic-gradient(
+    from 210deg at 50% 50%,
+    var(--accent-dyn, #b3d8ff),
+    var(--fed-blue-60v),
+    var(--accent-dyn, #b3d8ff)
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    rgba(0, 0, 0, 0) calc(100% - 6px),
+    rgba(0, 0, 0, 1) calc(100% - 6px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    rgba(0, 0, 0, 0) calc(100% - 6px),
+    rgba(0, 0, 0, 1) calc(100% - 6px)
+  );
   opacity: 0.9;
 }
 
@@ -3544,7 +3608,6 @@ body.dark {
 }
 
 @media (prefers-reduced-transparency: reduce) {
-
   .ios-material-ultrathin,
   .ios-material-thin,
   .ios-material-regular {
