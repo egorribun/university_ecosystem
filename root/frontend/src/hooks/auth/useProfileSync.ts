@@ -185,10 +185,14 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         ...payload,
         signature: signSnapshot(payload, signingKey),
       }
-      encryptEnvelope(envelope, signingKey).then((encryptedEnvelope) => {
-        localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(encryptedEnvelope))
-        localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
-      }).catch(() => { /* ignore */ })
+      encryptEnvelope(envelope, signingKey)
+        .then((encryptedEnvelope) => {
+          localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(encryptedEnvelope))
+          localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+        })
+        .catch(() => {
+          /* ignore */
+        })
     } else {
       clearProfileCacheStorage()
     }
