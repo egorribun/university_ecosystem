@@ -121,15 +121,8 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     clearProfileCacheStorage()
     return undefined
   }
-  const candidateRaw = readCachedEnvelope()
-  let candidate: CachedProfileEnvelope | null = null
-  if (!candidateRaw) return undefined
-  try {
-    candidate = await decryptEnvelope(candidateRaw, signingKey)
-  } catch {
-    clearProfileCacheStorage()
-    return undefined
-  }
+  const candidate = readCachedEnvelope()
+  if (!candidate) return undefined
   if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
     clearProfileCacheStorage()
     return undefined
@@ -185,14 +178,8 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         ...payload,
         signature: signSnapshot(payload, signingKey),
       }
-      encryptEnvelope(envelope, signingKey)
-        .then((encryptedEnvelope) => {
-          localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(encryptedEnvelope))
-          localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
-        })
-        .catch(() => {
-          /* ignore */
-        })
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
+      localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
     } else {
       clearProfileCacheStorage()
     }
@@ -486,7 +473,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
