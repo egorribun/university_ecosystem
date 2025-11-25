@@ -2,7 +2,6 @@ import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import anyio
 from fastapi import BackgroundTasks, HTTPException, Request, status
@@ -19,10 +18,9 @@ from app.models.user_loaders import (
     ensure_mfa_relationships_loaded,
 )
 from app.schemas import schemas
+from app.services.audit_service import AuditService
 from app.services.session_cleanup import revoke_sessions_matching
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
-
-from app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
@@ -142,9 +140,6 @@ async def attach_pending_email(
     pending = await _get_active_email_change_request(db, user.id)
     setattr(user, "pending_email", pending.new_email if pending else None)
     return user
-
-
-
 
 
 class AuthService:

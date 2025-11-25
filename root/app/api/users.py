@@ -17,7 +17,12 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_fresh_mfa, get_user_service, get_auth_service
+from app.api.deps import (
+    get_auth_service,
+    get_current_user,
+    get_user_service,
+    require_fresh_mfa,
+)
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models import models
@@ -293,6 +298,7 @@ async def get_groups(
     db: AsyncSession = Depends(get_db),
 ):
     from app import crud
+
     groups = await crud.get_groups(db)
     return groups
 

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.api.deps import (
+    get_audit_service,
     get_current_user,
     require_fresh_mfa,
     require_fresh_mfa_for_enrollment,
@@ -29,7 +30,6 @@ from app.auth.security import (
 )
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models.models import (
     ActiveSession,
@@ -46,17 +46,9 @@ from app.schemas.schemas import (
     UserCreate,
     UserOut,
 )
+from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
-from app.services.audit_service import AuditService
 from app.utils.ratelimit import sensitive_route_limit
-
-from app.services.audit_service import AuditService
-from app.api.deps import (
-    get_current_user,
-    require_fresh_mfa,
-    require_fresh_mfa_for_enrollment,
-    get_audit_service,
-)
 
 logger = logging.getLogger("app.auth")
 
@@ -79,6 +71,7 @@ def _audit_log(
         reason=reason,
         **(extra or {}),
     )
+
 
 class LoginIn(BaseModel):
     email: EmailStr

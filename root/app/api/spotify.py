@@ -107,7 +107,7 @@ async def _save_tokens(
 ):
     if not user.spotify:
         user.spotify = SpotifyIntegration(user_id=user.id)
-    
+
     user.spotify.access_token = access or None
     if refresh is not None:
         user.spotify.refresh_token = refresh or None

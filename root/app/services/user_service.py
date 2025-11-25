@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from fastapi import HTTPException, Request, UploadFile, status
 from pydantic import EmailStr, TypeAdapter
@@ -15,11 +14,10 @@ from app.models.user_loaders import (
     ensure_mfa_relationships_loaded,
 )
 from app.schemas import schemas
+from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.services.notifications import create_notifications_for_users
 from app.utils.files import delete_static_file
-
-from app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +63,7 @@ class UserService:
             update_fields["email"] = validated_email
 
         preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
-        
+
         for field, value in update_fields.items():
             if field in preferences_fields:
                 if not db_user.preferences:

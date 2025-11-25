@@ -880,7 +880,7 @@ async def admin_update_user(
     if "email" in payload and payload["email"] is not None:
         payload["email"] = str(payload["email"]).strip().lower()
     preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
-    
+
     for field, value in payload.items():
         if field in preferences_fields:
             if not user.preferences:
@@ -1341,4 +1341,3 @@ async def get_groups(db: AsyncSession) -> list[models.Group]:
     stmt = select(models.Group).order_by(models.Group.name)
     result = await db.execute(stmt)
     return list(result.scalars().all())
-
