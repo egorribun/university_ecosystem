@@ -1,4 +1,3 @@
-import json
 import logging
 import math
 import secrets
@@ -1238,4 +1237,3 @@ async def logout(
             )
 
     _clear_access_token_cookie(response)
-
