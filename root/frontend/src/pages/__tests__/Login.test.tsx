@@ -145,7 +145,7 @@ describe("Login page", () => {
       http.post("*/auth/login", () =>
         HttpResponse.json(
           {
-            detail: "Too many failed attempts. Your account is temporarily locked.",
+            detail: "Too many failed attempts. Your account is temporarily locked. Try again in 2 minutes.",
           },
           { status: 423, headers: { "Retry-After": "120" } }
         )
@@ -193,7 +193,7 @@ describe("Login page", () => {
     // Wait for initial auth check to complete
     await waitFor(() => expect(screen.queryByText(/loading|загрузка/i)).not.toBeInTheDocument(), {
       timeout: 1000,
-    }).catch(() => {}) // Ignore if no loading indicator
+    }).catch(() => { }) // Ignore if no loading indicator
 
     await user.type(
       screen.getByLabelText(matchText(tAuth("fields.email")), {
