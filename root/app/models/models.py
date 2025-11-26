@@ -172,14 +172,10 @@ class User(Base):
         spotify_fields = {"spotify_is_connected", "spotify_display_name"}
 
         preferences_data = {
-            key: kwargs.pop(key)
-            for key in list(kwargs)
-            if key in preferences_fields
+            key: kwargs.pop(key) for key in list(kwargs) if key in preferences_fields
         }
         spotify_data = {
-            key: kwargs.pop(key)
-            for key in list(kwargs)
-            if key in spotify_fields
+            key: kwargs.pop(key) for key in list(kwargs) if key in spotify_fields
         }
 
         super().__init__(**kwargs)
