@@ -12,10 +12,11 @@ const deriveEncryptionKey = (signingKey: string): string => {
   // Use a static salt specific to profile caching
   // In production, consider using a per-user salt stored securely
   const salt = CryptoJS.enc.Utf8.parse("ecosystem.profile.cache.salt.v1")
-  // Use PBKDF2 with 10000 iterations for sufficient computational effort
+  // Use PBKDF2 with 100,000 iterations and SHA256 for sufficient computational effort
   const derivedKey = CryptoJS.PBKDF2(signingKey, salt, {
     keySize: 256 / 32, // 256-bit key
-    iterations: 10000,
+    iterations: 100000,
+    hasher: CryptoJS.algo.SHA256,
   })
   return derivedKey.toString()
 }
