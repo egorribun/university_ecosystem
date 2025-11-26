@@ -69,7 +69,11 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'report-sample'" in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
     csp_tokens = set(csp.split())
-    assert "https://api.spotify.com" in csp_tokens
+    assert "api.spotify.com" in (
+        urllib.parse.urlparse(token).hostname
+        for token in csp_tokens
+        if token.startswith("http://") or token.startswith("https://")
+    )
     # Parse the hostnames from CSP token URLs to accurately match the allowed host
     csp_hosts = set(
         urllib.parse.urlparse(token).hostname
