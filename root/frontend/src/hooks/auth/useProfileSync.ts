@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import CryptoJS from "crypto-js"
+import { scrypt } from "scrypt-js"
 import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
 import { signSnapshot } from "./useSessionCrypto"
@@ -9,21 +10,29 @@ import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
 // Derive a secure encryption key from the signing key using PBKDF2
 // Derive a secure encryption key from the signing key using PBKDF2
-const deriveEncryptionKey = (signingKey: string): CryptoJS.lib.WordArray => {
-  // Use a static salt specific to profile caching
-  // In production, consider using a per-user salt stored securely
-  const salt = CryptoJS.enc.Utf8.parse("ecosystem.profile.cache.salt.v1")
-  // Use PBKDF2 with 100,000 iterations and SHA256 for sufficient computational effort
-  return CryptoJS.PBKDF2(signingKey, salt, {
-    keySize: 256 / 32, // 256-bit key
-    iterations: 100000,
-    hasher: CryptoJS.algo.SHA256,
-  })
+const deriveEncryptionKey = async (signingKey: string, userSalt: string): Promise<CryptoJS.lib.WordArray> => {
+  // Use userSalt (from user id or email) to generate a per-user salt
+  const salt = new Uint8Array(CryptoJS.enc.Utf8.parse(userSalt).words.map(word => [
+    (word >> 24) & 0xff, (word >> 16) & 0xff, (word >> 8) & 0xff, word & 0xff
+  ]).flat())
+  // scrypt parameters: N=2^16 (~65536), r=8, p=1 
+  const N = 65536, r = 8, p = 1
+  const keyLength = 32 // 256 bits
+  const key = await scrypt(
+    Uint8Array.from(Buffer.from(signingKey, "utf8")),
+    salt,
+    N,
+    r,
+    p,
+    keyLength
+  )
+  // Convert Uint8Array to CryptoJS WordArray for AES compatibility
+  return CryptoJS.lib.WordArray.create(Array.from(key))
 }
 
 // Helper functions for encrypting/decrypting sensitive data
-const encryptData = (data: unknown, signingKey: string): string => {
-  const key = deriveEncryptionKey(signingKey)
+const encryptData = async (data: unknown, signingKey: string, userSalt: string): Promise<string> => {
+  const key = await deriveEncryptionKey(signingKey, userSalt)
   const iv = CryptoJS.lib.WordArray.random(16)
   const jsonString = JSON.stringify(data)
   const encrypted = CryptoJS.AES.encrypt(jsonString, key, {
@@ -243,7 +252,8 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         data: snapshot,
       }
       // Encrypt sensitive data before storing
-      const encryptedData = encryptData(snapshot, signingKey)
+      // Use the user ID as salt for per-user encryption key derivation
+      const encryptedData = await encryptData(snapshot, signingKey, snapshot.id)
       const envelope: CachedProfileEnvelope = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
         expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
