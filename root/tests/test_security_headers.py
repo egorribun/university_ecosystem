@@ -67,10 +67,11 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'strict-dynamic'" in csp
     assert "'report-sample'" in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
-    assert "https://api.spotify.com" in csp
-    assert "https://fcm.googleapis.com" in csp
-    assert "https://fcmregistrations.googleapis.com" in csp
-    assert "https://*.push.services.mozilla.com" in csp
+    csp_tokens = set(csp.split())
+    assert "https://api.spotify.com" in csp_tokens
+    assert "https://fcm.googleapis.com" in csp_tokens
+    assert "https://fcmregistrations.googleapis.com" in csp_tokens
+    assert "https://*.push.services.mozilla.com" in csp_tokens
     assert "Content-Security-Policy-Report-Only" not in headers
     assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in csp
     assert "require-trusted-types-for 'script'" in csp
