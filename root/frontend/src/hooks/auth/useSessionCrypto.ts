@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { hmac } from "@noble/hashes/hmac"
-import { sha256 } from "@noble/hashes/sha256"
 import api from "@/api/client"
 import {
   SERVICE_WORKER_MESSAGE_TYPES,
@@ -18,7 +16,7 @@ const utf8 = new TextEncoder()
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -77,15 +75,24 @@ const bytesToHex = (bytes: Uint8Array): string =>
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")
 
+import CryptoJS from "crypto-js"
+
 export const hashSessionIdentifier = (value: string): string => {
-  const digest = sha256(utf8.encode(value))
-  return bytesToHex(digest)
+  // Use a static salt for session ID hashing
+  const salt = CryptoJS.enc.Utf8.parse("ecosystem.session.id.salt.v1")
+  // Use PBKDF2 with 100,000 iterations and SHA256
+  const hash = CryptoJS.PBKDF2(value, salt, {
+    keySize: 256 / 32,
+    iterations: 100000,
+    hasher: CryptoJS.algo.SHA256,
+  })
+  return hash.toString(CryptoJS.enc.Hex)
 }
 
 export const signSnapshot = (payload: unknown, key: string): string => {
   const json = JSON.stringify(payload)
-  const signature = hmac(sha256, utf8.encode(key), utf8.encode(json))
-  return bytesToBase64(signature)
+  const signature = CryptoJS.HmacSHA256(json, key)
+  return signature.toString(CryptoJS.enc.Base64)
 }
 
 export const readStoredSessionSigningKey = (): string | null => {
