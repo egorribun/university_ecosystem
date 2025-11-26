@@ -7,15 +7,30 @@ import type { User } from "@/types/User"
 import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
-// Helper functions for encrypting/decrypting sensitive data
-const encryptData = (data: unknown, key: string): string => {
-  const jsonString = JSON.stringify(data)
-  return CryptoJS.AES.encrypt(jsonString, key).toString()
+// Derive a secure encryption key from the signing key using PBKDF2
+const deriveEncryptionKey = (signingKey: string): string => {
+  // Use a static salt specific to profile caching
+  // In production, consider using a per-user salt stored securely
+  const salt = CryptoJS.enc.Utf8.parse("ecosystem.profile.cache.salt.v1")
+  // Use PBKDF2 with 10000 iterations for sufficient computational effort
+  const derivedKey = CryptoJS.PBKDF2(signingKey, salt, {
+    keySize: 256 / 32, // 256-bit key
+    iterations: 10000,
+  })
+  return derivedKey.toString()
 }
 
-const decryptData = <T,>(encryptedData: string, key: string): T | null => {
+// Helper functions for encrypting/decrypting sensitive data
+const encryptData = (data: unknown, signingKey: string): string => {
+  const derivedKey = deriveEncryptionKey(signingKey)
+  const jsonString = JSON.stringify(data)
+  return CryptoJS.AES.encrypt(jsonString, derivedKey).toString()
+}
+
+const decryptData = <T,>(encryptedData: string, signingKey: string): T | null => {
   try {
-    const bytes = CryptoJS.AES.decrypt(encryptedData, key)
+    const derivedKey = deriveEncryptionKey(signingKey)
+    const bytes = CryptoJS.AES.decrypt(encryptedData, derivedKey)
     const decryptedString = bytes.toString(CryptoJS.enc.Utf8)
     if (!decryptedString) return null
     return JSON.parse(decryptedString) as T
