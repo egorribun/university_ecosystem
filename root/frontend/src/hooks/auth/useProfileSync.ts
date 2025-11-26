@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
+import CryptoJS from "crypto-js"
 import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
 import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
+
+// Helper functions for encrypting/decrypting sensitive data
+const encryptData = (data: unknown, key: string): string => {
+  const jsonString = JSON.stringify(data)
+  return CryptoJS.AES.encrypt(jsonString, key).toString()
+}
+
+const decryptData = <T,>(encryptedData: string, key: string): T | null => {
+  try {
+    const bytes = CryptoJS.AES.decrypt(encryptedData, key)
+    const decryptedString = bytes.toString(CryptoJS.enc.Utf8)
+    if (!decryptedString) return null
+    return JSON.parse(decryptedString) as T
+  } catch {
+    return null
+  }
+}
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 2
@@ -139,17 +157,29 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     clearProfileCacheStorage()
     return undefined
   }
+  // Decrypt the data field if it's encrypted
+  let snapshotData: CachedUserSnapshot
+  if (typeof candidate.data === "string") {
+    const decrypted = decryptData<CachedUserSnapshot>(candidate.data, signingKey)
+    if (!decrypted) {
+      clearProfileCacheStorage()
+      return undefined
+    }
+    snapshotData = decrypted
+  } else {
+    snapshotData = candidate.data as CachedUserSnapshot
+  }
   const payload: CacheSignaturePayload = {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
-    data: candidate.data as CachedUserSnapshot,
+    data: snapshotData,
   }
   const expectedSignature = signSnapshot(payload, signingKey)
   if (candidate.signature !== expectedSignature) {
     clearProfileCacheStorage()
     return undefined
   }
-  const snapshot = candidate.data as CachedUserSnapshot
+  const snapshot = snapshotData
   if (!snapshot || typeof snapshot.id !== "number") {
     clearProfileCacheStorage()
     return undefined
@@ -174,9 +204,20 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
         data: snapshot,
       }
+      // Encrypt sensitive data before storing
+      const encryptedData = encryptData(snapshot, signingKey)
       const envelope: CachedProfileEnvelope = {
-        ...payload,
-        signature: signSnapshot(payload, signingKey),
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+        data: encryptedData,
+        signature: signSnapshot(
+          {
+            version: PROFILE_CACHE_SCHEMA_VERSION,
+            expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+            data: snapshot,
+          },
+          signingKey
+        ),
       }
       localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
       localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
@@ -473,7 +514,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
