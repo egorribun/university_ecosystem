@@ -168,6 +168,13 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
   const handleCoverChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setActionError(t("stories:errors.invalidFileType"))
+      return
+    }
+
     setCoverFile(file)
     if (coverPreview) URL.revokeObjectURL(coverPreview)
     setCoverPreview(URL.createObjectURL(file))
