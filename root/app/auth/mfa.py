@@ -253,7 +253,7 @@ async def _lock_challenge(
             },
             ensure_ascii=False,
         )
-    )
+    )  # Log only non-sensitive metadata (IDs, counts, types)
     message = translate("errors.auth.mfa_challenge_locked", locale=locale)
     raise HTTPException(status_code=status_code, detail=message)
 
