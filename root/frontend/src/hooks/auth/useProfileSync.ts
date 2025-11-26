@@ -258,13 +258,14 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         version: PROFILE_CACHE_SCHEMA_VERSION,
         expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
         data: encryptedData,
-        signature: signSnapshot(
+        signature: await signSnapshot(
           {
             version: PROFILE_CACHE_SCHEMA_VERSION,
             expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
             data: snapshot,
           },
-          signingKey
+          signingKey,
+          snapshot.id // Use user id for salt
         ),
       }
       localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
