@@ -1,3 +1,4 @@
+import urllib.parse
 from importlib import util as importlib_util
 
 import httpx
@@ -6,7 +7,7 @@ from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
-import urllib.parse
+
 from app.core.config import Settings
 
 
@@ -77,7 +78,10 @@ async def test_security_headers_production_mode(monkeypatch):
     )
     assert "fcm.googleapis.com" in csp_hosts
     assert "fcmregistrations.googleapis.com" in csp_hosts
-    assert "push.services.mozilla.com" in csp_hosts or "*.push.services.mozilla.com" in csp_tokens
+    assert (
+        "push.services.mozilla.com" in csp_hosts
+        or "*.push.services.mozilla.com" in csp_tokens
+    )
     assert "Content-Security-Policy-Report-Only" not in headers
     assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in csp
     assert "require-trusted-types-for 'script'" in csp
