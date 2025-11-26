@@ -143,9 +143,10 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
     // Decrypt snapshot data before verifying signature
-    data: (typeof candidate.data === "string" && signingKey)
-      ? (decryptObject(candidate.data, signingKey) as CachedUserSnapshot)
-      : (candidate.data as CachedUserSnapshot),
+    data:
+      typeof candidate.data === "string" && signingKey
+        ? (decryptObject(candidate.data, signingKey) as CachedUserSnapshot)
+        : (candidate.data as CachedUserSnapshot),
   }
   const expectedSignature = signSnapshot(payload, signingKey)
   if (candidate.signature !== expectedSignature) {
@@ -153,9 +154,10 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     return undefined
   }
   // Ensure we're using decrypted snapshot
-  const snapshot = (typeof candidate.data === "string" && signingKey)
-    ? (decryptObject(candidate.data, signingKey) as CachedUserSnapshot)
-    : (candidate.data as CachedUserSnapshot)
+  const snapshot =
+    typeof candidate.data === "string" && signingKey
+      ? (decryptObject(candidate.data, signingKey) as CachedUserSnapshot)
+      : (candidate.data as CachedUserSnapshot)
   if (!snapshot || typeof snapshot.id !== "number") {
     clearProfileCacheStorage()
     return undefined
