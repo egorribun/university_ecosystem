@@ -23,6 +23,16 @@ export default function SmartImage({
   const computed = useMemo(() => {
     const resolved = resolveMediaUrl(srcRaw)
     if (!resolved) return ""
+
+    // Sanitize URL to prevent XSS
+    try {
+      const url = new URL(resolved, window.location.origin)
+      if (url.protocol === "javascript:") return ""
+    } catch {
+      // Invalid URL
+      return ""
+    }
+
     return addVersionParam(resolved, cacheV)
   }, [srcRaw, cacheV])
 
