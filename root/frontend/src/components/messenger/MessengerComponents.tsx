@@ -296,13 +296,35 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
-      const filteredFiles = Array.from(files).filter(
-        (file) => !(file.type === "image/svg+xml") && !file.name.toLowerCase().endsWith(".svg")
-      )
-      setSelectedFiles((prev) => [...prev, ...filteredFiles])
+      const filteredFiles = await Promise.all(Array.from(files).map(async (file) => {
+        // Exclude by MIME type and extension
+        if (
+          file.type === "image/svg+xml" ||
+          file.name.toLowerCase().endsWith(".svg")
+        ) {
+          return null
+        }
+        // Additional check for actual file content starting with <svg or <?xml ... <svg
+        if (file.type.startsWith("image/")) {
+          try {
+            const text = await file.slice(0, 512).text()
+            if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(text)) {
+              // Found SVG content, exclude it
+              return null
+            }
+          } catch {
+            // Ignore parse error, allow file
+          }
+        }
+        return file
+      }))
+      setSelectedFiles((prev) => [
+        ...prev,
+        ...filteredFiles.filter(f => !!f)
+      ])
     }
     // Reset input value to allow selecting the same file again
     if (fileInputRef.current) {
