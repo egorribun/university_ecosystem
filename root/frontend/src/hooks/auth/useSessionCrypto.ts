@@ -89,10 +89,41 @@ export const hashSessionIdentifier = (value: string): string => {
   return hash.toString(CryptoJS.enc.Hex)
 }
 
+// Helper to hash sensitive fields for signature input
+function hashSensitiveFields(obj: unknown): unknown {
+  if (typeof obj !== "object" || obj === null) return obj;
+  // List of sensitive fields to protect:
+  const sensitiveFields = ["mfa_default_method", "mfa_last_verified_at", "mfa_required"];
+  // Use a static salt (should be unique to this application)
+  const salt = CryptoJS.enc.Utf8.parse("ecosystem.sensitive.field.salt.v1");
+  // Recursively copy and hash sensitive fields
+  if (Array.isArray(obj)) {
+    return obj.map(hashSensitiveFields);
+  }
+  const result: Record<string, any> = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      if (sensitiveFields.includes(key) && typeof (obj as any)[key] === "string") {
+        // Pre-hash with PBKDF2 as a string
+        result[key] = CryptoJS.PBKDF2(
+          (obj as any)[key],
+          salt,
+          { keySize: 256 / 32, iterations: 100000, hasher: CryptoJS.algo.SHA256 }
+        ).toString(CryptoJS.enc.Hex);
+      } else {
+        result[key] = hashSensitiveFields((obj as any)[key]);
+      }
+    }
+  }
+  return result;
+}
+
 export const signSnapshot = (payload: unknown, key: string): string => {
-  const json = JSON.stringify(payload)
-  const signature = CryptoJS.HmacSHA256(json, key)
-  return signature.toString(CryptoJS.enc.Base64)
+  // Deep-clone and hash sensitive fields before stringification
+  const safePayload = hashSensitiveFields(payload);
+  const json = JSON.stringify(safePayload);
+  const signature = CryptoJS.HmacSHA256(json, key);
+  return signature.toString(CryptoJS.enc.Base64);
 }
 
 export const readStoredSessionSigningKey = (): string | null => {
