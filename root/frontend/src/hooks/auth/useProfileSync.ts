@@ -142,14 +142,20 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
   const payload: CacheSignaturePayload = {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
-    data: candidate.data as CachedUserSnapshot,
+    // Decrypt snapshot data before verifying signature
+    data: (typeof candidate.data === "string" && signingKey)
+      ? (decryptObject(candidate.data, signingKey) as CachedUserSnapshot)
+      : (candidate.data as CachedUserSnapshot),
   }
   const expectedSignature = signSnapshot(payload, signingKey)
   if (candidate.signature !== expectedSignature) {
     clearProfileCacheStorage()
     return undefined
   }
-  const snapshot = candidate.data as CachedUserSnapshot
+  // Ensure we're using decrypted snapshot
+  const snapshot = (typeof candidate.data === "string" && signingKey)
+    ? (decryptObject(candidate.data, signingKey) as CachedUserSnapshot)
+    : (candidate.data as CachedUserSnapshot)
   if (!snapshot || typeof snapshot.id !== "number") {
     clearProfileCacheStorage()
     return undefined
@@ -172,7 +178,8 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
         expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
-        data: snapshot,
+        // Encrypt snapshot before storing
+        data: encryptObject(snapshot, signingKey),
       }
       const envelope: CachedProfileEnvelope = {
         ...payload,
