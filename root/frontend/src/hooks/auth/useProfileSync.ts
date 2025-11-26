@@ -41,7 +41,7 @@ type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url"> &
 type CachedProfileEnvelope = {
   version: number
   expiresAt: number
-  data: CachedUserSnapshot
+  data: CachedUserSnapshot | string // Can be encrypted string or plain object
   signature: string
 }
 
