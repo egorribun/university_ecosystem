@@ -8,31 +8,53 @@ import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
 // Derive a secure encryption key from the signing key using PBKDF2
-const deriveEncryptionKey = (signingKey: string): string => {
+// Derive a secure encryption key from the signing key using PBKDF2
+const deriveEncryptionKey = (signingKey: string): CryptoJS.lib.WordArray => {
   // Use a static salt specific to profile caching
   // In production, consider using a per-user salt stored securely
   const salt = CryptoJS.enc.Utf8.parse("ecosystem.profile.cache.salt.v1")
   // Use PBKDF2 with 100,000 iterations and SHA256 for sufficient computational effort
-  const derivedKey = CryptoJS.PBKDF2(signingKey, salt, {
+  return CryptoJS.PBKDF2(signingKey, salt, {
     keySize: 256 / 32, // 256-bit key
     iterations: 100000,
     hasher: CryptoJS.algo.SHA256,
   })
-  return derivedKey.toString()
 }
 
 // Helper functions for encrypting/decrypting sensitive data
 const encryptData = (data: unknown, signingKey: string): string => {
-  const derivedKey = deriveEncryptionKey(signingKey)
+  const key = deriveEncryptionKey(signingKey)
+  const iv = CryptoJS.lib.WordArray.random(16)
   const jsonString = JSON.stringify(data)
-  return CryptoJS.AES.encrypt(jsonString, derivedKey).toString()
+  const encrypted = CryptoJS.AES.encrypt(jsonString, key, {
+    iv: iv,
+    mode: CryptoJS.mode.CBC,
+    padding: CryptoJS.pad.Pkcs7,
+  })
+  // Store IV and ciphertext separated by colon
+  return iv.toString() + ":" + encrypted.ciphertext.toString()
 }
 
-const decryptData = <T,>(encryptedData: string, signingKey: string): T | null => {
+const decryptData = <T>(encryptedData: string, signingKey: string): T | null => {
   try {
-    const derivedKey = deriveEncryptionKey(signingKey)
-    const bytes = CryptoJS.AES.decrypt(encryptedData, derivedKey)
-    const decryptedString = bytes.toString(CryptoJS.enc.Utf8)
+    const parts = encryptedData.split(":")
+    if (parts.length !== 2) return null
+
+    const iv = CryptoJS.enc.Hex.parse(parts[0])
+    const ciphertext = CryptoJS.enc.Hex.parse(parts[1])
+    const key = deriveEncryptionKey(signingKey)
+
+    const decrypted = CryptoJS.AES.decrypt(
+      { ciphertext: ciphertext } as CryptoJS.lib.CipherParams,
+      key,
+      {
+        iv: iv,
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7,
+      }
+    )
+
+    const decryptedString = decrypted.toString(CryptoJS.enc.Utf8)
     if (!decryptedString) return null
     return JSON.parse(decryptedString) as T
   } catch {
