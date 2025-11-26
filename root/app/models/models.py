@@ -19,6 +19,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -84,6 +85,38 @@ class User(Base):
         lazy="selectin",
     )
 
+    dnd_enabled = association_proxy(
+        "preferences",
+        "dnd_enabled",
+        creator=lambda value: UserPreferences(dnd_enabled=value),
+    )
+    dnd_start = association_proxy(
+        "preferences",
+        "dnd_start",
+        creator=lambda value: UserPreferences(dnd_start=value),
+    )
+    dnd_end = association_proxy(
+        "preferences",
+        "dnd_end",
+        creator=lambda value: UserPreferences(dnd_end=value),
+    )
+    timezone = association_proxy(
+        "preferences",
+        "timezone",
+        creator=lambda value: UserPreferences(timezone=value),
+    )
+
+    spotify_is_connected = association_proxy(
+        "spotify",
+        "is_connected",
+        creator=lambda value: SpotifyIntegration(is_connected=value),
+    )
+    spotify_display_name = association_proxy(
+        "spotify",
+        "display_name",
+        creator=lambda value: SpotifyIntegration(display_name=value),
+    )
+
     group = relationship("Group", back_populates="students", passive_deletes=True)
     notifications = relationship(
         "Notification",
@@ -133,6 +166,27 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    def __init__(self, **kwargs):
+        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
+        spotify_fields = {"spotify_is_connected", "spotify_display_name"}
+
+        preferences_data = {
+            key: kwargs.pop(key) for key in list(kwargs) if key in preferences_fields
+        }
+        spotify_data = {
+            key: kwargs.pop(key) for key in list(kwargs) if key in spotify_fields
+        }
+
+        super().__init__(**kwargs)
+
+        if preferences_data:
+            self.preferences = UserPreferences(**preferences_data)
+        if spotify_data:
+            self.spotify = SpotifyIntegration(
+                is_connected=spotify_data.get("spotify_is_connected"),
+                display_name=spotify_data.get("spotify_display_name"),
+            )
 
     @property
     def spotify_connected(self) -> bool:
