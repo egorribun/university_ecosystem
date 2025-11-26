@@ -10,6 +10,7 @@ import { server } from "@/tests/mocks/server"
 import { routerFutureFlags } from "../../App"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
+import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
@@ -82,7 +83,12 @@ describe("Login page", () => {
         const body = await request.text()
         const params = new URLSearchParams(body)
         captured.push({ username: params.get("username"), password: params.get("password") })
-        return HttpResponse.json({ access_token: "token-123" })
+        return HttpResponse.json({
+          access_token: "token-123",
+          token_type: "bearer",
+          user: testUser,
+          session: { signing_key: "test-key-123" },
+        })
       })
     )
 
@@ -139,7 +145,8 @@ describe("Login page", () => {
       http.post("*/auth/login", () =>
         HttpResponse.json(
           {
-            detail: "Too many failed attempts. Your account is temporarily locked.",
+            detail:
+              "Too many failed attempts. Your account is temporarily locked. Try again in 2 minutes.",
           },
           { status: 423, headers: { "Retry-After": "120" } }
         )
@@ -170,8 +177,24 @@ describe("Login page", () => {
   })
 
   it("transitions to MFA verification when additional challenges are required", async () => {
+    server.use(
+      http.get("*/users/me", () =>
+        HttpResponse.json({
+          ...testUser,
+          email: "mfa@example.com",
+          mfa_required: true,
+          mfa_default_method: "totp",
+        })
+      )
+    )
+
     const user = userEvent.setup()
     renderLogin()
+
+    // Wait for initial auth check to complete
+    await waitFor(() => expect(screen.queryByText(/loading|загрузка/i)).not.toBeInTheDocument(), {
+      timeout: 1000,
+    }).catch(() => {}) // Ignore if no loading indicator
 
     await user.type(
       screen.getByLabelText(matchText(tAuth("fields.email")), {
@@ -199,6 +222,17 @@ describe("Login page", () => {
   })
 
   it("displays errors for invalid OTP attempts and allows retry", async () => {
+    server.use(
+      http.get("*/users/me", () =>
+        HttpResponse.json({
+          ...testUser,
+          email: "mfa@example.com",
+          mfa_required: true,
+          mfa_default_method: "totp",
+        })
+      )
+    )
+
     const user = userEvent.setup()
     renderLogin()
 

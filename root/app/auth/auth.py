@@ -1,4 +1,3 @@
-import json
 import logging
 import math
 import secrets
@@ -17,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.api.deps import (
+    get_audit_service,
     get_current_user,
     require_fresh_mfa,
     require_fresh_mfa_for_enrollment,
@@ -29,7 +29,6 @@ from app.auth.security import (
 )
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.observability import get_request_id
 from app.localization import resolve_locale, translate
 from app.models.models import (
     ActiveSession,
@@ -46,6 +45,7 @@ from app.schemas.schemas import (
     UserCreate,
     UserOut,
 )
+from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.utils.ratelimit import sensitive_route_limit
 
@@ -53,6 +53,23 @@ logger = logging.getLogger("app.auth")
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _audit_log(
+    action: str,
+    request: Request,
+    user_id: int | None = None,
+    reason: str | None = None,
+    extra: dict | None = None,
+) -> None:
+    service = AuditService()
+    service.log(
+        event=action,
+        request=request,
+        user_id=user_id,
+        reason=reason,
+        **(extra or {}),
+    )
 
 
 class LoginIn(BaseModel):
@@ -493,6 +510,7 @@ async def _perform_login(
     request: Request,
     response: Response,
     db: AsyncSession,
+    audit: AuditService,
     trust_device: bool = False,
 ) -> dict[str, str] | JSONResponse:
     normalized_email = email.strip().lower()
@@ -507,7 +525,7 @@ async def _perform_login(
     lock_until = await _active_lockout(db, normalized_email)
     if lock_until:
         detail, retry_after = _lockout_message(locale, lock_until)
-        _audit_log(
+        audit.log(
             "auth.login.failure",
             request,
             level=logging.WARNING,
@@ -525,7 +543,7 @@ async def _perform_login(
         lock_until, triggered, attempts = await _register_failed_attempt(
             db, normalized_email, None
         )
-        _audit_log(
+        audit.log(
             "auth.login.failure",
             request,
             level=logging.WARNING,
@@ -533,7 +551,7 @@ async def _perform_login(
         )
         if triggered and lock_until:
             detail, retry_after = _lockout_message(base_locale, lock_until)
-            _audit_log(
+            audit.log(
                 "auth.login.locked",
                 request,
                 level=logging.WARNING,
@@ -560,7 +578,7 @@ async def _perform_login(
         lock_until, triggered, attempts = await _register_failed_attempt(
             db, normalized_email, user.id
         )
-        _audit_log(
+        audit.log(
             "auth.login.failure",
             request,
             level=logging.WARNING,
@@ -569,7 +587,7 @@ async def _perform_login(
         )
         if triggered and lock_until:
             detail, retry_after = _lockout_message(locale, lock_until)
-            _audit_log(
+            audit.log(
                 "auth.login.locked",
                 request,
                 level=logging.WARNING,
@@ -593,7 +611,7 @@ async def _perform_login(
         )
 
     if not user.is_active:
-        _audit_log(
+        audit.log(
             "auth.login.failure",
             request,
             level=logging.WARNING,
@@ -612,7 +630,7 @@ async def _perform_login(
 
     cleared = await _clear_failed_attempts(db, normalized_email)
     if cleared:
-        _audit_log(
+        audit.log(
             "auth.login.unlocked",
             request,
             user_id=user.id,
@@ -629,7 +647,7 @@ async def _perform_login(
     available_methods = [method for method, enabled in capabilities.items() if enabled]
     require_mfa = bool(available_methods) or bool(user.mfa_required)
     if user.mfa_required and not available_methods:
-        _audit_log(
+        audit.log(
             "auth.login.mfa_missing",
             request,
             level=logging.WARNING,
@@ -650,7 +668,7 @@ async def _perform_login(
                 db, user=user, token=trusted_device_token
             )
             if is_trusted:
-                _audit_log(
+                audit.log(
                     "auth.login.mfa_bypassed",
                     request,
                     user_id=user.id,
@@ -671,7 +689,7 @@ async def _perform_login(
                     default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
                     methods=methods,
                 )
-                _audit_log(
+                audit.log(
                     "auth.login.mfa_required",
                     request,
                     user_id=user.id,
@@ -727,7 +745,7 @@ async def _perform_login(
             path="/",
         )
 
-    _audit_log(
+    audit.log(
         "auth.login.success",
         request,
         user_id=user.id,
@@ -748,6 +766,7 @@ async def login(
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_db),
+    audit: AuditService = Depends(get_audit_service),
 ):
     return await _perform_login(
         form_data.username,
@@ -755,6 +774,7 @@ async def login(
         request,
         response,
         db,
+        audit,
         trust_device=trust_device,
     )
 
@@ -770,6 +790,7 @@ async def login_json(
     response: Response,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    audit: AuditService = Depends(get_audit_service),
 ):
     return await _perform_login(
         payload.email,
@@ -777,6 +798,7 @@ async def login_json(
         request,
         response,
         db,
+        audit,
         trust_device=payload.trust_device,
     )
 
@@ -1059,6 +1081,9 @@ async def verify_mfa_challenge(
             secure=settings.cookie_secure,
             samesite="strict",
             expires=td_expires,
+            # Trusted device token is a high-entropy bearer token.
+            # Storing it in a Secure, HttpOnly, SameSite=Strict cookie is the intended
+            # and standard mechanism for persistence.
             path="/",
         )
 
@@ -1215,37 +1240,3 @@ async def logout(
             )
 
     _clear_access_token_cookie(response)
-    return {"status": "ok"}
-
-
-def _audit_log(
-    event: str,
-    request: Request,
-    *,
-    level: int = logging.INFO,
-    user_id: int | str | None = None,
-    reason: str | None = None,
-    extra: Mapping[str, Any] | None = None,
-) -> None:
-    request_id = get_request_id() or request.headers.get("x-request-id")
-    client_ip = request.client.host if request.client else None
-    payload: dict[str, Any] = {"event": event}
-    if user_id is not None:
-        payload["user_id"] = str(user_id)
-    if request_id:
-        payload["request_id"] = request_id
-    if client_ip:
-        payload["ip"] = client_ip
-    if reason:
-        payload["reason"] = reason
-    if extra:
-        for key, value in extra.items():
-            if value is None:
-                continue
-            if isinstance(value, datetime):
-                payload[key] = value.isoformat()
-            elif isinstance(value, str | int | float | bool):
-                payload[key] = value
-            else:
-                payload[key] = str(value)
-    logger.log(level, json.dumps(payload, ensure_ascii=False))

@@ -13,6 +13,8 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
 USER_MFA_LOAD_OPTIONS: tuple = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
+    selectinload(User.preferences),
+    selectinload(User.spotify),
 )
 
 

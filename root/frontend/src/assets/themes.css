@@ -1517,8 +1517,8 @@ html {
 }
 
 .menu-btn-settings {
-  width: 38px;
-  height: 38px;
+  width: 32px !important;
+  height: 32px !important;
   padding: 0;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -1539,8 +1539,8 @@ html {
 }
 
 .menu-btn-settings svg {
-  width: 100%;
-  height: 100%;
+  width: 20px !important;
+  height: 20px !important;
 }
 
 @media (max-width: 1350px) {
@@ -1562,24 +1562,22 @@ html {
 }
 
 body:not(.dark) .menu-btn-settings {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(16, 42, 79, 0.12);
-  color: #153654;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 10px 24px rgba(22, 43, 76, 0.16);
-  backdrop-filter: blur(16px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  backdrop-filter: saturate(160%) blur(12px);
 }
 
 body:not(.dark) .menu-btn-settings:hover,
 body:not(.dark) .menu-btn-settings:focus-visible {
-  background: #fff;
-  border-color: rgba(16, 42, 79, 0.24);
-  color: #102a43;
-  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+  transform: translateY(-1px);
   box-shadow:
-    0 14px 30px rgba(22, 43, 76, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 12px 28px rgba(6, 18, 43, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .menu-link.settings {

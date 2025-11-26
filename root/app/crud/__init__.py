@@ -879,8 +879,15 @@ async def admin_update_user(
     reset_requested = bool(payload.pop("reset_mfa", False))
     if "email" in payload and payload["email"] is not None:
         payload["email"] = str(payload["email"]).strip().lower()
+    preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
+
     for field, value in payload.items():
-        setattr(user, field, value)
+        if field in preferences_fields:
+            if not user.preferences:
+                user.preferences = models.UserPreferences(user_id=user.id)
+            setattr(user.preferences, field, value)
+        else:
+            setattr(user, field, value)
     reset_stats: mfa.MfaResetStats | None = None
     if reset_requested:
         reset_stats = await mfa.reset_user_mfa(db, user=user)
@@ -1327,3 +1334,10 @@ async def get_participation_stats(
         skip_cache=skip_cache,
     )
     return result
+
+
+async def get_groups(db: AsyncSession) -> list[models.Group]:
+    """Get all groups."""
+    stmt = select(models.Group).order_by(models.Group.name)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())

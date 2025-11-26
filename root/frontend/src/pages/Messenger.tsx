@@ -11,6 +11,8 @@ import { useAuth } from "../contexts/AuthContext"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { chatApi, type Chat, type Message } from "../api/chat"
 import { useInterval } from "../hooks/useInterval"
+import SmartImage from "@/components/SmartImage"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 export default function Messenger() {
   const { t } = useTranslation(["messenger"])
@@ -227,8 +229,9 @@ export default function Messenger() {
                       </svg>
                     </button>
                   )}
-                  <img
-                    src={getOtherParticipant(activeChat)?.avatar_url || undefined}
+                  <SmartImage
+                    srcRaw={getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL}
+                    fallback={AVATAR_PLACEHOLDER_URL}
                     alt={getOtherParticipant(activeChat)?.full_name || ""}
                     className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                   />
@@ -386,6 +389,7 @@ export default function Messenger() {
                   minute: "2-digit",
                 }),
                 isMe: m.sender_id === String(user?.id),
+                status: m.read_status ? "read" : "sent",
                 attachments: m.attachments,
               }))}
             />

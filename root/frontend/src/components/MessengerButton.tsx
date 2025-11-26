@@ -13,11 +13,18 @@ export default function MessengerButton() {
   return (
     <IconButton
       color="inherit"
+      size="small"
       onClick={() => navigate("/messenger")}
       aria-label={t("navigation:aria.messenger")}
+      sx={{
+        width: "clamp(32px, 8vw, 36px)",
+        height: "clamp(32px, 8vw, 36px)",
+        padding: 0,
+        color: "rgba(255, 255, 255, 0.92)",
+      }}
     >
       <Badge badgeContent={unreadCount} color="error">
-        <ChatBubbleOutlineIcon />
+        <ChatBubbleOutlineIcon sx={{ color: "inherit" }} />
       </Badge>
     </IconButton>
   )

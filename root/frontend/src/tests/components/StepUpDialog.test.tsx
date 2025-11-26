@@ -2,7 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
-import { ChallengeLockedError, type PendingMfaState } from "@/contexts/AuthContext"
+import { ChallengeLockedError } from "@/contexts/AuthContext"
+import type { PendingMfaState } from "@/types/Auth"
 
 type RequireMfaFn = () => Promise<PendingMfaState | null>
 

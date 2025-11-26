@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ShieldCheck, Sparkles, BookOpen, Eye, EyeOff, Zap } from "lucide-react"
 import { motion } from "framer-motion"
-import { ChallengeLockedError, type PendingMfaState, useAuth } from "@/contexts/AuthContext"
+import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
+import type { PendingMfaState } from "@/types/Auth"
+import { isAxiosError } from "axios"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 
@@ -230,7 +232,13 @@ const Login = () => {
 
       navigate("/dashboard")
     } catch (err) {
-      const message = err instanceof Error && err.message ? err.message : t("auth:login.error")
+      let message = t("auth:login.error")
+      if (err instanceof Error && err.message) {
+        message = err.message
+      }
+      if (isAxiosError(err) && err.response?.data?.detail) {
+        message = err.response.data.detail
+      }
       setSubmitError(message)
     } finally {
       setSubmitting(false)
@@ -267,8 +275,13 @@ const Login = () => {
           setMfaError(err.message)
           setMfaErrorSource("general")
         } else {
-          const message =
-            err instanceof Error && err.message ? err.message : t("auth:mfa.errors.generic")
+          let message = t("auth:mfa.errors.generic")
+          if (err instanceof Error && err.message) {
+            message = err.message
+          }
+          if (isAxiosError(err) && err.response?.data?.detail) {
+            message = err.response.data.detail
+          }
           setMfaError(message)
           setMfaErrorSource("totp")
         }

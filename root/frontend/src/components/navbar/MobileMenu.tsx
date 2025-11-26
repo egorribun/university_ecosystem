@@ -38,7 +38,7 @@ export function MobileMenu({
     <div
       id="mobile-drawer"
       className={cn(
-        "fixed inset-0 z-[var(--ue-z-index-overlay)] flex h-screen w-screen",
+        "mobile-drawer fixed inset-0 z-[var(--ue-z-index-overlay)] flex h-screen w-screen",
         isOpen ? "pointer-events-auto bg-black/25" : "pointer-events-none bg-transparent",
         !prefersReducedMotion && "transition-[background] duration-200"
       )}

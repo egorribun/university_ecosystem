@@ -13,6 +13,9 @@ from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
+from app.services.audit_service import AuditService
+from app.services.auth_service import AuthService
+from app.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -142,3 +145,19 @@ def require_fresh_mfa_for_enrollment(
     if not mfa.user_has_confirmed_interactive_factor(user):
         return
     _enforce_fresh_mfa(request)
+
+
+def get_audit_service() -> AuditService:
+    return AuditService()
+
+
+def get_user_service(
+    audit: Annotated[AuditService, Depends(get_audit_service)],
+) -> UserService:
+    return UserService(audit)
+
+
+def get_auth_service(
+    audit: Annotated[AuditService, Depends(get_audit_service)],
+) -> AuthService:
+    return AuthService(audit)

@@ -518,7 +518,12 @@ export const handlers = [
       })
     }
 
-    return HttpResponse.json({ access_token: "test-access-token", token_type: "bearer" })
+    return HttpResponse.json({
+      access_token: "test-access-token",
+      token_type: "bearer",
+      user: testUser,
+      session: { signing_key: "test-session-key" },
+    })
   }),
   http.delete("*/auth/sessions/:id", ({ params }) => {
     const id = Number(params.id)
@@ -647,7 +652,12 @@ export const handlers = [
       return HttpResponse.json(loginChallenge, { status: 202 })
     }
 
-    return HttpResponse.json({ access_token: "test-access-token", username })
+    return HttpResponse.json({
+      access_token: "test-access-token",
+      token_type: "bearer",
+      user: testUser,
+      session: { signing_key: "test-session-key" },
+    })
   }),
   http.post("*/password/forgot", async () => HttpResponse.json({ ok: true })),
   http.post("*/password/reset", async ({ request }) => {

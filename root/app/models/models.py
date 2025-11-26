@@ -64,26 +64,25 @@ class User(Base):
     department = Column(String)
     position = Column(String)
 
-    dnd_enabled = Column(Boolean, default=False, nullable=False)
-    dnd_start = Column(Time(timezone=False))
-    dnd_end = Column(Time(timezone=False))
-    timezone = Column(String(64))
+    # Preferences (Moved to UserPreferences)
+    # Spotify (Moved to SpotifyIntegration)
 
-    spotify_user_id = Column(String, unique=True, index=True)
-    spotify_access_token = Column(EncryptedString())
-    spotify_refresh_token = Column(EncryptedString())
-    spotify_token_expires_at = Column(DateTime(timezone=True), index=True)
-    spotify_scope = Column(String)
-    spotify_display_name = Column(String)
-    spotify_is_connected = Column(Boolean, default=False, index=True)
-    spotify_is_playing = Column(Boolean, default=False, index=True)
-    spotify_last_checked_at = Column(DateTime(timezone=True), index=True)
-    spotify_last_track_id = Column(String, index=True)
-    spotify_last_track_name = Column(String)
-    spotify_last_artist_name = Column(String)
-    spotify_last_album_name = Column(String)
-    spotify_last_track_url = Column(String)
-    spotify_last_album_image_url = Column(String)
+    preferences = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+    spotify = relationship(
+        "SpotifyIntegration",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
 
     group = relationship("Group", back_populates="students", passive_deletes=True)
     notifications = relationship(
@@ -137,7 +136,50 @@ class User(Base):
 
     @property
     def spotify_connected(self) -> bool:
-        return bool(self.spotify_is_connected)
+        return bool(self.spotify and self.spotify.is_connected)
+
+
+class UserPreferences(Base):
+    __tablename__ = "user_preferences"
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    dnd_enabled = Column(Boolean, default=False, nullable=False)
+    dnd_start = Column(Time(timezone=False))
+    dnd_end = Column(Time(timezone=False))
+    timezone = Column(String(64))
+
+    user = relationship("User", back_populates="preferences")
+
+
+class SpotifyIntegration(Base):
+    __tablename__ = "spotify_integrations"
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    spotify_user_id = Column(String, unique=True, index=True)
+    access_token = Column(EncryptedString())
+    refresh_token = Column(EncryptedString())
+    token_expires_at = Column(DateTime(timezone=True), index=True)
+    scope = Column(String)
+    display_name = Column(String)
+    is_connected = Column(Boolean, default=False, index=True)
+    is_playing = Column(Boolean, default=False, index=True)
+    last_checked_at = Column(DateTime(timezone=True), index=True)
+    last_track_id = Column(String, index=True)
+    last_track_name = Column(String)
+    last_artist_name = Column(String)
+    last_album_name = Column(String)
+    last_track_url = Column(String)
+    last_album_image_url = Column(String)
+
+    user = relationship("User", back_populates="spotify")
 
 
 class Group(Base):

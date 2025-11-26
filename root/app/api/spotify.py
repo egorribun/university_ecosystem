@@ -12,7 +12,7 @@ from app.auth.security import create_access_token, decode_token
 from app.core.config import settings
 from app.core.database import get_db
 from app.localization import resolve_locale, translate
-from app.models.models import User
+from app.models.models import SpotifyIntegration, User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 
 router = APIRouter(prefix="/spotify", tags=["spotify"])
@@ -45,31 +45,36 @@ def _coerce_expires(value: int | str | None) -> int:
 def _disconnect_user(
     user: User, *, clear_refresh: bool = False, clear_profile: bool = False
 ) -> None:
-    user.spotify_access_token = None
+    if not user.spotify:
+        return
+    user.spotify.access_token = None
     if clear_refresh:
-        user.spotify_refresh_token = None
-        user.spotify_scope = None
-    user.spotify_token_expires_at = None
-    user.spotify_is_connected = False
-    user.spotify_is_playing = False
+        user.spotify.refresh_token = None
+        user.spotify.scope = None
+    user.spotify.token_expires_at = None
+    user.spotify.is_connected = False
+    user.spotify.is_playing = False
     if clear_profile:
-        user.spotify_display_name = None
-        user.spotify_user_id = None
+        user.spotify.display_name = None
+        user.spotify.spotify_user_id = None
 
 
 def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
+    if not user.spotify:
+        return SpotifyNowPlayingOut(is_playing=False, fetched_at=_now_utc())
+
     artists: list[str] = []
-    if user.spotify_last_artist_name:
+    if user.spotify.last_artist_name:
         artists = [
             name.strip()
-            for name in user.spotify_last_artist_name.split(",")
+            for name in user.spotify.last_artist_name.split(",")
             if name.strip()
         ]
 
     has_payload = any(
         (
-            user.spotify_last_track_id,
-            user.spotify_last_track_name,
+            user.spotify.last_track_id,
+            user.spotify.last_track_name,
             artists,
         )
     )
@@ -81,12 +86,12 @@ def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
         is_playing=False,
         progress_ms=None,
         duration_ms=None,
-        track_id=user.spotify_last_track_id,
-        track_name=user.spotify_last_track_name,
+        track_id=user.spotify.last_track_id,
+        track_name=user.spotify.last_track_name,
         artists=artists,
-        album_name=user.spotify_last_album_name,
-        album_image_url=user.spotify_last_album_image_url,
-        track_url=user.spotify_last_track_url,
+        album_name=user.spotify.last_album_name,
+        album_image_url=user.spotify.last_album_image_url,
+        track_url=user.spotify.last_track_url,
         preview_url=None,
         fetched_at=_now_utc(),
     )
@@ -100,14 +105,17 @@ async def _save_tokens(
     scope: str | None,
     expires_in: int | str | None,
 ):
-    user.spotify_access_token = access or None
+    if not user.spotify:
+        user.spotify = SpotifyIntegration(user_id=user.id)
+
+    user.spotify.access_token = access or None
     if refresh is not None:
-        user.spotify_refresh_token = refresh or None
+        user.spotify.refresh_token = refresh or None
     seconds = _coerce_expires(expires_in)
     # Refresh a little earlier to compensate for latency and clock skew.
-    user.spotify_token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
-    user.spotify_scope = scope or ""
-    user.spotify_is_connected = True
+    user.spotify.token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
+    user.spotify.scope = scope or ""
+    user.spotify.is_connected = True
     await db.commit()
     await db.refresh(user)
 
@@ -126,13 +134,15 @@ async def _ensure_access_token(
     """
 
     now = _now_utc()
-    token = user.spotify_access_token or None
-    exp = _ensure_utc(user.spotify_token_expires_at)
+    if not user.spotify:
+        return None
+    token = user.spotify.access_token or None
+    exp = _ensure_utc(user.spotify.token_expires_at)
     if token and exp and exp > now:
         return token
-    refresh_token = user.spotify_refresh_token or None
+    refresh_token = user.spotify.refresh_token or None
     if not refresh_token:
-        if not token and not user.spotify_is_connected:
+        if not token and not user.spotify.is_connected:
             # The user never connected Spotify or already disconnected it;
             # returning ``None`` allows the caller to fall back gracefully.
             return None
@@ -178,7 +188,7 @@ async def _ensure_access_token(
         data.get("scope"),
         data.get("expires_in"),
     )
-    return user.spotify_access_token
+    return user.spotify.access_token
 
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
@@ -248,14 +258,16 @@ async def spotify_callback(
     async with httpx.AsyncClient(timeout=15) as client:
         me = await client.get(
             "https://api.spotify.com/v1/me",
-            headers={"Authorization": f"Bearer {user.spotify_access_token}"},
+            headers={"Authorization": f"Bearer {user.spotify.access_token}"},
         )
     if me.status_code == 200:
         info = me.json()
-        user.spotify_user_id = info.get("id") or None
-        user.spotify_display_name = info.get("display_name") or None
+        user.spotify.spotify_user_id = info.get("id") or None
+        user.spotify.display_name = info.get("display_name") or None
         await db.commit()
-    target = settings.app_base_url_clean + "/profile?spotify=connected"
+    # Redirect to the frontend, not the backend
+    frontend_base = settings.frontend_origin.rstrip("/")
+    target = f"{frontend_base}/profile?spotify=connected"
     return RedirectResponse(target, status_code=302)
 
 
@@ -288,8 +300,8 @@ async def now_playing(
         # Access tokens occasionally expire slightly earlier than advertised or
         # get invalidated server-side. Instead of forcing the user to reconnect
         # immediately, attempt a single refresh and retry before giving up.
-        user.spotify_access_token = None
-        user.spotify_token_expires_at = _now_utc() - timedelta(seconds=30)
+        user.spotify.access_token = None
+        user.spotify.token_expires_at = _now_utc() - timedelta(seconds=30)
         try:
             refreshed = await _ensure_access_token(db, user, locale=locale)
         except HTTPException:
@@ -307,8 +319,8 @@ async def now_playing(
                 detail=translate("errors.spotify.reconnect_required", locale=locale),
             )
     if r.status_code == 204:
-        user.spotify_is_playing = False
-        user.spotify_last_checked_at = _now_utc()
+        user.spotify.is_playing = False
+        user.spotify.last_checked_at = _now_utc()
         await db.commit()
         return Response(status_code=204)
     if r.status_code == 401:
@@ -326,7 +338,7 @@ async def now_playing(
             )
         except (TypeError, ValueError):
             retry_after = 5
-        user.spotify_last_checked_at = _now_utc()
+        user.spotify.last_checked_at = _now_utc()
         await db.commit()
         raise HTTPException(
             status_code=429,
@@ -343,14 +355,14 @@ async def now_playing(
     img = images[0]["url"] if images else None
     url = item.get("external_urls", {}).get("spotify")
     preview = item.get("preview_url")
-    user.spotify_is_playing = bool(j.get("is_playing"))
-    user.spotify_last_checked_at = _now_utc()
-    user.spotify_last_track_id = item.get("id")
-    user.spotify_last_track_name = item.get("name")
-    user.spotify_last_artist_name = ", ".join(artists) if artists else None
-    user.spotify_last_album_name = album.get("name")
-    user.spotify_last_track_url = url
-    user.spotify_last_album_image_url = img
+    user.spotify.is_playing = bool(j.get("is_playing"))
+    user.spotify.last_checked_at = _now_utc()
+    user.spotify.last_track_id = item.get("id")
+    user.spotify.last_track_name = item.get("name")
+    user.spotify.last_artist_name = ", ".join(artists) if artists else None
+    user.spotify.last_album_name = album.get("name")
+    user.spotify.last_track_url = url
+    user.spotify.last_album_image_url = img
     await db.commit()
     return SpotifyNowPlayingOut(
         is_playing=bool(j.get("is_playing")),

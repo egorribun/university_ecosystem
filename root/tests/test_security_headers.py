@@ -1,3 +1,4 @@
+import urllib.parse
 from importlib import util as importlib_util
 
 import httpx
@@ -67,10 +68,24 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'strict-dynamic'" in csp
     assert "'report-sample'" in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
-    assert "https://api.spotify.com" in csp
-    assert "https://fcm.googleapis.com" in csp
-    assert "https://fcmregistrations.googleapis.com" in csp
-    assert "https://*.push.services.mozilla.com" in csp
+    csp_tokens = set(csp.split())
+    assert "api.spotify.com" in (
+        urllib.parse.urlparse(token).hostname
+        for token in csp_tokens
+        if token.startswith("http://") or token.startswith("https://")
+    )
+    # Parse the hostnames from CSP token URLs to accurately match the allowed host
+    csp_hosts = set(
+        urllib.parse.urlparse(token).hostname
+        for token in csp_tokens
+        if token.startswith("http://") or token.startswith("https://")
+    )
+    assert "fcm.googleapis.com" in csp_hosts
+    assert "fcmregistrations.googleapis.com" in csp_hosts
+    assert (
+        "push.services.mozilla.com" in csp_hosts
+        or "*.push.services.mozilla.com" in csp_tokens
+    )
     assert "Content-Security-Policy-Report-Only" not in headers
     assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in csp
     assert "require-trusted-types-for 'script'" in csp
