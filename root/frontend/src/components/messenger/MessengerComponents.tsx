@@ -345,7 +345,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 {file.type.startsWith("image/") ? (
                   <img
                     src={
-                      file.type.startsWith("image/") ? URL.createObjectURL(file) : "" // Should not happen due to outer check, but safe fallback
+                      ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type)
+                        ? URL.createObjectURL(file)
+                        : ""
                     }
                     alt={file.name}
                     className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
