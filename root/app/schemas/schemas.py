@@ -119,6 +119,13 @@ class UserOut(OrmModel, UserBase):
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
     mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
 
+    @field_validator("dnd_enabled", mode="before")
+    @classmethod
+    def _default_dnd_enabled(cls, value: bool | None) -> bool:
+        """Ensure a boolean is always returned even when preferences are missing."""
+
+        return bool(value) if value is not None else False
+
 
 class UserAdminUpdate(BaseModel):
     full_name: str | None = None
