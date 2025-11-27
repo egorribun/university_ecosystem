@@ -9,10 +9,11 @@ from PIL import Image
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
-from app.api import users
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
+from app.services.audit_service import AuditService
+from app.services.user_service import UserService
 from app.utils.files import delete_static_file
 
 
@@ -312,8 +313,10 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
+    service = UserService(AuditService())
+
     with pytest.raises(RuntimeError):
-        await users.upload_avatar(upload, request=None, db=db_session, user=user)
+        await service.upload_avatar(db_session, user, upload, request=None)
 
     avatar_dir = tmp_path / "avatars"
     assert delete_calls, "delete_static_file should be invoked"
@@ -353,8 +356,10 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
+    service = UserService(AuditService())
+
     with pytest.raises(RuntimeError):
-        await users.upload_cover(upload, request=None, db=db_session, user=user)
+        await service.upload_cover(db_session, user, upload, request=None)
 
     cover_dir = tmp_path / "covers"
     assert delete_calls, "delete_static_file should be invoked"

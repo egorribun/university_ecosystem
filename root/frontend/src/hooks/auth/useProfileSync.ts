@@ -10,13 +10,25 @@ import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
 // Derive a secure encryption key from the signing key using PBKDF2
 // Derive a secure encryption key from the signing key using PBKDF2
-const deriveEncryptionKey = async (signingKey: string, userSalt: string): Promise<CryptoJS.lib.WordArray> => {
+const deriveEncryptionKey = async (
+  signingKey: string,
+  userSalt: string
+): Promise<CryptoJS.lib.WordArray> => {
   // Use userSalt (from user id or email) to generate a per-user salt
-  const salt = new Uint8Array(CryptoJS.enc.Utf8.parse(userSalt).words.map(word => [
-    (word >> 24) & 0xff, (word >> 16) & 0xff, (word >> 8) & 0xff, word & 0xff
-  ]).flat())
-  // scrypt parameters: N=2^16 (~65536), r=8, p=1 
-  const N = 65536, r = 8, p = 1
+  const salt = new Uint8Array(
+    CryptoJS.enc.Utf8.parse(userSalt)
+      .words.map((word) => [
+        (word >> 24) & 0xff,
+        (word >> 16) & 0xff,
+        (word >> 8) & 0xff,
+        word & 0xff,
+      ])
+      .flat()
+  )
+  // scrypt parameters: N=2^16 (~65536), r=8, p=1
+  const N = 65536,
+    r = 8,
+    p = 1
   const keyLength = 32 // 256 bits
   const key = await scrypt(
     Uint8Array.from(Buffer.from(signingKey, "utf8")),
@@ -31,7 +43,11 @@ const deriveEncryptionKey = async (signingKey: string, userSalt: string): Promis
 }
 
 // Helper functions for encrypting/decrypting sensitive data
-const encryptData = async (data: unknown, signingKey: string, userSalt: string): Promise<string> => {
+const encryptData = async (
+  data: unknown,
+  signingKey: string,
+  userSalt: string
+): Promise<string> => {
   const key = await deriveEncryptionKey(signingKey, userSalt)
   const iv = CryptoJS.lib.WordArray.random(16)
   const jsonString = JSON.stringify(data)
@@ -563,7 +579,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ; (async () => {
+    ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {

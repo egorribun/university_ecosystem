@@ -16,7 +16,7 @@ const utf8 = new TextEncoder()
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -92,39 +92,45 @@ export const hashSessionIdentifier = (value: string): string => {
 
 // Helper to hash sensitive fields for signature input using scrypt and per-user salt
 async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unknown> {
-  if (typeof obj !== "object" || obj === null) return obj;
+  if (typeof obj !== "object" || obj === null) return obj
   // List of sensitive fields to protect:
-  const sensitiveFields = ["mfa_default_method", "mfa_last_verified_at", "mfa_required"];
+  const sensitiveFields = ["mfa_default_method", "mfa_last_verified_at", "mfa_required"]
   // Use per-user salt, hashed with a static string for namespace separation
-  const baseSalt = "ecosystem.sensitive.field.salt.v2";
-  const compositeSalt = new TextEncoder().encode(`${baseSalt}:${userSalt}`);
+  const baseSalt = "ecosystem.sensitive.field.salt.v2"
+  const compositeSalt = new TextEncoder().encode(`${baseSalt}:${userSalt}`)
   if (Array.isArray(obj)) {
-    return Promise.all(obj.map((item) => hashSensitiveFields(item, userSalt)));
+    return Promise.all(obj.map((item) => hashSensitiveFields(item, userSalt)))
   }
-  const result: Record<string, any> = {};
+  const result: Record<string, any> = {}
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       if (sensitiveFields.includes(key) && typeof (obj as any)[key] === "string") {
         // Use scrypt-js for password-based key derivation (memory hard)
-        const passwordBytes = new TextEncoder().encode((obj as any)[key]);
+        const passwordBytes = new TextEncoder().encode((obj as any)[key])
         // N = 2^14, r = 8, p = 1 (recommended browser settings)
-        const hashed = await scrypt(passwordBytes, compositeSalt, 16384, 8, 1, 32);
-        result[key] = Array.from(hashed).map(b => b.toString(16).padStart(2, "0")).join("");
+        const hashed = await scrypt(passwordBytes, compositeSalt, 16384, 8, 1, 32)
+        result[key] = Array.from(hashed)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
       } else {
-        result[key] = await hashSensitiveFields((obj as any)[key], userSalt);
+        result[key] = await hashSensitiveFields((obj as any)[key], userSalt)
       }
     }
   }
-  return result;
+  return result
 }
 
 // Sign snapshot, ensuring sensitive fields are scrypt-hashed with per-user salt
-export const signSnapshot = async (payload: unknown, key: string, userSalt: string): Promise<string> => {
+export const signSnapshot = async (
+  payload: unknown,
+  key: string,
+  userSalt: string
+): Promise<string> => {
   // Deep-clone and hash sensitive fields before stringification (await/async)
-  const safePayload = await hashSensitiveFields(payload, userSalt);
-  const json = JSON.stringify(safePayload);
-  const signature = CryptoJS.HmacSHA256(json, key);
-  return signature.toString(CryptoJS.enc.Base64);
+  const safePayload = await hashSensitiveFields(payload, userSalt)
+  const json = JSON.stringify(safePayload)
+  const signature = CryptoJS.HmacSHA256(json, key)
+  return signature.toString(CryptoJS.enc.Base64)
 }
 
 export const readStoredSessionSigningKey = (): string | null => {

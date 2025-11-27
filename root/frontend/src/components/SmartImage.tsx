@@ -27,12 +27,8 @@ export default function SmartImage({
     // Sanitize URL to prevent XSS
     try {
       const url = new URL(resolved, window.location.origin)
-      const protocol = url.protocol.toLowerCase();
-      if (
-        protocol === "javascript:" ||
-        protocol === "data:" ||
-        protocol === "vbscript:"
-      ) return ""
+      const protocol = url.protocol.toLowerCase()
+      if (protocol === "javascript:" || protocol === "data:" || protocol === "vbscript:") return ""
     } catch {
       // Invalid URL
       return ""
