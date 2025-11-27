@@ -13,7 +13,6 @@ from app.services.email_change_cleanup import (
 )
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
-
 pytestmark = pytest.mark.anyio("asyncio")
 
 
@@ -77,7 +76,6 @@ async def test_cleanup_stale_email_change_tokens_respects_retention(db_session):
     assert recent_record.used is False
 
 
-
 async def test_cleanup_stale_email_change_tokens_default_retention(db_session):
     now = dt.datetime.now(dt.UTC)
 
@@ -102,7 +100,6 @@ async def test_cleanup_stale_email_change_tokens_default_retention(db_session):
     db_session.expire_all()
     remaining = await db_session.execute(select(EmailChangeToken.token_hash))
     assert list(remaining) == []
-
 
 
 async def test_start_email_change_cleanup_scheduler(monkeypatch):
