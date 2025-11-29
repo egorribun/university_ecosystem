@@ -2,90 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import CryptoJS from "crypto-js"
-import { scrypt } from "scrypt-js"
+
 import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
 import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
-// Derive a secure encryption key from the signing key using PBKDF2
-// Derive a secure encryption key from the signing key using PBKDF2
-const deriveEncryptionKey = async (
-  signingKey: string,
-  userSalt: string
-): Promise<CryptoJS.lib.WordArray> => {
-  // Use userSalt (from user id or email) to generate a per-user salt
-  const salt = new Uint8Array(
-    CryptoJS.enc.Utf8.parse(userSalt)
-      .words.map((word) => [
-        (word >> 24) & 0xff,
-        (word >> 16) & 0xff,
-        (word >> 8) & 0xff,
-        word & 0xff,
-      ])
-      .flat()
-  )
-  // scrypt parameters: N=2^16 (~65536), r=8, p=1
-  const N = 65536,
-    r = 8,
-    p = 1
-  const keyLength = 32 // 256 bits
-  const key = await scrypt(
-    Uint8Array.from(Buffer.from(signingKey, "utf8")),
-    salt,
-    N,
-    r,
-    p,
-    keyLength
-  )
-  // Convert Uint8Array to CryptoJS WordArray for AES compatibility
-  return CryptoJS.lib.WordArray.create(Array.from(key))
-}
 
-// Helper functions for encrypting/decrypting sensitive data
-const encryptData = async (
-  data: unknown,
-  signingKey: string,
-  userSalt: string
-): Promise<string> => {
-  const key = await deriveEncryptionKey(signingKey, userSalt)
-  const iv = CryptoJS.lib.WordArray.random(16)
-  const jsonString = JSON.stringify(data)
-  const encrypted = CryptoJS.AES.encrypt(jsonString, key, {
-    iv: iv,
-    mode: CryptoJS.mode.CBC,
-    padding: CryptoJS.pad.Pkcs7,
-  })
-  // Store IV and ciphertext separated by colon
-  return iv.toString() + ":" + encrypted.ciphertext.toString()
-}
-
-const decryptData = <T>(encryptedData: string, signingKey: string): T | null => {
-  try {
-    const parts = encryptedData.split(":")
-    if (parts.length !== 2) return null
-
-    const iv = CryptoJS.enc.Hex.parse(parts[0])
-    const ciphertext = CryptoJS.enc.Hex.parse(parts[1])
-    const key = deriveEncryptionKey(signingKey)
-
-    const decrypted = CryptoJS.AES.decrypt(
-      { ciphertext: ciphertext } as CryptoJS.lib.CipherParams,
-      key,
-      {
-        iv: iv,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7,
-      }
-    )
-
-    const decryptedString = decrypted.toString(CryptoJS.enc.Utf8)
-    if (!decryptedString) return null
-    return JSON.parse(decryptedString) as T
-  } catch {
-    return null
-  }
-}
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 2
@@ -572,7 +495,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
