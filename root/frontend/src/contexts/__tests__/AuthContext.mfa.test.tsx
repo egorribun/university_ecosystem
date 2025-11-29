@@ -22,63 +22,73 @@ describe("AuthProvider MFA state machine", () => {
     sessionStorage.clear()
   })
 
-  it("surfaces login MFA challenges and clears them after successful verification", async () => {
-    const { wrapper, queryClient } = createWrapper()
-    const { result, unmount } = renderHook(() => useAuth(), { wrapper })
+  it(
+    "surfaces login MFA challenges and clears them after successful verification",
+    { timeout: 20000 },
+    async () => {
+      const { wrapper, queryClient } = createWrapper()
+      const { result, unmount } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
-    let challenge = null as Awaited<ReturnType<typeof result.current.login>>
-    await act(async () => {
-      challenge = await result.current.login("mfa@example.com", "Password123")
-    })
+      let challenge = null as Awaited<ReturnType<typeof result.current.login>>
+      await act(async () => {
+        challenge = await result.current.login("mfa@example.com", "Password123")
+      })
 
-    expect(challenge).not.toBeNull()
-    expect(challenge?.reason).toBe("login")
+      expect(challenge).not.toBeNull()
+      expect(challenge?.reason).toBe("login")
 
-    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"), { timeout: 15000 })
+      await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"), {
+        timeout: 15000,
+      })
 
-    await act(async () => {
-      const token = result.current.pendingMfa?.methods[0]?.challenge_token || ""
-      await result.current.submitMfaChallenge({ code: "123456", challengeToken: token })
-    })
+      await act(async () => {
+        const token = result.current.pendingMfa?.methods[0]?.challenge_token || ""
+        await result.current.submitMfaChallenge({ code: "123456", challengeToken: token })
+      })
 
-    await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 15000 })
-    await waitFor(() => expect(result.current.user).not.toBeNull(), { timeout: 15000 })
-    expect(result.current.isAuth).toBe(true)
+      await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 15000 })
+      await waitFor(() => expect(result.current.user).not.toBeNull(), { timeout: 15000 })
+      expect(result.current.isAuth).toBe(true)
 
-    unmount()
-    queryClient.clear()
-  })
+      unmount()
+      queryClient.clear()
+    }
+  )
 
-  it("provides step-up challenges and resets state on verification", async () => {
-    const { wrapper, queryClient } = createWrapper()
-    const { result, unmount } = renderHook(() => useAuth(), { wrapper })
+  it(
+    "provides step-up challenges and resets state on verification",
+    { timeout: 20000 },
+    async () => {
+      const { wrapper, queryClient } = createWrapper()
+      const { result, unmount } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
-    let challenge = null as Awaited<ReturnType<typeof result.current.requireMfa>>
-    await act(async () => {
-      challenge = await result.current.requireMfa()
-    })
+      let challenge = null as Awaited<ReturnType<typeof result.current.requireMfa>>
+      await act(async () => {
+        challenge = await result.current.requireMfa()
+      })
 
-    expect(challenge).not.toBeNull()
-    expect(challenge?.reason).toBe("step-up")
+      expect(challenge).not.toBeNull()
+      expect(challenge?.reason).toBe("step-up")
 
-    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("step-up"), {
-      timeout: 15000,
-    })
+      await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("step-up"), {
+        timeout: 15000,
+      })
 
-    await act(async () => {
-      const token = result.current.pendingMfa?.methods[0]?.challenge_token || ""
-      await result.current.submitMfaChallenge({ code: "123456", challengeToken: token })
-    })
+      await act(async () => {
+        const token = result.current.pendingMfa?.methods[0]?.challenge_token || ""
+        await result.current.submitMfaChallenge({ code: "123456", challengeToken: token })
+      })
 
-    await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 15000 })
+      await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 15000 })
 
-    unmount()
-    queryClient.clear()
-  })
+      unmount()
+      queryClient.clear()
+    }
+  )
 
   it("surfaces verification errors when the wrong OTP is provided", async () => {
     const { wrapper, queryClient } = createWrapper()

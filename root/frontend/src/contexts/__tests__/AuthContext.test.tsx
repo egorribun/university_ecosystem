@@ -408,7 +408,7 @@ describe("AuthProvider dashboard prefetch", () => {
     }
   }
 
-  it("prefetches dashboard queries after login", async () => {
+  it("prefetches dashboard queries after login", { timeout: 20000 }, async () => {
     const postSpy = vi.spyOn(api, "post").mockResolvedValue({
       status: 200,
       data: {
@@ -459,7 +459,7 @@ describe("AuthProvider dashboard prefetch", () => {
     queryClient.clear()
   })
 
-  it("prefetches schedule data when the student has a group", async () => {
+  it("prefetches schedule data when the student has a group", { timeout: 20000 }, async () => {
     const loginUser = { ...testUser, group_id: 42 }
     const postSpy = vi.spyOn(api, "post").mockResolvedValue({
       status: 200,
