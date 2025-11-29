@@ -94,7 +94,8 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     insp = sa.inspect(engine)
     assert insp.has_table("users")
     user_columns = {col["name"] for col in insp.get_columns("users")}
-    # Columns dnd_enabled, dnd_start, dnd_end, timezone were moved to user_preferences table
+    # Columns dnd_enabled, dnd_start, dnd_end, timezone were moved to
+    # user_preferences table
     # mfa_required and mfa_default_method remain in users table
     assert {"mfa_required", "mfa_default_method"}.issubset(user_columns)
     assert "mfa_recovery_codes_generated_at" not in user_columns
@@ -142,7 +143,8 @@ def test_alembic_upgrade_from_multiple_heads(tmp_path):
 
     # Keep connection open and share it with alembic
     with engine.connect() as connection:
-        # Manually add columns that are expected by migrations but missing from current models
+        # Manually add columns that are expected by migrations but missing
+        # from current models
         connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_enabled BOOLEAN"))
         connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_start VARCHAR"))
         connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_end VARCHAR"))
