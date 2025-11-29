@@ -196,10 +196,7 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
       }
 
       // Encrypt the data to prevent clear text storage of sensitive information
-      const encryptedData = CryptoJS.AES.encrypt(
-        JSON.stringify(snapshot),
-        signingKey
-      ).toString()
+      const encryptedData = CryptoJS.AES.encrypt(JSON.stringify(snapshot), signingKey).toString()
 
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -511,7 +508,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ; (async () => {
+    ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
