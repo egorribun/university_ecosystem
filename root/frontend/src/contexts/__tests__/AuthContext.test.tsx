@@ -19,7 +19,7 @@ import { utf8ToBytes } from "@noble/hashes/utils"
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -166,7 +166,9 @@ describe("AuthProvider caching", () => {
     const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     expect(cachedEnvelope).toBeTruthy()
     const parsed = JSON.parse(cachedEnvelope!)
-    parsed.data.full_name = "Forged Name"
+    // Tamper with the signature to simulate data tampering
+    // (data is now encrypted, so we can't modify it directly)
+    parsed.signature = "tampered_signature"
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(parsed))
 
     act(() => {
