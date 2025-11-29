@@ -19,7 +19,7 @@ import { utf8ToBytes } from "@noble/hashes/utils"
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 

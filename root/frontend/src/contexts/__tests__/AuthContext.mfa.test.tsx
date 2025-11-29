@@ -65,7 +65,9 @@ describe("AuthProvider MFA state machine", () => {
     expect(challenge).not.toBeNull()
     expect(challenge?.reason).toBe("step-up")
 
-    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("step-up"), { timeout: 5000 })
+    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("step-up"), {
+      timeout: 5000,
+    })
 
     await act(async () => {
       const token = result.current.pendingMfa?.methods[0]?.challenge_token || ""

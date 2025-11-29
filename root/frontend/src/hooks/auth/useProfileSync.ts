@@ -229,10 +229,9 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
   }
 
   // Verify signature to detect tampering
-  const expectedSignature = CryptoJS.HmacSHA256(
-    JSON.stringify(payload),
-    signingKey
-  ).toString(CryptoJS.enc.Base64)
+  const expectedSignature = CryptoJS.HmacSHA256(JSON.stringify(payload), signingKey).toString(
+    CryptoJS.enc.Base64
+  )
 
   if (candidate.signature !== expectedSignature) {
     // Signature mismatch - cache has been tampered with
@@ -270,10 +269,9 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
       }
 
       // Generate HMAC signature for integrity check
-      const signature = CryptoJS.HmacSHA256(
-        JSON.stringify(payload),
-        signingKey
-      ).toString(CryptoJS.enc.Base64)
+      const signature = CryptoJS.HmacSHA256(JSON.stringify(payload), signingKey).toString(
+        CryptoJS.enc.Base64
+      )
 
       const envelope: CachedProfileEnvelope = {
         ...payload,
@@ -574,7 +572,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ; (async () => {
+    ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
