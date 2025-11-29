@@ -19,7 +19,7 @@ import { utf8ToBytes } from "@noble/hashes/utils"
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -61,10 +61,22 @@ describe("AuthProvider caching", () => {
   beforeEach(() => {
     localStorage.clear()
     sessionStorage.clear()
+    vi.clearAllMocks()
     vi.spyOn(api, "post").mockResolvedValue({ data: {} } as any)
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        return Promise.resolve({ data: testUser })
+      }
+      if (url === "/auth/session/signing-key") {
+        return Promise.resolve({ data: { signing_key: mockSigningKey } })
+      }
+      return Promise.reject(new Error(`Unexpected GET: ${url}`))
+    })
   })
 
   afterEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
     vi.restoreAllMocks()
   })
 
@@ -83,7 +95,9 @@ describe("AuthProvider caching", () => {
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.user).toBeTruthy())
+    // Wait for loading to complete and user to be loaded
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
 
     expect(queryClient.getQueryData(currentUserQueryKey)).toEqual(testUser)
     expect(queryClient.getQueryState(currentUserQueryKey)?.dataUpdatedAt).toBeGreaterThan(0)
@@ -96,13 +110,15 @@ describe("AuthProvider caching", () => {
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.user).toBeTruthy())
+    // Wait for loading to complete and user to be loaded
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
 
     await act(async () => {
       await result.current.logout()
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull())
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
 
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
@@ -114,7 +130,9 @@ describe("AuthProvider caching", () => {
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.user).toBeTruthy())
+    // Wait for loading to complete and user to be loaded
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
 
     const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
 
@@ -130,7 +148,7 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull())
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()
@@ -141,7 +159,9 @@ describe("AuthProvider caching", () => {
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.user).toBeTruthy())
+    // Wait for loading to complete and user to be loaded
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
 
     const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     expect(cachedEnvelope).toBeTruthy()
@@ -160,7 +180,7 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull())
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
@@ -223,9 +243,12 @@ describe("AuthProvider loading state", () => {
   beforeEach(() => {
     localStorage.clear()
     sessionStorage.clear()
+    vi.clearAllMocks()
   })
 
   afterEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
     vi.restoreAllMocks()
   })
 
@@ -254,15 +277,22 @@ describe("AuthProvider loading state", () => {
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
+    // Initially loading should be false due to cached profile
     expect(result.current.loading).toBe(false)
     expect(result.current.user?.id).toBe(testUser.id)
 
-    await waitFor(() =>
-      expect(getSpy).toHaveBeenCalledWith(
-        "/users/me",
-        expect.objectContaining({ skipRateLimitQueue: true })
-      )
+    // Wait for background refresh to complete
+    await waitFor(
+      () =>
+        expect(getSpy).toHaveBeenCalledWith(
+          "/users/me",
+          expect.objectContaining({ skipRateLimitQueue: true })
+        ),
+      { timeout: 5000 }
     )
+
+    // Loading should still be false after background refresh
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     queryClient.clear()
   })
@@ -293,20 +323,20 @@ describe("AuthProvider loading state", () => {
 
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     act(() => {
       result.current.setUser(() => null)
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull())
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
 
     let refreshPromise!: Promise<void>
     await act(async () => {
       refreshPromise = result.current.refresh()
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(true))
+    await waitFor(() => expect(result.current.loading).toBe(true), { timeout: 5000 })
 
     await act(async () => {
       resolveUserRequest?.({ data: testUser })
@@ -314,7 +344,7 @@ describe("AuthProvider loading state", () => {
       await refreshPromise
     })
 
-    expect(result.current.loading).toBe(false)
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     queryClient.clear()
   })
@@ -324,9 +354,12 @@ describe("AuthProvider dashboard prefetch", () => {
   beforeEach(() => {
     localStorage.clear()
     sessionStorage.clear()
+    vi.clearAllMocks()
   })
 
   afterEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
     vi.restoreAllMocks()
   })
 
@@ -397,24 +430,33 @@ describe("AuthProvider dashboard prefetch", () => {
 
     const { storiesSpy, newsSpy, eventsSpy, eventsListSpy } = await preparePrefetchSpies()
     const language = resolveActiveLanguage()
-    const { wrapper } = setup()
+    const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    // Wait for initial loading to complete
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     await act(async () => {
       await result.current.login("user@example.com", "password")
     })
 
-    await waitFor(() => {
-      expect(postSpy).toHaveBeenCalled()
-      expect(storiesSpy).toHaveBeenCalledTimes(1)
-      expect(newsSpy).toHaveBeenCalledTimes(1)
-      expect(eventsSpy).toHaveBeenCalledTimes(1)
-    })
+    // Wait for login operation to complete
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+
+    await waitFor(
+      () => {
+        expect(postSpy).toHaveBeenCalled()
+        expect(storiesSpy).toHaveBeenCalledTimes(1)
+        expect(newsSpy).toHaveBeenCalledTimes(1)
+        expect(eventsSpy).toHaveBeenCalledTimes(1)
+      },
+      { timeout: 5000 }
+    )
 
     expect(newsSpy).toHaveBeenCalledWith(expect.anything(), language)
     expect(eventsListSpy).not.toHaveBeenCalled()
+
+    queryClient.clear()
   })
 
   it("prefetches schedule data when the student has a group", async () => {
@@ -441,27 +483,36 @@ describe("AuthProvider dashboard prefetch", () => {
     const { storiesSpy, newsSpy, eventsSpy, eventsListSpy, eventsPageSize } =
       await preparePrefetchSpies()
     const language = resolveActiveLanguage()
-    const { wrapper } = setup()
+    const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    // Wait for initial loading to complete
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     await act(async () => {
       await result.current.login("user@example.com", "password")
     })
 
-    await waitFor(() => {
-      expect(postSpy).toHaveBeenCalled()
-      expect(storiesSpy).toHaveBeenCalledTimes(1)
-      expect(newsSpy).toHaveBeenCalledTimes(1)
-      expect(eventsSpy).toHaveBeenCalledTimes(1)
-      expect(eventsListSpy).toHaveBeenCalledTimes(1)
-    })
+    // Wait for login operation to complete
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+
+    await waitFor(
+      () => {
+        expect(postSpy).toHaveBeenCalled()
+        expect(storiesSpy).toHaveBeenCalledTimes(1)
+        expect(newsSpy).toHaveBeenCalledTimes(1)
+        expect(eventsSpy).toHaveBeenCalledTimes(1)
+        expect(eventsListSpy).toHaveBeenCalledTimes(1)
+      },
+      { timeout: 5000 }
+    )
 
     expect(eventsListSpy).toHaveBeenCalledWith(expect.anything(), {
       language,
       is_active: true,
       limit: eventsPageSize,
     })
+
+    queryClient.clear()
   })
 })

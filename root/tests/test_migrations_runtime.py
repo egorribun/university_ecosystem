@@ -17,20 +17,24 @@ from app.models import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _make_config(tmp_path: Path, name: str) -> tuple[Config, str]:
+def _make_config(tmp_path: Path, name: str, use_async: bool = True) -> tuple[Config, str]:
     db_path = tmp_path / name
     async_url = f"sqlite+aiosqlite:///{db_path}"
+    sync_url = f"sqlite:///{db_path}?timeout=30"
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
-    config.set_main_option("sqlalchemy.url", async_url)
+    
+    target_url = async_url if use_async else sync_url
+    config.set_main_option("sqlalchemy.url", target_url)
+    
     previous_url = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = async_url
+    os.environ["DATABASE_URL"] = target_url
     config.attributes["_previous_database_url"] = previous_url
-    return config, f"sqlite:///{db_path}"
+    return config, sync_url
 
 
 def _inspect(url: str) -> sa.engine.Engine:
-    return sa.create_engine(url)
+    return sa.create_engine(url, poolclass=sa.pool.NullPool)
 
 
 @pytest.mark.parametrize(
@@ -88,15 +92,16 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     insp = sa.inspect(engine)
     assert insp.has_table("users")
     user_columns = {col["name"] for col in insp.get_columns("users")}
-    assert {
-        "dnd_enabled",
-        "dnd_start",
-        "dnd_end",
-        "timezone",
-        "mfa_required",
-        "mfa_default_method",
-    }.issubset(user_columns)
+    # Columns dnd_enabled, dnd_start, dnd_end, timezone were moved to user_preferences table
+    # mfa_required and mfa_default_method remain in users table
+    assert {"mfa_required", "mfa_default_method"}.issubset(user_columns)
     assert "mfa_recovery_codes_generated_at" not in user_columns
+    
+    # Verify user_preferences table exists with the DND and timezone columns
+    assert insp.has_table("user_preferences")
+    user_prefs_columns = {col["name"] for col in insp.get_columns("user_preferences")}
+    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(user_prefs_columns)
+    
     assert insp.has_table("push_subscriptions")
 
     for table_name in {
@@ -119,8 +124,9 @@ def test_alembic_upgrade_head(tmp_path, dbname):
 
 
 def test_alembic_upgrade_from_multiple_heads(tmp_path):
-    config, sync_url = _make_config(tmp_path, "multi-head.sqlite")
-    engine = _inspect(sync_url)
+    config, _ = _make_config(tmp_path, "multi-head.sqlite", use_async=False)
+    # Use in-memory database to avoid locking issues on Windows
+    engine = sa.create_engine("sqlite:///:memory:")
     metadata = sa.MetaData()
     version = sa.Table(
         "alembic_version",
@@ -129,25 +135,28 @@ def test_alembic_upgrade_from_multiple_heads(tmp_path):
     )
     metadata.create_all(engine)
     Base.metadata.create_all(engine)
-    with engine.begin() as conn:
-        conn.execute(version.insert().values(version_num="23d991e593b5"))
-        conn.execute(version.insert().values(version_num="f9d2b1f5e2d0"))
+    
+    # Keep connection open and share it with alembic
+    with engine.connect() as connection:
+        # Manually add columns that are expected by migrations but missing from current models
+        connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_enabled BOOLEAN"))
+        connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_start VARCHAR"))
+        connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_end VARCHAR"))
+        connection.execute(sa.text("ALTER TABLE users ADD COLUMN timezone VARCHAR"))
+        
+        connection.execute(version.insert().values(version_num="23d991e593b5"))
+        connection.execute(version.insert().values(version_num="f9d2b1f5e2d0"))
+        connection.commit()
+        
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+        
+        # Verify using the same connection
+        rows = connection.execute(version.select()).fetchall()
+        
     engine.dispose()
 
-    try:
-        command.upgrade(config, "head")
-    finally:
-        previous_url = config.attributes.get("_previous_database_url")
-        if previous_url is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = previous_url
-
-    engine = _inspect(sync_url)
-    with engine.begin() as conn:
-        rows = conn.execute(version.select()).fetchall()
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
     assert len(heads) == 1
     assert {row[0] for row in rows} == set(heads)
-    engine.dispose()

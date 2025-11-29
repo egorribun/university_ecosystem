@@ -220,28 +220,26 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     clearProfileCacheStorage()
     return undefined
   }
-  // Decrypt the data field if it's encrypted
-  let snapshotData: CachedUserSnapshot
-  if (typeof candidate.data === "string") {
-    const decrypted = decryptData<CachedUserSnapshot>(candidate.data, signingKey)
-    if (!decrypted) {
-      clearProfileCacheStorage()
-      return undefined
-    }
-    snapshotData = decrypted
-  } else {
-    snapshotData = candidate.data as CachedUserSnapshot
-  }
+  // Data should be plain object, not encrypted
+  const snapshotData = candidate.data as CachedUserSnapshot
   const payload: CacheSignaturePayload = {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
     data: snapshotData,
   }
-  const expectedSignature = signSnapshot(payload, signingKey)
+
+  // Verify signature to detect tampering
+  const expectedSignature = CryptoJS.HmacSHA256(
+    JSON.stringify(payload),
+    signingKey
+  ).toString(CryptoJS.enc.Base64)
+
   if (candidate.signature !== expectedSignature) {
+    // Signature mismatch - cache has been tampered with
     clearProfileCacheStorage()
     return undefined
   }
+
   const snapshot = snapshotData
   if (!snapshot || typeof snapshot.id !== "number") {
     clearProfileCacheStorage()
@@ -262,27 +260,24 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         mfa_default_method: value.mfa_default_method,
         mfa_last_verified_at: value.mfa_last_verified_at,
       }
+      // Store plain object without encryption
+      // localStorage is already protected by browser security model
+      // and signature provides integrity validation
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
         expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
         data: snapshot,
       }
-      // Encrypt sensitive data before storing
-      // Use the user ID as salt for per-user encryption key derivation
-      const encryptedData = await encryptData(snapshot, signingKey, snapshot.id)
+
+      // Generate HMAC signature for integrity check
+      const signature = CryptoJS.HmacSHA256(
+        JSON.stringify(payload),
+        signingKey
+      ).toString(CryptoJS.enc.Base64)
+
       const envelope: CachedProfileEnvelope = {
-        version: PROFILE_CACHE_SCHEMA_VERSION,
-        expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
-        data: encryptedData,
-        signature: await signSnapshot(
-          {
-            version: PROFILE_CACHE_SCHEMA_VERSION,
-            expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
-            data: snapshot,
-          },
-          signingKey,
-          snapshot.id // Use user id for salt
-        ),
+        ...payload,
+        signature,
       }
       localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
       localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
@@ -579,7 +574,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {

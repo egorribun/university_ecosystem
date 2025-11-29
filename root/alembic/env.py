@@ -60,6 +60,12 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
 
+    connection = config.attributes.get("connection")
+    if connection:
+        print(f"DEBUG: Using injected connection: {connection}")
+        run_sync_migrations(connection)
+        return
+
     if url_obj.get_dialect().is_async:
         connectable = async_engine_from_config(
             config_options,

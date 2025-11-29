@@ -84,7 +84,7 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "fcmregistrations.googleapis.com" in csp_hosts
     assert (
         "push.services.mozilla.com" in csp_hosts
-        or "*.push.services.mozilla.com" in csp_tokens
+        or "https://*.push.services.mozilla.com" in csp_tokens
     )
     assert "Content-Security-Policy-Report-Only" not in headers
     assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in csp

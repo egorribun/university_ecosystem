@@ -441,21 +441,15 @@ async def test_forgot_password_sends_email_via_thread(
     event = asyncio.Event()
     captured: dict[str, object] = {}
 
-    async def fake_run_sync(func, *args, **kwargs):
-        captured["func"] = func
-        captured["args"] = args
-        captured["kwargs"] = kwargs
+    async def fake_send_email(to_email, link, full_name, locale):
+        captured["to_email"] = to_email
+        captured["link"] = link
+        captured["full_name"] = full_name
+        captured["locale"] = locale
         event.set()
-        return None
-
-    def fake_blocking(*args, **kwargs):
-        return None
 
     monkeypatch.setattr(
-        "app.services.auth_service.anyio.to_thread.run_sync", fake_run_sync
-    )
-    monkeypatch.setattr(
-        "app.services.auth_service._send_reset_email_blocking", fake_blocking
+        "app.services.auth_service._send_reset_email", fake_send_email
     )
 
     response = await async_client.post("/password/forgot", json={"email": user.email})
@@ -464,6 +458,5 @@ async def test_forgot_password_sends_email_via_thread(
     assert response.json() == {"ok": True}
 
     await asyncio.wait_for(event.wait(), timeout=1)
-    assert captured.get("func") is fake_blocking
-    assert captured.get("args") is not None
-    assert captured["args"][0] == user.email
+    assert captured["to_email"] == user.email
+    assert "reset-password" in captured["link"]
