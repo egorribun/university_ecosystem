@@ -17,16 +17,18 @@ from app.models import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _make_config(tmp_path: Path, name: str, use_async: bool = True) -> tuple[Config, str]:
+def _make_config(
+    tmp_path: Path, name: str, use_async: bool = True
+) -> tuple[Config, str]:
     db_path = tmp_path / name
     async_url = f"sqlite+aiosqlite:///{db_path}"
     sync_url = f"sqlite:///{db_path}?timeout=30"
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
-    
+
     target_url = async_url if use_async else sync_url
     config.set_main_option("sqlalchemy.url", target_url)
-    
+
     previous_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = target_url
     config.attributes["_previous_database_url"] = previous_url
@@ -96,12 +98,14 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     # mfa_required and mfa_default_method remain in users table
     assert {"mfa_required", "mfa_default_method"}.issubset(user_columns)
     assert "mfa_recovery_codes_generated_at" not in user_columns
-    
+
     # Verify user_preferences table exists with the DND and timezone columns
     assert insp.has_table("user_preferences")
     user_prefs_columns = {col["name"] for col in insp.get_columns("user_preferences")}
-    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(user_prefs_columns)
-    
+    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(
+        user_prefs_columns
+    )
+
     assert insp.has_table("push_subscriptions")
 
     for table_name in {
@@ -135,7 +139,7 @@ def test_alembic_upgrade_from_multiple_heads(tmp_path):
     )
     metadata.create_all(engine)
     Base.metadata.create_all(engine)
-    
+
     # Keep connection open and share it with alembic
     with engine.connect() as connection:
         # Manually add columns that are expected by migrations but missing from current models
@@ -143,17 +147,17 @@ def test_alembic_upgrade_from_multiple_heads(tmp_path):
         connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_start VARCHAR"))
         connection.execute(sa.text("ALTER TABLE users ADD COLUMN dnd_end VARCHAR"))
         connection.execute(sa.text("ALTER TABLE users ADD COLUMN timezone VARCHAR"))
-        
+
         connection.execute(version.insert().values(version_num="23d991e593b5"))
         connection.execute(version.insert().values(version_num="f9d2b1f5e2d0"))
         connection.commit()
-        
+
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
-        
+
         # Verify using the same connection
         rows = connection.execute(version.select()).fetchall()
-        
+
     engine.dispose()
 
     script = ScriptDirectory.from_config(config)

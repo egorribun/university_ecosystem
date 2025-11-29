@@ -448,9 +448,7 @@ async def test_forgot_password_sends_email_via_thread(
         captured["locale"] = locale
         event.set()
 
-    monkeypatch.setattr(
-        "app.services.auth_service._send_reset_email", fake_send_email
-    )
+    monkeypatch.setattr("app.services.auth_service._send_reset_email", fake_send_email)
 
     response = await async_client.post("/password/forgot", json={"email": user.email})
 

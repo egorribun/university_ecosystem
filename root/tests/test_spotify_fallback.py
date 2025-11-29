@@ -7,7 +7,8 @@ from httpx import AsyncClient
 
 from app.api.spotify import _ensure_access_token, _fallback_now_playing, _save_tokens
 from app.auth.security import get_password_hash
-from app.models.models import User as ModelUser, SpotifyIntegration
+from app.models.models import SpotifyIntegration
+from app.models.models import User as ModelUser
 
 _spotify_fallback_now_playing = _fallback_now_playing
 
@@ -451,7 +452,9 @@ async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -
     assert token == "plaintext-token"
 
     raw = await db_session.execute(
-        sa.text("SELECT access_token FROM spotify_integrations WHERE user_id = :user_id"),
+        sa.text(
+            "SELECT access_token FROM spotify_integrations WHERE user_id = :user_id"
+        ),
         {"user_id": user.id},
     )
     stored_token = raw.scalar_one()
