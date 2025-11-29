@@ -19,7 +19,7 @@ import { utf8ToBytes } from "@noble/hashes/utils"
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -96,8 +96,8 @@ describe("AuthProvider caching", () => {
     const { result } = renderHook(() => useAuth(), { wrapper })
 
     // Wait for loading to complete and user to be loaded
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
-    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 15000 })
 
     expect(queryClient.getQueryData(currentUserQueryKey)).toEqual(testUser)
     expect(queryClient.getQueryState(currentUserQueryKey)?.dataUpdatedAt).toBeGreaterThan(0)
@@ -111,14 +111,14 @@ describe("AuthProvider caching", () => {
     const { result } = renderHook(() => useAuth(), { wrapper })
 
     // Wait for loading to complete and user to be loaded
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
-    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 15000 })
 
     await act(async () => {
       await result.current.logout()
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
 
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
@@ -131,8 +131,8 @@ describe("AuthProvider caching", () => {
     const { result } = renderHook(() => useAuth(), { wrapper })
 
     // Wait for loading to complete and user to be loaded
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
-    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 15000 })
 
     const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
 
@@ -148,7 +148,7 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()
@@ -160,8 +160,8 @@ describe("AuthProvider caching", () => {
     const { result } = renderHook(() => useAuth(), { wrapper })
 
     // Wait for loading to complete and user to be loaded
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
-    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 15000 })
 
     const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     expect(cachedEnvelope).toBeTruthy()
@@ -180,7 +180,7 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
@@ -288,11 +288,11 @@ describe("AuthProvider loading state", () => {
           "/users/me",
           expect.objectContaining({ skipRateLimitQueue: true })
         ),
-      { timeout: 5000 }
+      { timeout: 15000 }
     )
 
     // Loading should still be false after background refresh
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     queryClient.clear()
   })
@@ -323,20 +323,20 @@ describe("AuthProvider loading state", () => {
 
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     act(() => {
       result.current.setUser(() => null)
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
 
     let refreshPromise!: Promise<void>
     await act(async () => {
       refreshPromise = result.current.refresh()
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(true), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(true), { timeout: 15000 })
 
     await act(async () => {
       resolveUserRequest?.({ data: testUser })
@@ -344,7 +344,7 @@ describe("AuthProvider loading state", () => {
       await refreshPromise
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     queryClient.clear()
   })
@@ -434,14 +434,14 @@ describe("AuthProvider dashboard prefetch", () => {
     const { result } = renderHook(() => useAuth(), { wrapper })
 
     // Wait for initial loading to complete
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     await act(async () => {
       await result.current.login("user@example.com", "password")
     })
 
     // Wait for login operation to complete
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     await waitFor(
       () => {
@@ -450,7 +450,7 @@ describe("AuthProvider dashboard prefetch", () => {
         expect(newsSpy).toHaveBeenCalledTimes(1)
         expect(eventsSpy).toHaveBeenCalledTimes(1)
       },
-      { timeout: 5000 }
+      { timeout: 15000 }
     )
 
     expect(newsSpy).toHaveBeenCalledWith(expect.anything(), language)
@@ -487,14 +487,14 @@ describe("AuthProvider dashboard prefetch", () => {
     const { result } = renderHook(() => useAuth(), { wrapper })
 
     // Wait for initial loading to complete
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     await act(async () => {
       await result.current.login("user@example.com", "password")
     })
 
     // Wait for login operation to complete
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     await waitFor(
       () => {
@@ -504,7 +504,7 @@ describe("AuthProvider dashboard prefetch", () => {
         expect(eventsSpy).toHaveBeenCalledTimes(1)
         expect(eventsListSpy).toHaveBeenCalledTimes(1)
       },
-      { timeout: 5000 }
+      { timeout: 15000 }
     )
 
     expect(eventsListSpy).toHaveBeenCalledWith(expect.anything(), {

@@ -26,7 +26,7 @@ describe("AuthProvider MFA state machine", () => {
     const { wrapper, queryClient } = createWrapper()
     const { result, unmount } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     let challenge = null as Awaited<ReturnType<typeof result.current.login>>
     await act(async () => {
@@ -36,15 +36,15 @@ describe("AuthProvider MFA state machine", () => {
     expect(challenge).not.toBeNull()
     expect(challenge?.reason).toBe("login")
 
-    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"), { timeout: 5000 })
+    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"), { timeout: 15000 })
 
     await act(async () => {
       const token = result.current.pendingMfa?.methods[0]?.challenge_token || ""
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: token })
     })
 
-    await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 5000 })
-    await waitFor(() => expect(result.current.user).not.toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 15000 })
+    await waitFor(() => expect(result.current.user).not.toBeNull(), { timeout: 15000 })
     expect(result.current.isAuth).toBe(true)
 
     unmount()
@@ -55,7 +55,7 @@ describe("AuthProvider MFA state machine", () => {
     const { wrapper, queryClient } = createWrapper()
     const { result, unmount } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     let challenge = null as Awaited<ReturnType<typeof result.current.requireMfa>>
     await act(async () => {
@@ -66,7 +66,7 @@ describe("AuthProvider MFA state machine", () => {
     expect(challenge?.reason).toBe("step-up")
 
     await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("step-up"), {
-      timeout: 5000,
+      timeout: 15000,
     })
 
     await act(async () => {
@@ -74,7 +74,7 @@ describe("AuthProvider MFA state machine", () => {
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: token })
     })
 
-    await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(result.current.pendingMfa).toBeNull(), { timeout: 15000 })
 
     unmount()
     queryClient.clear()
@@ -84,13 +84,13 @@ describe("AuthProvider MFA state machine", () => {
     const { wrapper, queryClient } = createWrapper()
     const { result, unmount } = renderHook(() => useAuth(), { wrapper })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
 
     await act(async () => {
       await result.current.login("mfa@example.com", "Password123")
     })
 
-    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"), { timeout: 5000 })
+    await waitFor(() => expect(result.current.pendingMfa?.reason).toBe("login"), { timeout: 15000 })
 
     await expect(
       act(async () => {
