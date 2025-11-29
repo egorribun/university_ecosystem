@@ -141,12 +141,26 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     clearProfileCacheStorage()
     return undefined
   }
-  // Data should be plain object, not encrypted
-  const snapshotData = candidate.data as CachedUserSnapshot
+  // Data should be encrypted string
+  let snapshotData: CachedUserSnapshot
+  if (typeof candidate.data === "string") {
+    try {
+      const bytes = CryptoJS.AES.decrypt(candidate.data, signingKey)
+      const decrypted = bytes.toString(CryptoJS.enc.Utf8)
+      snapshotData = JSON.parse(decrypted) as CachedUserSnapshot
+    } catch {
+      clearProfileCacheStorage()
+      return undefined
+    }
+  } else {
+    // Fallback for legacy plain object data (optional, or just clear it)
+    snapshotData = candidate.data as CachedUserSnapshot
+  }
+
   const payload: CacheSignaturePayload = {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
-    data: snapshotData,
+    data: candidate.data,
   }
 
   // Verify signature to detect tampering
@@ -180,13 +194,17 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         mfa_default_method: value.mfa_default_method,
         mfa_last_verified_at: value.mfa_last_verified_at,
       }
-      // Store plain object without encryption
-      // localStorage is already protected by browser security model
-      // and signature provides integrity validation
+
+      // Encrypt the data to prevent clear text storage of sensitive information
+      const encryptedData = CryptoJS.AES.encrypt(
+        JSON.stringify(snapshot),
+        signingKey
+      ).toString()
+
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
         expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
-        data: snapshot,
+        data: encryptedData,
       }
 
       // Generate HMAC signature for integrity check
@@ -493,7 +511,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
