@@ -54,7 +54,7 @@ const buildToastId = (toast: ToastPayload) => {
 const toActiveToast = (toast: ToastPayload): ActiveToast | null => {
   const hasContent = Boolean(toast.title?.trim() || toast.body?.trim())
   if (!hasContent) return null
-  const safeUrl = toast.url ? sanitizeHttpUrl(toast.url) ?? undefined : undefined
+  const safeUrl = toast.url ? (sanitizeHttpUrl(toast.url) ?? undefined) : undefined
   return { ...toast, id: buildToastId(toast), url: safeUrl }
 }
 
