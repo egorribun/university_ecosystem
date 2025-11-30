@@ -326,7 +326,7 @@ async def test_revoke_session_requires_step_up(
     result = await db_session.execute(
         select(ActiveSession)
         .where(ActiveSession.user_id == user.id)
-        .order_by(ActiveSession.created_at.desc())
+        .where(ActiveSession.jti != "step-up-other")
     )
     current_session = result.scalars().first()
     assert current_session is not None

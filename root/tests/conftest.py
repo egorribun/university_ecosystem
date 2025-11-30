@@ -322,6 +322,11 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
         defaults.update(kwargs)
         user = models.User(**defaults)
         db_session.add(user)
+
+        # Always create SpotifyIntegration for consistency in tests
+        if not user.spotify:
+            user.spotify = models.SpotifyIntegration()
+
         await db_session.commit()
         await db_session.refresh(user)
         await ensure_mfa_relationships_loaded(db_session, user)

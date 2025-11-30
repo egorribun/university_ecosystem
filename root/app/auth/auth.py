@@ -1083,7 +1083,7 @@ async def verify_mfa_challenge(
             expires=td_expires,
             # Trusted device token is a high-entropy bearer token.
             # Storing it in a Secure, HttpOnly, SameSite=Strict cookie is the intended
-            # and standard mechanism for persistence.
+            # and standard mechanism for persistence. It is not a password.
             path="/",
         )
 

@@ -170,9 +170,9 @@ export const useAuthApi = (
           const seconds = retryAfter ? parseInt(retryAfter, 10) : null
           const duration = formatLockoutDuration(seconds, t)
           if (duration) {
-            throw new Error(t("errors.account_locked_retry", { duration }))
+            throw new Error(`${t("login.locked")} ${t("login.lockedRetry", { duration })}`)
           }
-          throw new Error(t("errors.account_locked"))
+          throw new Error(t("login.locked"))
         }
         throw error
       } finally {
@@ -237,8 +237,8 @@ export const useAuthApi = (
           const seconds = retryAfter ? parseInt(retryAfter, 10) : null
           const duration = formatLockoutDuration(seconds, t)
           const message = duration
-            ? t("errors.account_locked_retry", { duration })
-            : t("errors.account_locked")
+            ? `${t("login.locked")} ${t("login.lockedRetry", { duration })}`
+            : t("login.locked")
           throw new ChallengeLockedError(message, { refreshable: false })
         }
         throw error

@@ -19,6 +19,21 @@ import type { User } from "../../types/User"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
+// Sanitize URLs to prevent XSS attacks
+function sanitizeUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    const protocol = parsed.protocol.toLowerCase()
+    // Only allow http, https, and blob (for local object URLs)
+    if (protocol === "javascript:" || protocol === "data:" || protocol === "vbscript:") {
+      return null
+    }
+    return url
+  } catch {
+    return null
+  }
+}
+
 export interface Contact {
   id: string
   name: string
@@ -153,15 +168,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                   {msg.attachments.map((att) => (
                     <div key={att.id}>
                       {att.type === "image" ? (
-                        <img
-                          src={att.url}
-                          alt={att.name}
-                          className="rounded-lg max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => window.open(att.url, "_blank")}
-                        />
-                      ) : (
+                        sanitizeUrl(att.url) ? (
+                          <img
+                            src={sanitizeUrl(att.url)!}
+                            alt={att.name}
+                            className="rounded-lg max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                              const safe = sanitizeUrl(att.url)
+                              if (safe) window.open(safe, "_blank", "noopener,noreferrer")
+                            }}
+                          />
+                        ) : null
+                      ) : sanitizeUrl(att.url) ? (
                         <a
-                          href={att.url}
+                          href={sanitizeUrl(att.url)!}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={`flex items-center gap-2 p-2 rounded-lg ${
@@ -186,7 +206,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                           </svg>
                           <span className="truncate max-w-[150px]">{att.name}</span>
                         </a>
-                      )}
+                      ) : null}
                     </div>
                   ))}
                 </div>

@@ -7,6 +7,7 @@ from httpx import AsyncClient
 
 from app.api.spotify import _ensure_access_token, _fallback_now_playing, _save_tokens
 from app.auth.security import get_password_hash
+from app.models.models import SpotifyIntegration
 from app.models.models import User as ModelUser
 
 _spotify_fallback_now_playing = _fallback_now_playing
@@ -23,12 +24,15 @@ def _make_user(
     track_url: str | None = None,
 ):
     user = ModelUser()
-    user.spotify_last_track_id = track_id
-    user.spotify_last_track_name = track_name
-    user.spotify_last_artist_name = artists
-    user.spotify_last_album_name = album
-    user.spotify_last_album_image_url = album_image
-    user.spotify_last_track_url = track_url
+    # Create SpotifyIntegration relationship
+    user.spotify = SpotifyIntegration(
+        last_track_id=track_id,
+        last_track_name=track_name,
+        last_artist_name=artists,
+        last_album_name=album,
+        last_album_image_url=album_image,
+        last_track_url=track_url,
+    )
     return user
 
 
@@ -123,10 +127,10 @@ async def test_now_playing_uses_last_known_track_from_fallback(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
-    user.spotify_last_track_id = "track-xyz"
-    user.spotify_last_track_name = "Fallback Song"
-    user.spotify_last_artist_name = "Fallback Artist"
-    user.spotify_last_track_url = "https://open.spotify.com/track/track-xyz"
+    user.spotify.last_track_id = "track-xyz"
+    user.spotify.last_track_name = "Fallback Song"
+    user.spotify.last_artist_name = "Fallback Artist"
+    user.spotify.last_track_url = "https://open.spotify.com/track/track-xyz"
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -150,10 +154,10 @@ async def test_now_playing_returns_401_when_refresh_fails(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
-    user.spotify_access_token = "expired"
-    user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(UTC) - timedelta(seconds=5)
-    user.spotify_is_connected = True
+    user.spotify.access_token = "expired"
+    user.spotify.refresh_token = "refresh"
+    user.spotify.token_expires_at = datetime.now(UTC) - timedelta(seconds=5)
+    user.spotify.is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -182,8 +186,8 @@ async def test_now_playing_returns_401_when_refresh_fails(
     assert response.json()["detail"] == "Требуется переподключить Spotify"
 
     await db_session.refresh(user)
-    assert user.spotify_is_connected is False
-    assert user.spotify_access_token is None
+    assert user.spotify.is_connected is False
+    assert user.spotify.access_token is None
 
 
 async def test_now_playing_refreshes_when_access_token_missing(
@@ -193,10 +197,10 @@ async def test_now_playing_refreshes_when_access_token_missing(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
-    user.spotify_access_token = None
-    user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    user.spotify_is_connected = True
+    user.spotify.access_token = None
+    user.spotify.refresh_token = "refresh"
+    user.spotify.token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    user.spotify.is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -243,8 +247,8 @@ async def test_now_playing_refreshes_when_access_token_missing(
     assert refresh_called is True
 
     await db_session.refresh(user)
-    assert user.spotify_access_token == "fresh"
-    assert user.spotify_is_connected is True
+    assert user.spotify.access_token == "fresh"
+    assert user.spotify.is_connected is True
 
 
 async def test_now_playing_retries_after_unauthorized_response(
@@ -254,10 +258,10 @@ async def test_now_playing_retries_after_unauthorized_response(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
-    user.spotify_access_token = "valid"
-    user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
-    user.spotify_is_connected = True
+    user.spotify.access_token = "valid"
+    user.spotify.refresh_token = "refresh"
+    user.spotify.token_expires_at = datetime.now(UTC) + timedelta(hours=1)
+    user.spotify.is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -321,9 +325,9 @@ async def test_now_playing_retries_after_unauthorized_response(
     assert get_calls == 2
 
     await db_session.refresh(user)
-    assert user.spotify_access_token == "fresh"
-    assert user.spotify_refresh_token == "refresh-new"
-    assert user.spotify_is_connected is True
+    assert user.spotify.access_token == "fresh"
+    assert user.spotify.refresh_token == "refresh-new"
+    assert user.spotify.is_connected is True
 
 
 async def test_now_playing_disconnects_on_unauthorized_response(
@@ -333,10 +337,10 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
-    user.spotify_access_token = "valid"
-    user.spotify_refresh_token = "refresh"
-    user.spotify_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
-    user.spotify_is_connected = True
+    user.spotify.access_token = "valid"
+    user.spotify.refresh_token = "refresh"
+    user.spotify.token_expires_at = datetime.now(UTC) + timedelta(hours=1)
+    user.spotify.is_connected = True
     await db_session.commit()
     await db_session.refresh(user)
 
@@ -392,9 +396,9 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     assert refresh_called is True
 
     await db_session.refresh(user)
-    assert user.spotify_is_connected is False
-    assert user.spotify_access_token is None
-    assert user.spotify_refresh_token is None
+    assert user.spotify.is_connected is False
+    assert user.spotify.access_token is None
+    assert user.spotify.refresh_token is None
 
 
 async def test_spotify_tokens_are_encrypted_in_database(
@@ -411,10 +415,11 @@ async def test_spotify_tokens_are_encrypted_in_database(
         expires_in=3600,
     )
 
+    # Query spotify_integrations table instead of users table
     row = await db_session.execute(
         sa.text(
-            "SELECT spotify_access_token, spotify_refresh_token FROM users "
-            "WHERE id = :user_id"
+            "SELECT access_token, refresh_token FROM spotify_integrations "
+            "WHERE user_id = :user_id"
         ),
         {"user_id": user.id},
     )
@@ -426,8 +431,8 @@ async def test_spotify_tokens_are_encrypted_in_database(
     assert stored_refresh != "refresh-token-value"
 
     await db_session.refresh(user)
-    assert user.spotify_access_token == "access-token-value"
-    assert user.spotify_refresh_token == "refresh-token-value"
+    assert user.spotify.access_token == "access-token-value"
+    assert user.spotify.refresh_token == "refresh-token-value"
 
 
 async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -> None:
@@ -447,7 +452,9 @@ async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -
     assert token == "plaintext-token"
 
     raw = await db_session.execute(
-        sa.text("SELECT spotify_access_token FROM users WHERE id = :user_id"),
+        sa.text(
+            "SELECT access_token FROM spotify_integrations WHERE user_id = :user_id"
+        ),
         {"user_id": user.id},
     )
     stored_token = raw.scalar_one()
