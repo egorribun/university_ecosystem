@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type SyntheticEvent } from "react"
 import { Alert, Button, Snackbar, Stack, Typography } from "@mui/material"
 import type { SnackbarCloseReason } from "@mui/material/Snackbar"
 import { useTranslation } from "react-i18next"
+import { sanitizeHttpUrl } from "@/utils/sanitize"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -53,16 +54,17 @@ const buildToastId = (toast: ToastPayload) => {
 const toActiveToast = (toast: ToastPayload): ActiveToast | null => {
   const hasContent = Boolean(toast.title?.trim() || toast.body?.trim())
   if (!hasContent) return null
-  return { ...toast, id: buildToastId(toast) }
+  const safeUrl = toast.url ? sanitizeHttpUrl(toast.url) ?? undefined : undefined
+  return { ...toast, id: buildToastId(toast), url: safeUrl }
 }
 
 let memoryBuffer: ActiveToast[] = []
 
 const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
   if (!Array.isArray(buffer)) return []
-  return buffer.filter((item): item is ActiveToast => {
-    return Boolean(item && typeof item === "object" && typeof (item as ActiveToast).id === "string")
-  })
+  return buffer
+    .map((item) => (item && typeof item === "object" ? toActiveToast(item as ToastPayload) : null))
+    .filter((item): item is ActiveToast => Boolean(item))
 }
 
 const readBuffer = (): ActiveToast[] => {
@@ -113,10 +115,7 @@ export default function LivePushToasts() {
   const [open, setOpen] = useState(false)
 
   const enqueue = useCallback((toast: ToastPayload | ActiveToast) => {
-    const normalized =
-      typeof (toast as ActiveToast).id === "string" && (toast as ActiveToast).id.trim()
-        ? (toast as ActiveToast)
-        : toActiveToast(toast as ToastPayload)
+    const normalized = toActiveToast(toast as ToastPayload)
     if (!normalized) return
     setQueue((prev) => [...prev, normalized])
   }, [])
@@ -184,8 +183,10 @@ export default function LivePushToasts() {
 
   const handleAction = useCallback(() => {
     if (!current?.url) return
+    const safeUrl = sanitizeHttpUrl(current.url)
+    if (!safeUrl) return
     try {
-      const resolved = new URL(current.url, window.location.href)
+      const resolved = new URL(safeUrl, window.location.href)
       const sameOrigin = resolved.origin === window.location.origin
       window.open(
         resolved.href,
@@ -194,7 +195,7 @@ export default function LivePushToasts() {
       )
     } catch (error) {
       console.error("Failed to open toast link", error)
-      window.open(current.url, "_blank", "noopener,noreferrer")
+      window.open(safeUrl, "_blank", "noopener,noreferrer")
     }
     setOpen(false)
     setCurrent(null)

@@ -32,6 +32,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy"
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
 import QrCodeIcon from "@mui/icons-material/QrCode"
 import OpenInNewIcon from "@mui/icons-material/OpenInNew"
+import { sanitizeEmailAddress, sanitizeTelegramUrl } from "@/utils/sanitize"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
@@ -479,6 +480,7 @@ export default function Profile() {
   }, [])
 
   const copy = async (text: string, evt?: { clientX: number; clientY: number }) => {
+    if (!text) return
     try {
       await navigator.clipboard?.writeText(text)
     } finally {
@@ -497,21 +499,28 @@ export default function Profile() {
   }
 
   const handleEmailCopy = () => {
-    copy(user!.email)
+    const email = sanitizeEmailAddress(user?.email)
+    if (!email) return
+    copy(email)
     setEmailMenuAnchor(null)
   }
 
   const handleEmailOpen = () => {
-    window.location.href = `mailto:${user!.email}`
+    const email = sanitizeEmailAddress(user?.email)
+    if (!email) return
+    window.location.href = `mailto:${encodeURIComponent(email)}`
     setEmailMenuAnchor(null)
   }
 
   const handleTelegramCopy = () => {
-    copy(user!.telegram!)
+    const telegram = sanitizeTelegramUrl(user?.telegram)
+    if (!telegram) return
+    copy(telegram)
     setTelegramMenuAnchor(null)
   }
 
   const handleTelegramOpen = () => {
+    if (!telegramHref) return
     window.open(telegramHref, "_blank", "noopener,noreferrer")
     setTelegramMenuAnchor(null)
   }
@@ -567,14 +576,7 @@ export default function Profile() {
   const openQrModal = useCallback(() => setQrOpen(true), [])
   const closeQrModal = useCallback(() => setQrOpen(false), [])
 
-  const telegramHref = useMemo(() => {
-    const t = user?.telegram || ""
-    if (!t) return ""
-    let v = String(t).trim()
-    if (v.startsWith("http")) return v
-    if (v.startsWith("@")) v = v.slice(1)
-    return `https://t.me/${v}`
-  }, [user?.telegram])
+  const telegramHref = useMemo(() => sanitizeTelegramUrl(user?.telegram), [user?.telegram])
 
   const achievementsList = useMemo(
     () =>
