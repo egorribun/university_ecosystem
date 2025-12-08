@@ -47,6 +47,8 @@ cp root/.env.example root/.env
 
 Important backend values include `DATABASE_URL`, `SECRET_KEY`, `FRONTEND_ORIGIN(S)`, and the VAPID/Spotify credentials. Redis-related toggles (`CACHE_ENABLED`, `CACHE_REDIS_URL`, `RATE_LIMIT_STORAGE_BACKEND`, `RATE_LIMIT_STORAGE_URI`) default to in-memory behavior unless you enable Redis. For quick SQLite development you may set `AUTO_CREATE_SCHEMA=1`, but production deployments should run Alembic migrations instead.
 
+Docker Compose reads the `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` values from `root/.env`. The defaults are set to non-default development credentials (`university` / `devpassword`) but **must be changed for any shared or remote host** along with the generated `DATABASE_URL` connection string.
+
 Frontend builds read `VITE_*` variables at build time (for example `VITE_BACKEND_ORIGIN`, `VITE_MAP_CONSTRUCTOR_ID`, `VITE_APP_RELEASE`, `VITE_SENTRY_DSN`).
 
 ### 2. Run database migrations
@@ -77,6 +79,8 @@ The stack builds the backend, frontend, and notifications worker images, starts 
 - Backend metrics: http://localhost:8000/metrics (enable via `ENABLE_METRICS_ENDPOINT` and credentials)
 - Frontend UI: http://localhost:8080
 - Worker metrics: http://localhost:9101/metrics
+
+PostgreSQL (`127.0.0.1:5432`) and Redis (`127.0.0.1:6379`) bindings are scoped to localhost to avoid accidental exposure on public hosts. Adjust the bindings only when you explicitly need external access.
 
 Redis-backed cache and rate limiting are enabled by default in Compose via `CACHE_ENABLED=true`, `CACHE_REDIS_URL=redis://redis:6379/0`, `RATE_LIMIT_STORAGE_BACKEND=redis`, and `RATE_LIMIT_STORAGE_URI=redis://redis:6379/1`.
 
