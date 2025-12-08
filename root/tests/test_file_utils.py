@@ -3,12 +3,13 @@ import io
 import re
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile, status
 from PIL import Image
 from starlette.datastructures import Headers
 
 from app.core.config import settings
 from app.localization import translate
+from app.services import file_scanner
 from app.services.storage import StaticFSStorage
 from app.utils import files
 
@@ -251,3 +252,36 @@ async def test_save_attachment_falls_back_to_declared_type(monkeypatch):
     assert relative_path.endswith(".txt")
     assert kwargs["content_type"] == "text/plain"
     assert data == payload
+
+
+@pytest.mark.asyncio
+async def test_scan_for_malware_rejects_unknown_backend(monkeypatch):
+    monkeypatch.setattr(settings, "event_file_scanner_enabled", True)
+    monkeypatch.setattr(settings, "event_file_scanner_backend", "unknown")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await files.scan_for_malware(b"payload", locale="en")
+
+    assert excinfo.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert excinfo.value.detail == translate(
+        "errors.files.scanner_unavailable", locale="en"
+    )
+
+
+@pytest.mark.asyncio
+async def test_scan_for_malware_handles_scanner_unavailable(monkeypatch):
+    monkeypatch.setattr(settings, "event_file_scanner_enabled", True)
+    monkeypatch.setattr(settings, "event_file_scanner_backend", "clamd")
+
+    async def fail_scan(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise file_scanner.FileScannerUnavailableError("offline")
+
+    monkeypatch.setattr(file_scanner, "_scan_bytes_with_clamd", fail_scan)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await files.scan_for_malware(b"payload", locale="fr")
+
+    assert excinfo.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert excinfo.value.detail == translate(
+        "errors.files.scanner_unavailable", locale="fr"
+    )
