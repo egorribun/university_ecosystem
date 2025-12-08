@@ -7,7 +7,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-university}@postgres:5432/${POSTGRES_DB:-university}}
       FRONTEND_ORIGIN: http://localhost:8080
       FRONTEND_ORIGINS: http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
@@ -61,7 +61,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-university}@postgres:5432/${POSTGRES_DB:-university}}
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
@@ -88,18 +88,18 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: university
+      POSTGRES_USER: ${POSTGRES_USER:-university}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-university}
+      POSTGRES_DB: ${POSTGRES_DB:-university}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-university}"]
       interval: 5s
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   redis:
     image: redis:7-alpine
@@ -110,7 +110,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   migrations:
     build:
@@ -121,7 +121,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/university
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-university}@postgres:5432/${POSTGRES_DB:-university}}
     depends_on:
       postgres:
         condition: service_healthy
