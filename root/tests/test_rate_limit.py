@@ -1,6 +1,7 @@
 import httpx
 import pytest
 from fastapi import Depends, FastAPI, Response, status
+from redis.exceptions import RedisError
 
 from app.auth.security import get_password_hash
 from app.core import rate_limit
@@ -8,7 +9,6 @@ from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
 from app.localization import translate
 from app.utils import ratelimit as ratelimit_module
-from redis.exceptions import RedisError
 
 
 @pytest.mark.anyio
@@ -370,7 +370,11 @@ async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
     monkeypatch.setattr(rate_limit, "_redis_rate_limit", failing_redis)
 
     await rate_limit.enforce_rate_limit(
-        identifier="demo", namespace="ns", limit=1, window_seconds=60, redis_url="redis://test"
+        identifier="demo",
+        namespace="ns",
+        limit=1,
+        window_seconds=60,
+        redis_url="redis://test",
     )
 
     with pytest.raises(rate_limit.RateLimitExceeded):
@@ -405,7 +409,9 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     monkeypatch.setattr(RateLimitMiddleware, "_check_limit", fail_check)
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
         response = await client.get("/ping")
 
     assert response.status_code == status.HTTP_200_OK

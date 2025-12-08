@@ -263,7 +263,9 @@ async def test_scan_for_malware_rejects_unknown_backend(monkeypatch):
         await files.scan_for_malware(b"payload", locale="en")
 
     assert excinfo.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert excinfo.value.detail == translate("errors.files.scanner_unavailable", locale="en")
+    assert excinfo.value.detail == translate(
+        "errors.files.scanner_unavailable", locale="en"
+    )
 
 
 @pytest.mark.asyncio

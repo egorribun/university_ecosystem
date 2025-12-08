@@ -801,13 +801,13 @@ async def test_mfa_verification_rejects_revoked_session(
         user_id=user.id,
         secret="JBSWY3DPEHPK3PXP",
         is_active=True,
-        confirmed_at=dt.datetime.now(dt.timezone.utc),
+        confirmed_at=dt.datetime.now(dt.UTC),
     )
     session = models.ActiveSession(
         user_id=user.id,
         jti="revoked-token",
-        expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1),
-        revoked_at=dt.datetime.now(dt.timezone.utc),
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=1),
+        revoked_at=dt.datetime.now(dt.UTC),
     )
     db_session.add_all([enrollment, session])
     await db_session.flush()
