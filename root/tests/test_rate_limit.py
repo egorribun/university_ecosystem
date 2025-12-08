@@ -3,10 +3,12 @@ import pytest
 from fastapi import Depends, FastAPI, Response, status
 
 from app.auth.security import get_password_hash
+from app.core import rate_limit
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
 from app.localization import translate
 from app.utils import ratelimit as ratelimit_module
+from redis.exceptions import RedisError
 
 
 @pytest.mark.anyio
@@ -356,3 +358,55 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
     assert second.status_code == status.HTTP_200_OK
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert third.headers.get("Retry-After") is not None
+
+
+@pytest.mark.anyio
+async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
+    monkeypatch.setattr(rate_limit, "_memory_buckets", {})
+
+    async def failing_redis(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise RedisError("unknown command EVAL")
+
+    monkeypatch.setattr(rate_limit, "_redis_rate_limit", failing_redis)
+
+    await rate_limit.enforce_rate_limit(
+        identifier="demo", namespace="ns", limit=1, window_seconds=60, redis_url="redis://test"
+    )
+
+    with pytest.raises(rate_limit.RateLimitExceeded):
+        await rate_limit.enforce_rate_limit(
+            identifier="demo",
+            namespace="ns",
+            limit=1,
+            window_seconds=60,
+            redis_url="redis://test",
+        )
+
+
+@pytest.mark.anyio
+async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
+    app = FastAPI()
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="redis",
+        redis_url="redis://test",  # not actually used
+        limit=1,
+        window_seconds=60,
+    )
+
+    @app.get("/ping")
+    async def _ping():  # pragma: no cover - simple response
+        return {"ok": True}
+
+    async def fail_check(self, identifier):  # type: ignore[no-untyped-def]
+        raise RedisError("boom")
+
+    monkeypatch.setattr(RateLimitMiddleware, "_check_limit", fail_check)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/ping")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "X-RateLimit-Limit" not in response.headers

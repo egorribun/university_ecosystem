@@ -786,3 +786,70 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
     audit_event = _find_audit_event(caplog, "app.users.audit", "users.mfa.reset")
     assert audit_event["user_id"] == str(user.id)
     assert audit_event["reason"] == "admin_reset_noop"
+
+
+@pytest.mark.anyio
+async def test_mfa_verification_rejects_revoked_session(
+    async_client, user_factory, db_session
+):
+    password = "RevokedSession123!"
+    user = await user_factory(
+        email="mfa-revoked@example.com", hashed_password=get_password_hash(password)
+    )
+
+    enrollment = models.MfaTotpEnrollment(
+        user_id=user.id,
+        secret="JBSWY3DPEHPK3PXP",
+        is_active=True,
+        confirmed_at=dt.datetime.now(dt.timezone.utc),
+    )
+    session = models.ActiveSession(
+        user_id=user.id,
+        jti="revoked-token",
+        expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1),
+        revoked_at=dt.datetime.now(dt.timezone.utc),
+    )
+    db_session.add_all([enrollment, session])
+    await db_session.flush()
+
+    challenge = await mfa.issue_challenge(
+        db_session,
+        user_id=user.id,
+        session_id=session.id,
+        challenge_type=mfa.CHALLENGE_TYPE_TOTP_VERIFY,
+    )
+    await db_session.commit()
+
+    response = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "challenge_token": challenge.token,
+            "method": mfa.MFA_METHOD_TOTP,
+            "code": "000000",
+        },
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "Associated session has been revoked"
+
+
+@pytest.mark.anyio
+async def test_totp_reenrollment_after_reset(async_client, user_factory, db_session):
+    password = "ReenrollMfa123!"
+    user = await user_factory(
+        email="mfa-reenroll@example.com", hashed_password=get_password_hash(password)
+    )
+
+    await _enroll_totp(async_client, user, password, db_session)
+    await mfa.reset_user_mfa(db_session, user=user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    assert user.mfa_default_method is None
+    assert user.mfa_required is False
+
+    await _enroll_totp(async_client, user, password, db_session)
+    await db_session.refresh(user)
+
+    assert user.mfa_default_method == mfa.MFA_METHOD_TOTP
+    assert user.mfa_required is True
