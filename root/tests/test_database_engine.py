@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -122,3 +123,52 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         "expire_on_commit": False,
         "class_": database_module.AsyncSession,
     }
+
+
+@pytest.mark.asyncio
+async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
+    attempts: list[int] = []
+
+    class _FailingConnection:
+        async def __aenter__(self):
+            attempts.append(1)
+            raise RuntimeError("transient outage")
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _FailingEngine:
+        def connect(self):
+            return _FailingConnection()
+
+    sleep_calls: list[float] = []
+
+    async def _fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(database_module, "engine", _FailingEngine())
+    monkeypatch.setattr(database_module.asyncio, "sleep", _fake_sleep)
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(RuntimeError) as excinfo:
+            await database_module.wait_db(max_attempts=2, delay=0.25)
+
+    assert "Database connection failed after 2 attempts: transient outage" in str(
+        excinfo.value
+    )
+    # Sleep is only performed between attempts, not after the final failure.
+    assert sleep_calls == [0.25]
+
+    error_logs = [
+        record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}
+    ]
+    assert any(
+        record.levelname == "WARNING" and "attempt 1/2" in record.getMessage()
+        for record in error_logs
+    )
+    assert any(
+        record.levelname == "ERROR"
+        and "attempt 2/2" in record.getMessage()
+        and "transient outage" in record.getMessage()
+        for record in error_logs
+    )

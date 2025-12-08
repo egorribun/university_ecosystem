@@ -85,9 +85,17 @@ async def wait_db(max_attempts: int = 5, delay: float = 1.0) -> None:
             return
         except Exception as exc:  # pragma: no cover - defensive logging
             last_exc = exc
-            logger.warning(
-                "Database unavailable on attempt %s/%s", attempt, max_attempts
+            log_func = logger.error if attempt == max_attempts else logger.warning
+            log_func(
+                "Database unavailable on attempt %s/%s: %s",
+                attempt,
+                max_attempts,
+                exc,
+                exc_info=attempt == max_attempts,
             )
-            await asyncio.sleep(delay)
+            if attempt < max_attempts:
+                await asyncio.sleep(delay)
     if last_exc is not None:
-        raise RuntimeError("Database connection failed") from last_exc
+        raise RuntimeError(
+            f"Database connection failed after {max_attempts} attempts: {last_exc}"
+        ) from last_exc
