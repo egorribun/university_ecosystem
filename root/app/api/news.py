@@ -116,7 +116,7 @@ def _serialize_news(
 
 def _news_cache_keys(news_id: int | None = None) -> list[str]:
     keys: list[str] = [_LEGACY_NEWS_LIST_CACHE_KEY]
-    keys.extend(_news_list_cache_key(locale) for locale in _CACHE_LOCALES)
+    keys.extend(f"{_news_list_cache_key(locale)}*" for locale in _CACHE_LOCALES)
     if news_id is not None:
         keys.append(_legacy_news_item_cache_key(news_id))
         keys.extend(_news_item_cache_key(news_id, locale) for locale in _CACHE_LOCALES)

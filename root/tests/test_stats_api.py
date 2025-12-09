@@ -390,13 +390,13 @@ async def test_registering_for_event_invalidates_stats_cache(
     headers = await _login(async_client, student.email, password)
 
     invalidated: list[tuple[str, ...]] = []
-    original_invalidate = cache_module.RedisCache.invalidate
+    original_invalidate = fake_cache.invalidate
 
-    async def tracked_invalidate(self, *keys):  # type: ignore[override]
+    async def tracked_invalidate(*keys):
         invalidated.append(keys)
-        return await original_invalidate(self, *keys)
+        return await original_invalidate(*keys)
 
-    monkeypatch.setattr(cache_module.RedisCache, "invalidate", tracked_invalidate)
+    monkeypatch.setattr(fake_cache, "invalidate", tracked_invalidate)
 
     response = await async_client.post(
         "/events/attendance",

@@ -74,9 +74,7 @@ class TestNewsPagination:
     ):
         """Test that news list returns paginated format."""
         await news_factory(count=3)
-
-        response = await async_client.get("/api/v1/news?limit=10")
-
+        response = await async_client.get("/news?limit=10")
         assert response.status_code == 200
         data = response.json()
         assert "items" in data
@@ -90,9 +88,7 @@ class TestNewsPagination:
     ):
         """Test that limit parameter is respected."""
         await news_factory(count=5)
-
-        response = await async_client.get("/api/v1/news?limit=2")
-
+        response = await async_client.get("/news?limit=2")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 2
@@ -107,13 +103,13 @@ class TestNewsPagination:
         await news_factory(count=5)
 
         # Get first page
-        response1 = await async_client.get("/api/v1/news?limit=2")
+        response1 = await async_client.get("/news?limit=2")
         data1 = response1.json()
         assert len(data1["items"]) == 2
         cursor = data1["next_cursor"]
 
         # Get second page using cursor
-        response2 = await async_client.get(f"/api/v1/news?limit=2&cursor={cursor}")
+        response2 = await async_client.get(f"/news?limit=2&cursor={cursor}")
         data2 = response2.json()
         assert len(data2["items"]) == 2
 
@@ -125,8 +121,7 @@ class TestNewsPagination:
     @pytest.mark.asyncio
     async def test_news_list_empty(self, async_client: AsyncClient):
         """Test empty news list returns proper structure."""
-        response = await async_client.get("/api/v1/news?limit=10")
-
+        response = await async_client.get("/news?limit=10")
         assert response.status_code == 200
         data = response.json()
         assert data["items"] == []
@@ -137,9 +132,7 @@ class TestNewsPagination:
     async def test_news_list_last_page(self, async_client: AsyncClient, news_factory):
         """Test last page has has_more=False."""
         await news_factory(count=3)
-
-        response = await async_client.get("/api/v1/news?limit=10")
-
+        response = await async_client.get("/news?limit=10")
         data = response.json()
         assert data["has_more"] is False
         assert data["next_cursor"] is None
@@ -150,9 +143,7 @@ class TestNewsPagination:
     ):
         """Test that invalid cursor is ignored (returns first page)."""
         await news_factory(count=3)
-
-        response = await async_client.get("/api/v1/news?limit=10&cursor=invalid")
-
+        response = await async_client.get("/news?limit=10&cursor=invalid")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 3
@@ -171,12 +162,11 @@ class TestEventsPagination:
 
         # Login to get auth
         response = await async_client.post(
-            "/api/v1/auth/login",
-            data={"username": user.email, "password": "hashed-password"},
+            "/auth/login",
+            data={"username": user.email, "password": "hashed-password"}
         )
-
-        response = await async_client.get("/api/v1/events?limit=10")
-
+        
+        response = await async_client.get("/events?limit=10")
         # May need auth, check response
         if response.status_code == 200:
             data = response.json()
@@ -190,9 +180,7 @@ class TestEventsPagination:
     ):
         """Test that limit parameter is respected for events."""
         await events_factory(count=5)
-
-        response = await async_client.get("/api/v1/events?limit=2")
-
+        response = await async_client.get("/events?limit=2")
         if response.status_code == 200:
             data = response.json()
             assert len(data["items"]) <= 2

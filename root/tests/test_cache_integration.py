@@ -74,7 +74,7 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     assert list_response.status_code == 200
     list_etag = list_response.headers.get("ETag")
     assert list_etag
-    assert len(list_response.json()) == 1
+    assert len(list_response.json()["items"]) == 1
 
     cached_list = await async_client.get("/news", headers={"If-None-Match": list_etag})
     assert cached_list.status_code == 304
@@ -100,9 +100,9 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     await db_session.refresh(news)
 
     await fake_cache.invalidate(
-        "news:list",
-        "news:list:en",
-        "news:list:ru",
+        "news:list*",
+        "news:list:en*",
+        "news:list:ru*",
         f"news:item:{news.id}",
         f"news:item:{news.id}:en",
         f"news:item:{news.id}:ru",
@@ -126,8 +126,8 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     db_session.add(another_news)
     await db_session.commit()
 
-    await fake_cache.invalidate("news:list", "news:list:en", "news:list:ru")
+    await fake_cache.invalidate("news:list*", "news:list:en*", "news:list:ru*")
 
     list_with_two = await async_client.get("/news")
     assert list_with_two.status_code == 200
-    assert len(list_with_two.json()) == 2
+    assert len(list_with_two.json()["items"]) == 2

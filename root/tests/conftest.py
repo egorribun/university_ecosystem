@@ -296,6 +296,59 @@ async def async_client(
 
 
 @pytest.fixture
+async def root_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Client for testing root-level endpoints (no /api/v1 prefix)."""
+    async def _start_notifications_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+        return _stop
+
+    monkeypatch.setattr("app.core.lifespan.start_notifications_scheduler", _start_notifications_scheduler)
+
+    async def _start_notifications_retention_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+        return _stop
+
+    monkeypatch.setattr("app.core.lifespan.start_notifications_retention_scheduler", _start_notifications_retention_scheduler)
+
+    async def _start_session_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+        return _stop
+
+    monkeypatch.setattr("app.core.lifespan.start_session_cleanup_scheduler", _start_session_cleanup_scheduler)
+
+    async def _start_story_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+        return _stop
+
+    monkeypatch.setattr("app.core.lifespan.start_story_cleanup_scheduler", _start_story_cleanup_scheduler)
+
+    async def _start_password_reset_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+        return _stop
+
+    monkeypatch.setattr("app.core.lifespan.start_password_reset_cleanup_scheduler", _start_password_reset_cleanup_scheduler)
+
+    async def _mock_migrations_current() -> bool:
+        return True
+
+    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)
+
+    transport = httpx.ASGITransport(app=main.app)
+    async with LifespanManager(main.app):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver", follow_redirects=True
+        ) as client:
+            yield client
+
+
+@pytest.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     async with async_session() as session:
         yield session
@@ -308,6 +361,41 @@ class _TestingRedisCache(cache_module.RedisCache):
                 encoding="utf-8", decode_responses=True
             )
         return self._client
+
+    async def invalidate(self, *keys: str) -> None:
+        filtered = [str(key) for key in keys if key]
+        if not filtered:
+            return
+        
+        client = await self._get_client()
+        
+        # Separate exact keys and patterns
+        exact_keys = []
+        patterns = []
+        for key in filtered:
+            if "*" in key:
+                patterns.append(key)
+            else:
+                exact_keys.append(key)
+        
+        # Delete exact keys
+        if exact_keys:
+            await client.delete(*exact_keys)
+        
+        # Process patterns using FakeRedis internals
+        if patterns:
+            # Note: This relies on FakeRedis implementation details (_strings)
+            # because it doesn't support scan/keys commands
+            all_keys = list(client._strings.keys())
+            to_delete = []
+            for pattern in patterns:
+                # Simple glob matching
+                import fnmatch
+                matched = fnmatch.filter(all_keys, pattern)
+                to_delete.extend(matched)
+            
+            if to_delete:
+                await client.delete(*to_delete)
 
 
 @pytest.fixture

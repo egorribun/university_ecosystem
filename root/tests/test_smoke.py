@@ -3,19 +3,19 @@ import pytest
 pytestmark = pytest.mark.anyio("asyncio")
 
 
-async def test_root_endpoint(async_client):
-    response = await async_client.get("/")
+async def test_root_endpoint(root_client):
+    response = await root_client.get("/")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-async def test_healthcheck(async_client):
-    response = await async_client.get("/healthz")
+async def test_healthcheck(root_client):
+    response = await root_client.get("/healthz")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
-async def test_readiness(async_client):
-    response = await async_client.get("/ready")
+async def test_readiness(root_client):
+    response = await root_client.get("/ready")
     assert response.status_code == 200
     assert response.json()["status"] == "ready"

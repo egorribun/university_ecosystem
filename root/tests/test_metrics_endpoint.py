@@ -30,21 +30,21 @@ def _configure_metrics() -> Iterator[str]:
 
 
 @pytest.mark.anyio
-async def test_metrics_endpoint_requires_auth(async_client, _configure_metrics: str):
-    response = await async_client.get("/metrics")
+async def test_metrics_endpoint_requires_auth(root_client, _configure_metrics: str):
+    response = await root_client.get("/metrics")
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == 'Basic realm="Metrics"'
 
 
 @pytest.mark.anyio
 async def test_metrics_endpoint_exposes_prometheus_payload(
-    async_client, _configure_metrics: str
+    root_client, _configure_metrics: str
 ):
     # Emit a request to ensure counters are incremented.
-    health_response = await async_client.get("/healthz")
+    health_response = await root_client.get("/healthz")
     assert health_response.status_code == 200
 
-    response = await async_client.get(
+    response = await root_client.get(
         "/metrics",
         headers={"Authorization": f"Basic {_configure_metrics}"},
     )
@@ -63,11 +63,11 @@ async def test_metrics_endpoint_exposes_prometheus_payload(
 
 @pytest.mark.anyio
 async def test_metrics_endpoint_respects_allowlist(
-    async_client, _configure_metrics: str
+    root_client, _configure_metrics: str
 ):
     settings.metrics_allowlist = "10.0.0.0/8"
 
-    response = await async_client.get(
+    response = await root_client.get(
         "/metrics",
         headers={"Authorization": f"Basic {_configure_metrics}"},
     )
