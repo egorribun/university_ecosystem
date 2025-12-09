@@ -18,6 +18,14 @@ import { resetEtagCache } from "./api/client"
 
 expect.extend(toHaveNoViolations)
 
+if (!process.stdout.columns || process.stdout.columns === 0) {
+  process.stdout.columns = 80
+}
+
+if (!process.stderr.columns || process.stderr.columns === 0) {
+  process.stderr.columns = 80
+}
+
 beforeAll(async () => {
   await i18n.changeLanguage("en")
   document.documentElement.lang = "en"

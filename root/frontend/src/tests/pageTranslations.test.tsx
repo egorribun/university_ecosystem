@@ -221,10 +221,10 @@ const {
         },
       })
     if (url === "/events/my") return Promise.resolve({ data: [] })
-    if (url === "/stories") {
+    if (url === "/stories" || url === "/api/v1/stories") {
       return Promise.resolve({ data: storiesItems, status: 200 })
     }
-    if (url === "/news") return Promise.resolve({ data: newsItems })
+    if (url === "/news" || url === "/api/v1/news") return Promise.resolve({ data: newsItems })
     if (url === "/notifications") return Promise.resolve({ data: notificationsResponse })
     if (url === "/groups") return Promise.resolve({ data: scheduleGroups })
     if (url.startsWith("/schedule/")) return Promise.resolve({ data: scheduleLessons })

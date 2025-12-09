@@ -15,7 +15,7 @@ import AlternateEmailIcon from "@mui/icons-material/AlternateEmail"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage } from "@/api/news"
+import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
@@ -56,7 +56,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
   )
 }
 
-async function fetchNews(id: string) {
+async function fetchNews(id: string): Promise<NewsItem> {
   const numericId = Number(id)
   if (!Number.isFinite(numericId)) {
     throw new Error("Invalid news id")
@@ -156,7 +156,7 @@ export default function NewsDetail() {
     }
   }, [heroRatio])
 
-  const query = useQuery({
+  const query = useQuery<NewsItem, Error>({
     queryKey: ["news", id, language],
     queryFn: () => fetchNews(id),
     enabled: !!id,
@@ -556,7 +556,7 @@ export default function NewsDetail() {
           </figure>
 
           <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
-            {content?.split(/\n{2,}/).map((chunk, index) => {
+            {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
               const text = chunk.trim()
 
               if (!text) return null

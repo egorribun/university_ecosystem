@@ -152,14 +152,14 @@ const createEventsListQueryFn =
       params.cursor = pageParam
     }
 
-    const requestConfig: TypedRequestOptions<"/events", "get"> = {
+    const requestConfig: TypedRequestOptions<"/api/v1/events", "get"> = {
       params,
       signal,
       validateStatus: (status) => status >= 200 && status < 400,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
-    const response = await apiClient.get("/events", requestConfig)
+    const response = await apiClient.get("/api/v1/events", requestConfig)
 
     if (response.status === 304) {
       const cached =
@@ -294,13 +294,13 @@ export const useMyEventsQuery = (
     enabled: effectiveEnabled,
     queryFn: async ({ signal }) => {
       const etagKey = createMyEventsEtagKey(normalized)
-      const config: TypedRequestOptions<"/events/my", "get"> = {
+      const config: TypedRequestOptions<"/api/v1/events/my", "get"> = {
         signal,
         validateStatus: (status) => status >= 200 && status < 400,
         etagCacheKey: etagKey,
       }
 
-      const response = await apiClient.get("/events/my", config)
+      const response = await apiClient.get("/api/v1/events/my", config)
 
       if (response.status === 304) {
         return queryClient.getQueryData<Event[]>(queryKey) ?? []
