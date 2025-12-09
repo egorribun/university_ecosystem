@@ -59,11 +59,7 @@ export const fetchNotificationsList = async (params?: {
   const response = await apiClient.get("/api/v1/notifications", {
     params,
   })
-  return ensureValidResponse(
-    notificationsListSchema,
-    response.data,
-    "GET /api/v1/notifications"
-  )
+  return ensureValidResponse(notificationsListSchema, response.data, "GET /api/v1/notifications")
 }
 
 export const markNotificationRead = (notificationId: number) =>
@@ -164,11 +160,7 @@ export async function fetchAdminUserTopics(userId: number): Promise<AdminUserTop
   const { data } = await apiClient.get("/api/v1/push/admin/topics/{user_id}", {
     pathParams: { user_id: userId },
   })
-  return ensureValidResponse(
-    adminTopicsSchema,
-    data,
-    `GET /api/v1/push/admin/topics/${userId}`
-  )
+  return ensureValidResponse(adminTopicsSchema, data, `GET /api/v1/push/admin/topics/${userId}`)
 }
 
 export async function updateAdminUserTopics(
@@ -179,9 +171,5 @@ export async function updateAdminUserTopics(
   const { data } = await apiClient.put("/api/v1/push/admin/topics/{user_id}", payload, {
     pathParams: { user_id: userId },
   })
-  return ensureValidResponse(
-    adminTopicsSchema,
-    data,
-    `PUT /api/v1/push/admin/topics/${userId}`
-  )
+  return ensureValidResponse(adminTopicsSchema, data, `PUT /api/v1/push/admin/topics/${userId}`)
 }
