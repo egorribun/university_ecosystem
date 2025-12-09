@@ -63,7 +63,7 @@ def missing_table_operational_error(monkeypatch):
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_reports_dependency_statuses(async_client):
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["status"] == "ok"
@@ -89,7 +89,7 @@ async def test_healthcheck_database_failure_returns_503(async_client, monkeypatc
 
     monkeypatch.setattr(main, "engine", _FailingEngine())
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["status"] == "error"
@@ -101,7 +101,7 @@ async def test_healthcheck_cache_success(async_client, monkeypatch):
     cache = _SuccessfulCache()
     monkeypatch.setattr(main, "get_cache", lambda: cache)
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["cache"] == "ok"
@@ -111,7 +111,7 @@ async def test_healthcheck_cache_success(async_client, monkeypatch):
 async def test_healthcheck_cache_failure(async_client, monkeypatch):
     monkeypatch.setattr(main, "get_cache", lambda: _FailingCache())
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["cache"] == "error"
@@ -130,7 +130,7 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
 
     monkeypatch.setattr(main, "_get_storage_backend", lambda: _FailingStorage())
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["storage"] == "error"
@@ -140,7 +140,7 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
 async def test_healthcheck_notification_queue_failure(async_client, monkeypatch):
     monkeypatch.setattr(main, "async_session", lambda: _FailingSession())
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["notification_queue"] == "error"
@@ -151,7 +151,7 @@ async def test_healthcheck_notification_queue_missing_table(
     async_client, missing_table_operational_error, monkeypatch
 ):
     monkeypatch.setattr(main.settings, "notifications_queue_in_memory_only", True)
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["notification_queue"] == "ok"
@@ -166,7 +166,7 @@ async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
 
     monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["file_scanner"] == "ok"
@@ -181,7 +181,7 @@ async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
 
     monkeypatch.setattr(main, "check_file_scanner_health", _failing_health_check)
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["file_scanner"] == "error"
@@ -204,7 +204,7 @@ async def test_healthcheck_file_scanner_uses_lightweight_probe(
     monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
     monkeypatch.setattr(main, "scan_for_malware", _forbidden_scan)
 
-    response = await async_client.get("/healthz")
+    response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["file_scanner"] == "ok"

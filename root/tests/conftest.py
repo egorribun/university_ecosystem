@@ -80,6 +80,7 @@ security_headers_module.SecurityHeadersMiddleware = _NoopSecurityHeadersMiddlewa
 
 from app import main
 from app.core.config import settings
+settings.auto_create_schema = False
 from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
@@ -143,6 +144,17 @@ async def notification_queue_shutdown() -> AsyncIterator[None]:
 
 @pytest.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
+    if os.path.exists("test.db"):
+        try:
+            os.remove("test.db")
+        except OSError:
+            pass
+    if os.path.exists("test.db-journal"):
+        try:
+            os.remove("test.db-journal")
+        except OSError:
+            pass
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -155,8 +167,11 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
     async with engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        for table in reversed(Base.metadata.sorted_tables):
+            try:
+                await conn.execute(table.delete())
+            except Exception:
+                pass
         await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 
@@ -272,7 +287,7 @@ async def async_client(
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver", follow_redirects=True
+            transport=transport, base_url="http://testserver/api/v1", follow_redirects=True
         ) as client:
             yield client
 

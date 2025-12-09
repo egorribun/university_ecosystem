@@ -236,7 +236,7 @@ async def create_event(
     return crud.serialize_event(record, locale)
 
 
-@router.get("", response_model=schemas.PaginatedEvents)
+@router.get("", response_model=schemas.PaginatedEvents, summary="List Events", description="Get a paginated list of events.")
 async def all_events(
     request: Request,
     response: Response,
@@ -255,6 +255,18 @@ async def all_events(
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
 ):
+    """
+    Get paginated list of events.
+    
+    - **limit**: Number of items to return (1-100, default 20)
+    - **cursor**: Pagination cursor for next page
+    - **search**: Search query
+    - **type**: Filter by event type
+    - **location**: Filter by location
+    - **is_active**: Filter by active status
+    
+    Returns events ordered by start date (newest first).
+    """
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
     response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
@@ -329,13 +341,18 @@ def _to_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
-@router.post("/attendance", response_model=schemas.EventAttendanceOut)
+@router.post("/attendance", response_model=schemas.EventAttendanceOut, summary="Attend Event", description="Register attendance for an event.")
 async def attend(
     data: schemas.EventAttendanceCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    """
+    Register attendance for an event.
+    
+    Requires student role.
+    """
     locale = resolve_locale(request=request, user=user)
     if user.role in ("admin", "teacher"):
         raise HTTPException(

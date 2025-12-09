@@ -189,13 +189,52 @@ async def create_news(db: AsyncSession, news: schemas.NewsCreate):
     return record
 
 
-async def get_news_list(db: AsyncSession, skip: int = 0, limit: int = 10):
+def _decode_news_cursor(value: str | None) -> tuple[datetime, int] | None:
+    """Decode a news pagination cursor into (timestamp, id)."""
+    if not value:
+        return None
+    try:
+        parts = value.split(":", 1)
+        if len(parts) != 2:
+            return None
+        ts_ms = int(parts[0])
+        news_id = int(parts[1])
+        # Convert milliseconds to datetime
+        ts = datetime.fromtimestamp(ts_ms / 1000, tz=UTC)
+        return ts, news_id
+    except (TypeError, ValueError):
+        return None
+
+
+async def get_news_list(
+    db: AsyncSession,
+    limit: int = 20,
+    cursor: str | None = None,
+):
+    """Get paginated news list with cursor-based pagination."""
+    cursor_values = _decode_news_cursor(cursor)
+    
+    stmt = select(models.News)
+    
+    if cursor_values:
+        last_created_at, last_id = cursor_values
+        # For desc order: get items that are older (smaller) than cursor
+        stmt = stmt.where(
+            or_(
+                models.News.created_at < last_created_at,
+                and_(
+                    models.News.created_at == last_created_at,
+                    models.News.id < last_id,
+                ),
+            )
+        )
+    
     stmt = (
-        select(models.News)
-        .order_by(models.News.created_at.desc())
-        .offset(skip)
+        stmt
+        .order_by(models.News.created_at.desc(), models.News.id.desc())
         .limit(limit)
     )
+    
     result = await db.execute(stmt)
     return result.scalars().all()
 

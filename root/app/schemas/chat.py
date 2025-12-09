@@ -64,3 +64,17 @@ class ChatResponse(ChatBase):
 
     class Config:
         from_attributes = True
+
+
+class ChatsListOut(BaseModel):
+    """Paginated list of chats."""
+    items: list[ChatResponse]
+    has_more: bool = False
+    next_cursor: str | None = None
+
+
+class MessagesListOut(BaseModel):
+    """Paginated list of messages."""
+    items: list[MessageResponse]
+    has_more: bool = False
+    next_cursor: str | None = None

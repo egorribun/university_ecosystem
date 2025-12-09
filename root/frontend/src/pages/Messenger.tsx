@@ -10,7 +10,7 @@ import { useMediaQuery } from "@mui/material"
 import { useAuth } from "../contexts/AuthContext"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { chatApi, type Chat, type Message } from "../api/chat"
-import { useInterval } from "../hooks/useInterval"
+import { useChatWebSocket } from "../hooks/useChatWebSocket"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
@@ -26,24 +26,27 @@ export default function Messenger() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showChatMenu, setShowChatMenu] = useState(false)
 
-  // Fetch Chats
-  const { data: chats = [], isLoading: chatsLoading } = useQuery({
+  // WebSocket for real-time updates (uses cookie-based auth)
+  const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
+    enabled: !!user,
+  })
+
+  // Fetch Chats with paginated response
+  const { data: chatsData, isLoading: chatsLoading } = useQuery({
     queryKey: ["chats"],
-    queryFn: chatApi.getChats,
+    queryFn: () => chatApi.getChats(),
   })
+  const chats = chatsData?.items ?? []
 
-  // Fetch Messages for selected chat
-  const { data: messages = [], isLoading: messagesLoading } = useQuery({
+  // Fetch Messages for selected chat with paginated response
+  const { data: messagesData, isLoading: messagesLoading } = useQuery({
     queryKey: ["messages", selectedChatId],
-    queryFn: () => (selectedChatId ? chatApi.getMessages(selectedChatId) : Promise.resolve([])),
+    queryFn: () => (selectedChatId ? chatApi.getMessages(selectedChatId) : Promise.resolve({ items: [], has_more: false, next_cursor: null })),
     enabled: !!selectedChatId,
-    refetchInterval: 3000, // Poll every 3 seconds for new messages
+    // No more polling needed - WebSocket handles real-time updates
   })
+  const messages = messagesData?.items ?? []
 
-  // Poll for chat list updates (unread counts, new chats)
-  useInterval(() => {
-    queryClient.invalidateQueries({ queryKey: ["chats"] })
-  }, 5000)
 
   // Send Message Mutation
   const sendMessageMutation = useMutation({
@@ -128,9 +131,9 @@ export default function Messenger() {
       lastMessage: chat.last_message?.content || "",
       lastMessageTime: chat.last_message
         ? new Date(chat.last_message.created_at).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
+          hour: "2-digit",
+          minute: "2-digit",
+        })
         : "",
       unread: chat.unread_count,
       online: false, // TODO: Real online status
@@ -152,9 +155,8 @@ export default function Messenger() {
     >
       {/* Sidebar */}
       <div
-        className={`${
-          showList ? "flex" : "hidden"
-        } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
+        className={`${showList ? "flex" : "hidden"
+          } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
       >
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-[#0b111e]/80 backdrop-blur-md z-10">
           <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -198,9 +200,8 @@ export default function Messenger() {
 
       {/* Chat Area */}
       <div
-        className={`${
-          showChat ? "flex" : "hidden"
-        } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
+        className={`${showChat ? "flex" : "hidden"
+          } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
       >
         {selectedChatId && activeChat ? (
           <>
@@ -388,9 +389,15 @@ export default function Messenger() {
                   hour: "2-digit",
                   minute: "2-digit",
                 }),
-                isMe: m.sender_id === String(user?.id),
+                isMe: m.sender_id === user?.id,
                 status: m.read_status ? "read" : "sent",
-                attachments: m.attachments,
+                attachments: m.attachments?.map((a) => ({
+                  id: a.id,
+                  url: a.url,
+                  type: a.file_type,
+                  name: a.filename,
+                  size: a.size,
+                })),
               }))}
             />
             <MessageInput onSend={handleSendMessage} />

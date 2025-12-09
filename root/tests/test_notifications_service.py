@@ -76,7 +76,7 @@ async def reset_notification_queue_state() -> None:
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
     response = await async_client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": email, "password": password},
     )
     assert response.status_code == 200
@@ -514,7 +514,7 @@ async def test_event_creation_enqueues_notifications(
         "ends_at": ends_at.isoformat(),
     }
 
-    response = await async_client.post("/events", json=payload, headers=headers)
+    response = await async_client.post("/api/v1/events", json=payload, headers=headers)
     assert response.status_code == 200
     assert not delivery_started.is_set()
 
@@ -553,7 +553,7 @@ async def test_news_creation_enqueues_notifications(
     )
 
     response = await async_client.post(
-        "/news",
+        "/api/v1/news",
         json={"title": "Async News", "content": "Hello"},
         headers=headers,
     )
