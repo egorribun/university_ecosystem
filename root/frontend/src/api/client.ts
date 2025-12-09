@@ -10,8 +10,8 @@ import i18n, { fallbackLng, supportedLngs } from "@/i18n/config"
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 
-const devBase = "/api"
-const prodBase = import.meta.env.VITE_BACKEND_ORIGIN || "/api"
+const devBase = "/api/v1"
+const prodBase = `${import.meta.env.VITE_BACKEND_ORIGIN || ""}/api/v1`
 
 export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
   signal?: AbortSignal

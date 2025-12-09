@@ -4,7 +4,7 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import APIRouter, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,7 @@ from app.api.spotify import router as spotify_router
 from app.api.stats import router as stats_router
 from app.api.stories import router as stories_router
 from app.api.users import router as users_router
+from app.api.websocket import router as websocket_router
 from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import async_session, engine, wait_db
@@ -51,7 +52,18 @@ except Exception:
     ProxyHeadersMiddleware = None
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="University Ecosystem API",
+    description=(
+        "REST API for university life management platform - "
+        "schedules, news, events, notifications, and more."
+    ),
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan,
+)
 
 
 @app.exception_handler(AppException)
@@ -281,17 +293,30 @@ async def ready():
     return {"status": "ready"}
 
 
-app.include_router(auth_router)
-app.include_router(spotify_router)
-app.include_router(sessions_router)
-app.include_router(notifications_router)
-app.include_router(push_router)
+# Versioned API router - all endpoints under /api/v1
+
+api_v1_router = APIRouter(prefix="/api/v1")
+
+# Include all routers under v1
+api_v1_router.include_router(auth_router)
+api_v1_router.include_router(spotify_router)
+api_v1_router.include_router(sessions_router)
+api_v1_router.include_router(notifications_router)
+api_v1_router.include_router(push_router)
+api_v1_router.include_router(schedule_router)
+api_v1_router.include_router(users_router)
+api_v1_router.include_router(events_router)
+api_v1_router.include_router(news_router)
+api_v1_router.include_router(stories_router)
+api_v1_router.include_router(schedule_api_router)
+api_v1_router.include_router(stats_router)
+api_v1_router.include_router(chat_router)
+
+# Mount the versioned router
+app.include_router(api_v1_router)
+
+# Legacy push router for backward compatibility (deprecated)
 app.include_router(legacy_push_router)
-app.include_router(schedule_router)
-app.include_router(users_router)
-app.include_router(events_router)
-app.include_router(news_router)
-app.include_router(stories_router)
-app.include_router(schedule_api_router)
-app.include_router(stats_router)
-app.include_router(chat_router)
+
+# WebSocket router (mounted at root level - /ws/*)
+app.include_router(websocket_router)

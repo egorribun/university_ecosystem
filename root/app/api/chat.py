@@ -1,27 +1,66 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import and_, select
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.api.websocket import notify_new_message
 from app.core.database import get_db
 from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
-from app.schemas.chat import ChatCreate, ChatResponse, MessageResponse
+from app.schemas.chat import (
+    ChatCreate,
+    ChatResponse,
+    ChatsListOut,
+    MessageResponse,
+    MessagesListOut,
+)
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
 
-@router.get("", response_model=list[ChatResponse])
+def _encode_cursor(dt: datetime, id_val: str) -> str:
+    """Encode a cursor from datetime and ID."""
+    ts = int(dt.timestamp() * 1000)
+    return f"{ts}:{id_val}"
+
+
+def _decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
+    """Decode a cursor into datetime and ID."""
+    if not cursor:
+        return None
+    try:
+        ts_str, id_val = cursor.split(":", 1)
+        ts = int(ts_str) / 1000.0
+        return datetime.fromtimestamp(ts, tz=UTC), id_val
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("", response_model=ChatsListOut)
 async def get_chats(
+    cursor: str | None = Query(None, description="Pagination cursor"),
+    limit: int = Query(20, ge=1, le=100, description="Number of chats to return"),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Get all chats for the current user.
+    Get all chats for the current user with cursor-based pagination.
+
+    Returns chats ordered by last message timestamp (newest first).
+    Use the `next_cursor` from the response to fetch the next page.
     """
     # Subquery to find latest message timestamp for ordering
     last_message_subquery = (
@@ -37,10 +76,28 @@ async def get_chats(
         .join(Chat.participants)
         .where(User.id == current_user.id)
         .options(selectinload(Chat.participants), selectinload(Chat.messages))
-        .order_by(last_message_subquery.desc().nulls_last())
     )
+
+    # Apply cursor filter if provided
+    cursor_info = _decode_cursor(cursor)
+    if cursor_info:
+        cursor_dt, cursor_id = cursor_info
+        # Filter for chats with older last message or same time but
+        # lexicographically smaller ID
+        query = query.where(
+            or_(
+                Chat.updated_at < cursor_dt,
+                and_(Chat.updated_at == cursor_dt, Chat.id < cursor_id),
+            )
+        )
+
+    query = query.order_by(last_message_subquery.desc().nulls_last()).limit(limit + 1)
     result = await session.execute(query)
     chats = result.scalars().all()
+
+    # Check if there are more results
+    has_more = len(chats) > limit
+    chats = chats[:limit]
 
     # Process chats to add last_message and unread_count
     chat_responses = []
@@ -68,7 +125,17 @@ async def get_chats(
             )
         )
 
-    return chat_responses
+    # Build next cursor
+    next_cursor = None
+    if has_more and chat_responses:
+        last_chat = chats[-1]
+        next_cursor = _encode_cursor(last_chat.updated_at, last_chat.id)
+
+    return ChatsListOut(
+        items=chat_responses,
+        has_more=has_more,
+        next_cursor=next_cursor,
+    )
 
 
 @router.post("", response_model=ChatResponse)
@@ -134,14 +201,19 @@ async def create_chat(
     )
 
 
-@router.get("/{chat_id}/messages", response_model=list[MessageResponse])
+@router.get("/{chat_id}/messages", response_model=MessagesListOut)
 async def get_messages(
     chat_id: str,
+    cursor: str | None = Query(None, description="Pagination cursor"),
+    limit: int = Query(50, ge=1, le=100, description="Number of messages to return"),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Get messages for a chat.
+    Get messages for a chat with cursor-based pagination.
+
+    Messages are returned in ascending order (oldest first).
+    Use the `next_cursor` from the response to fetch older messages.
     """
     chat = await session.get(Chat, chat_id, options=[selectinload(Chat.participants)])
     if not chat:
@@ -153,13 +225,44 @@ async def get_messages(
     query = (
         select(Message)
         .where(Message.chat_id == chat_id)
-        .order_by(Message.created_at.asc())
-        .options(selectinload(Message.sender))
+        .options(selectinload(Message.sender), selectinload(Message.attachments))
     )
-    result = await session.execute(query)
-    messages = result.scalars().all()
 
-    return messages
+    # Apply cursor filter if provided
+    cursor_info = _decode_cursor(cursor)
+    if cursor_info:
+        cursor_dt, cursor_id = cursor_info
+        # For ascending order, we want older messages (before cursor)
+        query = query.where(
+            or_(
+                Message.created_at < cursor_dt,
+                and_(Message.created_at == cursor_dt, Message.id < cursor_id),
+            )
+        )
+
+    # Fetch one extra to check if there are more
+    query = query.order_by(Message.created_at.desc()).limit(limit + 1)
+    result = await session.execute(query)
+    messages = list(result.scalars().all())
+
+    # Check if there are more results
+    has_more = len(messages) > limit
+    messages = messages[:limit]
+
+    # Reverse to get ascending order for display
+    messages = list(reversed(messages))
+
+    # Build next cursor (for loading older messages)
+    next_cursor = None
+    if has_more and messages:
+        oldest_message = messages[0]  # First in ascending order = oldest
+        next_cursor = _encode_cursor(oldest_message.created_at, oldest_message.id)
+
+    return MessagesListOut(
+        items=messages,
+        has_more=has_more,
+        next_cursor=next_cursor,
+    )
 
 
 @router.post("/{chat_id}/messages", response_model=MessageResponse)
@@ -172,13 +275,10 @@ async def send_message(
 ):
     """
     Send a message to a chat.
+
+    The message is saved to the database and all chat participants
+    are notified via WebSocket in real-time.
     """
-    print(f"DEBUG: send_message called. chat_id={chat_id}")
-    print(f"DEBUG: content={content}")
-    print(f"DEBUG: files count={len(files) if files else 0}")
-    if files:
-        for f in files:
-            print(f"DEBUG: file={f.filename}, content_type={f.content_type}")
 
     chat = await session.get(Chat, chat_id, options=[selectinload(Chat.participants)])
     if not chat:
@@ -243,6 +343,9 @@ async def send_message(
 
     # Eager load sender and attachments for response
     await session.refresh(message, ["sender", "attachments"])
+
+    # Notify other participants via WebSocket
+    await notify_new_message(message, exclude_user_id=current_user.id)
 
     return message
 

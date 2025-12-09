@@ -131,7 +131,31 @@ class RedisCache(BaseCache):
             return
         try:
             client = await self._get_client()
-            await client.delete(*filtered)
+
+            # Separate exact keys and patterns
+            exact_keys = []
+            patterns = []
+            for key in filtered:
+                if "*" in key:
+                    patterns.append(key)
+                else:
+                    exact_keys.append(key)
+
+            # Delete exact keys
+            if exact_keys:
+                await client.delete(*exact_keys)
+
+            # Process patterns
+            for pattern in patterns:
+                cursor = 0
+                while True:
+                    cursor, matches = await client.scan(
+                        cursor, match=pattern, count=100
+                    )
+                    if matches:
+                        await client.delete(*matches)
+                    if cursor == 0:
+                        break
         except (RedisError, OSError):
             logger.warning(
                 "Redis cache invalidate failed for keys %s", filtered, exc_info=True

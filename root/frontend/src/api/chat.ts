@@ -4,15 +4,15 @@ import type { User } from "../types/User"
 export interface Attachment {
   id: string
   url: string
-  type: "image" | "video" | "file"
-  name: string
+  file_type: "image" | "video" | "file"
+  filename: string
   size: number
 }
 
 export interface Message {
   id: string
   chat_id: string
-  sender_id: string
+  sender_id: number
   content: string
   created_at: string
   read_status: boolean
@@ -29,9 +29,25 @@ export interface Chat {
   updated_at: string
 }
 
+// Paginated response types
+export interface ChatsListResponse {
+  items: Chat[]
+  has_more: boolean
+  next_cursor: string | null
+}
+
+export interface MessagesListResponse {
+  items: Message[]
+  has_more: boolean
+  next_cursor: string | null
+}
+
 export const chatApi = {
-  getChats: async () => {
-    const response = await client.get<Chat[]>("/chats")
+  getChats: async (cursor?: string, limit: number = 20): Promise<ChatsListResponse> => {
+    const params = new URLSearchParams()
+    if (cursor) params.append("cursor", cursor)
+    params.append("limit", String(limit))
+    const response = await client.get<ChatsListResponse>(`/chats?${params.toString()}`)
     return response.data
   },
 
@@ -40,18 +56,25 @@ export const chatApi = {
     return response.data
   },
 
-  getMessages: async (chatId: string) => {
-    const response = await client.get<Message[]>(`/chats/${chatId}/messages`)
+  getMessages: async (
+    chatId: string,
+    cursor?: string,
+    limit: number = 50
+  ): Promise<MessagesListResponse> => {
+    const params = new URLSearchParams()
+    if (cursor) params.append("cursor", cursor)
+    params.append("limit", String(limit))
+    const response = await client.get<MessagesListResponse>(
+      `/chats/${chatId}/messages?${params.toString()}`
+    )
     return response.data
   },
 
   sendMessage: async (chatId: string, content: string, files?: File[]) => {
-    console.log("chatApi.sendMessage:", { chatId, content, filesCount: files?.length })
     const formData = new FormData()
     formData.append("content", content)
     if (files && files.length > 0) {
       files.forEach((file) => {
-        console.log("Appending file:", file.name, file.type, file.size)
         formData.append("files", file)
       })
     }

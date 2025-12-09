@@ -80,6 +80,8 @@ security_headers_module.SecurityHeadersMiddleware = _NoopSecurityHeadersMiddlewa
 
 from app import main
 from app.core.config import settings
+
+settings.auto_create_schema = False
 from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
 from app.deps import cache as cache_module
@@ -143,6 +145,17 @@ async def notification_queue_shutdown() -> AsyncIterator[None]:
 
 @pytest.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
+    if os.path.exists("test.db"):
+        try:
+            os.remove("test.db")
+        except OSError:
+            pass
+    if os.path.exists("test.db-journal"):
+        try:
+            os.remove("test.db-journal")
+        except OSError:
+            pass
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -155,8 +168,11 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
     async with engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        for table in reversed(Base.metadata.sorted_tables):
+            try:
+                await conn.execute(table.delete())
+            except Exception:
+                pass
         await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 
@@ -272,6 +288,92 @@ async def async_client(
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver/api/v1",
+            follow_redirects=True,
+        ) as client:
+            yield client
+
+
+@pytest.fixture
+async def root_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Client for testing root-level endpoints (no /api/v1 prefix)."""
+
+    async def _start_notifications_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        "app.core.lifespan.start_notifications_scheduler",
+        _start_notifications_scheduler,
+    )
+
+    async def _start_notifications_retention_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        "app.core.lifespan.start_notifications_retention_scheduler",
+        _start_notifications_retention_scheduler,
+    )
+
+    async def _start_session_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        "app.core.lifespan.start_session_cleanup_scheduler",
+        _start_session_cleanup_scheduler,
+    )
+
+    async def _start_story_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        "app.core.lifespan.start_story_cleanup_scheduler",
+        _start_story_cleanup_scheduler,
+    )
+
+    async def _start_password_reset_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
+        async def _stop() -> None:
+            return None
+
+        return _stop
+
+    monkeypatch.setattr(
+        "app.core.lifespan.start_password_reset_cleanup_scheduler",
+        _start_password_reset_cleanup_scheduler,
+    )
+
+    async def _mock_migrations_current() -> bool:
+        return True
+
+    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)
+
+    transport = httpx.ASGITransport(app=main.app)
+    async with LifespanManager(main.app):
+        async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver", follow_redirects=True
         ) as client:
             yield client
@@ -290,6 +392,42 @@ class _TestingRedisCache(cache_module.RedisCache):
                 encoding="utf-8", decode_responses=True
             )
         return self._client
+
+    async def invalidate(self, *keys: str) -> None:
+        filtered = [str(key) for key in keys if key]
+        if not filtered:
+            return
+
+        client = await self._get_client()
+
+        # Separate exact keys and patterns
+        exact_keys = []
+        patterns = []
+        for key in filtered:
+            if "*" in key:
+                patterns.append(key)
+            else:
+                exact_keys.append(key)
+
+        # Delete exact keys
+        if exact_keys:
+            await client.delete(*exact_keys)
+
+        # Process patterns using FakeRedis internals
+        if patterns:
+            # Note: This relies on FakeRedis implementation details (_strings)
+            # because it doesn't support scan/keys commands
+            all_keys = list(client._strings.keys())
+            to_delete = []
+            for pattern in patterns:
+                # Simple glob matching
+                import fnmatch
+
+                matched = fnmatch.filter(all_keys, pattern)
+                to_delete.extend(matched)
+
+            if to_delete:
+                await client.delete(*to_delete)
 
 
 @pytest.fixture

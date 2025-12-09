@@ -17,7 +17,7 @@ if (!source) {
   if (configuredPath) {
     source = configuredPath
   } else {
-    source = new URL("/openapi.json", defaultOrigin).toString()
+    source = new URL("/api/openapi.json", defaultOrigin).toString()
   }
 }
 

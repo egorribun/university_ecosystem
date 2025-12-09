@@ -12,12 +12,12 @@ from app.utils import ratelimit as ratelimit_module
 
 
 @pytest.mark.anyio
-async def test_rate_limit_per_ip(async_client):
+async def test_rate_limit_per_ip(root_client):
     for _ in range(5):
-        response = await async_client.get("/healthz")
+        response = await root_client.get("/healthz")
         assert response.status_code == 200
         assert response.headers.get("X-RateLimit-Limit") == "5"
-    response = await async_client.get("/healthz")
+    response = await root_client.get("/healthz")
     assert response.status_code == 429
     expected = translate("errors.rate_limit.generic")
     assert response.json()["detail"] == expected
@@ -25,34 +25,34 @@ async def test_rate_limit_per_ip(async_client):
 
 
 @pytest.mark.anyio
-async def test_rate_limit_per_token(async_client):
+async def test_rate_limit_per_token(root_client):
     headers = {"Authorization": "Bearer token-a"}
     for _ in range(5):
-        response = await async_client.get("/healthz", headers=headers)
+        response = await root_client.get("/healthz", headers=headers)
         assert response.status_code == 200
-    blocked = await async_client.get("/healthz", headers=headers)
+    blocked = await root_client.get("/healthz", headers=headers)
     assert blocked.status_code == 429
 
-    other = await async_client.get(
+    other = await root_client.get(
         "/healthz", headers={"Authorization": "Bearer token-b"}
     )
     assert other.status_code == 200
 
 
 @pytest.mark.anyio
-async def test_rate_limit_per_cookie(async_client):
-    async_client.cookies.set("access_token", "cookie-token-a", path="/")
+async def test_rate_limit_per_cookie(root_client):
+    root_client.cookies.set("access_token", "cookie-token-a", path="/")
 
     for _ in range(5):
-        response = await async_client.get("/healthz")
+        response = await root_client.get("/healthz")
         assert response.status_code == 200
 
-    blocked = await async_client.get("/healthz")
+    blocked = await root_client.get("/healthz")
     assert blocked.status_code == 429
 
-    async_client.cookies.set("access_token", "cookie-token-b", path="/")
+    root_client.cookies.set("access_token", "cookie-token-b", path="/")
 
-    other = await async_client.get("/healthz")
+    other = await root_client.get("/healthz")
     assert other.status_code == 200
 
 
