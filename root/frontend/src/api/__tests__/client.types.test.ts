@@ -9,7 +9,7 @@ import { fetchNotificationsList, type NotificationsListResult } from "@/api/noti
 describe("typed api client", () => {
   it("fetchNews matches schema", () => {
     type Expected = AxiosResponse<
-      paths["/news"]["get"]["responses"]["200"]["content"]["application/json"]
+      paths["/api/v1/news"]["get"]["responses"]["200"]["content"]["application/json"]
     >
     expectTypeOf<ReturnType<typeof fetchNews>>().toEqualTypeOf<Promise<Expected>>()
   })

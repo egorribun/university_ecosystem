@@ -12,7 +12,7 @@ export type MfaVerifyPayload = components["schemas"]["MfaVerifyIn"] & {
   trust_device?: boolean
 }
 
-type StepUpPath = paths["/auth/mfa/step-up"]["post"]
+type StepUpPath = paths["/api/v1/auth/mfa/step-up"]["post"]
 
 export type StepUpResponse = StepUpPath["responses"]["200"]["content"]["application/json"]
 

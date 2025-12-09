@@ -6,7 +6,8 @@ import { ensureValidResponse } from "./validation"
 
 export type NewsItem = components["schemas"]["NewsOut"]
 
-type NewsListResponse = paths["/news"]["get"]["responses"]["200"]["content"]["application/json"]
+type NewsListResponse =
+  paths["/api/v1/news"]["get"]["responses"]["200"]["content"]["application/json"]
 
 type FetchNewsOptions = {
   ifNoneMatch?: string | null
@@ -41,10 +42,10 @@ const newsItemSchema: z.ZodType<NewsItem> = z.object({
 const newsListSchema = z.array(newsItemSchema)
 
 export const parseNewsList = (data: unknown) =>
-  ensureValidResponse(newsListSchema, data, "GET /news")
+  ensureValidResponse(newsListSchema, data, "GET /api/v1/news")
 
 export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
-  apiClient.get("/news", {
+  apiClient.get("/api/v1/news", {
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
     validateStatus: (status) => status === 304 || (status >= 200 && status < 300),
@@ -54,47 +55,47 @@ export const fetchNewsItem = async (
   id: number,
   { ifNoneMatch, signal }: FetchNewsItemOptions = {}
 ) => {
-  const response = await apiClient.get("/news/{id}", {
+  const response = await apiClient.get("/api/v1/news/{id}", {
     pathParams: { id },
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
     validateStatus: (status) => status === 304 || (status >= 200 && status < 300),
   })
   if (response.status !== 304) {
-    applyParsedData(response, newsItemSchema, "GET /news/{id}")
+    applyParsedData(response, newsItemSchema, "GET /api/v1/news/{id}")
   }
   return response
 }
 
 export const createNews = async (payload: CreateNewsPayload) => {
-  const response = await apiClient.post("/news", payload)
-  applyParsedData(response, newsItemSchema, "POST /news")
+  const response = await apiClient.post("/api/v1/news", payload)
+  applyParsedData(response, newsItemSchema, "POST /api/v1/news")
   return response
 }
 
 export const updateNews = async (id: number, payload: UpdateNewsPayload) => {
-  const response = await apiClient.patch("/news/{id}", payload ?? undefined, {
+  const response = await apiClient.patch("/api/v1/news/{id}", payload ?? undefined, {
     pathParams: { id },
   })
-  applyParsedData(response, newsItemSchema, "PATCH /news/{id}")
+  applyParsedData(response, newsItemSchema, "PATCH /api/v1/news/{id}")
   return response
 }
 
 export const deleteNews = (id: number) =>
-  apiClient.delete("/news/{id}", {
+  apiClient.delete("/api/v1/news/{id}", {
     pathParams: { id },
   })
 
 export const uploadNewsImage = async (file: File) => {
   const formData = new FormData()
   formData.append("file", file)
-  const response = await apiClient.post("/news/upload_image", formData, {
+  const response = await apiClient.post("/api/v1/news/upload_image", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
   const parsed = ensureValidResponse(
     newsUploadResponseSchema,
     response.data,
-    "POST /news/upload_image"
+    "POST /api/v1/news/upload_image"
   )
   return parsed.url
 }
