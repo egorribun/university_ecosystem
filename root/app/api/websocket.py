@@ -63,7 +63,10 @@ class ConnectionManager:
         )
 
     async def send_to_user(self, user_id: int, message: dict[str, Any]) -> int:
-        """Send a message to all connections of a user. Returns number of successful sends."""
+        """
+        Send a message to all connections of a user.
+        Returns number of successful sends.
+        """
         if user_id not in self.active_connections:
             return 0
 
@@ -186,7 +189,8 @@ async def websocket_chat(websocket: WebSocket):
     - {"type": "pong"} - Response to ping
     - {"type": "new_message", "chat_id": "...", "message": {...}} - New message received
     - {"type": "typing", "chat_id": "...", "user_id": ...} - Someone is typing
-    - {"type": "read", "chat_id": "...", "message_id": "...", "user_id": ...} - Message read
+    - {"type": "read", "chat_id": "...", "message_id": "...", "user_id": ...}
+      - Message read
     - {"type": "online", "user_id": ..., "status": true/false} - User online status
     - {"type": "error", "message": "..."} - Error message
     """

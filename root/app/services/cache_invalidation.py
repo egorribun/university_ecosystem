@@ -101,7 +101,7 @@ async def invalidate_all_schedules() -> None:
     Note: This requires Redis SCAN which is not ideal for production.
     Consider using a more targeted approach or Redis keyspace notifications.
     """
-    cache = get_cache()
+    get_cache()
     # For now, we can't easily invalidate all keys with a prefix
     # This would require SCAN command support in the cache layer
     logger.warning(

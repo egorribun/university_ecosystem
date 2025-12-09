@@ -4,7 +4,7 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import APIRouter, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -54,7 +54,10 @@ except Exception:
 
 app = FastAPI(
     title="University Ecosystem API",
-    description="REST API for university life management platform - schedules, news, events, notifications, and more.",
+    description=(
+        "REST API for university life management platform - "
+        "schedules, news, events, notifications, and more."
+    ),
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -291,7 +294,6 @@ async def ready():
 
 
 # Versioned API router - all endpoints under /api/v1
-from fastapi import APIRouter
 
 api_v1_router = APIRouter(prefix="/api/v1")
 

@@ -82,7 +82,8 @@ async def get_chats(
     cursor_info = _decode_cursor(cursor)
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
-        # Filter for chats with older last message or same time but lexicographically smaller ID
+        # Filter for chats with older last message or same time but
+        # lexicographically smaller ID
         query = query.where(
             or_(
                 Chat.updated_at < cursor_dt,

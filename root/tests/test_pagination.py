@@ -204,7 +204,7 @@ class TestCrudNewsPagination:
         self, db_session: AsyncSession, news_factory
     ):
         """Test get_news_list with cursor returns subsequent items."""
-        items = await news_factory(count=5)
+        await news_factory(count=5)
 
         # Get first page
         first_page = await crud.get_news_list(db_session, limit=2)

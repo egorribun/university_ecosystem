@@ -161,7 +161,7 @@ class TestWebSocketAuth:
         """Test that WebSocket requires authentication."""
         client = TestClient(app)
         with pytest.raises(WebSocketDisconnect) as exc:
-            with client.websocket_connect("/ws/chat") as websocket:
+            with client.websocket_connect("/ws/chat"):
                 pass
         assert exc.value.code in (1008, 4001)
 
