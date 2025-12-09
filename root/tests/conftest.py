@@ -80,6 +80,7 @@ security_headers_module.SecurityHeadersMiddleware = _NoopSecurityHeadersMiddlewa
 
 from app import main
 from app.core.config import settings
+
 settings.auto_create_schema = False
 from app.core.database import Base, async_session, engine
 from app.core.rate_limit import set_rate_limit_client_factory
@@ -287,7 +288,9 @@ async def async_client(
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver/api/v1", follow_redirects=True
+            transport=transport,
+            base_url="http://testserver/api/v1",
+            follow_redirects=True,
         ) as client:
             yield client
 

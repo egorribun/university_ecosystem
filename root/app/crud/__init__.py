@@ -213,9 +213,9 @@ async def get_news_list(
 ):
     """Get paginated news list with cursor-based pagination."""
     cursor_values = _decode_news_cursor(cursor)
-    
+
     stmt = select(models.News)
-    
+
     if cursor_values:
         last_created_at, last_id = cursor_values
         # For desc order: get items that are older (smaller) than cursor
@@ -228,13 +228,11 @@ async def get_news_list(
                 ),
             )
         )
-    
-    stmt = (
-        stmt
-        .order_by(models.News.created_at.desc(), models.News.id.desc())
-        .limit(limit)
+
+    stmt = stmt.order_by(models.News.created_at.desc(), models.News.id.desc()).limit(
+        limit
     )
-    
+
     result = await db.execute(stmt)
     return result.scalars().all()
 

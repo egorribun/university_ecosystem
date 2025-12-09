@@ -270,6 +270,7 @@ class NewsOut(OrmModel, NewsCreate):
 
 class PaginatedNews(BaseModel):
     """Paginated news response with cursor-based pagination."""
+
     items: list[NewsOut]
     has_more: bool
     next_cursor: str | None = None

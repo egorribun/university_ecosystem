@@ -1,7 +1,16 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,7 +47,6 @@ def _decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return datetime.fromtimestamp(ts, tz=UTC), id_val
     except (ValueError, TypeError):
         return None
-
 
 
 @router.get("", response_model=ChatsListOut)

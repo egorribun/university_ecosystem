@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import Any
 
 from fastapi import (
@@ -154,7 +154,12 @@ async def create_news(
     return schemas.NewsOut.model_validate(serialized)
 
 
-@router.get("", response_model=schemas.PaginatedNews, summary="List News", description="Get a paginated list of news articles.")
+@router.get(
+    "",
+    response_model=schemas.PaginatedNews,
+    summary="List News",
+    description="Get a paginated list of news articles.",
+)
 async def news_list(
     request: Request,
     response: Response,
@@ -165,19 +170,19 @@ async def news_list(
 ):
     """
     Get paginated list of news articles.
-    
+
     - **limit**: Number of items to return (1-100, default 20)
     - **cursor**: Pagination cursor for next page
-    
+
     Returns news ordered by creation date (newest first).
     """
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
-    
+
     # Build cache key including pagination params
     cache_key = f"news:list:{normalized_locale}:limit={limit}:cursor={cursor or ''}"
     cache = get_cache()
-    
+
     if cache.enabled:
         cached = await cache.get(cache_key)
         if cached:
@@ -195,12 +200,12 @@ async def news_list(
 
     # Get news with pagination
     rows = await crud.get_news_list(db, limit=limit + 1, cursor=cursor)
-    
+
     # Check if there are more items
     has_more = len(rows) > limit
     if has_more:
         rows = rows[:limit]
-    
+
     # Calculate next cursor
     next_cursor = None
     if has_more and rows:
@@ -211,10 +216,10 @@ async def news_list(
             created_at = created_at.replace(tzinfo=UTC)
         ts = int(created_at.timestamp() * 1000)
         next_cursor = f"{ts}:{last_item.id}"
-    
+
     # Serialize items
     items = [_serialize_news(item, locale) for item in rows]
-    
+
     payload = {
         "items": items,
         "has_more": has_more,
@@ -229,7 +234,12 @@ async def news_list(
     return encoded
 
 
-@router.get("/{id}", response_model=schemas.NewsOut, summary="Get News Item", description="Get a specific news article by ID.")
+@router.get(
+    "/{id}",
+    response_model=schemas.NewsOut,
+    summary="Get News Item",
+    description="Get a specific news article by ID.",
+)
 async def get_news(
     id: int,
     request: Request,
@@ -239,9 +249,9 @@ async def get_news(
 ):
     """
     Get a specific news article by ID.
-    
+
     - **id**: News item ID
-    
+
     Returns 404 if not found.
     """
     locale = resolve_locale(request=request)

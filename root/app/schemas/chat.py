@@ -68,6 +68,7 @@ class ChatResponse(ChatBase):
 
 class ChatsListOut(BaseModel):
     """Paginated list of chats."""
+
     items: list[ChatResponse]
     has_more: bool = False
     next_cursor: str | None = None
@@ -75,6 +76,7 @@ class ChatsListOut(BaseModel):
 
 class MessagesListOut(BaseModel):
     """Paginated list of messages."""
+
     items: list[MessageResponse]
     has_more: bool = False
     next_cursor: str | None = None

@@ -1,20 +1,15 @@
 """Tests for WebSocket chat functionality."""
-import asyncio
-import json
+
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from app.api.websocket import ConnectionManager, manager
+from app.api.websocket import ConnectionManager
 from app.auth.security import create_access_token
-from app.core.database import async_session
-from app.main import app
 from app.models.chat import Chat, Message
-from app.models.models import User
 
 
 @pytest.fixture
@@ -59,7 +54,7 @@ class TestConnectionManager:
         """Test that disconnect properly removes user connection."""
         mock_ws = AsyncMock(spec=WebSocket)
         user_id = 1
-        
+
         # Manually add connection
         connection_manager.active_connections[user_id] = {mock_ws}
         connection_manager.connection_users[mock_ws] = user_id
@@ -148,7 +143,7 @@ class TestConnectionManager:
         """Test get_online_users returns all connected user IDs."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
-        
+
         connection_manager.active_connections = {
             1: {mock_ws1},
             2: {mock_ws2},
@@ -171,41 +166,37 @@ class TestWebSocketAuth:
         assert exc.value.code in (1008, 4001)
 
     @pytest.mark.asyncio
-    async def test_get_user_from_token_valid(
-        self, db_session, user_factory
-    ):
+    async def test_get_user_from_token_valid(self, db_session, user_factory):
         """Test token validation returns user."""
         from app.api.websocket import get_user_from_token
-        
+
         user = await user_factory(full_name="Test User")
         token = await create_access_token(str(user.id))
-        
+
         result = await get_user_from_token(token)
-        
+
         assert result is not None
         assert result.id == user.id
 
-    @pytest.mark.asyncio  
+    @pytest.mark.asyncio
     async def test_get_user_from_token_invalid(self):
         """Test invalid token returns None."""
         from app.api.websocket import get_user_from_token
-        
+
         result = await get_user_from_token("invalid-token")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_user_from_token_inactive_user(
-        self, db_session, user_factory
-    ):
+    async def test_get_user_from_token_inactive_user(self, db_session, user_factory):
         """Test inactive user returns None."""
         from app.api.websocket import get_user_from_token
-        
+
         user = await user_factory(is_active=False)
         token = await create_access_token(str(user.id))
-        
+
         result = await get_user_from_token(token)
-        
+
         assert result is None
 
 
@@ -216,14 +207,13 @@ class TestMessageSerialization:
     async def test_serialize_message(self, db_session, user_factory):
         """Test message serialization includes all fields."""
         from app.api.websocket import serialize_message
-        from app.models.chat import Chat, Message
-        
+
         user = await user_factory(full_name="Test User")
-        
+
         chat = Chat(id="test-chat")
         db_session.add(chat)
         await db_session.commit()
-        
+
         message = Message(
             id="msg-1",
             chat_id=chat.id,
@@ -235,12 +225,12 @@ class TestMessageSerialization:
         db_session.add(message)
         await db_session.commit()
         await db_session.refresh(message)
-        
+
         # Load sender relationship
         message.sender = user
-        
+
         result = serialize_message(message)
-        
+
         assert result["id"] == "msg-1"
         assert result["chat_id"] == chat.id
         assert result["sender_id"] == user.id

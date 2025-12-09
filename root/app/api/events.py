@@ -236,7 +236,12 @@ async def create_event(
     return crud.serialize_event(record, locale)
 
 
-@router.get("", response_model=schemas.PaginatedEvents, summary="List Events", description="Get a paginated list of events.")
+@router.get(
+    "",
+    response_model=schemas.PaginatedEvents,
+    summary="List Events",
+    description="Get a paginated list of events.",
+)
 async def all_events(
     request: Request,
     response: Response,
@@ -257,14 +262,14 @@ async def all_events(
 ):
     """
     Get paginated list of events.
-    
+
     - **limit**: Number of items to return (1-100, default 20)
     - **cursor**: Pagination cursor for next page
     - **search**: Search query
     - **type**: Filter by event type
     - **location**: Filter by location
     - **is_active**: Filter by active status
-    
+
     Returns events ordered by start date (newest first).
     """
     locale = resolve_locale(request=request, user=user)
@@ -341,7 +346,12 @@ def _to_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
-@router.post("/attendance", response_model=schemas.EventAttendanceOut, summary="Attend Event", description="Register attendance for an event.")
+@router.post(
+    "/attendance",
+    response_model=schemas.EventAttendanceOut,
+    summary="Attend Event",
+    description="Register attendance for an event.",
+)
 async def attend(
     data: schemas.EventAttendanceCreate,
     request: Request,
@@ -350,7 +360,7 @@ async def attend(
 ):
     """
     Register attendance for an event.
-    
+
     Requires student role.
     """
     locale = resolve_locale(request=request, user=user)

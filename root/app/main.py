@@ -52,7 +52,6 @@ except Exception:
     ProxyHeadersMiddleware = None
 
 
-
 app = FastAPI(
     title="University Ecosystem API",
     description="REST API for university life management platform - schedules, news, events, notifications, and more.",
@@ -289,7 +288,6 @@ async def healthz():
 async def ready():
     await wait_db(max_attempts=1, delay=0.1)
     return {"status": "ready"}
-
 
 
 # Versioned API router - all endpoints under /api/v1

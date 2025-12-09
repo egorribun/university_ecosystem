@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+
 @pytest.mark.asyncio
 async def test_api_v1_prefix(async_client: AsyncClient):
     """Test that API v1 prefix is working."""
@@ -8,6 +9,7 @@ async def test_api_v1_prefix(async_client: AsyncClient):
     response = await async_client.get("http://testserver/api/v1/news")
     # Should be 200 (public endpoint) or 401/403, but NOT 404
     assert response.status_code != 404
+
 
 @pytest.mark.asyncio
 async def test_root_endpoints(async_client: AsyncClient):
@@ -20,11 +22,12 @@ async def test_root_endpoints(async_client: AsyncClient):
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
 
+
 def test_websocket_endpoint_path(app):
     """Test WebSocket endpoint path."""
     from starlette.testclient import TestClient
     from starlette.websockets import WebSocketDisconnect
-    
+
     client = TestClient(app)
     with pytest.raises(WebSocketDisconnect) as exc:
         with client.websocket_connect("/ws/chat") as websocket:

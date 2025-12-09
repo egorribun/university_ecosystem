@@ -8,7 +8,6 @@ different domains (schedule, users, events, news, etc.)
 from __future__ import annotations
 
 import logging
-from typing import Literal
 
 from app.deps.cache import get_cache
 
@@ -98,48 +97,50 @@ async def invalidate_groups_cache() -> None:
 async def invalidate_all_schedules() -> None:
     """
     Invalidate all schedule caches.
-    
+
     Note: This requires Redis SCAN which is not ideal for production.
     Consider using a more targeted approach or Redis keyspace notifications.
     """
     cache = get_cache()
     # For now, we can't easily invalidate all keys with a prefix
     # This would require SCAN command support in the cache layer
-    logger.warning("invalidate_all_schedules called but pattern deletion not implemented")
+    logger.warning(
+        "invalidate_all_schedules called but pattern deletion not implemented"
+    )
 
 
 class CacheInvalidator:
     """
     Context manager for batch cache invalidation.
-    
+
     Usage:
         async with CacheInvalidator() as inv:
             inv.schedule(group_id=1)
             inv.user(user_id=42)
             # Keys are invalidated when exiting the context
     """
-    
+
     def __init__(self):
         self._keys: list[str] = []
-    
+
     def schedule(self, group_id: int) -> None:
         """Queue schedule cache for invalidation."""
         self._keys.append(schedule_cache_key(group_id))
-    
+
     def user(self, user_id: int) -> None:
         """Queue user cache for invalidation."""
         self._keys.append(user_cache_key(user_id))
-    
+
     def event(self, event_id: int) -> None:
         """Queue event cache for invalidation."""
         self._keys.append(event_cache_key(event_id))
         self._keys.append(events_list_cache_key())
-    
+
     def news(self, news_id: int) -> None:
         """Queue news cache for invalidation."""
         self._keys.append(news_cache_key(news_id))
         self._keys.append(news_list_cache_key())
-    
+
     async def flush(self) -> int:
         """Invalidate all queued keys. Returns number of keys invalidated."""
         if not self._keys:
@@ -151,10 +152,10 @@ class CacheInvalidator:
         self._keys.clear()
         logger.debug(f"Invalidated {count} cache keys")
         return count
-    
-    async def __aenter__(self) -> "CacheInvalidator":
+
+    async def __aenter__(self) -> CacheInvalidator:
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.flush()
 

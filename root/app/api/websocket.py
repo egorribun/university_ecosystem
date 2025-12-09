@@ -12,18 +12,15 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session
 from app.models.chat import Chat, Message
 from app.models.models import User
-from app.schemas.chat import ChatParticipant, MessageResponse
+from app.schemas.chat import ChatParticipant
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +57,10 @@ class ConnectionManager:
 
     def is_online(self, user_id: int) -> bool:
         """Check if a user has any active connections."""
-        return user_id in self.active_connections and len(self.active_connections[user_id]) > 0
+        return (
+            user_id in self.active_connections
+            and len(self.active_connections[user_id]) > 0
+        )
 
     async def send_to_user(self, user_id: int, message: dict[str, Any]) -> int:
         """Send a message to all connections of a user. Returns number of successful sends."""
@@ -132,7 +132,6 @@ async def get_user_from_token(token: str) -> User | None:
 
 async def get_user_from_cookie(cookie_value: str) -> User | None:
     """Validate session cookie and return the user."""
-    from app.auth.security import decode_token
 
     try:
         # The cookie contains the JWT token directly
@@ -174,7 +173,7 @@ async def websocket_chat(websocket: WebSocket):
     """
     WebSocket endpoint for real-time chat.
 
-    Authentication: 
+    Authentication:
     - Pass JWT token as query parameter `token`, OR
     - Use cookie-based auth (access_token cookie)
 
@@ -192,18 +191,18 @@ async def websocket_chat(websocket: WebSocket):
     - {"type": "error", "message": "..."} - Error message
     """
     user = None
-    
+
     # Try token from query params first
     token = websocket.query_params.get("token")
     if token:
         user = await get_user_from_token(token)
-    
+
     # Fallback to cookie-based auth
     if not user:
         access_token = websocket.cookies.get("access_token")
         if access_token:
             user = await get_user_from_cookie(access_token)
-    
+
     if not user:
         await websocket.close(code=4001, reason="Authentication required")
         return
@@ -282,7 +281,9 @@ async def websocket_chat(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-async def notify_new_message(message: Message, exclude_user_id: int | None = None) -> int:
+async def notify_new_message(
+    message: Message, exclude_user_id: int | None = None
+) -> int:
     """
     Notify chat participants about a new message via WebSocket.
     Call this from the chat API after saving a message.
