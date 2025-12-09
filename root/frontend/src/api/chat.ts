@@ -56,11 +56,17 @@ export const chatApi = {
     return response.data
   },
 
-  getMessages: async (chatId: string, cursor?: string, limit: number = 50): Promise<MessagesListResponse> => {
+  getMessages: async (
+    chatId: string,
+    cursor?: string,
+    limit: number = 50
+  ): Promise<MessagesListResponse> => {
     const params = new URLSearchParams()
     if (cursor) params.append("cursor", cursor)
     params.append("limit", String(limit))
-    const response = await client.get<MessagesListResponse>(`/chats/${chatId}/messages?${params.toString()}`)
+    const response = await client.get<MessagesListResponse>(
+      `/chats/${chatId}/messages?${params.toString()}`
+    )
     return response.data
   },
 
@@ -81,4 +87,3 @@ export const chatApi = {
     return response.data
   },
 }
-

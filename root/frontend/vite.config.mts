@@ -112,15 +112,15 @@ export default defineConfig(({ mode }) => {
   // API v1 routes are proxied directly (no rewrite needed)
   // Backend now serves all endpoints under /api/v1
   const proxy = {
-    "/api/v1": mk(false),  // New versioned API - no rewrite
-    "/api": mk(false),     // Legacy endpoints (healthz, static, etc.)
+    "/api/v1": mk(false), // New versioned API - no rewrite
+    "/api": mk(false), // Legacy endpoints (healthz, static, etc.)
     "/auth": mk(),
     "/static/": mk(),
     "/media/": mk(),
     "/spotify": mk(),
     "/notifications": mk(),
     "/push": mk(),
-    "/ws": { ...mk(), ws: true },  // WebSocket support for future
+    "/ws": { ...mk(), ws: true }, // WebSocket support for future
   }
 
   const plugins: PluginOption[] = [
