@@ -264,12 +264,7 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
     })
     return response.data
   } catch (error) {
-    if (
-      cachedEnvelope &&
-      isAxiosError(error) &&
-      !signal?.aborted &&
-      error.response
-    ) {
+    if (cachedEnvelope && isAxiosError(error) && !signal?.aborted && error.response) {
       // If the cached envelope causes the request to fail (even with a 500),
       // drop it and retry once without the header to recover gracefully.
       clearProfileCacheStorage()
