@@ -300,40 +300,71 @@ async def root_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Client for testing root-level endpoints (no /api/v1 prefix)."""
-    async def _start_notifications_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+
+    async def _start_notifications_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
+
         return _stop
 
-    monkeypatch.setattr("app.core.lifespan.start_notifications_scheduler", _start_notifications_scheduler)
+    monkeypatch.setattr(
+        "app.core.lifespan.start_notifications_scheduler",
+        _start_notifications_scheduler,
+    )
 
-    async def _start_notifications_retention_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+    async def _start_notifications_retention_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
+
         return _stop
 
-    monkeypatch.setattr("app.core.lifespan.start_notifications_retention_scheduler", _start_notifications_retention_scheduler)
+    monkeypatch.setattr(
+        "app.core.lifespan.start_notifications_retention_scheduler",
+        _start_notifications_retention_scheduler,
+    )
 
-    async def _start_session_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+    async def _start_session_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
+
         return _stop
 
-    monkeypatch.setattr("app.core.lifespan.start_session_cleanup_scheduler", _start_session_cleanup_scheduler)
+    monkeypatch.setattr(
+        "app.core.lifespan.start_session_cleanup_scheduler",
+        _start_session_cleanup_scheduler,
+    )
 
-    async def _start_story_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+    async def _start_story_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
+
         return _stop
 
-    monkeypatch.setattr("app.core.lifespan.start_story_cleanup_scheduler", _start_story_cleanup_scheduler)
+    monkeypatch.setattr(
+        "app.core.lifespan.start_story_cleanup_scheduler",
+        _start_story_cleanup_scheduler,
+    )
 
-    async def _start_password_reset_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
+    async def _start_password_reset_cleanup_scheduler(
+        *args, **kwargs
+    ) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
+
         return _stop
 
-    monkeypatch.setattr("app.core.lifespan.start_password_reset_cleanup_scheduler", _start_password_reset_cleanup_scheduler)
+    monkeypatch.setattr(
+        "app.core.lifespan.start_password_reset_cleanup_scheduler",
+        _start_password_reset_cleanup_scheduler,
+    )
 
     async def _mock_migrations_current() -> bool:
         return True
@@ -366,9 +397,9 @@ class _TestingRedisCache(cache_module.RedisCache):
         filtered = [str(key) for key in keys if key]
         if not filtered:
             return
-        
+
         client = await self._get_client()
-        
+
         # Separate exact keys and patterns
         exact_keys = []
         patterns = []
@@ -377,11 +408,11 @@ class _TestingRedisCache(cache_module.RedisCache):
                 patterns.append(key)
             else:
                 exact_keys.append(key)
-        
+
         # Delete exact keys
         if exact_keys:
             await client.delete(*exact_keys)
-        
+
         # Process patterns using FakeRedis internals
         if patterns:
             # Note: This relies on FakeRedis implementation details (_strings)
@@ -391,9 +422,10 @@ class _TestingRedisCache(cache_module.RedisCache):
             for pattern in patterns:
                 # Simple glob matching
                 import fnmatch
+
                 matched = fnmatch.filter(all_keys, pattern)
                 to_delete.extend(matched)
-            
+
             if to_delete:
                 await client.delete(*to_delete)
 

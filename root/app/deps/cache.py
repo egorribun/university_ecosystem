@@ -131,7 +131,7 @@ class RedisCache(BaseCache):
             return
         try:
             client = await self._get_client()
-            
+
             # Separate exact keys and patterns
             exact_keys = []
             patterns = []
@@ -140,16 +140,18 @@ class RedisCache(BaseCache):
                     patterns.append(key)
                 else:
                     exact_keys.append(key)
-            
+
             # Delete exact keys
             if exact_keys:
                 await client.delete(*exact_keys)
-            
+
             # Process patterns
             for pattern in patterns:
                 cursor = 0
                 while True:
-                    cursor, matches = await client.scan(cursor, match=pattern, count=100)
+                    cursor, matches = await client.scan(
+                        cursor, match=pattern, count=100
+                    )
                     if matches:
                         await client.delete(*matches)
                     if cursor == 0:

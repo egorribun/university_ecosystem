@@ -162,10 +162,9 @@ class TestEventsPagination:
 
         # Login to get auth
         response = await async_client.post(
-            "/auth/login",
-            data={"username": user.email, "password": "hashed-password"}
+            "/auth/login", data={"username": user.email, "password": "hashed-password"}
         )
-        
+
         response = await async_client.get("/events?limit=10")
         # May need auth, check response
         if response.status_code == 200:
