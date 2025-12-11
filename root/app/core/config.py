@@ -777,6 +777,18 @@ class Settings(BaseSettings):
     def cookie_secure(self) -> bool:
         return self.strict_security_headers_enabled
 
+    @property
+    def cookie_samesite(self) -> str:
+        """Return cookie SameSite policy.
+        
+        In development mode, returns 'lax' to allow cross-origin requests
+        (e.g., frontend on port 5173 accessing backend on port 8000).
+        In production, returns 'strict' for maximum security.
+        """
+        if self.is_development:
+            return "lax"
+        return "strict"
+
     @cached_property
     def security_csp_report_only_effective(self) -> bool:
         if self.security_csp_report_only is not None:

@@ -137,7 +137,7 @@ def _set_access_token_cookie(response: Response, token: str) -> None:
         token,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="strict",
+        samesite=settings.cookie_samesite,
         max_age=max_age,
         expires=expires,
         path="/",
@@ -150,7 +150,7 @@ def _clear_access_token_cookie(response: Response) -> None:
         path="/",
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="strict",
+        samesite=settings.cookie_samesite,
     )
 
 
@@ -740,7 +740,7 @@ async def _perform_login(
             td_token,
             httponly=True,
             secure=settings.cookie_secure,
-            samesite="strict",
+            samesite=settings.cookie_samesite,
             expires=td_expires,
             path="/",
         )
@@ -1079,7 +1079,7 @@ async def verify_mfa_challenge(
             td_token,
             httponly=True,
             secure=settings.cookie_secure,
-            samesite="strict",
+            samesite=settings.cookie_samesite,
             expires=td_expires,
             # Trusted device token is a high-entropy bearer token.
             # Storing it in a Secure, HttpOnly, SameSite=Strict cookie is the intended

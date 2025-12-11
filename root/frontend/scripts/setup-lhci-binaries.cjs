@@ -37,6 +37,11 @@ async function ensureLocalSymlink(targetName) {
 }
 
 async function ensureGlobalSymlink(targetPath) {
+  // Skip global symlinks on Windows - these are Unix-specific paths
+  if (process.platform === 'win32') {
+    return;
+  }
+
   try {
     const stats = await fs.lstat(targetPath);
     if (!stats.isSymbolicLink()) {

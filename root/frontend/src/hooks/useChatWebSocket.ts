@@ -51,6 +51,22 @@ export function useChatWebSocket({
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
 
+  // Store callbacks in refs to avoid recreating connect on every render
+  const onNewMessageRef = useRef(onNewMessage)
+  const onTypingRef = useRef(onTyping)
+  const onReadRef = useRef(onRead)
+  const onOnlineStatusRef = useRef(onOnlineStatus)
+  const enabledRef = useRef(enabled)
+
+  // Keep refs updated
+  useEffect(() => {
+    onNewMessageRef.current = onNewMessage
+    onTypingRef.current = onTyping
+    onReadRef.current = onRead
+    onOnlineStatusRef.current = onOnlineStatus
+    enabledRef.current = enabled
+  })
+
   const cleanup = useCallback(() => {
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current)
@@ -63,12 +79,19 @@ export function useChatWebSocket({
   }, [])
 
   const connect = useCallback(() => {
-    if (!enabled) return
+    if (!enabledRef.current) return
 
-    // Determine WebSocket URL - use same origin, cookies will be sent automatically
+    // Prevent duplicate connections (important for React StrictMode)
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      console.log("[WebSocket] Already connected or connecting, skipping")
+      return
+    }
+
+    // Determine WebSocket URL
+    // In dev mode, use same origin (Vite proxy will forward to backend)
+    // In production, use same origin directly
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const wsHost = import.meta.env.DEV ? `${window.location.hostname}:8000` : window.location.host
-    const wsUrl = `${wsProtocol}//${wsHost}/ws/chat`
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
 
     try {
       const ws = new WebSocket(wsUrl)
@@ -105,7 +128,7 @@ export function useChatWebSocket({
                 )
                 // Invalidate chats to update unread counts
                 queryClient.invalidateQueries({ queryKey: ["chats"] })
-                onNewMessage?.(data.message, data.chat_id)
+                onNewMessageRef.current?.(data.message, data.chat_id)
               }
               break
 
@@ -135,7 +158,7 @@ export function useChatWebSocket({
                   })
                   return newMap
                 })
-                onTyping?.(data.chat_id, data.user_id, data.user_name)
+                onTypingRef.current?.(data.chat_id, data.user_id, data.user_name)
               }
               break
 
@@ -154,13 +177,13 @@ export function useChatWebSocket({
                     }
                   }
                 )
-                onRead?.(data.chat_id, data.message_id, data.user_id)
+                onReadRef.current?.(data.chat_id, data.message_id, data.user_id)
               }
               break
 
             case "online":
               if (data.user_id !== undefined && data.status !== undefined) {
-                onOnlineStatus?.(data.user_id, data.status)
+                onOnlineStatusRef.current?.(data.user_id, data.status)
               }
               break
 
@@ -197,7 +220,7 @@ export function useChatWebSocket({
     } catch (e) {
       console.error("[WebSocket] Failed to connect:", e)
     }
-  }, [enabled, onNewMessage, onTyping, onRead, onOnlineStatus, queryClient, cleanup])
+  }, [cleanup, queryClient])
 
   const disconnect = useCallback(() => {
     cleanup()
@@ -208,11 +231,33 @@ export function useChatWebSocket({
     setIsConnected(false)
   }, [cleanup])
 
-  // Connect on mount, disconnect on unmount
+  // Store connect/disconnect in refs for stable effect
+  const connectRef = useRef(connect)
+  const disconnectRef = useRef(disconnect)
   useEffect(() => {
-    connect()
-    return () => disconnect()
-  }, [connect, disconnect])
+    connectRef.current = connect
+    disconnectRef.current = disconnect
+  })
+
+  // Connect on mount, disconnect on unmount
+  // Use mounted flag to handle React StrictMode double mount/unmount
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    // Cancel any pending disconnect from previous unmount
+    mountedRef.current = true
+    connectRef.current()
+
+    return () => {
+      mountedRef.current = false
+      // Delay disconnect slightly to allow StrictMode remount to cancel it
+      setTimeout(() => {
+        if (!mountedRef.current) {
+          disconnectRef.current()
+        }
+      }, 100)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Send typing indicator
   const sendTyping = useCallback((chatId: string) => {
