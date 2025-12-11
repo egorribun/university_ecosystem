@@ -24,7 +24,8 @@ import Dialog from "@/components/Dialog"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
-import { useNewsFeed } from "@/hooks/useNewsFeed"
+import { newsFeedQueryKey, useNewsFeed } from "@/hooks/useNewsFeed"
+import { useQueryClient } from "@tanstack/react-query"
 
 const inputClass =
   "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
@@ -73,6 +74,7 @@ const News = () => {
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
+  const queryClient = useQueryClient()
   const { data: newsDataList, refetch: refetchNews, isPending, isFetching } = useNewsFeed(language)
   const newsList = newsDataList ?? []
   const deferredList = useDeferredValue(newsList)
@@ -195,13 +197,23 @@ const News = () => {
         setImagePreview(null)
       }
       void refetchNews()
+      void queryClient.invalidateQueries({ queryKey: newsFeedQueryKey(language) })
       if (imageInputRef.current) imageInputRef.current.value = ""
     } catch (error) {
       setAddError(resolveCreateError(error))
     } finally {
       setAdding(false)
     }
-  }, [adding, imageFile, imagePreview, newsData, refetchNews, resolveCreateError])
+  }, [
+    adding,
+    imageFile,
+    imagePreview,
+    language,
+    newsData,
+    queryClient,
+    refetchNews,
+    resolveCreateError,
+  ])
 
   const handleCloseDialog = useCallback(() => {
     setAddOpen(false)
