@@ -126,10 +126,6 @@ async function bootstrap() {
       return null
     }
 
-    const ReactQueryDevtools = import.meta.env.DEV
-      ? (await import("@tanstack/react-query-devtools")).ReactQueryDevtools
-      : null
-
     const rootElement = document.getElementById("root")!
     const root = ReactDOMMod.default.createRoot(rootElement)
     root.render(
@@ -147,7 +143,6 @@ async function bootstrap() {
               <App />
             </ErrorBoundary>
           </CssVarsProvider>
-          {ReactQueryDevtools ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
         </QueryClientProvider>
       </StrictMode>
     )
