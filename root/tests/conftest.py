@@ -20,8 +20,8 @@ import fakeredis.aioredis
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytest_plugins = ("pytest_asyncio", "pytest_cov")
 
@@ -164,7 +164,9 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(models.NotificationDelivery.__table__.create, checkfirst=True)
+        await conn.run_sync(
+            models.NotificationDelivery.__table__.create, checkfirst=True
+        )
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
