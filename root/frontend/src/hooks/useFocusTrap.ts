@@ -33,6 +33,7 @@ export default function useFocusTrap<T extends HTMLElement>({
   const containerRef = useRef<T | null>(null)
   const trapRef = useRef<FocusTrap | null>(null)
   const deactivateRef = useRef(onDeactivate)
+  const skipDeactivateRef = useRef(false)
 
   deactivateRef.current = onDeactivate
 
@@ -42,7 +43,9 @@ export default function useFocusTrap<T extends HTMLElement>({
     const container = containerRef.current
     if (!container || !active) {
       if (trapRef.current) {
+        skipDeactivateRef.current = true
         trapRef.current.deactivate({ returnFocus })
+        skipDeactivateRef.current = false
         trapRef.current = null
       }
       return undefined
@@ -68,6 +71,7 @@ export default function useFocusTrap<T extends HTMLElement>({
     const trap = createFocusTrap(container, {
       ...options,
       onDeactivate: () => {
+        if (skipDeactivateRef.current) return
         deactivateRef.current?.()
       },
     })
@@ -76,7 +80,9 @@ export default function useFocusTrap<T extends HTMLElement>({
     trapRef.current = trap
 
     return () => {
+      skipDeactivateRef.current = true
       trap.deactivate()
+      skipDeactivateRef.current = false
       trapRef.current = null
     }
   }, [active, allowOutsideClick, fallbackFocus, initialFocus, returnFocus])
