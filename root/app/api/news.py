@@ -40,9 +40,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-# Disable client-side caching so new items appear immediately while still
-# allowing ETag-based revalidation handled by the backend cache layer.
-_NEWS_CACHE_CONTROL = "private, no-cache"
+# Allow short-lived client-side caching while still relying on backend cache
+# invalidation and ETag-based revalidation to make newly added articles visible
+# quickly.
+_NEWS_CACHE_CONTROL = "private, max-age=180"
 _LEGACY_NEWS_LIST_CACHE_KEY = "news:list"
 _LEGACY_NEWS_ITEM_PREFIX = "news:item"
 _CACHE_LOCALES: tuple[str, ...] = tuple(sorted({DEFAULT_LOCALE, *SUPPORTED_LOCALES}))
