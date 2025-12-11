@@ -94,6 +94,19 @@ const persistCacheSnapshot = async (language: SupportedLanguage, snapshot: NewsF
   }
 }
 
+const deleteCacheSnapshot = async (language: SupportedLanguage) => {
+  if (typeof window === "undefined" || !("caches" in window) || !window.caches) {
+    return
+  }
+
+  try {
+    const cache = await window.caches.open(NEWS_CACHE_NAME)
+    await cache.delete(buildCacheRequest(language), { ignoreMethod: true })
+  } catch (error) {
+    console.warn("useNewsFeed: failed to delete cached snapshot", error)
+  }
+}
+
 let legacyKeysCleared = false
 
 const clearLegacyStorageKeys = () => {
@@ -233,3 +246,9 @@ export type UseNewsFeedResult = ReturnType<typeof useNewsFeed>
 export type NewsFeedQueryKey = ReturnType<typeof buildQueryKey>
 
 export const newsFeedQueryKey = buildQueryKey
+
+export const invalidateNewsFeed = async (queryClient: QueryClient, language: SupportedLanguage) => {
+  const queryKey = buildQueryKey(language)
+  await deleteCacheSnapshot(language)
+  await queryClient.invalidateQueries({ queryKey, refetchType: "all" })
+}
