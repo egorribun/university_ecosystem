@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
@@ -30,9 +30,10 @@ async def test_create_event_frontend_payload_reproduction(async_client, user_fac
 
     # Simulate Date.now() + 1h
     # Frontend logic allows starts == ends because checks `ends < starts` (not <=)
-    # But Backend EventCreate validator checks `ends_at <= starts_at` -> raises ValueError -> 422
+    # But Backend EventCreate validator checks `ends_at <= starts_at`
+    # -> raises ValueError -> returns 422
 
-    now = datetime.now()
+    now = datetime.now(UTC)
     starts_at = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
     # Same time for end
     ends_at = starts_at
@@ -82,7 +83,7 @@ async def test_create_event_success_db(async_client, user_factory):
 
     headers = await _login(async_client, teacher.email, password)
 
-    now = datetime.now()
+    now = datetime.now(UTC)
     # Explicitly valid times
     starts_at = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
     ends_at = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M")
