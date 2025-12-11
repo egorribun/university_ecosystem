@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Calendar, MessageCircle, Newspaper, Eye, EyeOff, Zap, ShieldCheck, Sparkles } from "lucide-react"
+import {
+  Calendar,
+  MessageCircle,
+  Newspaper,
+  Eye,
+  EyeOff,
+  Zap,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState } from "@/types/Auth"
@@ -440,9 +449,13 @@ const Login = () => {
             {statPills.map((pill, i) => (
               <div key={i} className={badgeClass.replace("items-baseline", "items-center")}>
                 <pill.icon className="mr-1 h-4 w-4 text-[color:var(--nav-link)]" strokeWidth={3} />
-                <span className="text-xs font-extrabold uppercase tracking-[0.2em]">{pill.value}</span>
+                <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+                  {pill.value}
+                </span>
                 {pill.label && (
-                  <span className="text-xs font-extrabold uppercase tracking-[0.2em]">{pill.label}</span>
+                  <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+                    {pill.label}
+                  </span>
                 )}
               </div>
             ))}
