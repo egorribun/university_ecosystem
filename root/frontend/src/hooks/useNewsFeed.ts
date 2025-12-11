@@ -247,11 +247,8 @@ export type NewsFeedQueryKey = ReturnType<typeof buildQueryKey>
 
 export const newsFeedQueryKey = buildQueryKey
 
-export const invalidateNewsFeed = async (
-  queryClient: QueryClient,
-  language: SupportedLanguage
-) => {
+export const invalidateNewsFeed = async (queryClient: QueryClient, language: SupportedLanguage) => {
   const queryKey = buildQueryKey(language)
-  await queryClient.removeQueries({ queryKey })
   await deleteCacheSnapshot(language)
+  await queryClient.invalidateQueries({ queryKey, refetchType: "all" })
 }

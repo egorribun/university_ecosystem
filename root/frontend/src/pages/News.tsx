@@ -208,15 +208,7 @@ const News = () => {
     } finally {
       setAdding(false)
     }
-  }, [
-    adding,
-    imageFile,
-    imagePreview,
-    language,
-    newsData,
-    refreshNews,
-    resolveCreateError,
-  ])
+  }, [adding, imageFile, imagePreview, language, newsData, refreshNews, resolveCreateError])
 
   const handleCloseDialog = useCallback(() => {
     setAddOpen(false)
