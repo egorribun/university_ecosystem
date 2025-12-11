@@ -83,7 +83,7 @@ const inputBaseClass =
   "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)]"
 
 const badgeClass =
-  "inline-flex min-w-[160px] items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] " +
+  "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] " +
   "bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(255,255,255,0.12)_8%)] px-4 py-2 text-sm font-semibold " +
   "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] shadow-[0_6px_20px_rgba(15,23,42,0.12)]"
 
@@ -327,12 +327,13 @@ const Login = () => {
 
   const statPills = [
     {
-      value: t("auth:login.statAvailability", { defaultValue: "24/7" }),
-      label: t("auth:login.statAvailabilityLabel", { defaultValue: "доступ к сервисам" }),
+      icon: Zap,
+      value: t("auth:login.statFast", { defaultValue: "Быстро" }),
+      label: t("auth:login.statFastLabel", { defaultValue: "и безопасно" }),
     },
     {
-      value: t("auth:login.statServices", { defaultValue: "5+" }),
-      label: t("auth:login.statServicesLabel", { defaultValue: "модулей платформы" }),
+      icon: Sparkles,
+      value: t("auth:login.statSmart", { defaultValue: "Удобный и умный интерфейс" }),
     },
   ]
 
@@ -436,10 +437,13 @@ const Login = () => {
           </div>
 
           <div className="mt-10 flex flex-wrap gap-4">
-            {statPills.map((pill) => (
-              <div key={pill.label} className={badgeClass}>
-                <span className="text-2xl font-extrabold">{pill.value}</span>
-                <span className="text-xs uppercase tracking-[0.2em] opacity-80">{pill.label}</span>
+            {statPills.map((pill, i) => (
+              <div key={i} className={badgeClass.replace("items-baseline", "items-center")}>
+                <pill.icon className="mr-1 h-4 w-4 text-[color:var(--nav-link)]" strokeWidth={3} />
+                <span className="text-xs font-extrabold uppercase tracking-[0.2em]">{pill.value}</span>
+                {pill.label && (
+                  <span className="text-xs font-extrabold uppercase tracking-[0.2em]">{pill.label}</span>
+                )}
               </div>
             ))}
           </div>
