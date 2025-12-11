@@ -195,8 +195,17 @@ const EventCardComponent: FC<EventCardProps> = ({
         setMenuAnchor(null)
       }
     }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuAnchor(null)
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
+    document.addEventListener("keydown", handleEscape)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+      document.removeEventListener("keydown", handleEscape)
+    }
   }, [menuAnchor])
 
   const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
@@ -510,12 +519,12 @@ const EventCardComponent: FC<EventCardProps> = ({
   return (
     <div
       className={cn(
-        "event-card relative min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300",
+        "event-card relative min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-visible transition-all duration-300",
         editOpen ? "cursor-default" : "cursor-pointer",
         qrOpen && "pointer-events-none grayscale-[0.12] opacity-90",
         !editOpen &&
           !qrOpen &&
-          "hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-surface-strong active:scale-[0.997]",
+          "hover:shadow-surface-strong",
         "focus-visible:outline-2 focus-visible:outline-[color:var(--nav-link)] focus-visible:outline-offset-2"
       )}
       style={{ maxWidth: maxWidth ?? "500px", width: "100%" }}
@@ -549,11 +558,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           {menuAnchor && (
             <div
               ref={menuRef}
-              className="fixed z-50 mt-2 min-w-[160px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] shadow-surface-strong"
-              style={{
-                top: menuAnchor.getBoundingClientRect().bottom + 8,
-                left: Math.min(menuAnchor.getBoundingClientRect().left, window.innerWidth - 180),
-              }}
+              className="absolute right-0 top-12 z-50 min-w-[160px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] shadow-surface-strong"
             >
               <div className="py-1">
                 <button
