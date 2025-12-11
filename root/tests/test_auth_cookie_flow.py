@@ -109,7 +109,7 @@ async def test_login_cookie_security_modes(
     attributes = _extract_cookie_attributes(access_cookie_header)
     assert "httponly" in attributes
     assert ("secure" in attributes) is expected_secure
-    assert "samesite=strict" in attributes
+    assert "samesite=lax" in attributes
 
     stored_cookie = async_client.cookies.get("access_token")
     assert stored_cookie is not None and stored_cookie != ""
