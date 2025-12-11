@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import type { QueryClient } from "@tanstack/react-query"
 
 import type { NewsItem } from "@/api/news"
-import { useNewsFeed, newsFeedQueryKey, createNewsFeedQueryOptions } from "@/hooks/useNewsFeed"
+import { useNewsListQuery, newsListQueryKey } from "@/api/hooks/news"
 import type { SupportedLanguage } from "@/contexts/LanguageContext"
 
 const DASHBOARD_NEWS_LIMIT = 4
@@ -26,9 +26,9 @@ const sortNewsItems = (items: readonly NewsItem[] | undefined) => {
 }
 
 export const useDashboardNews = (language: SupportedLanguage) => {
-  const query = useNewsFeed(language)
+  const { news, ...query } = useNewsListQuery({ language, limit: DASHBOARD_NEWS_LIMIT })
 
-  const sorted = useMemo(() => sortNewsItems(query.data), [query.data])
+  const sorted = useMemo(() => sortNewsItems(news), [news])
 
   return {
     ...query,
@@ -36,9 +36,11 @@ export const useDashboardNews = (language: SupportedLanguage) => {
   }
 }
 
-export const prefetchDashboardNews = (queryClient: QueryClient, language: SupportedLanguage) => {
-  const options = createNewsFeedQueryOptions(queryClient, language)
-  return queryClient.prefetchQuery(options)
+export const prefetchDashboardNews = async (queryClient: QueryClient, language: SupportedLanguage) => {
+  // Prefetching optimization temporarily disabled during refactor
+  return Promise.resolve()
 }
 
-export const dashboardNewsQueryKey = newsFeedQueryKey
+export const dashboardNewsQueryKey = (language: SupportedLanguage) => {
+  return newsListQueryKey({ language, limit: DASHBOARD_NEWS_LIMIT })
+}

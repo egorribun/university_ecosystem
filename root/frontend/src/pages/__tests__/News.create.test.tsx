@@ -39,12 +39,15 @@ vi.mock("@/components/Dialog", () => {
   }
 })
 
-vi.mock("@/hooks/useNewsFeed", () => ({
-  useNewsFeed: () => ({
-    data: [],
-    isPending: false,
+vi.mock("@/api/hooks/news", () => ({
+  useNewsListQuery: () => ({
+    news: [],
+    isLoading: false,
     isFetching: false,
     refetch: vi.fn(),
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
   }),
 }))
 

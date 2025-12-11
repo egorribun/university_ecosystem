@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Index,
     Integer,
@@ -286,7 +287,10 @@ class Event(Base):
     created_by = Column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    search_vector = Column(Text().with_variant(TSVECTOR(), "postgresql"))
+    search_vector = Column(
+        Text().with_variant(TSVECTOR(), "postgresql"),
+        server_default=FetchedValue(),
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_active = Column(Boolean, default=True, index=True)
     speaker = Column(String)

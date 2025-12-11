@@ -254,7 +254,7 @@ const Events = () => {
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch {}
+    } catch { }
   }
 
   const handleRefresh = useCallback(() => {
@@ -267,7 +267,7 @@ const Events = () => {
 
   const starts = new Date(eventData.starts_at).getTime()
   const ends = new Date(eventData.ends_at).getTime()
-  const dateError = !!(eventData.starts_at && eventData.ends_at && ends < starts)
+  const dateError = !!(eventData.starts_at && eventData.ends_at && ends <= starts)
   const normalizedTitle = eventData.title.trim() || eventData.title_en.trim()
   const normalizedLocation = eventData.location.trim() || eventData.location_en.trim()
 
@@ -463,14 +463,14 @@ const Events = () => {
               id={`events-tabpanel-${tab}`}
               aria-labelledby={`events-tab-${tab}`}
               className={cn(
-                "flex flex-wrap gap-5 pb-6 transition-all duration-300 sm:gap-6 md:gap-8",
-                isMobile ? "flex-col" : ""
+                "grid gap-6 grid-cols-[repeat(auto-fill,minmax(340px,1fr))] pb-6 transition-all duration-300",
+                isMobile ? "grid-cols-1" : ""
               )}
             >
               {loading &&
                 Array.from({ length: skeletonCount }).map((_, i) => (
-                  <div key={`event-skel-${i}`} className="flex h-full">
-                    <div className="w-full max-w-[500px] space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
+                  <div key={`event-skel-${i}`} className="flex h-full w-full">
+                    <div className="w-full space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
                       <Skeleton height={isMobile ? 160 : 200} className="rounded-ue-lg" />
                       <Skeleton height={isMobile ? 28 : 32} />
                       <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
@@ -481,13 +481,13 @@ const Events = () => {
 
               {!loading &&
                 normalizedEvents.map((event) => (
-                  <div key={event.id} className="flex h-full">
-                    <EventCard {...event} onChange={handleRefresh} maxWidth="500px" />
+                  <div key={event.id} className="flex h-full w-full">
+                    <EventCard {...event} onChange={handleRefresh} maxWidth="100%" />
                   </div>
                 ))}
 
               {!loading && normalizedEvents.length === 0 && (
-                <div className="mt-16 flex w-full justify-center">
+                <div className="col-span-full mt-16 flex w-full justify-center">
                   <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
                     <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                       <EventNoteIcon className="text-[2.2rem]" />
@@ -552,8 +552,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.title_en", {
-                          defaultValue: `${t("events:form.title")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.title")} (English)`,
+                      })
                       : t("events:form.title")}
                   </label>
                   <input
@@ -567,8 +567,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.description_en", {
-                          defaultValue: `${t("events:form.description")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.description")} (English)`,
+                      })
                       : t("events:form.description")}
                   </label>
                   <textarea
@@ -582,8 +582,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.type_en", {
-                          defaultValue: `${t("events:form.type")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.type")} (English)`,
+                      })
                       : t("events:form.type")}
                   </label>
                   <input
@@ -597,8 +597,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.location_en", {
-                          defaultValue: `${t("events:form.location")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.location")} (English)`,
+                      })
                       : t("events:form.location")}
                   </label>
                   <input
