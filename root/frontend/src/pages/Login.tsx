@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ShieldCheck, Sparkles, BookOpen, Eye, EyeOff, Zap } from "lucide-react"
+import { Calendar, MessageCircle, Newspaper, Eye, EyeOff, Zap, ShieldCheck, Sparkles } from "lucide-react"
 import { motion } from "framer-motion"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState } from "@/types/Auth"
@@ -83,7 +83,7 @@ const inputBaseClass =
   "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)]"
 
 const badgeClass =
-  "inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] " +
+  "inline-flex min-w-[160px] items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] " +
   "bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(255,255,255,0.12)_8%)] px-4 py-2 text-sm font-semibold " +
   "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] shadow-[0_6px_20px_rgba(15,23,42,0.12)]"
 
@@ -297,42 +297,42 @@ const Login = () => {
 
   const heroHighlights = [
     {
-      icon: ShieldCheck,
-      title: t("auth:login.highlightSecurity", {
-        defaultValue: "Многоуровневая защита",
+      icon: Calendar,
+      title: t("auth:login.highlightSchedule", {
+        defaultValue: "Расписание занятий",
       }),
-      description: t("auth:login.highlightSecurityDescription", {
-        defaultValue: "MFA и интеллектуальные подсказки для безошибочного входа.",
-      }),
-    },
-    {
-      icon: Sparkles,
-      title: t("auth:login.highlightExperience", {
-        defaultValue: "Премиальный опыт",
-      }),
-      description: t("auth:login.highlightExperienceDescription", {
-        defaultValue: "Продуманный интерфейс, вдохновляющий с первого экрана.",
+      description: t("auth:login.highlightScheduleDescription", {
+        defaultValue: "Актуальное расписание пар, экзаменов и консультаций.",
       }),
     },
     {
-      icon: BookOpen,
-      title: t("auth:login.highlightContent", {
-        defaultValue: "Весь кампус под рукой",
+      icon: Newspaper,
+      title: t("auth:login.highlightNews", {
+        defaultValue: "Новости и мероприятия",
       }),
-      description: t("auth:login.highlightContentDescription", {
-        defaultValue: "События, профиль и обучение — всё доступно после входа.",
+      description: t("auth:login.highlightNewsDescription", {
+        defaultValue: "Будьте в курсе университетской жизни и важных событий.",
+      }),
+    },
+    {
+      icon: MessageCircle,
+      title: t("auth:login.highlightMessenger", {
+        defaultValue: "Мессенджер",
+      }),
+      description: t("auth:login.highlightMessengerDescription", {
+        defaultValue: "Общайтесь с одногруппниками и преподавателями.",
       }),
     },
   ]
 
   const statPills = [
     {
-      value: t("auth:login.statStudents", { defaultValue: "120k+" }),
-      label: t("auth:login.statStudentsLabel", { defaultValue: "студентов доверяют" }),
+      value: t("auth:login.statAvailability", { defaultValue: "24/7" }),
+      label: t("auth:login.statAvailabilityLabel", { defaultValue: "доступ к сервисам" }),
     },
     {
-      value: t("auth:login.statSatisfaction", { defaultValue: "98%" }),
-      label: t("auth:login.statSatisfactionLabel", { defaultValue: "удовлетворённость" }),
+      value: t("auth:login.statServices", { defaultValue: "5+" }),
+      label: t("auth:login.statServicesLabel", { defaultValue: "модулей платформы" }),
     },
   ]
 
@@ -406,13 +406,13 @@ const Login = () => {
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-5xl">
             {t("auth:login.heroHeading", {
-              defaultValue: "Добро пожаловать в кампус нового поколения",
+              defaultValue: "Добро пожаловать в Экосистему Университета",
             })}
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
             {t("auth:login.heroDescription", {
               defaultValue:
-                "Войдите, чтобы управлять расписанием, следить за событиями и общаться с наставниками в единой цифровой среде.",
+                "Расписание, новости, мероприятия и мессенджер — всё в одном месте для студентов и преподавателей.",
             })}
           </p>
 
