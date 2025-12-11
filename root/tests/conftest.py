@@ -14,12 +14,16 @@ for candidate in (REPO_ROOT, PROJECT_ROOT):
         sys.path.insert(0, path_str)
 
 import inspect
+import logging
 
 import fakeredis.aioredis
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+pytest_plugins = ("pytest_asyncio", "pytest_cov")
 
 try:
     from opentelemetry.sdk import _logs as otel_logs
@@ -157,7 +161,12 @@ async def prepare_database() -> AsyncIterator[None]:
             pass
 
     async with engine.begin() as conn:
+        await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
+        await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(
+            models.NotificationDelivery.__table__.create, checkfirst=True
+        )
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -166,14 +175,32 @@ async def prepare_database() -> AsyncIterator[None]:
 @pytest.fixture(autouse=True)
 async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
-    async with engine.begin() as conn:
-        await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        for table in reversed(Base.metadata.sorted_tables):
-            try:
-                await conn.execute(table.delete())
-            except Exception:
-                pass
-        await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    attempts = 5
+    delay = 0.1
+    for attempt in range(1, attempts + 1):
+        try:
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                for table in reversed(Base.metadata.sorted_tables):
+                    try:
+                        await conn.execute(table.delete())
+                    except Exception:
+                        pass
+                await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+            break
+        except OperationalError as exc:
+            if "database is locked" not in str(exc).lower() or attempt == attempts:
+                raise
+
+            logging.warning(
+                "SQLite database locked during test cleanup, retrying in %.1fs (attempt %d/%d)",
+                delay,
+                attempt,
+                attempts,
+            )
+            await asyncio.sleep(delay)
+            delay *= 2
 
 
 @pytest.fixture(scope="session")
@@ -214,6 +241,7 @@ def app():
 @pytest.fixture
 async def async_client(
     monkeypatch: pytest.MonkeyPatch,
+    prepare_database: None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     async def _start_notifications_scheduler(
         *args, **kwargs
@@ -298,6 +326,7 @@ async def async_client(
 @pytest.fixture
 async def root_client(
     monkeypatch: pytest.MonkeyPatch,
+    prepare_database: None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Client for testing root-level endpoints (no /api/v1 prefix)."""
 
