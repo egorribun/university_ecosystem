@@ -254,7 +254,7 @@ const Events = () => {
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch { }
+    } catch {}
   }
 
   const handleRefresh = useCallback(() => {
@@ -552,8 +552,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.title_en", {
-                        defaultValue: `${t("events:form.title")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.title")} (English)`,
+                        })
                       : t("events:form.title")}
                   </label>
                   <input
@@ -567,8 +567,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.description_en", {
-                        defaultValue: `${t("events:form.description")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.description")} (English)`,
+                        })
                       : t("events:form.description")}
                   </label>
                   <textarea
@@ -582,8 +582,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.type_en", {
-                        defaultValue: `${t("events:form.type")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.type")} (English)`,
+                        })
                       : t("events:form.type")}
                   </label>
                   <input
@@ -597,8 +597,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.location_en", {
-                        defaultValue: `${t("events:form.location")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.location")} (English)`,
+                        })
                       : t("events:form.location")}
                   </label>
                   <input

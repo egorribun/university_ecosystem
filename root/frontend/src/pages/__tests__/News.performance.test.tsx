@@ -108,7 +108,7 @@ describe("News page feed rendering", () => {
     Object.defineProperty(window, "cancelIdleCallback", {
       configurable: true,
       writable: true,
-      value: (() => { }) as typeof window.cancelIdleCallback,
+      value: (() => {}) as typeof window.cancelIdleCallback,
     })
   })
 
