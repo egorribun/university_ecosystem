@@ -24,7 +24,7 @@ import Dialog from "@/components/Dialog"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
-import { newsFeedQueryKey, useNewsFeed } from "@/hooks/useNewsFeed"
+import { invalidateNewsFeed, useNewsFeed } from "@/hooks/useNewsFeed"
 import { useQueryClient } from "@tanstack/react-query"
 
 const inputClass =
@@ -91,6 +91,11 @@ const News = () => {
   const isInitialLoading = isPending && newsList.length === 0
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
   const skeletonCount = Math.max(visibleCount || 0, 6)
+
+  const refreshNews = useCallback(async () => {
+    await invalidateNewsFeed(queryClient, language)
+    await refetchNews()
+  }, [language, queryClient, refetchNews])
 
   useEffect(() => {
     return () => {
@@ -196,8 +201,7 @@ const News = () => {
         URL.revokeObjectURL(imagePreview)
         setImagePreview(null)
       }
-      void refetchNews()
-      void queryClient.invalidateQueries({ queryKey: newsFeedQueryKey(language) })
+      void refreshNews()
       if (imageInputRef.current) imageInputRef.current.value = ""
     } catch (error) {
       setAddError(resolveCreateError(error))
@@ -210,8 +214,7 @@ const News = () => {
     imagePreview,
     language,
     newsData,
-    queryClient,
-    refetchNews,
+    refreshNews,
     resolveCreateError,
   ])
 
@@ -281,7 +284,7 @@ const News = () => {
                         {...news}
                         image_url={news.image_url ?? undefined}
                         onChange={() => {
-                          void refetchNews()
+                          void refreshNews()
                         }}
                       />
                     </div>
