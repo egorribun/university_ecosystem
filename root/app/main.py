@@ -34,6 +34,7 @@ from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.core.versioning import API_V1_PREFIX, API_VERSION
 from app.deps.cache import get_cache
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
@@ -58,7 +59,7 @@ app = FastAPI(
         "REST API for university life management platform - "
         "schedules, news, events, notifications, and more."
     ),
-    version="1.0.0",
+    version=API_VERSION,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -295,7 +296,7 @@ async def ready():
 
 # Versioned API router - all endpoints under /api/v1
 
-api_v1_router = APIRouter(prefix="/api/v1")
+api_v1_router = APIRouter(prefix=API_V1_PREFIX)
 
 # Include all routers under v1
 api_v1_router.include_router(auth_router)
