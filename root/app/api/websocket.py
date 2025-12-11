@@ -197,8 +197,12 @@ async def websocket_chat(websocket: WebSocket):
     user = None
 
     # Debug: log incoming connection info
-    logger.info(f"WebSocket connection attempt - cookies: {list(websocket.cookies.keys())}")
-    logger.info(f"WebSocket connection attempt - query params: {dict(websocket.query_params)}")
+    logger.info(
+        f"WebSocket connection attempt - cookies: {list(websocket.cookies.keys())}"
+    )
+    logger.info(
+        f"WebSocket connection attempt - query params: {dict(websocket.query_params)}"
+    )
 
     # Try token from query params first
     token = websocket.query_params.get("token")
@@ -213,7 +217,9 @@ async def websocket_chat(websocket: WebSocket):
     # Fallback to cookie-based auth
     if not user:
         access_token = websocket.cookies.get("access_token")
-        logger.info(f"Attempting cookie auth, access_token present: {bool(access_token)}")
+        logger.info(
+            f"Attempting cookie auth, access_token present: {bool(access_token)}"
+        )
         if access_token:
             user = await get_user_from_cookie(access_token)
             if user:

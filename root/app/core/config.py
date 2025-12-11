@@ -780,7 +780,7 @@ class Settings(BaseSettings):
     @property
     def cookie_samesite(self) -> str:
         """Return cookie SameSite policy.
-        
+
         In development mode, returns 'lax' to allow cross-origin requests
         (e.g., frontend on port 5173 accessing backend on port 8000).
         In production, returns 'strict' for maximum security.
