@@ -8,7 +8,9 @@ API_VERSION: Final[str] = "1.0.0"
 # Default versioned prefix for HTTP routes.
 API_V1_PREFIX: Final[str] = "/api/v1"
 
-_SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\w\.-]+)?(?:\+[\w\.-]+)?$")
+_SEMVER_RE = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\w\.-]+)?(?:\+[\w\.-]+)?$"
+)
 
 
 def assert_semver(version: str) -> str:

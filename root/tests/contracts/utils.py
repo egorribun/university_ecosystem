@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from app.main import app
 
@@ -18,7 +19,9 @@ def normalize_openapi(schema: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _iterable_contains_superset(candidates: Iterable[Any], expected: Any, path: str) -> bool:
+def _iterable_contains_superset(
+    candidates: Iterable[Any], expected: Any, path: str
+) -> bool:
     for candidate in candidates:
         try:
             assert_openapi_superset(expected, candidate, path=path)

@@ -34,7 +34,7 @@ from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.core.versioning import API_VERSION, API_V1_PREFIX
+from app.core.versioning import API_V1_PREFIX, API_VERSION
 from app.deps.cache import get_cache
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.routers.notifications import router as push_router
