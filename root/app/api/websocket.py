@@ -196,18 +196,39 @@ async def websocket_chat(websocket: WebSocket):
     """
     user = None
 
+    # Debug: log incoming connection info
+    logger.info(
+        f"WebSocket connection attempt - cookies: {list(websocket.cookies.keys())}"
+    )
+    logger.info(
+        f"WebSocket connection attempt - query params: {dict(websocket.query_params)}"
+    )
+
     # Try token from query params first
     token = websocket.query_params.get("token")
     if token:
+        logger.info("Attempting token auth from query params")
         user = await get_user_from_token(token)
+        if user:
+            logger.info(f"Token auth successful: user_id={user.id}")
+        else:
+            logger.warning("Token auth failed: invalid token")
 
     # Fallback to cookie-based auth
     if not user:
         access_token = websocket.cookies.get("access_token")
+        logger.info(
+            f"Attempting cookie auth, access_token present: {bool(access_token)}"
+        )
         if access_token:
             user = await get_user_from_cookie(access_token)
+            if user:
+                logger.info(f"Cookie auth successful: user_id={user.id}")
+            else:
+                logger.warning("Cookie auth failed: invalid cookie")
 
     if not user:
+        logger.warning("WebSocket auth failed - no valid credentials")
         await websocket.close(code=4001, reason="Authentication required")
         return
 

@@ -562,17 +562,23 @@ type ApiRequestOptions<P extends ApiPath, M extends ApiMethod> = Omit<
 type ApiResponseFor<P extends ApiPath, M extends ApiMethod> = AxiosResponse<ResponseDataOf<P, M>>
 
 const buildPathWithParams = <P extends ApiPath>(path: P, params: PathParamsOf<P> | undefined) => {
-  if (!params || Object.keys(params).length === 0) {
-    return path
+  // Strip /api/v1 prefix since the base URL already includes it
+  let normalizedPath = path as string
+  if (normalizedPath.startsWith("/api/v1")) {
+    normalizedPath = normalizedPath.slice(7) // Remove "/api/v1"
   }
 
-  return (path as string).replace(/\{([^{}]+)\}/g, (segment, key: string) => {
+  if (!params || Object.keys(params).length === 0) {
+    return normalizedPath
+  }
+
+  return normalizedPath.replace(/\{([^{}]+)\}/g, (segment, key: string) => {
     const value = params[key as keyof typeof params]
     if (value == null) {
       throw new Error(`Missing value for path parameter "${key}"`)
     }
     return encodeURIComponent(String(value))
-  }) as P
+  })
 }
 
 const normalizeHeaders = <P extends ApiPath, M extends ApiMethod>(
