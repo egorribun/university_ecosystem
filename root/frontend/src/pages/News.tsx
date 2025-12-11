@@ -2,13 +2,7 @@ import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
 import NewsCardSkeleton from "../components/NewsCardSkeleton"
-import {
-  useState,
-  useRef,
-  useCallback,
-  type ReactNode,
-  type CSSProperties,
-} from "react"
+import { useState, useRef, useCallback, type ReactNode, type CSSProperties } from "react"
 import { Alert } from "@mui/material"
 import { isAxiosError } from "axios"
 import { createNews, uploadNewsImage } from "@/api/news"
@@ -81,7 +75,7 @@ const News = () => {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-    refetch: refetchNews
+    refetch: refetchNews,
   } = useNewsListQuery({ language })
 
   const [addOpen, setAddOpen] = useState(false)
@@ -95,8 +89,6 @@ const News = () => {
 
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
   const skeletonCount = 6
-
-
 
   const refreshNews = useCallback(() => {
     resetEtagCache()
@@ -235,21 +227,21 @@ const News = () => {
             >
               {isInitialLoading
                 ? Array.from({ length: skeletonCount }).map((_, index) => (
-                  <div key={`news-skeleton-${index}`} className="flex h-full w-full">
-                    <NewsCardSkeleton />
-                  </div>
-                ))
+                    <div key={`news-skeleton-${index}`} className="flex h-full w-full">
+                      <NewsCardSkeleton />
+                    </div>
+                  ))
                 : newsList.map((news) => (
-                  <div key={news.id} className="flex h-full w-full">
-                    <NewsCard
-                      {...news}
-                      image_url={news.image_url ?? undefined}
-                      onChange={() => {
-                        void refreshNews()
-                      }}
-                    />
-                  </div>
-                ))}
+                    <div key={news.id} className="flex h-full w-full">
+                      <NewsCard
+                        {...news}
+                        image_url={news.image_url ?? undefined}
+                        onChange={() => {
+                          void refreshNews()
+                        }}
+                      />
+                    </div>
+                  ))}
 
               {showEmptyState && (
                 <div className="col-span-full mt-16 flex w-full justify-start">

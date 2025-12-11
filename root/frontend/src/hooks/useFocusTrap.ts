@@ -34,8 +34,10 @@ export default function useFocusTrap<T extends HTMLElement>({
   const trapRef = useRef<FocusTrap | null>(null)
   const deactivateRef = useRef(onDeactivate)
   const skipDeactivateRef = useRef(false)
+  const initialFocusRef = useRef<InitialFocusTarget | undefined>(initialFocus)
 
   deactivateRef.current = onDeactivate
+  initialFocusRef.current = initialFocus
 
   useEffect(() => {
     if (!isBrowser) return undefined
@@ -66,7 +68,7 @@ export default function useFocusTrap<T extends HTMLElement>({
       fallbackFocus: fallbackTarget,
     }
 
-    if (initialFocus) options.initialFocus = initialFocus
+    if (initialFocusRef.current) options.initialFocus = initialFocusRef.current
 
     const trap = createFocusTrap(container, {
       ...options,
@@ -85,7 +87,7 @@ export default function useFocusTrap<T extends HTMLElement>({
       skipDeactivateRef.current = false
       trapRef.current = null
     }
-  }, [active, allowOutsideClick, fallbackFocus, initialFocus, returnFocus])
+  }, [active, allowOutsideClick, fallbackFocus, returnFocus])
 
   return containerRef
 }

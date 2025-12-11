@@ -104,18 +104,18 @@ describe("News page interaction", () => {
               title: "Headline 1",
               content: "Content 1",
               created_at: new Date().toISOString(),
-              image_url: null
+              image_url: null,
             },
             {
               id: 2,
               title: "Headline 2",
               content: "Content 2",
               created_at: new Date().toISOString(),
-              image_url: null
-            }
+              image_url: null,
+            },
           ],
           has_more: false,
-          next_cursor: null
+          next_cursor: null,
         })
       })
     )

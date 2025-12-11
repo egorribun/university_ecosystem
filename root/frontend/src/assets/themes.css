@@ -145,7 +145,7 @@
   --ue-radius-pill: 999px;
   --ue-focus-ring: 0 0 0 1px rgba(255, 255, 255, 0.92), 0 0 0 4px rgba(15, 79, 170, 0.3);
   --ue-z-index-nav: 2600;
-  --ue-z-index-overlay: 2500;
+  --ue-z-index-overlay: 2700;
   --ue-z-index-floating: 2800;
   --ue-z-index-toast: 3400;
 }

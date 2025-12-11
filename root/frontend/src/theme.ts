@@ -21,7 +21,7 @@ const radiusScale = {
 
 const zIndexTokens = {
   navbar: 2600,
-  overlay: 2500,
+  overlay: 2700,
   floating: 2800,
   toast: 3400,
 } as const
