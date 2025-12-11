@@ -256,7 +256,6 @@ export function useChatWebSocket({
         }
       }, 100)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Send typing indicator
