@@ -1,8 +1,10 @@
-from datetime import UTC, datetime, timedelta
-from unittest.mock import patch, AsyncMock
+from datetime import datetime, timedelta
+
 import pytest
-from app.auth.security import get_password_hash
 from fastapi import status
+
+from app.auth.security import get_password_hash
+
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
     response = await async_client.post(
@@ -14,28 +16,27 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
+
 @pytest.mark.anyio
-async def test_create_event_frontend_payload_reproduction(
-    async_client, user_factory
-):
+async def test_create_event_frontend_payload_reproduction(async_client, user_factory):
     password = "EventFix123!"
     teacher = await user_factory(
         role="teacher",
         hashed_password=get_password_hash(password),
         is_active=True,
     )
-    
+
     headers = await _login(async_client, teacher.email, password)
-    
+
     # Simulate Date.now() + 1h
     # Frontend logic allows starts == ends because checks `ends < starts` (not <=)
     # But Backend EventCreate validator checks `ends_at <= starts_at` -> raises ValueError -> 422
-    
-    now = datetime.now() 
+
+    now = datetime.now()
     starts_at = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
     # Same time for end
     ends_at = starts_at
-    
+
     # Payload similar to what frontend sends (empty strings for optionals)
     payload = {
         "title": "Frontend Event",
@@ -51,7 +52,7 @@ async def test_create_event_frontend_payload_reproduction(
         "speaker": "",
         "image_url": "",
         "about": "",
-        "about_en": ""
+        "about_en": "",
     }
 
     # Expecting 422
@@ -60,14 +61,13 @@ async def test_create_event_frontend_payload_reproduction(
         headers=headers,
         json=payload,
     )
-    
+
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     # print(f"\nConfimed 422 Error for equal times: {response.json()}")
 
+
 @pytest.mark.anyio
-async def test_create_event_success_db(
-    async_client, user_factory
-):
+async def test_create_event_success_db(async_client, user_factory):
     """
     Test that a fully valid payload successfully creates an event in the DB.
     This verifies that the 'search_vector' (Computed) issue is resolved,
@@ -79,14 +79,14 @@ async def test_create_event_success_db(
         hashed_password=get_password_hash(password),
         is_active=True,
     )
-    
+
     headers = await _login(async_client, teacher.email, password)
-    
+
     now = datetime.now()
     # Explicitly valid times
     starts_at = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
     ends_at = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M")
-    
+
     payload = {
         "title": "Valid DB Event",
         "title_en": "Valid DB Event EN",
@@ -101,7 +101,7 @@ async def test_create_event_success_db(
         "speaker": "Prof X",
         "image_url": "",
         "about": "",
-        "about_en": ""
+        "about_en": "",
     }
 
     response = await async_client.post(
@@ -109,10 +109,9 @@ async def test_create_event_success_db(
         headers=headers,
         json=payload,
     )
-    
+
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     # Use 'in' to handle potential localization (Valid DB Event or Valid DB Event EN)
     assert "Valid DB Event" in data["title"]
     assert data["id"] is not None
-
