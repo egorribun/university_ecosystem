@@ -22,7 +22,7 @@ import { Button } from "@/components/ui"
 import Dialog from "@/components/Dialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { invalidateNewsFeed } from "@/hooks/useNewsFeed"
+// import { invalidateNewsFeed } from "@/hooks/useNewsFeed"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
@@ -248,7 +248,7 @@ export default function NewsDetail() {
       }
       const { data } = await updateNews(query.data.id, payload)
       queryClient.setQueryData(["news", id, language], data)
-      await invalidateNewsFeed(queryClient, language)
+      await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
       setSnack(t("news:notifications.updated"))
       closeEdit()
     } catch (error) {
@@ -266,7 +266,7 @@ export default function NewsDetail() {
       await deleteNews(query.data.id)
       setSnack(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
-      await invalidateNewsFeed(queryClient, language)
+      await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
       if (window.history.length > 1) navigate(-1)
       else navigate("/news")
     } catch (error) {

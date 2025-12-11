@@ -14,7 +14,7 @@
     "location": "Место"
   },
   "actions": {
-    "openCreate": "Новое мероприятие"
+    "openCreate": "+ Добавить мероприятие"
   },
   "dialogs": {
     "create": {

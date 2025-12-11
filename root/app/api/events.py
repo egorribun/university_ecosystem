@@ -213,7 +213,12 @@ async def create_event(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    record = await crud.create_event(db, data, user_id=user.id)
+    try:
+        record = await crud.create_event(db, data, user_id=user.id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
     await _invalidate_events_list_cache()
     job = notification_queue.NotificationJob(
         kind="event", record_id=record.id, locale=locale

@@ -14,7 +14,7 @@
     "location": "Location"
   },
   "actions": {
-    "openCreate": "New event"
+    "openCreate": "+ Add event"
   },
   "dialogs": {
     "create": {

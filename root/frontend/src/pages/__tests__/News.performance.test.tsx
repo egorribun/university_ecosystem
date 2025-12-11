@@ -26,12 +26,12 @@ vi.mock("../../contexts/AuthContext", () => ({
   }),
 }))
 
-vi.mock("@/hooks/useNewsFeed", () => ({
-  useNewsFeed: vi.fn(),
+vi.mock("@/api/hooks/news", () => ({
+  useNewsListQuery: vi.fn(),
 }))
 
 import News from "../News"
-import { useNewsFeed } from "@/hooks/useNewsFeed"
+import { useNewsListQuery } from "@/api/hooks/news"
 
 const largeFeed = Array.from({ length: 96 }, (_, index) => ({
   id: index + 1,
@@ -41,7 +41,7 @@ const largeFeed = Array.from({ length: 96 }, (_, index) => ({
   image_url: null,
 }))
 
-const useNewsFeedMock = vi.mocked(useNewsFeed)
+const useNewsListQueryMock = vi.mocked(useNewsListQuery)
 
 const buildWrapper = (mode: "light" | "dark") => {
   const client = new QueryClient({
@@ -108,7 +108,7 @@ describe("News page feed rendering", () => {
     Object.defineProperty(window, "cancelIdleCallback", {
       configurable: true,
       writable: true,
-      value: (() => {}) as typeof window.cancelIdleCallback,
+      value: (() => { }) as typeof window.cancelIdleCallback,
     })
   })
 
@@ -147,19 +147,22 @@ describe("News page feed rendering", () => {
   })
 
   beforeEach(() => {
-    useNewsFeedMock.mockReturnValue({
-      data: largeFeed,
-      isPending: false,
+    useNewsListQueryMock.mockReturnValue({
+      news: largeFeed,
+      isLoading: false,
       isFetching: false,
       refetch: vi.fn(),
-    } as unknown as ReturnType<typeof useNewsFeed>)
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+      isFetchingNextPage: false,
+    } as unknown as ReturnType<typeof useNewsListQuery>)
     localStorage.setItem("ue:language", "en")
   })
 
   afterEach(() => {
     localStorage.clear()
     matchMediaMock.mockClear()
-    useNewsFeedMock.mockClear()
+    useNewsListQueryMock.mockClear()
   })
 
   it.each([["light"], ["dark"]] as const)(
@@ -176,7 +179,7 @@ describe("News page feed rendering", () => {
       const fadeContainer = container.querySelector<HTMLElement>("[data-page-fade]")
       expect(fadeContainer).not.toBeNull()
       expect(fadeContainer?.dataset.effect).toBeUndefined()
-      expect(useNewsFeedMock).toHaveBeenCalled()
+      expect(useNewsListQueryMock).toHaveBeenCalled()
     }
   )
 })

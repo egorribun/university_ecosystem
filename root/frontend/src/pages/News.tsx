@@ -3,13 +3,9 @@ import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
 import NewsCardSkeleton from "../components/NewsCardSkeleton"
 import {
-  useEffect,
   useState,
   useRef,
   useCallback,
-  useDeferredValue,
-  startTransition,
-  useMemo,
   type ReactNode,
   type CSSProperties,
 } from "react"
@@ -24,8 +20,9 @@ import Dialog from "@/components/Dialog"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
-import { invalidateNewsFeed, useNewsFeed } from "@/hooks/useNewsFeed"
 import { useQueryClient } from "@tanstack/react-query"
+import { useNewsListQuery } from "@/api/hooks/news"
+import { resetEtagCache } from "@/api/client"
 
 const inputClass =
   "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
@@ -75,10 +72,18 @@ const News = () => {
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
-  const { data: newsDataList, refetch: refetchNews, isPending, isFetching } = useNewsFeed(language)
-  const newsList = newsDataList ?? []
-  const deferredList = useDeferredValue(newsList)
-  const [visibleCount, setVisibleCount] = useState(0)
+
+  // Use the new hook inspired by Events
+  const {
+    news: newsList,
+    isLoading: isInitialLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch: refetchNews
+  } = useNewsListQuery({ language })
+
   const [addOpen, setAddOpen] = useState(false)
   const [newsData, setNewsData] = useState(initialNews)
   const [adding, setAdding] = useState(false)
@@ -88,53 +93,15 @@ const News = () => {
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
 
-  const isInitialLoading = isPending && newsList.length === 0
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
-  const skeletonCount = Math.max(visibleCount || 0, 6)
+  const skeletonCount = 6
 
-  const refreshNews = useCallback(async () => {
-    await invalidateNewsFeed(queryClient, language)
-    await refetchNews()
-  }, [language, queryClient, refetchNews])
 
-  useEffect(() => {
-    return () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview)
-    }
-  }, [imagePreview])
 
-  useEffect(() => {
-    setVisibleCount(Math.min(12, deferredList.length))
-  }, [deferredList.length])
-
-  useEffect(() => {
-    if (visibleCount >= deferredList.length) return
-    let cancelled = false
-    const chunk = 16
-    const ric = (cb: () => void) => {
-      if (typeof (window as any).requestIdleCallback === "function")
-        (window as any).requestIdleCallback(() => {
-          if (!cancelled) cb()
-        })
-      else
-        setTimeout(() => {
-          if (!cancelled) cb()
-        }, 0)
-    }
-    const step = () => {
-      startTransition(() => {
-        setVisibleCount((v) => {
-          const next = Math.min(v + chunk, deferredList.length)
-          if (next < deferredList.length) ric(step)
-          return next
-        })
-      })
-    }
-    ric(step)
-    return () => {
-      cancelled = true
-    }
-  }, [visibleCount, deferredList.length])
+  const refreshNews = useCallback(() => {
+    resetEtagCache()
+    void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+  }, [queryClient])
 
   const handleImageChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,10 +189,13 @@ const News = () => {
     if (imageInputRef.current) imageInputRef.current.value = ""
   }, [imagePreview])
 
-  const visibleList = useMemo(
-    () => (visibleCount > 0 ? deferredList.slice(0, visibleCount) : deferredList),
-    [deferredList, visibleCount]
-  )
+  const loadMore = useCallback(async () => {
+    if (hasNextPage) {
+      await fetchNextPage()
+    }
+  }, [hasNextPage, fetchNextPage])
+
+  const loadingMore = isFetchingNextPage
 
   return (
     <Layout>
@@ -261,29 +231,28 @@ const News = () => {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="flex flex-wrap gap-5 sm:gap-6"
+              className="grid gap-6 grid-cols-[repeat(auto-fill,minmax(340px,1fr))]"
             >
               {isInitialLoading
                 ? Array.from({ length: skeletonCount }).map((_, index) => (
-                    <div key={`news-skeleton-${index}`} className="flex h-full">
-                      <NewsCardSkeleton />
-                    </div>
-                  ))
-                : Array.isArray(visibleList) &&
-                  visibleList.map((news) => (
-                    <div key={news.id} className="flex h-full">
-                      <NewsCard
-                        {...news}
-                        image_url={news.image_url ?? undefined}
-                        onChange={() => {
-                          void refreshNews()
-                        }}
-                      />
-                    </div>
-                  ))}
+                  <div key={`news-skeleton-${index}`} className="flex h-full w-full">
+                    <NewsCardSkeleton />
+                  </div>
+                ))
+                : newsList.map((news) => (
+                  <div key={news.id} className="flex h-full w-full">
+                    <NewsCard
+                      {...news}
+                      image_url={news.image_url ?? undefined}
+                      onChange={() => {
+                        void refreshNews()
+                      }}
+                    />
+                  </div>
+                ))}
 
               {showEmptyState && (
-                <div className="mt-16 flex w-full justify-start">
+                <div className="col-span-full mt-16 flex w-full justify-start">
                   <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
                     <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
                       <ArticleIcon className="text-[2.2rem]" />
@@ -300,6 +269,23 @@ const News = () => {
                 </div>
               )}
             </div>
+
+            {/* Load more */}
+            {hasNextPage && (
+              <div className="mt-8 mb-8 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="px-6"
+                >
+                  {loadingMore
+                    ? t("common:statuses.loading")
+                    : t("common:buttons.loadMore", { defaultValue: "Load more" })}
+                </Button>
+              </div>
+            )}
 
             <Dialog
               open={addOpen}

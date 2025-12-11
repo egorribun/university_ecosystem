@@ -283,12 +283,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   return (
     <article
       className={cn(
-        "group relative flex h-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out",
+        "group relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out h-[480px] w-full",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
       )}
-      style={{ maxWidth: "500px", width: "100%" }}
+      style={{ width: "100%" }}
     >
       {user?.role === "admin" && (
         <div className="absolute right-3 top-3 z-10">
@@ -401,7 +401,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             {localizedTitle}
           </h3>
 
-          <p className="min-h-[56px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3">
+          <p className="min-h-[72px] text-[clamp(0.96rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-3">
             {sanitizedPreview}
           </p>
 

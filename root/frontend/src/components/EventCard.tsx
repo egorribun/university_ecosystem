@@ -246,13 +246,13 @@ const EventCardComponent: FC<EventCardProps> = ({
           setQr(code)
           try {
             localStorage.setItem(qrKey(id, user), code)
-          } catch {}
+          } catch { }
         }
       } else {
         setQr(undefined)
         try {
           localStorage.removeItem(qrKey(id, user))
-        } catch {}
+        } catch { }
       }
       setRegistered(nextRegistered)
       return nextRegistered ? "registered" : "unregistered"
@@ -269,14 +269,14 @@ const EventCardComponent: FC<EventCardProps> = ({
       setQr(undefined)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch {}
+      } catch { }
       return
     }
     if (my_qr_token) {
       setQr(my_qr_token)
       try {
         localStorage.setItem(qrKey(id, user), my_qr_token)
-      } catch {}
+      } catch { }
     }
   }, [registered, my_qr_token, id, user])
 
@@ -285,7 +285,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     try {
       const stored = localStorage.getItem(qrKey(id, user))
       if (stored) setQr(stored)
-    } catch {}
+    } catch { }
   }, [registered, qr, my_qr_token, id, user])
 
   useLayoutEffect(() => {
@@ -295,14 +295,14 @@ const EventCardComponent: FC<EventCardProps> = ({
         const cached = qr || localStorage.getItem(qrKey(id, user))
         if (cached) setQrOpen(true)
       }
-    } catch {}
+    } catch { }
   }, [id])
 
   useEffect(() => {
     try {
       if (qrOpen) sessionStorage.setItem(qrOpenKey(id), "1")
       else sessionStorage.removeItem(qrOpenKey(id))
-    } catch {}
+    } catch { }
   }, [qrOpen, id])
 
   useEffect(() => {
@@ -361,7 +361,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     Boolean(editData.starts_at) &&
     Boolean(editData.ends_at) &&
     new Date(normalizeDate(editData.ends_at)).getTime() <
-      new Date(normalizeDate(editData.starts_at)).getTime()
+    new Date(normalizeDate(editData.starts_at)).getTime()
 
   const handleRegister = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -375,7 +375,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.registerSuccess"))
       try {
         localStorage.setItem(qrKey(id, user), code)
-      } catch {}
+      } catch { }
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -413,7 +413,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.unregisterSuccess"))
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch {}
+      } catch { }
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -446,7 +446,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       await api.delete(`/events/${id}`)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch {}
+      } catch { }
       setSnack(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
@@ -519,13 +519,13 @@ const EventCardComponent: FC<EventCardProps> = ({
   return (
     <div
       className={cn(
-        "event-card relative min-h-[320px] rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-visible transition-all duration-300",
+        "event-card relative h-[580px] w-full rounded-[1.1rem] sm:rounded-[1.2rem] border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] text-[color:var(--page-text)] p-4 sm:p-6 shadow-surface overflow-hidden transition-all duration-300 flex flex-col",
         editOpen ? "cursor-default" : "cursor-pointer",
         qrOpen && "pointer-events-none grayscale-[0.12] opacity-90",
         !editOpen && !qrOpen && "hover:shadow-surface-strong",
         "focus-visible:outline-2 focus-visible:outline-[color:var(--nav-link)] focus-visible:outline-offset-2"
       )}
-      style={{ maxWidth: maxWidth ?? "500px", width: "100%" }}
+      style={{ width: "100%" }}
       role="button"
       tabIndex={0}
       onClick={handleCardClick}
@@ -658,85 +658,89 @@ const EventCardComponent: FC<EventCardProps> = ({
       )}
 
       {/* Description */}
-      <p className="mb-4 line-clamp-5 text-base text-[color:var(--page-text)]">{description}</p>
+      <p className="mb-4 line-clamp-3 text-base text-[color:var(--page-text)] flex-grow-0">{description}</p>
 
-      {/* Participants */}
-      <div className="mb-4 flex items-center gap-2">
-        <PeopleAltIcon className="h-[19px] w-[19px] text-[color:var(--nav-link)]" />
-        <span className="text-[15px] text-[color:var(--page-text)]">
-          {t("events:card.participants", { count })}
-        </span>
-      </div>
+      <div className="mt-auto">
 
-      {/* Register button */}
-      {is_active &&
-        !eventEnded &&
-        !registered &&
-        user?.role !== "admin" &&
-        user?.role !== "teacher" && (
-          <Button
-            variant="solid"
-            onClick={(e) => handleRegister(e)}
-            disabled={loading}
-            className="mt-2 font-bold"
-          >
-            {t("events:card.actions.register")}
-          </Button>
+        {/* Participants */}
+        <div className="mb-4 flex items-center gap-2">
+          <PeopleAltIcon className="h-[19px] w-[19px] text-[color:var(--nav-link)]" />
+          <span className="text-[15px] text-[color:var(--page-text)]">
+            {t("events:card.participants", { count })}
+          </span>
+        </div>
+
+        {/* Register button */}
+        {is_active &&
+          !eventEnded &&
+          !registered &&
+          user?.role !== "admin" &&
+          user?.role !== "teacher" && (
+            <Button
+              variant="solid"
+              onClick={(e) => handleRegister(e)}
+              disabled={loading}
+              className="mt-2 font-bold"
+            >
+              {t("events:card.actions.register")}
+            </Button>
+          )}
+
+        {/* Unregister and QR */}
+        {is_active && !eventEnded && registered && (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={(e) => handleUnregister(e)} disabled={loading}>
+              {t("events:card.actions.unregister")}
+            </Button>
+
+            {qr && (
+              <>
+                <Tooltip content={t("events:card.actions.openQr")}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setQrOpen(true)
+                    }}
+                    className="block"
+                  >
+                    <SmartImage
+                      srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
+                      alt={t("events:card.alt.qr")}
+                      className="h-[clamp(52px,8vw,76px)] w-[clamp(52px,8vw,76px)] rounded-lg bg-white object-cover shadow-surface cursor-pointer"
+                    />
+                  </button>
+                </Tooltip>
+
+                <Dialog
+                  open={qrOpen}
+                  onClose={() => {
+                    setSkipNextClick(true)
+                    setQrOpen(false)
+                  }}
+                  title=""
+                  size="sm"
+                >
+                  <div className="space-y-4">
+                    <div className="mx-auto w-full max-w-[min(76vw,76vh,520px)] rounded-ue-lg border border-[color:var(--glass-border)] bg-white p-4 sm:p-6 shadow-surface">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
+                        alt={t("events:card.alt.qr")}
+                        className="block h-auto w-full max-w-[min(70vw,70vh,460px)] aspect-square select-none"
+                        loading="eager"
+                      />
+                    </div>
+                    <Button variant="outline" onClick={() => setQrOpen(false)} className="w-full">
+                      {t("events:card.actions.closeQr")}
+                    </Button>
+                  </div>
+                </Dialog>
+              </>
+            )}
+          </div>
         )}
 
-      {/* Unregister and QR */}
-      {is_active && !eventEnded && registered && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={(e) => handleUnregister(e)} disabled={loading}>
-            {t("events:card.actions.unregister")}
-          </Button>
-
-          {qr && (
-            <>
-              <Tooltip content={t("events:card.actions.openQr")}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setQrOpen(true)
-                  }}
-                  className="block"
-                >
-                  <SmartImage
-                    srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                    alt={t("events:card.alt.qr")}
-                    className="h-[clamp(52px,8vw,76px)] w-[clamp(52px,8vw,76px)] rounded-lg bg-white object-cover shadow-surface cursor-pointer"
-                  />
-                </button>
-              </Tooltip>
-
-              <Dialog
-                open={qrOpen}
-                onClose={() => {
-                  setSkipNextClick(true)
-                  setQrOpen(false)
-                }}
-                title=""
-                size="sm"
-              >
-                <div className="space-y-4">
-                  <div className="mx-auto w-full max-w-[min(76vw,76vh,520px)] rounded-ue-lg border border-[color:var(--glass-border)] bg-white p-4 sm:p-6 shadow-surface">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                      alt={t("events:card.alt.qr")}
-                      className="block h-auto w-full max-w-[min(70vw,70vh,460px)] aspect-square select-none"
-                      loading="eager"
-                    />
-                  </div>
-                  <Button variant="outline" onClick={() => setQrOpen(false)} className="w-full">
-                    {t("events:card.actions.closeQr")}
-                  </Button>
-                </div>
-              </Dialog>
-            </>
-          )}
-        </div>
-      )}
+      </div>
 
       {/* Edit dialog */}
       <Dialog
@@ -782,8 +786,8 @@ const EventCardComponent: FC<EventCardProps> = ({
             <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
               {language === "en"
                 ? t("events:form.title_en", {
-                    defaultValue: `${t("events:form.title")} (English)`,
-                  })
+                  defaultValue: `${t("events:form.title")} (English)`,
+                })
                 : t("events:form.title")}
             </label>
             <input
@@ -797,8 +801,8 @@ const EventCardComponent: FC<EventCardProps> = ({
             <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
               {language === "en"
                 ? t("events:form.description_en", {
-                    defaultValue: `${t("events:form.description")} (English)`,
-                  })
+                  defaultValue: `${t("events:form.description")} (English)`,
+                })
                 : t("events:form.description")}
             </label>
             <textarea
@@ -812,8 +816,8 @@ const EventCardComponent: FC<EventCardProps> = ({
             <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
               {language === "en"
                 ? t("events:form.type_en", {
-                    defaultValue: `${t("events:form.type")} (English)`,
-                  })
+                  defaultValue: `${t("events:form.type")} (English)`,
+                })
                 : t("events:form.type")}
             </label>
             <input
@@ -827,8 +831,8 @@ const EventCardComponent: FC<EventCardProps> = ({
             <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
               {language === "en"
                 ? t("events:form.location_en", {
-                    defaultValue: `${t("events:form.location")} (English)`,
-                  })
+                  defaultValue: `${t("events:form.location")} (English)`,
+                })
                 : t("events:form.location")}
             </label>
             <input
