@@ -6,6 +6,7 @@ from sqlalchemy import select, text, update
 
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.core.database import async_session
 from app.localization import translate
 from app.models.models import Notification, NotificationQueueJob
@@ -23,6 +24,14 @@ async def _login(
     assert response.status_code == 200
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+def _with_internal(headers: dict[str, str]) -> dict[str, str]:
+    token = settings.internal_auth_token
+    header_name = settings.internal_auth_header
+    if token and header_name:
+        return {**headers, header_name: token}
+    return headers
 
 
 @pytest.mark.anyio
@@ -345,7 +354,7 @@ async def test_admin_dead_letter_requires_admin(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True, role="student")
 
-    headers = await _login(async_client, user.email, password)
+    headers = _with_internal(await _login(async_client, user.email, password))
     response = await async_client.get(
         "/notifications/admin/dead-letter",
         headers=headers,
@@ -363,7 +372,7 @@ async def test_admin_dead_letter_guard_localized(
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True, role="student")
 
-    headers = await _login(async_client, user.email, password)
+    headers = _with_internal(await _login(async_client, user.email, password))
     response = await async_client.get(
         f"/notifications/admin/dead-letter?lang={locale}",
         headers=headers,
@@ -410,7 +419,7 @@ async def test_admin_dead_letter_list_returns_jobs(
     db_session.add_all(jobs)
     await db_session.commit()
 
-    headers = await _login(async_client, admin.email, password)
+    headers = _with_internal(await _login(async_client, admin.email, password))
     response = await async_client.get(
         "/notifications/admin/dead-letter?limit=10",
         headers=headers,
@@ -452,7 +461,7 @@ async def test_admin_dead_letter_retry_requeues_jobs(
     db_session.add(job)
     await db_session.commit()
 
-    headers = await _login(async_client, admin.email, password)
+    headers = _with_internal(await _login(async_client, admin.email, password))
     response = await async_client.post(
         "/notifications/admin/dead-letter/retry",
         json={"job_ids": [job.id]},
@@ -499,7 +508,7 @@ async def test_admin_dead_letter_purge_removes_jobs(
     db_session.add_all([doomed, survivor])
     await db_session.commit()
 
-    headers = await _login(async_client, admin.email, password)
+    headers = _with_internal(await _login(async_client, admin.email, password))
     response = await async_client.post(
         "/notifications/admin/dead-letter/purge",
         json={"job_ids": [doomed.id]},

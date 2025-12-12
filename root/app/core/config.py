@@ -254,6 +254,9 @@ class Settings(BaseSettings):
     sentry_environment: str = ""
     log_level: str = "INFO"
     request_id_header: str = "x-request-id"
+    internal_allowed_ips: str | list[str] = "127.0.0.1,::1"
+    internal_auth_header: str = "X-Internal-Token"
+    internal_auth_token: str | None = None
     cors_allow_credentials: bool = True
     cors_allow_methods: str | list[str] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
     cors_allow_headers: str | list[str] = "Authorization,Content-Type"
@@ -699,6 +702,10 @@ class Settings(BaseSettings):
         else:
             items = [p.strip() for p in str(self.trusted_hosts).split(",")]
         return [host for host in items if host]
+
+    @cached_property
+    def internal_allowed_ips_list(self) -> list[str]:
+        return [ip for ip in _coerce_str_list(self.internal_allowed_ips) if ip]
 
     @cached_property
     def static_dir_path(self) -> Path:

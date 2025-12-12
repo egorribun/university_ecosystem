@@ -46,6 +46,11 @@ from app.services.notifications import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+admin_router = APIRouter(
+    prefix="/notifications/admin",
+    tags=["notifications-admin"],
+    include_in_schema=False,
+)
 
 _MISSING_COLUMN_MARKERS = (
     "no such column",
@@ -590,8 +595,8 @@ async def check_schedule_and_generate(
     )
 
 
-@router.get(
-    "/admin/dead-letter",
+@admin_router.get(
+    "/dead-letter",
     response_model=NotificationDeadLetterListOut,
 )
 async def list_dead_letter_queue(
@@ -606,7 +611,7 @@ async def list_dead_letter_queue(
     )
 
 
-@router.post("/admin/dead-letter/retry")
+@admin_router.post("/dead-letter/retry")
 async def retry_dead_letter_queue(
     payload: NotificationDeadLetterReplayIn,
     _: User = Depends(_require_admin_user),
@@ -615,7 +620,7 @@ async def retry_dead_letter_queue(
     return {"retried": retried}
 
 
-@router.post("/admin/dead-letter/purge")
+@admin_router.post("/dead-letter/purge")
 async def purge_dead_letter_queue(
     payload: NotificationDeadLetterPurgeIn,
     _: User = Depends(_require_admin_user),

@@ -4,7 +4,7 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,18 +14,9 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from app.api.chat import router as chat_router
-from app.api.events import router as events_router
-from app.api.news import router as news_router
-from app.api.notifications import router as notifications_router
-from app.api.schedule import router as schedule_api_router
-from app.api.sessions import router as sessions_router
-from app.api.spotify import router as spotify_router
-from app.api.stats import router as stats_router
-from app.api.stories import router as stories_router
-from app.api.users import router as users_router
+from app.api.internal import INTERNAL_ROUTE_PREFIXES, router as internal_api_router
+from app.api.public import router as public_api_router
 from app.api.websocket import router as websocket_router
-from app.auth.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import async_session, engine, wait_db
 from app.core.exceptions import AppException
@@ -33,12 +24,11 @@ from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
+from app.core.internal_access import InternalAccessMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.core.versioning import API_V1_PREFIX, API_VERSION
+from app.core.versioning import API_VERSION
 from app.deps.cache import get_cache
 from app.routers.notifications import legacy_router as legacy_push_router
-from app.routers.notifications import router as push_router
-from app.routers.schedule import router as schedule_router
 from app.services.file_scanner import (
     check_file_scanner_health,
 )
@@ -104,6 +94,14 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+
+app.add_middleware(
+    InternalAccessMiddleware,
+    allowed_ips=settings.internal_allowed_ips_list,
+    header_name=settings.internal_auth_header,
+    header_token=settings.internal_auth_token,
+    internal_prefixes=INTERNAL_ROUTE_PREFIXES,
+)
 
 
 def _ensure_vary_header(response, header_name: str) -> None:
@@ -294,27 +292,9 @@ async def ready():
     return {"status": "ready"}
 
 
-# Versioned API router - all endpoints under /api/v1
-
-api_v1_router = APIRouter(prefix=API_V1_PREFIX)
-
-# Include all routers under v1
-api_v1_router.include_router(auth_router)
-api_v1_router.include_router(spotify_router)
-api_v1_router.include_router(sessions_router)
-api_v1_router.include_router(notifications_router)
-api_v1_router.include_router(push_router)
-api_v1_router.include_router(schedule_router)
-api_v1_router.include_router(users_router)
-api_v1_router.include_router(events_router)
-api_v1_router.include_router(news_router)
-api_v1_router.include_router(stories_router)
-api_v1_router.include_router(schedule_api_router)
-api_v1_router.include_router(stats_router)
-api_v1_router.include_router(chat_router)
-
-# Mount the versioned router
-app.include_router(api_v1_router)
+# Public and internal API routers
+app.include_router(public_api_router)
+app.include_router(internal_api_router, include_in_schema=False)
 
 # Legacy push router for backward compatibility (deprecated)
 app.include_router(legacy_push_router)

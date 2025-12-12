@@ -52,6 +52,8 @@ os.environ.setdefault("RATE_LIMIT_SENSITIVE", "4/minute")
 os.environ.setdefault("RATE_LIMIT_STORAGE_BACKEND", "redis")
 os.environ.setdefault("RATE_LIMIT_STORAGE_URI", "redis://test")
 os.environ.setdefault("ATTENDANCE_TOKEN_SECRET", "attendance-test-secret")
+os.environ.setdefault("INTERNAL_AUTH_TOKEN", "test-internal-token")
+os.environ.setdefault("INTERNAL_ALLOWED_IPS", "127.0.0.1,::1,testserver")
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 
 try:
