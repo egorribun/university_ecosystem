@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Any
@@ -12,6 +13,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.core.metrics import record_redis_command
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +84,21 @@ class RedisCache(BaseCache):
         if self._client is None:
             return
         client, self._client = self._client, None
+        start = time_module.perf_counter()
+        success = False
         try:
             await client.aclose()
+            success = True
         except (RedisError, OSError):
             logger.debug("Failed to close Redis client", exc_info=True)
+        finally:
+            record_redis_command(
+                "close", time_module.perf_counter() - start, success=success
+            )
 
     async def get(self, key: str) -> CacheEntry | None:
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             raw = await client.get(key)
@@ -106,14 +117,20 @@ class RedisCache(BaseCache):
         payload = parsed.get("payload")
         if not etag:
             return None
+        success = True
         return CacheEntry(etag=etag, payload=payload)
-
+        finally:
+            record_redis_command(
+                "get", time_module.perf_counter() - start, success=success
+            )
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized_payload, serialized = _normalize_payload(payload)
         etag = hashlib.sha256(serialized).hexdigest()
         envelope = json.dumps(
             {"etag": etag, "payload": normalized_payload}, ensure_ascii=False
         )
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             expire = self._resolve_ttl(ttl)
@@ -121,14 +138,20 @@ class RedisCache(BaseCache):
                 await client.set(key, envelope, ex=expire)
             else:
                 await client.set(key, envelope)
+            success = True
         except (RedisError, OSError):
             logger.warning("Redis cache set failed for key %s", key, exc_info=True)
+        finally:
+            record_redis_command(
+                "set", time_module.perf_counter() - start, success=success
+            )
         return CacheEntry(etag=etag, payload=normalized_payload)
-
     async def invalidate(self, *keys: str) -> None:
         filtered = [str(key) for key in keys if key]
         if not filtered:
             return
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
 
@@ -156,9 +179,16 @@ class RedisCache(BaseCache):
                         await client.delete(*matches)
                     if cursor == 0:
                         break
+            success = True
         except (RedisError, OSError):
             logger.warning(
                 "Redis cache invalidate failed for keys %s", filtered, exc_info=True
+            )
+        finally:
+            record_redis_command(
+                "invalidate",
+                time_module.perf_counter() - start,
+                success=success,
             )
 
     def _resolve_ttl(self, ttl: int | None) -> int:

@@ -6,9 +6,11 @@ import axios, {
 } from "axios"
 import type { paths } from "@/api/generated/schema"
 import i18n, { fallbackLng, supportedLngs } from "@/i18n/config"
+import { setTraceContext } from "@/app/logger"
 
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
+const TRACE_HEADER = (import.meta.env.VITE_TRACE_HEADER || "x-trace-id") as string
 
 const devBase = "/api/v1"
 const prodBase = `${import.meta.env.VITE_BACKEND_ORIGIN || ""}/api/v1`
@@ -112,6 +114,22 @@ let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 let clientQueueResetAt = 0
 
 const etagCache = new Map<string, string>()
+
+const updateTraceContext = (
+  headers: AxiosHeaders | Record<string, unknown> | undefined
+) => {
+  if (!headers) {
+    setTraceContext(null)
+    return
+  }
+  const normalized = AxiosHeaders.from(headers as AxiosHeaders)
+  const traceId = normalized.get(TRACE_HEADER) ?? normalized.get(TRACE_HEADER.toLowerCase())
+  if (typeof traceId === "string" && traceId.trim()) {
+    setTraceContext(traceId)
+  } else {
+    setTraceContext(null)
+  }
+}
 
 export const resetEtagCache = () => etagCache.clear()
 
@@ -392,25 +410,30 @@ api.interceptors.request.use(async (config) => {
 })
 
 api.interceptors.response.use(
-  (r) => {
-    const config = r.config as ApiRequestConfig | undefined
-    const etagKey = config?.etagCacheKey
-    if (etagKey) {
-      const responseHeaders = AxiosHeaders.from(
-        (r.headers ?? undefined) as AxiosHeaders | string | undefined
-      )
-      const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
-      if (typeof tag === "string" && tag.trim()) {
-        etagCache.set(etagKey, tag)
-      } else {
-        etagCache.delete(etagKey)
+    (r) => {
+      const config = r.config as ApiRequestConfig | undefined
+      const etagKey = config?.etagCacheKey
+      if (etagKey) {
+        const responseHeaders = AxiosHeaders.from(
+          (r.headers ?? undefined) as AxiosHeaders | string | undefined
+        )
+        const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
+        if (typeof tag === "string" && tag.trim()) {
+          etagCache.set(etagKey, tag)
+        } else {
+          etagCache.delete(etagKey)
+        }
       }
-    }
-    releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
-    return r
-  },
-  async (err) => {
-    releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
+      updateTraceContext(r.headers as AxiosHeaders)
+      releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
+      return r
+    },
+    async (err) => {
+      releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
+
+      if (err?.response?.headers) {
+        updateTraceContext(err.response.headers as AxiosHeaders)
+      }
 
     const config = err?.config as ApiRequestConfig | undefined
     const etagKey = config?.etagCacheKey

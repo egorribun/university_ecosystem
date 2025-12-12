@@ -2,6 +2,8 @@ import * as Sentry from "@sentry/react"
 
 type LogMethod = "error" | "warn" | "info" | "log"
 
+let currentTraceId: string | null = null
+
 function normalizeArg(value: unknown): unknown {
   if (value instanceof Error) {
     return {
@@ -44,6 +46,29 @@ function findFirstMessage(args: unknown[]): string | undefined {
   return typeof candidate === "string" ? candidate : undefined
 }
 
+function resolveTags() {
+  const tags: Record<string, string> = {
+    logger: "app",
+  }
+  if (currentTraceId) {
+    tags.trace_id = currentTraceId
+  }
+  return tags
+}
+
+export function setTraceContext(traceId: string | null | undefined): void {
+  currentTraceId = traceId && String(traceId).trim() ? String(traceId) : null
+  if (typeof Sentry.configureScope === "function") {
+    Sentry.configureScope((scope) => {
+      if (currentTraceId) {
+        scope.setTag("trace_id", currentTraceId)
+      } else {
+        scope.setTag("trace_id", "")
+      }
+    })
+  }
+}
+
 export function logError(...args: unknown[]): void {
   const error = findFirstError(args)
   try {
@@ -53,7 +78,7 @@ export function logError(...args: unknown[]): void {
           logArgs: args.map(normalizeArg),
         },
         tags: {
-          logger: "app",
+          ...resolveTags(),
           level: "error",
         },
       })
@@ -74,7 +99,9 @@ export function logWarning(...args: unknown[]): void {
   try {
     const message = findFirstMessage(args)
     if (message) {
-      Sentry.captureMessage(message, "warning")
+      Sentry.captureMessage(message, "warning", {
+        tags: resolveTags(),
+      })
     }
   } catch (sentryError) {
     callConsole("warn", ["[logger] Failed to forward warning to Sentry", sentryError])

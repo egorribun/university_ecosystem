@@ -86,26 +86,51 @@ _notification_queue_metrics: NotificationQueueMetrics | None = None
 _periodic_task_metrics: dict[str, PeriodicTaskMetrics] = {}
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
+_trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
 
 
 def get_request_id() -> str | None:
     return _request_id_ctx.get(None)
 
 
+def get_trace_id() -> str | None:
+    return _trace_id_ctx.get(None)
+
+
+def _resolve_current_trace_id() -> str | None:
+    span = trace.get_current_span()
+    span_context = span.get_span_context()
+    if span_context is not None and span_context.is_valid:
+        return f"{span_context.trace_id:032x}"
+    return get_trace_id() or get_request_id()
+
+
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: FastAPI, header_name: str = "x-request-id") -> None:
+    def __init__(
+        self,
+        app: FastAPI,
+        header_name: str = "x-request-id",
+        trace_header_name: str = "x-trace-id",
+    ) -> None:
         super().__init__(app)
         self._header_name = header_name
+        self._trace_header_name = trace_header_name
 
     async def dispatch(self, request: Request, call_next):
         header_value = request.headers.get(self._header_name)
         request_id = header_value or uuid.uuid4().hex
-        token = _request_id_ctx.set(request_id)
+        trace_header_value = request.headers.get(self._trace_header_name)
+        trace_id = trace_header_value or request_id
+        request_token = _request_id_ctx.set(request_id)
+        trace_token = _trace_id_ctx.set(trace_id)
         try:
             response: Response = await call_next(request)
         finally:
-            _request_id_ctx.reset(token)
+            _request_id_ctx.reset(request_token)
+            _trace_id_ctx.reset(trace_token)
+        resolved_trace_id = _resolve_current_trace_id() or trace_id
         response.headers[self._header_name] = request_id
+        response.headers[self._trace_header_name] = resolved_trace_id
         return response
 
 
@@ -117,7 +142,7 @@ class TraceContextFilter(logging.Filter):
             record.trace_id = f"{span_context.trace_id:032x}"
             record.span_id = f"{span_context.span_id:016x}"
         else:
-            record.trace_id = ""
+            record.trace_id = _resolve_current_trace_id() or ""
             record.span_id = ""
         request_id = get_request_id()
         record.request_id = request_id or ""
@@ -310,7 +335,9 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
         app.add_middleware(
-            CorrelationIdMiddleware, header_name=settings.request_id_header
+            CorrelationIdMiddleware,
+            header_name=settings.request_id_header,
+            trace_header_name=settings.trace_header,
         )
         tracer_provider = _configure_otel(engine)
         _configure_sentry(tracer_provider)

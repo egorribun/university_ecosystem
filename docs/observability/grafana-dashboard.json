@@ -1,0 +1,117 @@
+{
+  "title": "University Ecosystem Observability",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "graph",
+      "title": "HTTP Latency by Router",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(router_request_duration_seconds_bucket[5m])) by (le, router))",
+          "legendFormat": "{{router}} p95"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "stat",
+      "title": "HTTP 5xx per Router",
+      "targets": [
+        {
+          "expr": "sum(increase(router_request_errors_total[5m])) by (router)",
+          "legendFormat": "{{router}}"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "stat",
+      "title": "Redis Health",
+      "targets": [
+        {
+          "expr": "redis_health",
+          "legendFormat": "redis"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "stat",
+      "title": "DB Health",
+      "targets": [
+        {
+          "expr": "db_health",
+          "legendFormat": "db"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "Redis Command Latency",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(redis_command_duration_seconds_bucket[5m])) by (le, command))",
+          "legendFormat": "{{command}} p95"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "DB Operation Latency",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(db_operation_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "{{operation}} p95"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "stat",
+      "title": "Cache Entries",
+      "targets": [
+        {
+          "expr": "cache_entries",
+          "legendFormat": "entries"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "stat",
+      "title": "Cache Memory",
+      "targets": [
+        {
+          "expr": "cache_memory_bytes",
+          "legendFormat": "bytes"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "CPU Load",
+      "targets": [
+        {
+          "expr": "cpu_load_percent",
+          "legendFormat": "CPU"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "GPU Load",
+      "targets": [
+        {
+          "expr": "gpu_load_percent",
+          "legendFormat": "GPU {{index}}"
+        }
+      ],
+      "datasource": "Prometheus"
+    }
+  ]
+}
