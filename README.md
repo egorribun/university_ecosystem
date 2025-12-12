@@ -145,6 +145,29 @@ Uploaded profile photos and news images are limited to **5 MB**. The backend au
 
 ## Running tests and linters
 
+### Common make/just shortcuts
+
+Repeatable local tasks mirror the CI steps and are exposed through the repository `Makefile` (or `justfile` if you prefer `just`):
+
+- `make install` / `just install` — install pinned backend and frontend dependencies.
+- `make lint` — run pre-commit hooks plus the frontend ESLint/manifest/Prettier checks used in CI.
+- `make backend-test` / `make frontend-test` — execute the full backend pytest suite and the frontend typecheck + vitest pipeline.
+- `make backend-typecheck` — run mypy with the same configuration as CI.
+- `make frontend-build` — build the production bundle.
+- `make backend-serve` / `make frontend-dev` — start the FastAPI dev server and Vite dev server on the same ports used in the devcontainer tasks.
+- `make alembic-check` — run an upgrade/downgrade cycle against a temporary SQLite database to mirror the migration gate.
+- `make generate-api` — regenerate the OpenAPI JSON and TypeScript client used by the frontend.
+
+### Reproducible environments
+
+- Python dependencies are pinned with `pip-compile`. Source files live in `root/requirements.in` and `root/requirements-dev.in`, and the compiled locks consumed by CI are `root/requirements.txt` and `root/requirements-dev.txt`. Regenerate pins with:
+  ```bash
+  pip-compile root/requirements.in -o root/requirements.txt
+  pip-compile root/requirements-dev.in -o root/requirements-dev.txt
+  ```
+- Node dependencies are locked via `root/frontend/package-lock.json`. Use `npm ci` (as the CI does) to install, and pass `--frozen-lockfile` if you run Yarn/PNPM locally to guarantee the lockfile is respected.
+- Dev containers and VS Code tasks are wired to the same make targets so local runs stay in sync with the workflow commands.
+
 ### Backend
 - Install backend development dependencies:
   ```bash

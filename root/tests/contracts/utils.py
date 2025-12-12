@@ -49,7 +49,7 @@ def assert_openapi_superset(expected: Any, actual: Any, *, path: str = "root") -
         assert isinstance(actual, list), f"{path}: expected list, got {type(actual)}"
         if not expected:
             return
-        if all(isinstance(item, (str, int, float)) for item in expected):
+        if all(isinstance(item, str | int | float) for item in expected):
             missing = set(expected) - set(actual)
             assert not missing, f"{path}: missing values {sorted(missing)}"
             return
