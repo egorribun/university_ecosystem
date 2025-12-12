@@ -1,0 +1,47 @@
+{
+  "groups": [
+    {
+      "name": "observability.rules",
+      "rules": [
+        {
+          "alert": "HighRouterLatency",
+          "expr": "histogram_quantile(0.95, sum(rate(router_request_duration_seconds_bucket[5m])) by (le, router)) > 1",
+          "for": "5m",
+          "labels": {"severity": "warning"},
+          "annotations": {
+            "summary": "High router latency",
+            "description": "Router {{ $labels.router }} p95 latency above 1s"
+          }
+        },
+        {
+          "alert": "RedisDown",
+          "expr": "redis_health == 0",
+          "for": "2m",
+          "labels": {"severity": "critical"},
+          "annotations": {
+            "summary": "Redis health check failing"
+          }
+        },
+        {
+          "alert": "DatabaseDown",
+          "expr": "db_health == 0",
+          "for": "2m",
+          "labels": {"severity": "critical"},
+          "annotations": {
+            "summary": "Database health check failing"
+          }
+        },
+        {
+          "alert": "ErrorRateSpike",
+          "expr": "sum(increase(router_request_errors_total[5m])) by (router) > 5",
+          "for": "5m",
+          "labels": {"severity": "warning"},
+          "annotations": {
+            "summary": "Spike in 5xx responses",
+            "description": "Router {{ $labels.router }} reported more than 5 errors in 5 minutes"
+          }
+        }
+      ]
+    }
+  ]
+}

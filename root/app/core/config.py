@@ -254,6 +254,7 @@ class Settings(BaseSettings):
     sentry_environment: str = ""
     log_level: str = "INFO"
     request_id_header: str = "x-request-id"
+    trace_header: str = "x-trace-id"
     internal_allowed_ips: str | list[str] = "127.0.0.1,::1"
     internal_auth_header: str = "X-Internal-Token"
     internal_auth_token: str | None = None
@@ -758,7 +759,13 @@ class Settings(BaseSettings):
 
     @cached_property
     def cors_expose_headers_list(self) -> list[str]:
-        return _coerce_str_list(self.cors_expose_headers)
+        headers = {
+            header.strip(): None
+            for header in _coerce_str_list(self.cors_expose_headers)
+        }
+        headers[self.request_id_header] = None
+        headers[self.trace_header] = None
+        return [key for key in headers.keys() if key]
 
     @cached_property
     def rate_limit_default_list(self) -> list[str]:
