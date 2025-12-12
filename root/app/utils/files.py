@@ -425,7 +425,7 @@ async def save_attachment(
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
     return await backend.save_file(
-        relative_path, data, content_type=chosen_type or None
+        relative_path, data, content_type=declared_type or detected_type
     )
 
 

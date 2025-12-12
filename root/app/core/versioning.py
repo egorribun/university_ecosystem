@@ -17,7 +17,8 @@ def assert_semver(version: str) -> str:
     """Validate that the provided version string follows semantic versioning."""
     if not _SEMVER_RE.match(version):
         raise ValueError(
-            "API version must follow semantic versioning (MAJOR.MINOR.PATCH, optional pre-release/build)."
+            "API version must follow semantic versioning "
+            "(MAJOR.MINOR.PATCH, optional pre-release/build)."
         )
     return version
 

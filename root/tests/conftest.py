@@ -196,7 +196,10 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
                 raise
 
             logging.warning(
-                "SQLite database locked during test cleanup, retrying in %.1fs (attempt %d/%d)",
+                (
+                    "SQLite database locked during test cleanup, retrying in %.1fs "
+                    "(attempt %d/%d)"
+                ),
                 delay,
                 attempt,
                 attempts,

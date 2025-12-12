@@ -380,7 +380,7 @@ async def _record_cache_metrics() -> None:
                 used_memory = (
                     info.get("used_memory") if isinstance(info, dict) else None
                 )
-                if isinstance(used_memory, (int, float)):
+                if isinstance(used_memory, int | float):
                     _CACHE_MEMORY_BYTES.set(float(used_memory))
             if _REDIS_HEALTH is not None:
                 _REDIS_HEALTH.set(1)
