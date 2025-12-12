@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import hashlib
 import json
 import logging
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 class CacheEntry:
     etag: str
     payload: Any
+    stored_at: float
 
 
 class BaseCache:
@@ -52,10 +54,59 @@ class NullCache(BaseCache):
         payload: Any,
         ttl: int | None = None,
     ) -> CacheEntry:
-        return CacheEntry(etag="", payload=payload)
+        return CacheEntry(
+            etag="",
+            payload=payload,
+            stored_at=time_module.time(),
+        )
 
     async def invalidate(self, *keys: str) -> None:  # noqa: ARG002
         return None
+
+
+class MemoryCache(BaseCache):
+    enabled = True
+
+    def __init__(self, default_ttl: int = 0):
+        self._default_ttl = max(int(default_ttl or 0), 0)
+        self._entries: dict[str, tuple[CacheEntry, float]] = {}
+
+    async def get(self, key: str) -> CacheEntry | None:
+        now = time_module.time()
+        entry, expires_at = self._entries.get(key, (None, 0.0))
+        if entry is None:
+            return None
+        if expires_at and expires_at <= now:
+            await self.invalidate(key)
+            return None
+        return entry
+
+    async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
+        normalized_payload, serialized = _normalize_payload(payload)
+        etag = hashlib.sha256(serialized).hexdigest()
+        stored_at = time_module.time()
+        effective_ttl = self._resolve_ttl(ttl)
+        expires_at = stored_at + effective_ttl if effective_ttl else 0.0
+        entry = CacheEntry(etag=etag, payload=normalized_payload, stored_at=stored_at)
+        self._entries[key] = (entry, expires_at)
+        return entry
+
+    async def invalidate(self, *keys: str) -> None:
+        if not keys:
+            return
+        for key in keys:
+            if "*" in key:
+                for stored_key in list(self._entries.keys()):
+                    if fnmatch.fnmatch(stored_key, key):
+                        self._entries.pop(stored_key, None)
+            else:
+                self._entries.pop(key, None)
+
+    def _resolve_ttl(self, ttl: int | None) -> int:
+        if ttl is None:
+            ttl = self._default_ttl
+        ttl = int(ttl or 0)
+        return ttl if ttl > 0 else 0
 
 
 class RedisCache(BaseCache):
@@ -102,23 +153,25 @@ class RedisCache(BaseCache):
         try:
             client = await self._get_client()
             raw = await client.get(key)
-        except (RedisError, OSError):
-            logger.warning("Redis cache get failed for key %s", key, exc_info=True)
-            return None
-        if raw is None:
-            return None
-        try:
+            if raw is None:
+                return None
             parsed = json.loads(raw)
+            etag = str(parsed.get("etag", ""))
+            payload = parsed.get("payload")
+            stored_at = float(parsed.get("stored_at") or 0.0)
+            if not stored_at:
+                stored_at = time_module.time()
+            if not etag:
+                return None
+            success = True
+            return CacheEntry(etag=etag, payload=payload, stored_at=stored_at)
         except json.JSONDecodeError:
             logger.debug("Invalid cache payload for key %s, dropping", key)
             await self.invalidate(key)
             return None
-        etag = str(parsed.get("etag", ""))
-        payload = parsed.get("payload")
-        if not etag:
+        except (RedisError, OSError):
+            logger.warning("Redis cache get failed for key %s", key, exc_info=True)
             return None
-        success = True
-        return CacheEntry(etag=etag, payload=payload)
         finally:
             record_redis_command(
                 "get", time_module.perf_counter() - start, success=success
@@ -127,7 +180,12 @@ class RedisCache(BaseCache):
         normalized_payload, serialized = _normalize_payload(payload)
         etag = hashlib.sha256(serialized).hexdigest()
         envelope = json.dumps(
-            {"etag": etag, "payload": normalized_payload}, ensure_ascii=False
+            {
+                "etag": etag,
+                "payload": normalized_payload,
+                "stored_at": time_module.time(),
+            },
+            ensure_ascii=False,
         )
         start = time_module.perf_counter()
         success = False
@@ -145,7 +203,9 @@ class RedisCache(BaseCache):
             record_redis_command(
                 "set", time_module.perf_counter() - start, success=success
             )
-        return CacheEntry(etag=etag, payload=normalized_payload)
+        return CacheEntry(
+            etag=etag, payload=normalized_payload, stored_at=time_module.time()
+        )
     async def invalidate(self, *keys: str) -> None:
         filtered = [str(key) for key in keys if key]
         if not filtered:
@@ -222,10 +282,23 @@ def _json_default(value: Any) -> Any:
 def create_cache_backend() -> BaseCache:
     if not settings.cache_enabled:
         return NullCache()
+
+    backend = getattr(settings, "cache_backend_normalized", None) or getattr(
+        settings, "cache_backend", "redis"
+    )
+    backend = str(backend).strip().lower()
+    ttl = int(getattr(settings, "cache_default_ttl_seconds", 0) or 0)
+
+    if backend == "memory":
+        return MemoryCache(default_ttl=ttl)
+
+    if backend != "redis":
+        return NullCache()
+
     url = (settings.cache_redis_url or "").strip()
     if not url:
         return NullCache()
-    ttl = int(getattr(settings, "cache_default_ttl_seconds", 0) or 0)
+
     return RedisCache(url=url, default_ttl=ttl)
 
 
@@ -282,6 +355,7 @@ __all__ = [
     "CacheEntry",
     "BaseCache",
     "NullCache",
+    "MemoryCache",
     "RedisCache",
     "create_cache_backend",
     "get_cache",

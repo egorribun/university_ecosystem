@@ -185,6 +185,16 @@ Uploaded profile photos and news images are limited to **5 MB**. The backend au
   npm run lhci
   ```
 
+## Performance profiling & caching
+
+- Switch cache implementations by setting `CACHE_BACKEND` to `redis`, `memory`,
+  or `none`; adjust warmup targets with `CACHE_WARMUP_GROUPS`,
+  `CACHE_WARMUP_STATS_USERS`, and `CACHE_WARMUP_PERIODS` (comma-separated IDs).
+- Enable startup cache warming via `CACHE_WARMUP_ENABLED=true` to prefetch
+  schedule/stat payloads and avoid cold responses in deployments.
+- k6 and Locust scenarios for `/schedule`, `/news`, `/events`, and `/chat`
+  live in `scripts/loadtesting/`.
+
 ## Security and contributions
 
 - Report vulnerabilities responsibly via [SECURITY.md](SECURITY.md)

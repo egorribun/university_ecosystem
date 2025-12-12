@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
-from starlette.middleware.gzip import GZipMiddleware
+from brotli_asgi import BrotliMiddleware
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -82,8 +82,10 @@ _RESPONSE_COMPRESSION_MINIMUM_SIZE = 512
 
 if settings.response_compression_enabled:
     app.add_middleware(
-        GZipMiddleware,
+        BrotliMiddleware,
         minimum_size=_RESPONSE_COMPRESSION_MINIMUM_SIZE,
+        gzip_fallback=True,
+        quality=5,
     )
 
 app.add_middleware(

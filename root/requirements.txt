@@ -6,6 +6,7 @@ pydantic>=2
 pydantic-settings>=2
 python-dotenv>=1.0
 sqlalchemy[asyncio]>=2
+brotli-asgi>=1.4
 asyncpg>=0.30.0
 alembic>=1.13
 passlib[bcrypt]==1.7.4

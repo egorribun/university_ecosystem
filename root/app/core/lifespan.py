@@ -12,6 +12,7 @@ from app.services.email_change_cleanup import (
     cleanup_stale_email_change_tokens,
     start_email_change_cleanup_scheduler,
 )
+from app.services.cache_warmup import warm_cache
 from app.services.mfa_challenge_cleanup import (
     MfaChallengeCleanupConfig,
     cleanup_stale_mfa_challenges,
@@ -137,6 +138,7 @@ async def lifespan(app: FastAPI):
                 interval_seconds=settings.stories_retention_cleanup_interval_seconds
             )
         )
+    await warm_cache()
     try:
         yield
     finally:
