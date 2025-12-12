@@ -1,7 +1,7 @@
 import asyncio
 import io
-from pathlib import Path
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -410,7 +410,9 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale="en")
+    assert excinfo.value.detail == translate(
+        "errors.files.unsupported_type", locale="en"
+    )
     quarantine_dir = tmp_path / "quarantine" / "event_files"
     stored_samples = list(quarantine_dir.glob("*.bin"))
     assert stored_samples
@@ -437,7 +439,9 @@ async def test_upload_event_file_quarantines_svg_with_js(
         "event_file_allowed_mime_types",
         ["image/svg+xml", "application/pdf", "text/plain"],
     )
-    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".svg", ".pdf", ".txt"])
+    monkeypatch.setattr(
+        settings, "event_file_allowed_extensions", [".svg", ".pdf", ".txt"]
+    )
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
 
     with pytest.raises(HTTPException) as excinfo:
@@ -446,7 +450,9 @@ async def test_upload_event_file_quarantines_svg_with_js(
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale="en")
+    assert excinfo.value.detail == translate(
+        "errors.files.unsupported_type", locale="en"
+    )
     quarantine_dir = tmp_path / "quarantine" / "event_files"
     stored_samples = list(quarantine_dir.glob("*.bin"))
     assert stored_samples
