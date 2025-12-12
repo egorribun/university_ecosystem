@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
@@ -23,7 +24,7 @@ from app.core.database import async_session, engine, wait_db
 from app.core.exceptions import AppException
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.lifespan import lifespan
-from app.core.metrics import configure_metrics
+from app.core.metrics import configure_metrics, record_health_probe
 from app.core.observability import configure_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
@@ -200,6 +201,7 @@ async def healthz():
     statuses: dict[str, str] = {}
 
     db_status = "ok"
+    db_start = time.perf_counter()
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -215,8 +217,10 @@ async def healthz():
     statuses["db"] = db_status
     if db_status == "error":
         statuses["db_migrations"] = "error"
+    record_health_probe("db", db_status, time.perf_counter() - db_start)
 
     cache_status = "disabled"
+    cache_start = time.perf_counter()
     try:
         cache_backend = get_cache()
         if getattr(cache_backend, "enabled", False):
@@ -236,6 +240,7 @@ async def healthz():
     except Exception:
         cache_status = "error"
     statuses["cache"] = cache_status
+    record_health_probe("cache", cache_status, time.perf_counter() - cache_start)
 
     storage_status = "ok"
     try:

@@ -74,6 +74,22 @@ async def test_metrics_endpoint_respects_allowlist(
     assert response.status_code == 403
 
 
+@pytest.mark.anyio
+async def test_health_check_metrics_recorded(root_client, _configure_metrics: str):
+    probe = await root_client.get("/healthz")
+    assert probe.status_code == 200
+
+    response = await root_client.get(
+        "/metrics",
+        headers={"Authorization": f"Basic {_configure_metrics}"},
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'healthcheck_status_total{component="db",status="ok"}' in body
+    assert 'healthcheck_duration_seconds_count{component="cache"}' in body
+
+
 def test_otel_resource_attributes_include_service_version():
     previous_version = settings.service_version
     try:

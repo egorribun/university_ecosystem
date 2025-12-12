@@ -53,6 +53,28 @@ _REQUEST_DURATION = (
     else None
 )
 
+_HEALTH_CHECK_DURATION = (
+    Histogram(
+        "healthcheck_duration_seconds",
+        "Duration of dependency health probes",
+        ("component",),
+        registry=REGISTRY,
+    )
+    if Histogram is not None
+    else None
+)
+
+_HEALTH_CHECK_STATUS = (
+    Counter(
+        "healthcheck_status_total",
+        "Total dependency health check results",
+        ("component", "status"),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
 _CONFIGURED_ATTR = "_metrics_configured"
 _PLACEHOLDER_PASSWORDS = {"changeme"}
 logger = logging.getLogger(__name__)
@@ -147,6 +169,21 @@ def _is_allowed(request: Request) -> bool:
             if ip is not None and ip in network:
                 return True
     return False
+
+
+def record_health_probe(component: str, status: str, elapsed_seconds: float) -> None:
+    if _HEALTH_CHECK_DURATION is not None:
+        try:
+            _HEALTH_CHECK_DURATION.labels(component=component).observe(
+                max(elapsed_seconds, 0.0)
+            )
+        except Exception:  # pragma: no cover - defensive metrics guard
+            logger.debug("Failed to record health check duration", exc_info=True)
+    if _HEALTH_CHECK_STATUS is not None:
+        try:
+            _HEALTH_CHECK_STATUS.labels(component=component, status=status).inc()
+        except Exception:  # pragma: no cover - defensive metrics guard
+            logger.debug("Failed to record health check status", exc_info=True)
 
 
 async def metrics_endpoint(request: Request) -> Response:
