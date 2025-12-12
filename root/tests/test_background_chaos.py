@@ -14,7 +14,9 @@ from app.services import notification_queue, session_cleanup
 
 
 @pytest.mark.anyio
-async def test_notification_worker_recovers_after_restart(monkeypatch: pytest.MonkeyPatch):
+async def test_notification_worker_recovers_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+):
     notification_queue._loop_states.clear()
 
     monkeypatch.setattr(
