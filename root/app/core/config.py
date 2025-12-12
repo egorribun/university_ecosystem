@@ -759,7 +759,10 @@ class Settings(BaseSettings):
 
     @cached_property
     def cors_expose_headers_list(self) -> list[str]:
-        headers = {header.strip(): None for header in _coerce_str_list(self.cors_expose_headers)}
+        headers = {
+            header.strip(): None
+            for header in _coerce_str_list(self.cors_expose_headers)
+        }
         headers[self.request_id_header] = None
         headers[self.trace_header] = None
         return [key for key in headers.keys() if key]

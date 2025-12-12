@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import hmac
@@ -151,9 +149,7 @@ _DB_OPERATION_ERRORS = (
 )
 
 _CACHE_ENTRIES = (
-    Gauge(
-        "cache_entries", "Number of cached entries", registry=REGISTRY
-    )
+    Gauge("cache_entries", "Number of cached entries", registry=REGISTRY)
     if Gauge is not None
     else None
 )
@@ -187,7 +183,9 @@ _CPU_LOAD = (
 )
 
 _GPU_LOAD = (
-    Gauge("gpu_load_percent", "GPU load percentage", ("index", "name"), registry=REGISTRY)
+    Gauge(
+        "gpu_load_percent", "GPU load percentage", ("index", "name"), registry=REGISTRY
+    )
     if Gauge is not None
     else None
 )
@@ -327,7 +325,9 @@ def record_health_probe(component: str, status: str, elapsed_seconds: float) -> 
             logger.debug("Failed to record health check status", exc_info=True)
 
 
-def record_redis_command(command: str, elapsed_seconds: float, *, success: bool) -> None:
+def record_redis_command(
+    command: str, elapsed_seconds: float, *, success: bool
+) -> None:
     if _REDIS_COMMAND_DURATION is not None:
         try:
             _REDIS_COMMAND_DURATION.labels(command=command).observe(
@@ -342,7 +342,9 @@ def record_redis_command(command: str, elapsed_seconds: float, *, success: bool)
             logger.debug("Failed to record redis command error", exc_info=True)
 
 
-def record_db_operation(operation: str, elapsed_seconds: float, *, success: bool) -> None:
+def record_db_operation(
+    operation: str, elapsed_seconds: float, *, success: bool
+) -> None:
     if _DB_OPERATION_DURATION is not None:
         try:
             _DB_OPERATION_DURATION.labels(operation=operation).observe(
@@ -375,7 +377,9 @@ async def _record_cache_metrics() -> None:
             if _CACHE_ENTRIES is not None:
                 _CACHE_ENTRIES.set(float(size))
             if _CACHE_MEMORY_BYTES is not None:
-                used_memory = info.get("used_memory") if isinstance(info, dict) else None
+                used_memory = (
+                    info.get("used_memory") if isinstance(info, dict) else None
+                )
                 if isinstance(used_memory, (int, float)):
                     _CACHE_MEMORY_BYTES.set(float(used_memory))
             if _REDIS_HEALTH is not None:
