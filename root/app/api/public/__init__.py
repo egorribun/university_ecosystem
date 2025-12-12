@@ -30,4 +30,3 @@ router.include_router(stories_router)
 router.include_router(schedule_api_router)
 router.include_router(stats_router)
 router.include_router(chat_router)
-

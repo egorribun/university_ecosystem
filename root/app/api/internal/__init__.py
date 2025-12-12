@@ -7,7 +7,4 @@ router = APIRouter(prefix=API_V1_PREFIX, include_in_schema=False)
 
 router.include_router(notifications_admin_router)
 
-INTERNAL_ROUTE_PREFIXES = (
-    f"{API_V1_PREFIX}{notifications_admin_router.prefix}",
-)
-
+INTERNAL_ROUTE_PREFIXES = (f"{API_V1_PREFIX}{notifications_admin_router.prefix}",)

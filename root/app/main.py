@@ -14,17 +14,18 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from app.api.internal import INTERNAL_ROUTE_PREFIXES, router as internal_api_router
+from app.api.internal import INTERNAL_ROUTE_PREFIXES
+from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
 from app.api.websocket import router as websocket_router
 from app.core.config import settings
 from app.core.database import async_session, engine, wait_db
 from app.core.exceptions import AppException
+from app.core.internal_access import InternalAccessMiddleware
 from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics
 from app.core.observability import configure_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
-from app.core.internal_access import InternalAccessMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.versioning import API_VERSION
 from app.deps.cache import get_cache
