@@ -38,7 +38,7 @@ def _is_placeholder(value: str) -> bool:
 
 
 def _is_weak(value: str) -> bool:
-    normalized = value.strip().strip('"\'').lower()
+    normalized = value.strip().strip("\"'").lower()
     if not normalized:
         return False
     if normalized in BANNED_VALUES:
