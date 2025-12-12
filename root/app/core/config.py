@@ -64,6 +64,17 @@ def _coerce_str_list(values: Iterable[str] | str | None) -> list[str]:
     return [item for item in items if item]
 
 
+def _coerce_int_list(values: Iterable[str | int] | str | None) -> list[int]:
+    raw_items = _coerce_str_list(values) if not isinstance(values, list) else values
+    converted: list[int] = []
+    for item in raw_items:
+        try:
+            converted.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return converted
+
+
 def _validate_webpush_subject(value: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -306,10 +317,16 @@ class Settings(BaseSettings):
     coep_value: str = "require-corp"
     enable_corp: bool = False
     corp_value: str = "same-site"
+    cache_backend: str = "redis"
     cache_enabled: bool = False
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180
+    cache_warmup_enabled: bool = False
+    cache_warmup_groups: list[int] | str = ""
+    cache_warmup_stats_users: list[int] | str = ""
+    cache_warmup_periods: list[str] | str = "30d,90d"
+    cache_warmup_max_age_seconds: int = 120
     enable_metrics_endpoint: bool = False
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
@@ -489,6 +506,19 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_stats_cache_ttl_seconds(cls, value: int) -> int:
         return _validate_positive_int(value, label="STATS_CACHE_TTL_SECONDS")
+
+    @field_validator("cache_backend")
+    @classmethod
+    def _validate_cache_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"redis", "memory", "none"}:
+            raise ValueError("CACHE_BACKEND must be redis, memory, or none")
+        return normalized
+
+    @field_validator("cache_warmup_max_age_seconds")
+    @classmethod
+    def _validate_cache_warmup_max_age(cls, value: int) -> int:
+        return _validate_non_negative_int(value, label="CACHE_WARMUP_MAX_AGE_SECONDS")
 
     @field_validator("mfa_totp_issuer")
     @classmethod
@@ -980,6 +1010,32 @@ class Settings(BaseSettings):
         if report_uri:
             policy = f"{policy}; report-uri {report_uri}".rstrip("; ")
         return policy
+
+    @cached_property
+    def cache_backend_normalized(self) -> str:
+        return self.cache_backend.strip().lower()
+
+    @cached_property
+    def cache_warmup_group_ids(self) -> tuple[int, ...]:
+        return tuple(_coerce_int_list(self.cache_warmup_groups))
+
+    @cached_property
+    def cache_warmup_stats_user_ids(self) -> tuple[int, ...]:
+        return tuple(_coerce_int_list(self.cache_warmup_stats_users))
+
+    @cached_property
+    def cache_warmup_period_keys(self) -> tuple[str, ...]:
+        normalized = [
+            item.strip().lower() for item in _coerce_str_list(self.cache_warmup_periods)
+        ]
+        unique: list[str] = []
+        seen: set[str] = set()
+        for item in normalized:
+            if not item or item in seen:
+                continue
+            seen.add(item)
+            unique.append(item)
+        return tuple(unique)
 
 
 def _should_allow_development_defaults() -> bool:

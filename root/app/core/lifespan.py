@@ -7,6 +7,7 @@ from app.core.database import Base, engine, wait_db
 from app.core.observability import shutdown_observability
 from app.deps.cache import shutdown_cache
 from app.services import notification_queue, webpush
+from app.services.cache_warmup import warm_cache
 from app.services.email_change_cleanup import (
     EmailChangeCleanupConfig,
     cleanup_stale_email_change_tokens,
@@ -137,6 +138,7 @@ async def lifespan(app: FastAPI):
                 interval_seconds=settings.stories_retention_cleanup_interval_seconds
             )
         )
+    await warm_cache()
     try:
         yield
     finally:

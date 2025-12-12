@@ -4,7 +4,7 @@ import copy
 from collections.abc import Iterable, Sequence
 
 from app.core.config import settings
-from app.deps.cache import BaseCache, get_cache
+from app.deps.cache import BaseCache, CacheEntry, get_cache
 
 _STATS_CACHE_PREFIX = "stats"
 _STATS_KNOWN_KINDS = ("attendance", "grades", "participation")
@@ -42,14 +42,18 @@ async def get_cached_stats(
     user_id: int,
     period_key: str,
     skip_cache: bool = False,
-):
+) -> CacheEntry | None:
     backend = _ensure_cache(cache)
     if skip_cache or not backend.enabled:
         return None
     entry = await backend.get(_make_cache_key(kind, user_id, period_key))
     if entry is None or not isinstance(entry.payload, dict):
         return None
-    return copy.deepcopy(entry.payload)
+    return CacheEntry(
+        etag=entry.etag,
+        payload=copy.deepcopy(entry.payload),
+        stored_at=entry.stored_at,
+    )
 
 
 async def set_cached_stats(
@@ -61,12 +65,12 @@ async def set_cached_stats(
     payload: dict[str, object],
     skip_cache: bool = False,
     ttl: int | None = None,
-) -> None:
+) -> CacheEntry | None:
     backend = _ensure_cache(cache)
     if skip_cache or not backend.enabled:
-        return
+        return None
     effective_ttl = ttl if ttl is not None else settings.stats_cache_ttl_seconds
-    await backend.set(
+    return await backend.set(
         _make_cache_key(kind, user_id, period_key),
         copy.deepcopy(payload),
         ttl=effective_ttl,

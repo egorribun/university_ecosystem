@@ -968,7 +968,7 @@ async def get_attendance_stats(
         skip_cache=skip_cache,
     )
     if cached is not None:
-        return cached
+        return cached.payload
 
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
@@ -1193,7 +1193,7 @@ async def get_grade_stats(
         skip_cache=skip_cache,
     )
     if cached is not None:
-        return cached
+        return cached.payload
 
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
@@ -1288,7 +1288,7 @@ async def get_participation_stats(
         skip_cache=skip_cache,
     )
     if cached is not None:
-        return cached
+        return cached.payload
 
     now = datetime.now(UTC)
     window_start = now - timedelta(days=period_days)
