@@ -1,0 +1,77 @@
+{
+  "users": {
+    "title": "Users",
+    "confirmDelete": "Delete this user?",
+    "filters": {
+      "fullName": "Full name",
+      "group": "Group",
+      "role": "Role",
+      "all": "All"
+    },
+    "roles": {
+      "student": "Student",
+      "teacher": "Teacher",
+      "admin": "Admin"
+    },
+    "table": {
+      "avatar": "Avatar",
+      "fullName": "Full name",
+      "email": "Email",
+      "role": "Role",
+      "group": "Group",
+      "actions": "Actions"
+    }
+  },
+  "notifications": {
+    "title": "Notification queue",
+    "subtitle": "Retry or purge notifications that landed in the dead-letter queue.",
+    "total": "Total jobs: {{count}}",
+    "empty": "No dead-lettered jobs at the moment.",
+    "errors": {
+      "fetch": "Failed to load the dead-letter queue.",
+      "action": "Unable to update the queue."
+    },
+    "topics": {
+      "title": "User topics",
+      "description": "Load a user and adjust their push notification topics.",
+      "userIdLabel": "User ID",
+      "load": "Load topics",
+      "save": "Save topics",
+      "invalidId": "Please enter a valid user ID.",
+      "loadError": "Failed to load topics for this user.",
+      "saveError": "Failed to save topics.",
+      "loaded": "Topics loaded for {{email}} (ID {{id}}).",
+      "saved": "Topics updated successfully.",
+      "userSummary": "Managing topics for {{email}} (ID {{id}})",
+      "empty": "No topics are currently available."
+    },
+    "actions": {
+      "retrySelected": "Retry selected",
+      "purgeSelected": "Delete selected",
+      "retry": "Retry",
+      "purge": "Delete",
+      "retryJob": "Retry job {{id}}",
+      "purgeJob": "Delete job {{id}}"
+    },
+    "table": {
+      "aria": "Dead-letter queue",
+      "selectAll": "Select all jobs",
+      "selectRow": "Select job {{id}}",
+      "columns": {
+        "kind": "Type",
+        "record": "Record ID",
+        "locale": "Locale",
+        "enqueued": "Enqueued at",
+        "attempts": "Attempts",
+        "lastError": "Last error",
+        "actions": "Actions"
+      },
+      "noError": "No error recorded",
+      "localeFallback": "Any"
+    },
+    "kinds": {
+      "event": "Event",
+      "news": "News"
+    }
+  }
+}

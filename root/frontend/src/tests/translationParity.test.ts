@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest"
 import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { supportedLngs } from "@/i18n/metadata"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const LOCALES_ROOT = path.resolve(__dirname, "../i18n/locales")
 const BASE_LOCALE = path.join(LOCALES_ROOT, "en")
-const TARGET_LOCALE = path.join(LOCALES_ROOT, "ru")
 
 /**
  * Перечень путей, которые можно пропускать при сравнении.
@@ -92,51 +92,52 @@ const collectLocaleFiles = (localePath: string) => {
   return files
 }
 
-describe("i18n locales parity between en and ru", () => {
+describe("i18n locales parity against base en", () => {
   const baseFiles = collectLocaleFiles(BASE_LOCALE)
-  const targetFiles = collectLocaleFiles(TARGET_LOCALE)
-
   const baseFileNames = Array.from(baseFiles.keys()).sort()
-  const targetFileNames = Array.from(targetFiles.keys()).sort()
 
-  it("exposes the same set of locale files", () => {
-    expect(targetFileNames).toEqual(baseFileNames)
-  })
+  const targets = supportedLngs.filter((lng) => lng !== "en")
 
-  const allFiles = new Set([...baseFiles.keys(), ...targetFiles.keys()])
+  for (const lng of targets) {
+    const localePath = path.join(LOCALES_ROOT, lng)
+    const localeFiles = collectLocaleFiles(localePath)
+    const localeFileNames = Array.from(localeFiles.keys()).sort()
 
-  for (const relativePath of allFiles) {
-    it(`has matching keys in ${relativePath}`, () => {
-      expect(targetFiles.has(relativePath)).toBe(true)
-      expect(baseFiles.has(relativePath)).toBe(true)
-
-      const baseJson = readJson(baseFiles.get(relativePath)!)
-      const targetJson = readJson(targetFiles.get(relativePath)!)
-
-      const baseKeys = Array.from(flattenKeys(baseJson)).sort()
-      const targetKeys = Array.from(flattenKeys(targetJson)).sort()
-
-      const missingInTarget = baseKeys.filter((key) => !targetKeys.includes(key))
-      const missingInBase = targetKeys.filter((key) => !baseKeys.includes(key))
-
-      const errorMessages = [] as string[]
-      if (missingInTarget.length > 0) {
-        errorMessages.push(
-          `Missing ${missingInTarget.length} key(s) in ru → ${missingInTarget.join(", ")}`
-        )
-      }
-
-      if (missingInBase.length > 0) {
-        errorMessages.push(
-          `Missing ${missingInBase.length} key(s) in en → ${missingInBase.join(", ")}`
-        )
-      }
-
-      if (errorMessages.length > 0) {
-        throw new Error(errorMessages.join("\n"))
-      }
-
-      expect(targetKeys).toEqual(baseKeys)
+    it(`${lng} exposes the same set of locale files as en`, () => {
+      expect(localeFileNames).toEqual(baseFileNames)
     })
+
+    const allFiles = new Set([...baseFiles.keys(), ...localeFiles.keys()])
+
+    for (const relativePath of allFiles) {
+      it(`${lng} has matching keys in ${relativePath}`, () => {
+        expect(localeFiles.has(relativePath)).toBe(true)
+        expect(baseFiles.has(relativePath)).toBe(true)
+
+        const baseJson = readJson(baseFiles.get(relativePath)!)
+        const targetJson = readJson(localeFiles.get(relativePath)!)
+
+        const baseKeys = Array.from(flattenKeys(baseJson)).sort()
+        const targetKeys = Array.from(flattenKeys(targetJson)).sort()
+
+        const missingInTarget = baseKeys.filter((key) => !targetKeys.includes(key))
+        const missingInBase = targetKeys.filter((key) => !baseKeys.includes(key))
+
+        const errorMessages = [] as string[]
+        if (missingInTarget.length > 0) {
+          errorMessages.push(`Missing ${missingInTarget.length} key(s) in ${lng} → ${missingInTarget.join(", ")}`)
+        }
+
+        if (missingInBase.length > 0) {
+          errorMessages.push(`Missing ${missingInBase.length} key(s) in en → ${missingInBase.join(", ")}`)
+        }
+
+        if (errorMessages.length > 0) {
+          throw new Error(errorMessages.join("\n"))
+        }
+
+        expect(targetKeys).toEqual(baseKeys)
+      })
+    }
   }
 })

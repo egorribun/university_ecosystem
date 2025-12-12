@@ -9,6 +9,8 @@ type LayoutProps = {
 const Layout = ({ children, className }: LayoutProps) => (
   <main
     id="main"
+    role="main"
+    tabIndex={-1}
     className={cn(
       "box-border min-h-screen w-full bg-[var(--page-bg)] text-[var(--page-text)]",
       className

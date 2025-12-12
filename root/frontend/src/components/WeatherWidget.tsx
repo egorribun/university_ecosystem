@@ -1,9 +1,8 @@
-import { useMemo } from "react"
 import { Badge, Skeleton, Tooltip } from "@/components/ui"
 import { useWeather } from "@/hooks/useWeather"
-import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { useLocaleFormatters } from "@/i18n/formatters"
 
 type WeatherWidgetProps = {
   className?: string
@@ -16,18 +15,8 @@ const isFiniteNumber = (value: number | null | undefined): value is number =>
 
 export default function WeatherWidget({ className }: WeatherWidgetProps) {
   const { data, isLoading } = useWeather()
-  const { language } = useLanguage()
-  const locale = getLocaleForLanguage(language)
-  const { t, i18n } = useTranslation(["dashboard", "common"])
-
-  const formatter = useMemo(
-    () =>
-      new Intl.NumberFormat(locale ?? i18n.language, {
-        maximumFractionDigits: TEMPERATURE_PRECISION,
-        signDisplay: "always",
-      }),
-    [i18n.language, locale]
-  )
+  const { t } = useTranslation(["dashboard", "common"])
+  const { formatNumber } = useLocaleFormatters()
 
   const wrapperClassName = cn("inline-flex", className)
 
@@ -58,7 +47,10 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
   })
 
   const roundedTemperature = Math.round(data.temperatureC)
-  const signedTemperature = formatter.format(roundedTemperature)
+  const signedTemperature = formatNumber(roundedTemperature, {
+    maximumFractionDigits: TEMPERATURE_PRECISION,
+    signDisplay: "always",
+  })
   const displayTemperature = `${signedTemperature}°`
 
   const tooltipContent = t("dashboard:weather.tooltip", {
