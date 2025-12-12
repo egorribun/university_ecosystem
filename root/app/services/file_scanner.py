@@ -6,7 +6,7 @@ import asyncio
 import io
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import IO, Any
 
@@ -165,6 +165,8 @@ async def scan_for_malware(
     *,
     locale: str | None = None,
     size_bytes: int | None = None,
+    quarantine_payload: bytes | None = None,
+    quarantine_handler: Callable[[bytes, str | None], Awaitable[None]] | None = None,
 ) -> None:
     """Scan ``payload`` for malware and raise an HTTP error when threats are found."""
 
@@ -173,6 +175,7 @@ async def scan_for_malware(
         if not data:
             return
         stream_upload: UploadFile | None = None
+        quarantine_payload = quarantine_payload or data
     elif isinstance(payload, UploadFile):
         stream_upload = payload
         data = b""
@@ -231,6 +234,11 @@ async def scan_for_malware(
     _log_scan_result(result, backend)
 
     if result.signature:
+        if quarantine_handler and quarantine_payload:
+            try:
+                await quarantine_handler(quarantine_payload, result.signature)
+            except Exception:
+                logger.warning("Failed to quarantine infected payload", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=translate("errors.files.infected", locale=locale),

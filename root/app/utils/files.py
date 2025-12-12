@@ -175,8 +175,53 @@ def detect_mime_type(data: bytes) -> str | None:
     if data.startswith(b"%PDF-"):
         return "application/pdf"
 
+    lowered = data[:2048].lower()
+    if b"<svg" in lowered:
+        return "image/svg+xml"
+
     # Fall back to lightweight signature checks for common image formats.
     return _normalize_mime_type(_detect_image_mime(data)) or None
+
+
+def _looks_like_polyglot(data: bytes, detected_type: str) -> bool:
+    lowered = data[:4096].lower()
+
+    if detected_type == "application/pdf":
+        if b"<script" in lowered or b"<svg" in lowered:
+            return True
+    if detected_type == "image/svg+xml":
+        if b"<script" in lowered or b"onload=" in lowered:
+            return True
+    if b"<script" in lowered and b"<!doctype html" in lowered:
+        return True
+    return False
+
+
+async def _quarantine_payload(
+    data: bytes,
+    *,
+    subdir: str,
+    prefix: str,
+    reason: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    metadata = metadata or {}
+    backend = _get_storage_backend()
+    cleaned = subdir.strip("/ ")
+    quarantine_subdir = f"quarantine/{cleaned}" if cleaned else "quarantine"
+    await _prepare_local_storage(backend, quarantine_subdir)
+    name = _gen_name(f"{prefix}_{reason}", ".bin")
+    relative_path = f"{quarantine_subdir}/{name}" if quarantine_subdir else name
+    try:
+        await backend.save_file(
+            relative_path,
+            data,
+            content_type="application/octet-stream",
+        )
+    except Exception:
+        logger.warning(
+            "Failed to store quarantined payload", exc_info=True, extra=metadata
+        )
 
 
 def normalize_filename_prefix(prefix: str) -> str:
@@ -269,76 +314,92 @@ async def save_attachment(
     data = await _read_limited(upload, limit, locale=locale)
 
     detected_type = detect_mime_type(data) or ""
-    if detected_type and allowed_types and detected_type not in allowed_types:
+    metadata: dict[str, Any] = {
+        "declared_type": declared_type or None,
+        "detected_type": detected_type or None,
+        "filename_extension": ext_without_dot or None,
+        "allowed_types": sorted(allowed_types) if allowed_types else None,
+        "allowed_extensions": sorted(allowed_exts) if allowed_exts else None,
+    }
+
+    async def _quarantine_and_raise(
+        detail_key: str, status_code_value: int, *, reason: str
+    ) -> None:
+        await _quarantine_payload(
+            data,
+            subdir=subdir,
+            prefix=prefix,
+            reason=reason,
+            metadata=metadata,
+        )
         raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=translate("errors.files.unsupported_type", locale=locale),
+            status_code=status_code_value,
+            detail=translate(detail_key, locale=locale),
         )
 
-    chosen_type = ""
-    chosen_type_source = ""
-    for source, candidate in (("detected", detected_type), ("declared", declared_type)):
-        if candidate and (not allowed_types or candidate in allowed_types):
-            chosen_type = candidate
-            chosen_type_source = source
-            break
+    if not detected_type:
+        await _quarantine_and_raise(
+            "errors.files.unsupported_type",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            reason="unknown-mime",
+        )
 
-    if not chosen_type:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=translate("errors.files.unsupported_type", locale=locale),
+    if allowed_types and detected_type not in allowed_types:
+        await _quarantine_and_raise(
+            "errors.files.unsupported_type",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            reason="blocked-mime",
+        )
+
+    if declared_type and allowed_types and declared_type not in allowed_types:
+        await _quarantine_and_raise(
+            "errors.files.unsupported_type",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            reason="blocked-declared-mime",
+        )
+
+    if declared_type and declared_type != detected_type:
+        await _quarantine_and_raise(
+            "errors.files.content_type_mismatch",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            reason="content-mismatch",
+        )
+
+    if _looks_like_polyglot(data, detected_type):
+        await _quarantine_and_raise(
+            "errors.files.unsupported_type",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            reason="polyglot-detected",
         )
 
     def _ext_without_dot_from_mime(mime: str) -> str:
         candidate = _ext_from_mime(mime).lower()
         return candidate[1:] if candidate.startswith(".") else candidate
 
-    detected_ext_without_dot = (
-        _ext_without_dot_from_mime(detected_type) if detected_type else ""
-    )
+    detected_ext_without_dot = _ext_without_dot_from_mime(detected_type)
     declared_ext_without_dot = (
         _ext_without_dot_from_mime(declared_type) if declared_type else ""
     )
-    chosen_ext_without_dot = _ext_without_dot_from_mime(chosen_type)
+    chosen_ext_without_dot = detected_ext_without_dot or declared_ext_without_dot
 
     if allowed_exts:
-        if chosen_ext_without_dot:
-            if chosen_ext_without_dot not in allowed_exts:
-                raise HTTPException(
-                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=translate(
-                        "errors.files.unsupported_extension", locale=locale
-                    ),
-                )
-        else:
-            fallback_exts: tuple[str, ...]
-            if chosen_type_source == "declared":
-                fallback_exts = (declared_ext_without_dot, ext_without_dot)
-            else:
-                fallback_exts = (detected_ext_without_dot,)
-            chosen_ext_without_dot = next(
-                (
-                    candidate
-                    for candidate in fallback_exts
-                    if candidate and candidate in allowed_exts
-                ),
-                "",
+        candidates = (
+            detected_ext_without_dot,
+            declared_ext_without_dot,
+            ext_without_dot,
+        )
+        chosen_ext_without_dot = next(
+            (candidate for candidate in candidates if candidate in allowed_exts), ""
+        )
+        if not chosen_ext_without_dot:
+            await _quarantine_and_raise(
+                "errors.files.unsupported_extension",
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                reason="blocked-extension",
             )
-            if not chosen_ext_without_dot:
-                raise HTTPException(
-                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=translate(
-                        "errors.files.unsupported_extension", locale=locale
-                    ),
-                )
     else:
         if not chosen_ext_without_dot:
-            fallback_exts: tuple[str, ...]
-            if chosen_type_source == "declared":
-                fallback_exts = (declared_ext_without_dot, detected_ext_without_dot)
-            else:
-                fallback_exts = (detected_ext_without_dot, declared_ext_without_dot)
-            fallback_exts += (ext_without_dot,)
+            fallback_exts = (ext_without_dot,)
             chosen_ext_without_dot = next(
                 (candidate for candidate in fallback_exts if candidate),
                 "",
@@ -346,7 +407,19 @@ async def save_attachment(
 
     ext_for_name = f".{chosen_ext_without_dot}" if chosen_ext_without_dot else ""
     name = _gen_name(prefix, ext_for_name)
-    await scan_for_malware(upload, locale=locale, size_bytes=len(data))
+    await scan_for_malware(
+        data,
+        locale=locale,
+        size_bytes=len(data),
+        quarantine_payload=data,
+        quarantine_handler=lambda payload, signature: _quarantine_payload(
+            payload,
+            subdir=subdir,
+            prefix=prefix,
+            reason=f"signature-{signature or 'unknown'}",
+            metadata={**metadata, "signature": signature},
+        ),
+    )
     sanitized_subdir = subdir.strip("/ ")
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)

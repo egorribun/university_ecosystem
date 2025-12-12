@@ -1,6 +1,7 @@
 import asyncio
 import io
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -13,6 +14,24 @@ from app.localization import translate
 from app.models import models
 from app.schemas import schemas
 from app.utils import files
+
+FIXTURE_UPLOADS = Path(__file__).parent / "fixtures" / "uploads"
+
+MULTIPAGE_PDF_BYTES = b"""%PDF-1.4\n\
+1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
+2 0 obj\n<< /Type /Pages /Count 2 /Kids [3 0 R 4 0 R] >>\nendobj\n\
+3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 5 0 R >>\nendobj\n\
+4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 6 0 R >>\nendobj\n\
+5 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 712 Td (Hello) Tj ET\nendstream\nendobj\n\
+6 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 712 Td (World) Tj ET\nendstream\nendobj\n\
+trailer\n<< /Root 1 0 R >>\n%%EOF\n"""
+
+POLYGLOT_PDF_BYTES = b"""%PDF-1.3\n\
+1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
+2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n\
+3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R >>\nendobj\n\
+4 0 obj\n<< /Length 120 >>\nstream\n<svg><script>alert('x')</script></svg>\nendstream\nendobj\n\
+trailer\n<< /Root 1 0 R >>\n%%EOF\n"""
 
 
 async def _create_event(db_session, user: models.User) -> models.Event:
@@ -213,7 +232,7 @@ async def test_upload_event_file_rejects_forbidden_type(
 
 
 @pytest.mark.anyio("asyncio")
-async def test_upload_event_file_prefers_detected_metadata(
+async def test_upload_event_file_rejects_mismatched_metadata(
     tmp_path, monkeypatch, db_session, user_factory
 ):
     admin = await user_factory(role="admin")
@@ -235,14 +254,19 @@ async def test_upload_event_file_prefers_detected_metadata(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt", ".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin
-    )
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
 
-    stored_path = tmp_path / "event_files" / result.file_url.rsplit("/", 1)[-1]
-    assert stored_path.exists()
-    assert stored_path.suffix == ".pdf"
-    assert stored_path.read_bytes() == pdf_payload
+    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert excinfo.value.detail == translate(
+        "errors.files.content_type_mismatch", locale="en"
+    )
+    quarantine_dir = tmp_path / "quarantine" / "event_files"
+    stored_samples = list(quarantine_dir.glob("*.bin"))
+    assert stored_samples
+    assert stored_samples[0].read_bytes() == pdf_payload
 
 
 @pytest.mark.anyio("asyncio")
@@ -265,9 +289,10 @@ async def test_upload_event_file_rejects_infected_payload(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     async def fake_scan(
-        scanned, *, locale: str | None = None, size_bytes: int | None = None
+        scanned, *, locale: str | None = None, size_bytes: int | None = None, **kwargs
     ) -> None:
-        assert scanned is upload
+        assert scanned == payload
+        assert kwargs.get("quarantine_payload") == payload
         assert size_bytes == len(payload)
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -320,6 +345,121 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_upload_event_file_allows_multipage_pdf(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    pdf_payload = MULTIPAGE_PDF_BYTES
+    upload = UploadFile(
+        filename="report.pdf",
+        file=io.BytesIO(pdf_payload),
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["application/pdf"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".pdf"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
+
+    calls: list[tuple[int | None, str | None]] = []
+
+    async def fake_scan(
+        scanned, *, locale: str | None = None, size_bytes: int | None = None, **kwargs
+    ) -> None:
+        calls.append((size_bytes, locale))
+        assert kwargs.get("quarantine_payload") == scanned
+        assert scanned == pdf_payload
+
+    monkeypatch.setattr(files, "scan_for_malware", fake_scan)
+
+    result = await events.upload_event_file(
+        event.id, upload, request=None, db=db_session, user=admin
+    )
+
+    assert result.event_id == event.id
+    stored_path = tmp_path / "event_files" / result.file_url.rsplit("/", 1)[-1]
+    assert stored_path.exists()
+    assert stored_path.read_bytes() == pdf_payload
+    assert calls and calls[0][0] == len(pdf_payload)
+
+
+@pytest.mark.anyio("asyncio")
+async def test_upload_event_file_quarantines_polyglot_pdf(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    payload = POLYGLOT_PDF_BYTES
+    upload = UploadFile(
+        filename="report.pdf",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["application/pdf"])
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".pdf"])
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
+
+    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert excinfo.value.detail == translate(
+        "errors.files.unsupported_type", locale="en"
+    )
+    quarantine_dir = tmp_path / "quarantine" / "event_files"
+    stored_samples = list(quarantine_dir.glob("*.bin"))
+    assert stored_samples
+    assert stored_samples[0].read_bytes() == payload
+
+
+@pytest.mark.anyio("asyncio")
+async def test_upload_event_file_quarantines_svg_with_js(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    event = await _create_event(db_session, admin)
+
+    payload = (FIXTURE_UPLOADS / "svg_with_js.svg").read_bytes()
+    upload = UploadFile(
+        filename="diagram.svg",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/svg+xml"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(
+        settings,
+        "event_file_allowed_mime_types",
+        ["image/svg+xml", "application/pdf", "text/plain"],
+    )
+    monkeypatch.setattr(
+        settings, "event_file_allowed_extensions", [".svg", ".pdf", ".txt"]
+    )
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await events.upload_event_file(
+            event.id, upload, request=None, db=db_session, user=admin
+        )
+
+    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert excinfo.value.detail == translate(
+        "errors.files.unsupported_type", locale="en"
+    )
+    quarantine_dir = tmp_path / "quarantine" / "event_files"
+    stored_samples = list(quarantine_dir.glob("*.bin"))
+    assert stored_samples
+    assert stored_samples[0].read_bytes() == payload
+
+
+@pytest.mark.anyio("asyncio")
 async def test_upload_event_file_allows_clean_payload_with_scanner(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -341,10 +481,11 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     calls: list[tuple[bytes, str | None]] = []
 
     async def fake_scan(
-        scanned, *, locale: str | None = None, size_bytes: int | None = None
+        scanned, *, locale: str | None = None, size_bytes: int | None = None, **kwargs
     ) -> None:
         calls.append((scanned, locale, size_bytes))
-        assert scanned is upload
+        assert scanned == payload
+        assert kwargs.get("quarantine_payload") == payload
         assert size_bytes == len(payload)
         return None
 
@@ -355,7 +496,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     )
 
     assert result.event_id == event.id
-    assert calls and calls[0][0] is upload
+    assert calls and calls[0][0] == payload
     stored_path = tmp_path / "event_files" / result.file_url.rsplit("/", 1)[-1]
     assert stored_path.exists()
     assert stored_path.read_bytes() == payload

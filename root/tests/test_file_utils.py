@@ -178,7 +178,7 @@ async def test_save_image_preserves_transparency_with_png(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_save_attachment_prefers_detected_type(monkeypatch):
+async def test_save_attachment_rejects_mismatched_types(monkeypatch):
     payload = b"%PDF-1.7\n" + b"0" * 10
     upload = UploadFile(
         filename="notes.txt",
@@ -189,9 +189,10 @@ async def test_save_attachment_prefers_detected_type(monkeypatch):
     backend = RecordingStorage()
 
     async def fake_scan(
-        scanned, *, locale: str | None = None, size_bytes: int | None = None
+        scanned, *, locale: str | None = None, size_bytes: int | None = None, **kwargs
     ) -> None:
-        assert isinstance(scanned, UploadFile)
+        assert scanned == payload
+        assert kwargs.get("quarantine_payload") == payload
         assert size_bytes == len(payload)
 
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
@@ -206,20 +207,22 @@ async def test_save_attachment_prefers_detected_type(monkeypatch):
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt", ".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    url = await files.save_attachment(upload, "event_files", "event_1")
+    with pytest.raises(HTTPException) as excinfo:
+        await files.save_attachment(upload, "event_files", "event_1")
 
-    assert url.startswith("https://cdn.example/event_files/")
-    assert url.endswith(".pdf")
+    assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert excinfo.value.detail == translate(
+        "errors.files.content_type_mismatch", locale="en"
+    )
     assert backend.calls
     method, (relative_path, data), kwargs = backend.calls[0]
     assert method == "save"
-    assert relative_path.endswith(".pdf")
-    assert kwargs["content_type"] == "application/pdf"
+    assert "quarantine" in relative_path
     assert data == payload
 
 
 @pytest.mark.asyncio
-async def test_save_attachment_falls_back_to_declared_type(monkeypatch):
+async def test_save_attachment_accepts_matching_declared_type(monkeypatch):
     payload = b"hello world"
     upload = UploadFile(
         filename="notes.txt",
@@ -230,16 +233,17 @@ async def test_save_attachment_falls_back_to_declared_type(monkeypatch):
     backend = RecordingStorage()
 
     async def fake_scan(
-        scanned, *, locale: str | None = None, size_bytes: int | None = None
+        scanned, *, locale: str | None = None, size_bytes: int | None = None, **kwargs
     ) -> None:
-        assert isinstance(scanned, UploadFile)
+        assert scanned == payload
+        assert kwargs.get("quarantine_payload") == payload
         assert size_bytes == len(payload)
 
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
     monkeypatch.setattr(files, "storage_backend", backend)
     monkeypatch.setattr(files, "_default_storage_backend", backend)
     monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
-    monkeypatch.setattr(files, "detect_mime_type", lambda _data: "")
+    monkeypatch.setattr(files, "detect_mime_type", lambda _data: "text/plain")
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
