@@ -30,3 +30,11 @@ repos:
     hooks:
       - id: gitleaks
         args: ["protect", "--staged"]
+
+  - repo: local
+    hooks:
+      - id: enforce-secret-strength
+        name: Enforce strong secrets in env files
+        entry: python scripts/enforce_secret_strength.py
+        language: system
+        files: "(\\.env(\\.example)?|docker-compose\\.yml)$"
