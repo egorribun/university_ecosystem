@@ -13,12 +13,18 @@ const originalConsoleWarn = console.warn
 
 beforeEach(async () => {
   const sentry = await import("@sentry/react")
+  const { setLoggerClient } = await import("../logger")
   captureException = sentry.captureException as unknown as Mock
   captureMessage = sentry.captureMessage as unknown as Mock
   captureException.mockClear()
   captureMessage.mockClear()
   console.error = vi.fn()
   console.warn = vi.fn()
+  setLoggerClient({
+    captureException,
+    captureMessage,
+    configureScope: undefined,
+  })
 })
 
 afterEach(() => {
