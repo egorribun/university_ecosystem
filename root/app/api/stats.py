@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
-from typing import Awaitable, Callable
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,7 +87,9 @@ def _compute_payload_etag(payload: dict[str, object]) -> str:
     return hashlib.sha256(serialized).hexdigest()
 
 
-def _set_stats_headers(response: Response, *, locale: str, etag: str | None = None) -> None:
+def _set_stats_headers(
+    response: Response, *, locale: str, etag: str | None = None
+) -> None:
     _get_vary_helper()(response, "Accept-Language")
     response.headers["Content-Language"] = locale
     response.headers["Cache-Control"] = _STATS_CACHE_CONTROL

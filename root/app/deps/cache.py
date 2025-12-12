@@ -176,6 +176,7 @@ class RedisCache(BaseCache):
             record_redis_command(
                 "get", time_module.perf_counter() - start, success=success
             )
+
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized_payload, serialized = _normalize_payload(payload)
         etag = hashlib.sha256(serialized).hexdigest()
@@ -206,6 +207,7 @@ class RedisCache(BaseCache):
         return CacheEntry(
             etag=etag, payload=normalized_payload, stored_at=time_module.time()
         )
+
     async def invalidate(self, *keys: str) -> None:
         filtered = [str(key) for key in keys if key]
         if not filtered:

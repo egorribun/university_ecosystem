@@ -1025,7 +1025,9 @@ class Settings(BaseSettings):
 
     @cached_property
     def cache_warmup_period_keys(self) -> tuple[str, ...]:
-        normalized = [item.strip().lower() for item in _coerce_str_list(self.cache_warmup_periods)]
+        normalized = [
+            item.strip().lower() for item in _coerce_str_list(self.cache_warmup_periods)
+        ]
         unique: list[str] = []
         seen: set[str] = set()
         for item in normalized:

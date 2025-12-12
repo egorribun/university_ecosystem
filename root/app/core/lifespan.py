@@ -7,12 +7,12 @@ from app.core.database import Base, engine, wait_db
 from app.core.observability import shutdown_observability
 from app.deps.cache import shutdown_cache
 from app.services import notification_queue, webpush
+from app.services.cache_warmup import warm_cache
 from app.services.email_change_cleanup import (
     EmailChangeCleanupConfig,
     cleanup_stale_email_change_tokens,
     start_email_change_cleanup_scheduler,
 )
-from app.services.cache_warmup import warm_cache
 from app.services.mfa_challenge_cleanup import (
     MfaChallengeCleanupConfig,
     cleanup_stale_mfa_challenges,

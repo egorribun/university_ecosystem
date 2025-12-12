@@ -81,7 +81,9 @@ async def _warm_stats_for_user(
     *,
     skip_cache: bool = False,
 ) -> None:
-    resolved_period = stats_cache.resolve_period_key(period_key, _period_days_from_key(period_key))
+    resolved_period = stats_cache.resolve_period_key(
+        period_key, _period_days_from_key(period_key)
+    )
     cached = await stats_cache.get_cached_stats(
         cache=cache,
         kind="attendance",
@@ -129,9 +131,7 @@ async def _warm_stats(cache: BaseCache, db: AsyncSession) -> None:
     for user_id in settings.cache_warmup_stats_user_ids:
         for period_key in settings.cache_warmup_period_keys:
             tasks.append(
-                _warm_stats_for_user(
-                    cache, db, user_id, period_key, skip_cache=False
-                )
+                _warm_stats_for_user(cache, db, user_id, period_key, skip_cache=False)
             )
     await asyncio.gather(*tasks)
 

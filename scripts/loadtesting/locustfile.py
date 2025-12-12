@@ -2,7 +2,6 @@ import os
 
 from locust import HttpUser, between, task
 
-
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "")
 GROUP_ID = os.getenv("GROUP_ID", "1")
