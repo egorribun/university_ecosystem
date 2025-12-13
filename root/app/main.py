@@ -202,6 +202,8 @@ async def _migrations_are_current() -> tuple[bool, set[str], set[str]]:
 async def healthz():
     statuses: dict[str, str] = {}
 
+    latencies: dict[str, float] = {}
+
     db_status = "ok"
     db_start = time.perf_counter()
     try:
@@ -226,7 +228,9 @@ async def healthz():
     statuses["db"] = db_status
     if db_status == "error":
         statuses.setdefault("db_migrations", "error")
-    record_health_probe("db", db_status, time.perf_counter() - db_start)
+    db_elapsed = time.perf_counter() - db_start
+    latencies["db_latency_ms"] = max(db_elapsed * 1000, 0.0)
+    record_health_probe("db", db_status, db_elapsed)
 
     cache_status = "disabled"
     cache_start = time.perf_counter()
@@ -248,10 +252,13 @@ async def healthz():
             cache_status = "disabled"
     except Exception:
         cache_status = "error"
+    cache_elapsed = time.perf_counter() - cache_start
     statuses["cache"] = cache_status
-    record_health_probe("cache", cache_status, time.perf_counter() - cache_start)
+    latencies["cache_latency_ms"] = max(cache_elapsed * 1000, 0.0)
+    record_health_probe("cache", cache_status, cache_elapsed)
 
     storage_status = "ok"
+    storage_start = time.perf_counter()
     try:
         backend = _get_storage_backend()
         probe_name = f"healthz/{uuid.uuid4().hex}.txt"
@@ -268,9 +275,13 @@ async def healthz():
                 storage_status = "error"
     except Exception:
         storage_status = "error"
+    storage_elapsed = time.perf_counter() - storage_start
     statuses["storage"] = storage_status
+    latencies["storage_latency_ms"] = max(storage_elapsed * 1000, 0.0)
+    record_health_probe("storage", storage_status, storage_elapsed)
 
     queue_status = "ok"
+    queue_start = time.perf_counter()
     if getattr(settings, "notifications_queue_in_memory_only", False):
         queue_status = "ok"
     else:
@@ -281,23 +292,30 @@ async def healthz():
             queue_status = "error"
         except Exception:
             queue_status = "error"
+    queue_elapsed = time.perf_counter() - queue_start
     statuses["notification_queue"] = queue_status
+    latencies["notification_queue_latency_ms"] = max(queue_elapsed * 1000, 0.0)
+    record_health_probe("notification_queue", queue_status, queue_elapsed)
 
+    scanner_start = time.perf_counter()
     if getattr(settings, "event_file_scanner_enabled", False):
         scanner_status = "ok"
         try:
             await check_file_scanner_health()
         except Exception:
             scanner_status = "error"
-        statuses["file_scanner"] = scanner_status
     else:
-        statuses["file_scanner"] = "disabled"
+        scanner_status = "disabled"
+    scanner_elapsed = time.perf_counter() - scanner_start
+    statuses["file_scanner"] = scanner_status
+    latencies["file_scanner_latency_ms"] = max(scanner_elapsed * 1000, 0.0)
+    record_health_probe("file_scanner", scanner_status, scanner_elapsed)
 
     overall_ok = all(value != "error" for value in statuses.values())
     http_status = (
         status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     )
-    payload = {"status": "ok" if overall_ok else "error", **statuses}
+    payload = {"status": "ok" if overall_ok else "error", **statuses, **latencies}
     return JSONResponse(status_code=http_status, content=payload)
 
 
