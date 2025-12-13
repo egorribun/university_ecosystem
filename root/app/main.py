@@ -211,9 +211,11 @@ async def healthz():
         db_status = "error"
     else:
         try:
-            migrations_current, current_versions, expected_versions = (
-                await _migrations_are_current()
-            )
+            (
+                migrations_current,
+                current_versions,
+                expected_versions,
+            ) = await _migrations_are_current()
             if not migrations_current:
                 db_status = "error"
                 statuses["db_migrations"] = "error"
