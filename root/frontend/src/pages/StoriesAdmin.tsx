@@ -23,12 +23,12 @@ import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/PageFadeIn"
 import SmartImage from "@/components/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
-import { useLanguage } from "@/contexts/LanguageContext"
 import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import apiClient from "@/api/client"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
+import { useLocaleFormatters } from "@/i18n/formatters"
 
 function formatInputDate(value: string | dayjs.Dayjs) {
   const parsed = typeof value === "string" ? dayjs(value) : value
@@ -97,11 +97,11 @@ const createInitialFormState = (): StoryFormState => ({
 type StoryAdminItemProps = {
   story: StoryItem
   now: dayjs.Dayjs
-  locale: string
+  formatDate: (value: Date | string | number) => string
   onRefresh: () => void
 }
 
-function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) {
+function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemProps) {
   const { t } = useTranslation(["stories", "common"])
   const [publishedAt, setPublishedAt] = useState(() => formatInputDate(story.published_at))
   const [expiresAt, setExpiresAt] = useState(() => formatInputDate(story.expires_at))
@@ -124,15 +124,6 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
       if (coverPreview) URL.revokeObjectURL(coverPreview)
     }
   }, [coverPreview])
-
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
-    [locale]
-  )
 
   const timeLeft = useMemo(
     () => formatTimeLeft(story.expires_at, now, t),
@@ -251,12 +242,12 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
             <Box flex={1} minWidth={0}>
               <Typography variant="body2" color="text.secondary">
                 {t("stories:list.details.published", {
-                  date: dateFormatter.format(new Date(story.published_at)),
+                  date: formatDate(new Date(story.published_at)),
                 })}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {t("stories:list.details.expires", {
-                  date: dateFormatter.format(new Date(story.expires_at)),
+                  date: formatDate(new Date(story.expires_at)),
                 })}
               </Typography>
               <Typography variant="body1" fontWeight={600} color="primary.main" mt={1}>
@@ -405,8 +396,8 @@ function StoryAdminItem({ story, now, locale, onRefresh }: StoryAdminItemProps) 
 
 export default function StoriesAdmin() {
   const { user } = useAuth()
-  const { language } = useLanguage()
   const { t } = useTranslation(["stories", "common"])
+  const { formatDate } = useLocaleFormatters()
   const isAdmin = user?.role === "admin"
   const [stories, setStories] = useState<StoryItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -719,7 +710,7 @@ export default function StoriesAdmin() {
                     key={story.id}
                     story={story}
                     now={now}
-                    locale={language === "ru" ? "ru-RU" : "en-US"}
+                    formatDate={(value) => formatDate(value, { preset: "datetime" })}
                     onRefresh={() => void fetchStories()}
                   />
                 ))}

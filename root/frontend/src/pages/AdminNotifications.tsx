@@ -36,7 +36,7 @@ import {
 } from "@/api/notifications"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/PageFadeIn"
-import { useLanguage } from "@/contexts/LanguageContext"
+import { useLocaleFormatters } from "@/i18n/formatters"
 
 const queryKey = ["admin", "notifications", "dead-letter"] as const
 
@@ -69,8 +69,8 @@ const normalizeTopicKey = (value: unknown): string => {
 }
 
 export default function AdminNotifications() {
-  const { language } = useLanguage()
   const { t } = useTranslation(["admin", "common"])
+  const { formatDate } = useLocaleFormatters()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
@@ -98,15 +98,6 @@ export default function AdminNotifications() {
       return record
     },
     []
-  )
-
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(language, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
-    [language]
   )
 
   const listQuery = useQuery({
@@ -329,7 +320,9 @@ export default function AdminNotifications() {
                   <TableCell>
                     {job.locale ?? t("admin:notifications.table.localeFallback")}
                   </TableCell>
-                  <TableCell>{dateFormatter.format(new Date(job.enqueued_at))}</TableCell>
+                  <TableCell>
+                    {formatDate(new Date(job.enqueued_at), { preset: "datetime" })}
+                  </TableCell>
                   <TableCell>{job.attempts}</TableCell>
                   <TableCell>
                     <Typography

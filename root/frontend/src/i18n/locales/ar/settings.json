@@ -1,12 +1,12 @@
 {
   "page": {
-    "title": "Settings"
+    "title": "الإعدادات"
   },
   "tabs": {
-    "general": "General",
-    "account": "Account",
-    "security": "Security",
-    "integrations": "Integrations"
+    "general": "عام",
+    "account": "الحساب",
+    "security": "الأمان",
+    "integrations": "التكاملات"
   },
   "appearance": {
     "theme": {
@@ -19,13 +19,13 @@
     }
   },
   "language": {
-    "title": "Interface language",
-    "aria": "Choose interface language",
-    "description": "This changes menus, navigation labels, and system messages.",
+    "title": "لغة الواجهة",
+    "aria": "اختر لغة الواجهة",
+    "description": "يغيّر هذا الإعداد لغة القوائم والتنقل والرسائل النظامية.",
     "options": {
-      "ru": "Russian",
-      "en": "English",
-      "ar": "Arabic (RTL)"
+      "ru": "الروسية",
+      "en": "الإنجليزية",
+      "ar": "العربية"
     }
   },
   "notifications": {

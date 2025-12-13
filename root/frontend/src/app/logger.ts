@@ -1,8 +1,27 @@
-import * as Sentry from "@sentry/react"
+import {
+  captureException as sentryCaptureException,
+  captureMessage as sentryCaptureMessage,
+  configureScope as sentryConfigureScope,
+} from "@sentry/react"
 
 type LogMethod = "error" | "warn" | "info" | "log"
 
+type SentryClient = {
+  captureException?: typeof sentryCaptureException
+  captureMessage?: typeof sentryCaptureMessage
+  configureScope?: typeof sentryConfigureScope
+}
+
 let currentTraceId: string | null = null
+let sentry: SentryClient = {
+  captureException: sentryCaptureException,
+  captureMessage: sentryCaptureMessage,
+  configureScope: sentryConfigureScope,
+}
+
+export function setLoggerClient(overrides: Partial<SentryClient>): void {
+  sentry = { ...sentry, ...overrides }
+}
 
 function normalizeArg(value: unknown): unknown {
   if (value instanceof Error) {
@@ -58,8 +77,8 @@ function resolveTags() {
 
 export function setTraceContext(traceId: string | null | undefined): void {
   currentTraceId = traceId && String(traceId).trim() ? String(traceId) : null
-  if (typeof Sentry.configureScope === "function") {
-    Sentry.configureScope((scope) => {
+  if (typeof sentry.configureScope === "function") {
+    sentry.configureScope((scope) => {
       if (currentTraceId) {
         scope.setTag("trace_id", currentTraceId)
       } else {
@@ -72,8 +91,8 @@ export function setTraceContext(traceId: string | null | undefined): void {
 export function logError(...args: unknown[]): void {
   const error = findFirstError(args)
   try {
-    if (error) {
-      Sentry.captureException(error, {
+    if (error && typeof sentry.captureException === "function") {
+      sentry.captureException(error, {
         extra: {
           logArgs: args.map(normalizeArg),
         },
@@ -82,10 +101,10 @@ export function logError(...args: unknown[]): void {
           level: "error",
         },
       })
-    } else {
+    } else if (typeof sentry.captureMessage === "function") {
       const message = findFirstMessage(args)
       if (message) {
-        Sentry.captureMessage(message, "error")
+        sentry.captureMessage(message, "error")
       }
     }
   } catch (sentryError) {
@@ -98,10 +117,8 @@ export function logError(...args: unknown[]): void {
 export function logWarning(...args: unknown[]): void {
   try {
     const message = findFirstMessage(args)
-    if (message) {
-      Sentry.captureMessage(message, "warning", {
-        tags: resolveTags(),
-      })
+    if (message && typeof sentry.captureMessage === "function") {
+      sentry.captureMessage(message, "warning")
     }
   } catch (sentryError) {
     callConsole("warn", ["[logger] Failed to forward warning to Sentry", sentryError])

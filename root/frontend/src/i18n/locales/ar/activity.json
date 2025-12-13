@@ -1,0 +1,100 @@
+{
+  "title": "Activity",
+  "period": {
+    "options": {
+      "30d": "{{count}} day",
+      "30d_few": "{{count}} days",
+      "30d_many": "{{count}} days",
+      "30d_other": "{{count}} days",
+      "90d": "{{count}} day",
+      "90d_few": "{{count}} days",
+      "90d_many": "{{count}} days",
+      "90d_other": "{{count}} days",
+      "180d": "{{count}} day",
+      "180d_few": "{{count}} days",
+      "180d_many": "{{count}} days",
+      "180d_other": "{{count}} days"
+    },
+    "labels": {
+      "30d": "over the last {{count}} day",
+      "30d_few": "over the last {{count}} days",
+      "30d_many": "over the last {{count}} days",
+      "30d_other": "over the last {{count}} days",
+      "90d": "over the last {{count}} day",
+      "90d_few": "over the last {{count}} days",
+      "90d_many": "over the last {{count}} days",
+      "90d_other": "over the last {{count}} days",
+      "180d": "over the last {{count}} day",
+      "180d_few": "over the last {{count}} days",
+      "180d_many": "over the last {{count}} days",
+      "180d_other": "over the last {{count}} days"
+    }
+  },
+  "common": {
+    "separator": " \u2022 ",
+    "noData": "No data"
+  },
+  "sections": {
+    "attendance": {
+      "title": "Attendance",
+      "summary": "{{present}}/{{total}} {{period}}",
+      "recent": "Recent attendance",
+      "lessonFallback": "Lesson",
+      "status": {
+        "present": "attended",
+        "late": "late",
+        "absent": "absent"
+      },
+      "dialogTitle": "Attendance",
+      "dialogTotal": "Total: {{present}}/{{total}} {{period}}"
+    },
+    "grades": {
+      "title": "Performance",
+      "averageLabel": "Average score for the period",
+      "recent": "Recent grades",
+      "dialogTitle": "Grades"
+    },
+    "participation": {
+      "title": "Participation",
+      "eventsCount": "{{value}} event",
+      "eventsCount_few": "{{value}} events",
+      "eventsCount_many": "{{value}} events",
+      "eventsCount_other": "{{value}} events",
+      "summaryHours": "{{count}} h",
+      "summaryHours_few": "{{count}} h",
+      "summaryHours_many": "{{count}} h",
+      "summaryHours_other": "{{count}} h",
+      "summaryGroups": "{{count}} club",
+      "summaryGroups_few": "{{count}} clubs",
+      "summaryGroups_many": "{{count}} clubs",
+      "summaryGroups_other": "{{count}} clubs",
+      "recent": "Recent participation",
+      "dialogTitle": "Participation"
+    }
+  },
+  "dialog": {
+    "close": "Close"
+  },
+  "fallback": {
+    "attendance": {
+      "recent": [
+        { "date": "2025-09-19", "status": "present", "course": "Algebra" },
+        { "date": "2025-09-18", "status": "late", "course": "History" },
+        { "date": "2025-09-17", "status": "present", "course": "Physics" }
+      ]
+    },
+    "grades": {
+      "recent": [
+        { "course": "Algebra", "score": 5, "date": "2025-09-18" },
+        { "course": "Physics", "score": 4, "date": "2025-09-16" },
+        { "course": "Literature", "score": 5, "date": "2025-09-13" }
+      ]
+    },
+    "participation": {
+      "recent": [
+        { "title": "Department hackathon", "date": "2025-09-14", "role": "participant" },
+        { "title": "Basketball tournament", "date": "2025-09-07", "role": "team" }
+      ]
+    }
+  }
+}

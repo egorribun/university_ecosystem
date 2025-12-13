@@ -1,0 +1,132 @@
+{
+  "pageTitle": "Events",
+  "states": {
+    "empty": "No events match your filters"
+  },
+  "tabs": {
+    "active": "Upcoming",
+    "archive": "Past events",
+    "my": "My events"
+  },
+  "filters": {
+    "search": "Search events",
+    "type": "Type",
+    "location": "Location"
+  },
+  "actions": {
+    "openCreate": "+ Add event"
+  },
+  "dialogs": {
+    "create": {
+      "title": "Create an event"
+    }
+  },
+  "form": {
+    "title": "Title",
+    "title_en": "Title (English)",
+    "description": "Description",
+    "description_en": "Description (English)",
+    "type": "Type",
+    "type_en": "Type (English)",
+    "location": "Location",
+    "location_en": "Location (English)",
+    "speaker": "Speaker",
+    "uploadImage": "Upload image",
+    "imageSelected": "Image selected",
+    "start": "Start",
+    "end": "End",
+    "errors": {
+      "endsBeforeStarts": "End time must be after the start time"
+    }
+  },
+  "aria": {
+    "clearSearch": "Clear search",
+    "openFilters": "Open filters panel"
+  },
+  "alt": {
+    "preview": "Event image preview",
+    "image": "Event image"
+  },
+  "card": {
+    "aria": {
+      "actions": "Event actions"
+    },
+    "alt": {
+      "qr": "Event QR code"
+    },
+    "actions": {
+      "register": "Register",
+      "unregister": "Cancel registration",
+      "openQr": "Show QR code",
+      "closeQr": "Close"
+    },
+    "statuses": {
+      "ended": "Event ended"
+    },
+    "participants": "Participants: {{count}}",
+    "messages": {
+      "registerSuccess": "You're registered for the event",
+      "registerFailure": "Couldn't register for the event",
+      "unregisterSuccess": "Registration canceled",
+      "unregisterFailure": "Couldn't cancel the registration",
+      "deleteSuccess": "Event deleted",
+      "deleteFailure": "Couldn't delete the event",
+      "saveSuccess": "Changes saved",
+      "saveFailure": "Couldn't save changes"
+    },
+    "dialogs": {
+      "edit": {
+        "title": "Edit event"
+      },
+      "delete": {
+        "title": "Delete event?",
+        "description": "This action cannot be undone. Confirm deletion."
+      }
+    }
+  },
+  "detail": {
+    "messages": {
+      "loadFailed": "Couldn't load the event",
+      "notFound": "Event not found",
+      "fileAdded": "File uploaded",
+      "fileAddFailed": "Couldn't upload the file",
+      "fileDeleted": "File removed",
+      "fileDeleteFailed": "Couldn't remove the file",
+      "aboutUpdated": "Description updated",
+      "aboutUpdateFailed": "Couldn't update the description"
+    },
+    "upload": {
+      "errors": {
+        "noFile": "Choose a file",
+        "failed": "Couldn't upload the file"
+      },
+      "submit": {
+        "label": "Add",
+        "pending": "Adding…"
+      }
+    },
+    "fields": {
+      "location": "Location",
+      "date": "Date",
+      "speaker": "Speaker"
+    },
+    "sections": {
+      "about": {
+        "title": "About the event",
+        "fieldLabel": "Event description",
+        "fieldLabel_en": "Event description (English)",
+        "editAria": "Edit description",
+        "savePending": "Saving…",
+        "empty": "The event description hasn't been added yet."
+      },
+      "files": {
+        "title": "Files",
+        "pickFile": "File",
+        "empty": "No files uploaded yet",
+        "pending": "Uploading file…",
+        "downloadAria": "Download file {{label}}",
+        "deleteAria": "Delete file"
+      }
+    }
+  }
+}
