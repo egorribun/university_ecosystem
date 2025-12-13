@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import logging
+from datetime import datetime
 
 from fastapi import (
     APIRouter,
@@ -15,9 +16,11 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
+    get_audit_service,
     get_auth_service,
     get_current_user,
     get_user_service,
@@ -27,7 +30,13 @@ from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
+from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService, attach_pending_email
+from app.services.data_access import (
+    export_access_logs,
+    log_data_access,
+    serialize_access_logs_csv,
+)
 from app.services.notifications import create_notifications_for_users
 from app.services.user_service import UserService
 from app.utils.ratelimit import sensitive_route_limit
@@ -149,6 +158,15 @@ async def me(
 ):
     _enforce_profile_cache_integrity(request)
     await attach_pending_email(db, user)
+    await log_data_access(
+        db,
+        actor_user_id=user.id,
+        subject_user_id=user.id,
+        resource_type="profile",
+        resource_id=str(user.id),
+        action="read",
+        request=request,
+    )
     return user
 
 
@@ -198,6 +216,29 @@ async def change_password(
 ):
     ok, revoked = await auth_service.change_password(db, user, payload, request)
     return schemas.PasswordChangeOut(ok=ok, revoked_sessions=revoked)
+
+
+@users_router.post("/me/export", response_model=schemas.DataExportOut)
+async def export_me(
+    request: Request,
+    _: None = Depends(require_fresh_mfa),
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
+):
+    return await service.export_user_data(db, user, request)
+
+
+@users_router.post("/me/delete", response_model=schemas.DataDeletionOut)
+async def delete_me(
+    payload: schemas.DataDeletionRequest,
+    request: Request,
+    _: None = Depends(require_fresh_mfa),
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
+):
+    return await service.delete_user_data(db, user, request, confirm=payload.confirm)
 
 
 @users_router.post("/me/avatar", response_model=schemas.UserOut)
@@ -268,7 +309,7 @@ async def get_users(
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.get_users(
+    users = await service.get_users(
         db,
         request,
         user,
@@ -278,6 +319,42 @@ async def get_users(
         role=role,
         limit=limit,
         offset=offset,
+    )
+    for item in users:
+        await log_data_access(
+            db,
+            actor_user_id=user.id,
+            subject_user_id=item.id,
+            resource_type="profile",
+            resource_id=str(item.id),
+            action="read",
+            request=request,
+        )
+    return users
+
+
+@users_router.get("/audit/export")
+async def export_access_audit(
+    request: Request,
+    start_at: datetime | None = Query(None),
+    end_at: datetime | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    audit: AuditService = Depends(get_audit_service),
+):
+    locale = resolve_locale(request=request, user=user)
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=translate("errors.forbidden", locale=locale),
+        )
+    logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=20_000)
+    audit.log("users.audit.export", request, user_id=user.id)
+    csv_payload = serialize_access_logs_csv(logs)
+    return Response(
+        content=csv_payload,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=access_audit.csv"},
     )
 
 

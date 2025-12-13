@@ -2,7 +2,7 @@ import logging
 
 from fastapi import HTTPException, Request, UploadFile, status
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -16,6 +16,7 @@ from app.models.user_loaders import (
 from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
+from app.services.data_access import export_access_logs, log_data_access
 from app.services.notifications import create_notifications_for_users
 from app.utils.files import delete_static_file
 
@@ -269,3 +270,185 @@ class UserService:
         await db.refresh(db_user)
         await ensure_mfa_relationships_loaded(db, db_user)
         return db_user
+
+    async def export_user_data(
+        self, db: AsyncSession, user: models.User, request: Request
+    ) -> schemas.DataExportOut:
+        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        await ensure_mfa_relationships_loaded(db, db_user)
+        await attach_pending_email(db, db_user)
+
+        profile = schemas.UserOut.from_orm(db_user).model_dump()
+
+        sessions_result = await db.execute(
+            select(models.ActiveSession).where(models.ActiveSession.user_id == user.id)
+        )
+        sessions = [
+            {
+                "id": session.id,
+                "created_at": session.created_at,
+                "expires_at": session.expires_at,
+                "revoked_at": session.revoked_at,
+                "ip_address": session.ip_address,
+                "user_agent": session.user_agent,
+                "last_seen_at": session.last_seen_at,
+                "mfa_completed_at": session.mfa_completed_at,
+            }
+            for session in sessions_result.scalars()
+        ]
+
+        notifications_result = await db.execute(
+            select(models.Notification).where(models.Notification.user_id == user.id)
+        )
+        notifications = [
+            {
+                "id": item.id,
+                "title": item.title,
+                "body": item.body,
+                "type": item.type,
+                "created_at": item.created_at,
+                "read_at": item.read_at,
+            }
+            for item in notifications_result.scalars()
+        ]
+
+        challenges = [
+            {
+                "id": challenge.id,
+                "type": challenge.challenge_type,
+                "expires_at": challenge.expires_at,
+                "consumed_at": challenge.consumed_at,
+                "created_at": challenge.created_at,
+            }
+            for challenge in db_user.mfa_challenges
+        ]
+
+        enrollments = [
+            {
+                "id": enrollment.id,
+                "label": enrollment.label,
+                "is_active": enrollment.is_active,
+                "confirmed_at": enrollment.confirmed_at,
+                "revoked_at": enrollment.revoked_at,
+                "created_at": enrollment.created_at,
+            }
+            for enrollment in db_user.totp_enrollments
+        ]
+
+        access_logs = await export_access_logs(
+            db,
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            limit=2000,
+        )
+        access_log_payload = [
+            {
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "action": log.action,
+                "created_at": log.created_at,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "context": log.context,
+            }
+            for log in access_logs
+        ]
+
+        self.audit.log("users.data_export", request, user_id=user.id)
+        await log_data_access(
+            db,
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            resource_type="profile",
+            resource_id=str(user.id),
+            action="export",
+            request=request,
+        )
+
+        return schemas.DataExportOut(
+            profile=profile,
+            sessions=sessions,
+            notifications=notifications,
+            mfa_challenges=challenges,
+            mfa_enrollments=enrollments,
+            access_logs=access_log_payload,
+        )
+
+    async def delete_user_data(
+        self,
+        db: AsyncSession,
+        user: models.User,
+        request: Request,
+        *,
+        confirm: bool,
+    ) -> schemas.DataDeletionOut:
+        if not confirm:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=translate(
+                    "errors.users.confirmation_required",
+                    locale=resolve_locale(request=request, user=user),
+                ),
+            )
+
+        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        anonymized_email = f"deleted+{user.id}@anonymized.local"
+
+        await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
+        await delete_static_file(db_user.cover_url) if db_user.cover_url else None
+
+        db_user.full_name = None
+        db_user.email = anonymized_email
+        db_user.avatar_url = None
+        db_user.cover_url = None
+        db_user.about = None
+        db_user.telegram = None
+        db_user.achievements = None
+        db_user.record_book_number = None
+        db_user.hashed_password = "deleted"
+        db_user.is_active = False
+        db_user.status = "deleted"
+        db_user.mfa_required = False
+        db_user.mfa_default_method = None
+        db_user.mfa_last_verified_at = None
+
+        await db.execute(
+            delete(models.ActiveSession).where(models.ActiveSession.user_id == user.id)
+        )
+        await db.execute(
+            delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id)
+        )
+        await db.execute(
+            delete(models.MfaTotpEnrollment).where(
+                models.MfaTotpEnrollment.user_id == user.id
+            )
+        )
+        await db.execute(
+            delete(models.Notification).where(models.Notification.user_id == user.id)
+        )
+        await db.execute(
+            delete(models.DataAccessLog).where(
+                or_(
+                    models.DataAccessLog.actor_user_id == user.id,
+                    models.DataAccessLog.subject_user_id == user.id,
+                )
+            )
+        )
+
+        db_user.preferences = None
+        db_user.spotify = None
+
+        self.audit.log("users.data_delete", request, user_id=user.id)
+        await log_data_access(
+            db,
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            resource_type="profile",
+            resource_id=str(user.id),
+            action="delete",
+            request=request,
+        )
+
+        await db.commit()
+        await db.refresh(db_user)
+        return schemas.DataDeletionOut(deleted=True, anonymized_email=anonymized_email)
