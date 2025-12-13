@@ -1,7 +1,7 @@
 import csv
 import io
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from typing import Iterable
 
 from fastapi import Request
 from sqlalchemy import delete, select

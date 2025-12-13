@@ -385,7 +385,10 @@ class UserService:
         if not confirm:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=translate("errors.users.confirmation_required", locale=resolve_locale(request=request, user=user)),
+                detail=translate(
+                    "errors.users.confirmation_required",
+                    locale=resolve_locale(request=request, user=user),
+                ),
             )
 
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
@@ -416,7 +419,9 @@ class UserService:
             delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id)
         )
         await db.execute(
-            delete(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == user.id)
+            delete(models.MfaTotpEnrollment).where(
+                models.MfaTotpEnrollment.user_id == user.id
+            )
         )
         await db.execute(
             delete(models.Notification).where(models.Notification.user_id == user.id)

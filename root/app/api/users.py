@@ -20,8 +20,8 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
-    get_auth_service,
     get_audit_service,
+    get_auth_service,
     get_current_user,
     get_user_service,
     require_fresh_mfa,
@@ -30,8 +30,8 @@ from app.core.database import get_db
 from app.localization import resolve_locale, translate
 from app.models import models
 from app.schemas import schemas
-from app.services.auth_service import AuthService, attach_pending_email
 from app.services.audit_service import AuditService
+from app.services.auth_service import AuthService, attach_pending_email
 from app.services.data_access import (
     export_access_logs,
     log_data_access,
@@ -238,9 +238,7 @@ async def delete_me(
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.delete_user_data(
-        db, user, request, confirm=payload.confirm
-    )
+    return await service.delete_user_data(db, user, request, confirm=payload.confirm)
 
 
 @users_router.post("/me/avatar", response_model=schemas.UserOut)
@@ -350,9 +348,7 @@ async def export_access_audit(
             status_code=403,
             detail=translate("errors.forbidden", locale=locale),
         )
-    logs = await export_access_logs(
-        db, start_at=start_at, end_at=end_at, limit=20_000
-    )
+    logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=20_000)
     audit.log("users.audit.export", request, user_id=user.id)
     csv_payload = serialize_access_logs_csv(logs)
     return Response(
