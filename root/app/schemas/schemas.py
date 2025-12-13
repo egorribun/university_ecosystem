@@ -149,6 +149,24 @@ class SessionBulkRevokeOut(BaseModel):
     revoked: int = 0
 
 
+class DataExportOut(BaseModel):
+    profile: dict[str, Any]
+    sessions: list[dict[str, Any]] = Field(default_factory=list)
+    notifications: list[dict[str, Any]] = Field(default_factory=list)
+    mfa_challenges: list[dict[str, Any]] = Field(default_factory=list)
+    mfa_enrollments: list[dict[str, Any]] = Field(default_factory=list)
+    access_logs: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DataDeletionRequest(BaseModel):
+    confirm: bool = Field(..., description="Explicit consent to remove personal data")
+
+
+class DataDeletionOut(BaseModel):
+    deleted: bool
+    anonymized_email: EmailStr
+
+
 class UserProfileUpdate(BaseModel):
     full_name: str | None = None
     email: EmailStr | None = None

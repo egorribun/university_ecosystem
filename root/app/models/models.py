@@ -19,6 +19,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
@@ -416,6 +417,30 @@ class FailedLoginAttempt(Base):
             "attempted_at",
         ),
     )
+
+
+class DataAccessLog(Base):
+    __tablename__ = "data_access_logs"
+
+    id = Column(Integer, primary_key=True)
+    actor_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    subject_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    resource_type = Column(String(64), nullable=False, index=True)
+    resource_id = Column(String(128), nullable=True, index=True)
+    action = Column(String(64), nullable=False, index=True)
+    context = Column(JSONB, nullable=True)
+    ip_address = Column(String(64))
+    user_agent = Column(String(512))
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    actor = relationship("User", foreign_keys=[actor_user_id])
+    subject = relationship("User", foreign_keys=[subject_user_id])
 
 
 class EventAttendance(Base):

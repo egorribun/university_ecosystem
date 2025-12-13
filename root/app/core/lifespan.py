@@ -35,6 +35,11 @@ from app.services.password_reset_cleanup import (
     cleanup_stale_password_reset_tokens,
     start_password_reset_cleanup_scheduler,
 )
+from app.services.privacy_cleanup import (
+    PrivacyCleanupConfig,
+    cleanup_privacy_artifacts,
+    start_privacy_cleanup_scheduler,
+)
 from app.services.session_cleanup import (
     SessionCleanupConfig,
     cleanup_expired_sessions,
@@ -61,6 +66,7 @@ async def lifespan(app: FastAPI):
     stop_password_reset_cleanup = None
     stop_mfa_challenge_cleanup = None
     stop_email_change_cleanup = None
+    stop_privacy_cleanup = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
             poll_seconds=settings.notifications_scheduler_poll_seconds,
@@ -82,6 +88,15 @@ async def lifespan(app: FastAPI):
         retention_minutes=settings.email_change_cleanup_retention_minutes
     )
     await cleanup_stale_mfa_challenges()
+    await cleanup_privacy_artifacts(
+        config=PrivacyCleanupConfig(
+            session_retention_days=settings.session_retention_days,
+            mfa_retention_days=settings.mfa_retention_days,
+            failed_login_retention_days=settings.failed_login_retention_days,
+            audit_log_retention_days=settings.access_log_retention_days,
+            interval_seconds=settings.privacy_cleanup_interval_seconds,
+        )
+    )
     if (
         settings.notifications_retention_days > 0
         and settings.notifications_retention_cleanup_interval_seconds > 0
@@ -138,6 +153,16 @@ async def lifespan(app: FastAPI):
                 interval_seconds=settings.stories_retention_cleanup_interval_seconds
             )
         )
+    if settings.privacy_cleanup_interval_seconds > 0:
+        stop_privacy_cleanup = await start_privacy_cleanup_scheduler(
+            config=PrivacyCleanupConfig(
+                session_retention_days=settings.session_retention_days,
+                mfa_retention_days=settings.mfa_retention_days,
+                failed_login_retention_days=settings.failed_login_retention_days,
+                audit_log_retention_days=settings.access_log_retention_days,
+                interval_seconds=settings.privacy_cleanup_interval_seconds,
+            )
+        )
     await warm_cache()
     try:
         yield
@@ -158,6 +183,8 @@ async def lifespan(app: FastAPI):
             await stop_email_change_cleanup()
         if stop_mfa_challenge_cleanup is not None:
             await stop_mfa_challenge_cleanup()
+        if stop_privacy_cleanup is not None:
+            await stop_privacy_cleanup()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()

@@ -371,6 +371,11 @@ class Settings(BaseSettings):
     password_reset_max_active_tokens: int = 1
     stories_cleanup_enabled: bool = True
     stories_retention_cleanup_interval_seconds: int = 86_400
+    privacy_cleanup_interval_seconds: int = 86_400
+    session_retention_days: int = 90
+    mfa_retention_days: int = 30
+    failed_login_retention_days: int = 30
+    access_log_retention_days: int = 180
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"
         "text/plain,"
