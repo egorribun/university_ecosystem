@@ -38,7 +38,7 @@ class _FailingSession:
 
 def _assert_latency_present(data: dict, key: str) -> None:
     assert key in data
-    assert isinstance(data[key], (int, float))
+    assert isinstance(data[key], int | float)
     assert 0 <= data[key] < 60_000
 
 
