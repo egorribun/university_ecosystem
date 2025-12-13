@@ -4848,7 +4848,9 @@ export interface operations {
         period?: string
         skip_cache?: boolean
       }
-      header?: never
+      header?: {
+        "if-none-match"?: string | null
+      }
       path?: never
       cookie?: never
     }
@@ -4880,7 +4882,9 @@ export interface operations {
         period?: string
         skip_cache?: boolean
       }
-      header?: never
+      header?: {
+        "if-none-match"?: string | null
+      }
       path?: never
       cookie?: never
     }
@@ -4912,7 +4916,9 @@ export interface operations {
         period?: string
         skip_cache?: boolean
       }
-      header?: never
+      header?: {
+        "if-none-match"?: string | null
+      }
       path?: never
       cookie?: never
     }

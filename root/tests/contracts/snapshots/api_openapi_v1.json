@@ -7605,6 +7605,22 @@
               "title": "Skip Cache",
               "type": "boolean"
             }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
           }
         ],
         "responses": {
@@ -7661,6 +7677,22 @@
               "title": "Skip Cache",
               "type": "boolean"
             }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
           }
         ],
         "responses": {
@@ -7716,6 +7748,22 @@
               "default": false,
               "title": "Skip Cache",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
             }
           }
         ],
