@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises"
+import { mkdir, writeFile, readFile, access } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import openapiTS, { astToString } from "openapi-typescript"
@@ -7,6 +7,13 @@ import prettier from "prettier"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, "..", "..")
+const fallbackSnapshotPath = path.resolve(
+  repoRoot,
+  "tests",
+  "contracts",
+  "snapshots",
+  "api_openapi_v1.json"
+)
 
 const defaultOrigin =
   process.env.API_ORIGIN || process.env.BACKEND_ORIGIN || "http://localhost:8000"
@@ -24,13 +31,27 @@ if (!source) {
 async function loadSchema(input) {
   if (input.startsWith("http://") || input.startsWith("https://")) {
     console.log(`[generate-api-types] Fetching schema from ${input}`)
-    const response = await fetch(input)
-    if (!response.ok) {
-      throw new Error(
-        `Failed to download OpenAPI schema: ${response.status} ${response.statusText}`
-      )
+    try {
+      const response = await fetch(input)
+      if (!response.ok) {
+        throw new Error(
+          `Failed to download OpenAPI schema: ${response.status} ${response.statusText}`
+        )
+      }
+      return response.json()
+    } catch (error) {
+      try {
+        await access(fallbackSnapshotPath)
+        console.warn(
+          `[generate-api-types] Falling back to local snapshot ${fallbackSnapshotPath} because fetching schema failed:`,
+          error
+        )
+        return loadSchema(fallbackSnapshotPath)
+      } catch (_) {
+        // If the snapshot is unavailable, rethrow the original error to surface the failure
+      }
+      throw error
     }
-    return response.json()
   }
 
   const resolved = path.isAbsolute(input) ? input : path.resolve(repoRoot, input)
