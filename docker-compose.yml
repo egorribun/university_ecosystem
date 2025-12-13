@@ -118,10 +118,10 @@ services:
       dockerfile: root/backend.Dockerfile
       target: runtime
     command: alembic upgrade head
-      env_file:
-        - root/.env
-      environment:
-        DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-local_dev_password_please_rotate}@postgres:5432/${POSTGRES_DB:-university}}
+    env_file:
+      - root/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-local_dev_password_please_rotate}@postgres:5432/${POSTGRES_DB:-university}}
     depends_on:
       postgres:
         condition: service_healthy

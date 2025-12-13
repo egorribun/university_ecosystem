@@ -120,6 +120,15 @@ jobs:
           CI: true
         run: npm run build -- --report --logLevel warn --clearScreen false
 
+  compose-validate:
+    name: Validate docker-compose.yml
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate docker compose configuration
+        run: docker compose -f docker-compose.yml config
+
   pip-audit:
     name: Pip audit
     runs-on: ubuntu-latest
