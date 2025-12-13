@@ -36,6 +36,12 @@ class _FailingSession:
         return False
 
 
+def _assert_latency_present(data: dict, key: str) -> None:
+    assert key in data
+    assert isinstance(data[key], (int, float))
+    assert 0 <= data[key] < 60_000
+
+
 @pytest.fixture
 def missing_table_operational_error(monkeypatch):
     class _UndefinedTableError(Exception):
@@ -72,6 +78,14 @@ async def test_healthcheck_reports_dependency_statuses(async_client):
     assert data["notification_queue"] == "ok"
     assert "cache" in data
     assert "file_scanner" in data
+    for component in [
+        "db_latency_ms",
+        "cache_latency_ms",
+        "storage_latency_ms",
+        "notification_queue_latency_ms",
+        "file_scanner_latency_ms",
+    ]:
+        _assert_latency_present(data, component)
 
 
 @pytest.mark.anyio("asyncio")
@@ -94,6 +108,7 @@ async def test_healthcheck_database_failure_returns_503(async_client, monkeypatc
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["status"] == "error"
     assert data["db"] == "error"
+    _assert_latency_present(data, "db_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -105,6 +120,7 @@ async def test_healthcheck_cache_success(async_client, monkeypatch):
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["cache"] == "ok"
+    _assert_latency_present(data, "cache_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -115,6 +131,7 @@ async def test_healthcheck_cache_failure(async_client, monkeypatch):
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["cache"] == "error"
+    _assert_latency_present(data, "cache_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -134,6 +151,7 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["storage"] == "error"
+    _assert_latency_present(data, "storage_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -144,6 +162,7 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["notification_queue"] == "error"
+    _assert_latency_present(data, "notification_queue_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -155,6 +174,7 @@ async def test_healthcheck_notification_queue_missing_table(
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["notification_queue"] == "ok"
+    _assert_latency_present(data, "notification_queue_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -174,6 +194,7 @@ async def test_healthcheck_reports_migration_versions_on_drift(
     assert data["db_migrations"] == "error"
     assert data["db_migrations_current"] == ["current"]
     assert data["db_migrations_expected"] == ["expected"]
+    _assert_latency_present(data, "db_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -189,6 +210,7 @@ async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["file_scanner"] == "ok"
+    _assert_latency_present(data, "file_scanner_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -204,6 +226,7 @@ async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
     data = response.json()
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["file_scanner"] == "error"
+    _assert_latency_present(data, "file_scanner_latency_ms")
 
 
 @pytest.mark.anyio("asyncio")
@@ -227,3 +250,4 @@ async def test_healthcheck_file_scanner_uses_lightweight_probe(
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
     assert data["file_scanner"] == "ok"
+    _assert_latency_present(data, "file_scanner_latency_ms")
