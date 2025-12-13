@@ -189,13 +189,13 @@ def _get_alembic_script() -> ScriptDirectory:
     return ScriptDirectory.from_config(config)
 
 
-async def _migrations_are_current() -> bool:
+async def _migrations_are_current() -> tuple[bool, set[str], set[str]]:
     script = _get_alembic_script()
     expected_heads = set(script.get_heads())
     async with engine.connect() as conn:
         result = await conn.execute(text("SELECT version_num FROM alembic_version"))
         current_versions = {row[0] for row in result}
-    return current_versions == expected_heads
+    return current_versions == expected_heads, current_versions, expected_heads
 
 
 @app.get("/healthz")
@@ -211,14 +211,19 @@ async def healthz():
         db_status = "error"
     else:
         try:
-            migrations_current = await _migrations_are_current()
+            migrations_current, current_versions, expected_versions = (
+                await _migrations_are_current()
+            )
             if not migrations_current:
                 db_status = "error"
+                statuses["db_migrations"] = "error"
+                statuses["db_migrations_current"] = sorted(current_versions)
+                statuses["db_migrations_expected"] = sorted(expected_versions)
         except Exception:
             db_status = "error"
     statuses["db"] = db_status
     if db_status == "error":
-        statuses["db_migrations"] = "error"
+        statuses.setdefault("db_migrations", "error")
     record_health_probe("db", db_status, time.perf_counter() - db_start)
 
     cache_status = "disabled"

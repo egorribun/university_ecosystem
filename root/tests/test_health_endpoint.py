@@ -158,6 +158,25 @@ async def test_healthcheck_notification_queue_missing_table(
 
 
 @pytest.mark.anyio("asyncio")
+async def test_healthcheck_reports_migration_versions_on_drift(
+    async_client, monkeypatch
+):
+    async def _mock_migrations_are_current() -> tuple[bool, set[str], set[str]]:
+        return False, {"current"}, {"expected"}
+
+    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_are_current)
+
+    response = await async_client.get("http://testserver/healthz")
+    data = response.json()
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert data["db"] == "error"
+    assert data["db_migrations"] == "error"
+    assert data["db_migrations_current"] == ["current"]
+    assert data["db_migrations_expected"] == ["expected"]
+
+
+@pytest.mark.anyio("asyncio")
 async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
     monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
 
