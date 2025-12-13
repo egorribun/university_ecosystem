@@ -2,7 +2,7 @@ ROOT_DIR := $(CURDIR)/root
 FRONTEND_DIR := $(ROOT_DIR)/frontend
 ENV_FILE ?= $(ROOT_DIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint
 
 install: backend-install frontend-install
 
@@ -14,6 +14,9 @@ frontend-install:
 	npm ci --prefix $(FRONTEND_DIR)
 
 lint: lint-backend lint-frontend
+
+compose-lint:
+	docker compose -f $(CURDIR)/docker-compose.yml config
 
 lint-backend:
 	pre-commit run --all-files
