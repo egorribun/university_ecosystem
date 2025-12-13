@@ -4,7 +4,7 @@ import type { FutureConfig as RouterDataFutureConfig } from "@remix-run/router"
 import type { FutureConfig as RouterComponentFutureConfig } from "react-router"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
-import { AuthProvider, currentUserQueryKey } from "./contexts/AuthContext"
+import { AuthProvider, currentUserQueryKey, useAuth } from "./contexts/AuthContext"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import { LanguageProvider, useLanguage } from "./contexts/LanguageContext"
@@ -20,31 +20,55 @@ import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { useTranslation } from "react-i18next"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AdminRoute, PrivateRoute } from "./components/RouteGuards"
+import { prefetchRouteModules } from "./utils/prefetchRoutes"
 
-const PageTransition = lazy(() => import("./components/PageTransition"))
-const Dashboard = lazy(() => import("./pages/Dashboard"))
-const News = lazy(() => import("./pages/News"))
-const NewsDetail = lazy(() => import("./pages/NewsDetail"))
-const Schedule = lazy(() => import("./pages/Schedule"))
-const Activity = lazy(() => import("./pages/Activity"))
-const Events = lazy(() => import("./pages/Events"))
-const EventDetail = lazy(() => import("./components/EventDetail"))
-const MapPage = lazy(() => import("./pages/Map"))
-const Profile = lazy(() => import("./pages/Profile"))
-const Login = lazy(() => import("./pages/Login"))
-const Register = lazy(() => import("./pages/Register"))
-const AdminUsers = lazy(() => import("./pages/AdminUsers"))
-const StoriesAdmin = lazy(() => import("./pages/StoriesAdmin"))
-const AdminNotifications = lazy(() => import("./pages/AdminNotifications"))
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"))
-const ResetPassword = lazy(() => import("./pages/ResetPassword"))
-const Settings = lazy(() => import("./pages/Settings"))
-const Messenger = lazy(() => import("./pages/Messenger"))
+const routeModules = {
+  PageTransition: () => import("./components/PageTransition"),
+  Dashboard: () => import("./pages/Dashboard"),
+  News: () => import("./pages/News"),
+  NewsDetail: () => import("./pages/NewsDetail"),
+  Schedule: () => import("./pages/Schedule"),
+  Activity: () => import("./pages/Activity"),
+  Events: () => import("./pages/Events"),
+  EventDetail: () => import("./components/EventDetail"),
+  MapPage: () => import("./pages/Map"),
+  Profile: () => import("./pages/Profile"),
+  Login: () => import("./pages/Login"),
+  Register: () => import("./pages/Register"),
+  AdminUsers: () => import("./pages/AdminUsers"),
+  StoriesAdmin: () => import("./pages/StoriesAdmin"),
+  AdminNotifications: () => import("./pages/AdminNotifications"),
+  ForgotPassword: () => import("./pages/ForgotPassword"),
+  ResetPassword: () => import("./pages/ResetPassword"),
+  Settings: () => import("./pages/Settings"),
+  Messenger: () => import("./pages/Messenger"),
+} as const
+
+const PageTransition = lazy(routeModules.PageTransition)
+const Dashboard = lazy(routeModules.Dashboard)
+const News = lazy(routeModules.News)
+const NewsDetail = lazy(routeModules.NewsDetail)
+const Schedule = lazy(routeModules.Schedule)
+const Activity = lazy(routeModules.Activity)
+const Events = lazy(routeModules.Events)
+const EventDetail = lazy(routeModules.EventDetail)
+const MapPage = lazy(routeModules.MapPage)
+const Profile = lazy(routeModules.Profile)
+const Login = lazy(routeModules.Login)
+const Register = lazy(routeModules.Register)
+const AdminUsers = lazy(routeModules.AdminUsers)
+const StoriesAdmin = lazy(routeModules.StoriesAdmin)
+const AdminNotifications = lazy(routeModules.AdminNotifications)
+const ForgotPassword = lazy(routeModules.ForgotPassword)
+const ResetPassword = lazy(routeModules.ResetPassword)
+const Settings = lazy(routeModules.Settings)
+const Messenger = lazy(routeModules.Messenger)
 
 function AppContent() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const { isAuth } = useAuth()
 
   const hideNavbar =
     location.pathname === "/login" ||
@@ -64,6 +88,28 @@ function AppContent() {
     const next = location.pathname + (sp.toString() ? "?" + sp : "")
     window.history.replaceState({}, "", next)
   }, [location.pathname, location.search, queryClient])
+
+  useEffect(() => {
+    const publicLoaders = [routeModules.Login, routeModules.Register, routeModules.ForgotPassword, routeModules.ResetPassword]
+    const privateLoaders = [
+      routeModules.Dashboard,
+      routeModules.News,
+      routeModules.Schedule,
+      routeModules.MapPage,
+      routeModules.Profile,
+      routeModules.Settings,
+      routeModules.Activity,
+      routeModules.Events,
+    ]
+    const sharedLoaders = [routeModules.PageTransition, routeModules.Messenger]
+
+    if (isAuth) {
+      prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: 800 })
+      return
+    }
+
+    prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: 800 })
+  }, [isAuth])
 
   const wrap = (node: ReactElement) => {
     if (reduceMotion || hideNavbar) return node

@@ -2,19 +2,19 @@
   {
     "path": "/*",
     "resourceSizes": [
-      { "resourceType": "script", "budget": 200 },
-      { "resourceType": "stylesheet", "budget": 120 }
+      { "resourceType": "script", "budget": 180 },
+      { "resourceType": "stylesheet", "budget": 110 }
     ],
     "timings": [
-      { "metric": "largest-contentful-paint", "budget": 3500 },
-      { "metric": "total-blocking-time", "budget": 300 },
+      { "metric": "largest-contentful-paint", "budget": 3000 },
+      { "metric": "total-blocking-time", "budget": 250 },
       { "metric": "cumulative-layout-shift", "budget": 0.1 }
     ]
   },
   {
     "path": "/map",
     "resourceSizes": [
-      { "resourceType": "script", "budget": 250 }
+      { "resourceType": "script", "budget": 230 }
     ],
     "timings": []
   }

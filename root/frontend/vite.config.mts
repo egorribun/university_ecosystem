@@ -98,7 +98,8 @@ const withStrictCspNonce = (): PluginOption => ({
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   const target = (env.VITE_BACKEND_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "")
-  const analyze = mode === "analyze" || process.env.ANALYZE === "1"
+  const buildReport = process.env.BUILD_REPORT === "1"
+  const analyze = mode === "analyze" || process.env.ANALYZE === "1" || buildReport
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
@@ -151,6 +152,7 @@ export default defineConfig(({ mode }) => {
       ...(manifest ? { manifest } : {}),
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
+        globIgnores: ["**/bundle-stats.*"],
       },
       devOptions: {
         enabled: false,
@@ -167,6 +169,15 @@ export default defineConfig(({ mode }) => {
         gzipSize: true,
         brotliSize: true,
         open: false,
+      })
+    )
+    plugins.push(
+      visualizer({
+        filename: "dist/bundle-stats.json",
+        template: "sunburst",
+        json: true,
+        gzipSize: true,
+        brotliSize: true,
       })
     )
   }
@@ -211,7 +222,7 @@ export default defineConfig(({ mode }) => {
     modulepreload: { polyfill: false },
     build: {
       sourcemap: true,
-      chunkSizeWarningLimit: 1024,
+      chunkSizeWarningLimit: 768,
       rollupOptions: {
         output: {
           manualChunks(id) {

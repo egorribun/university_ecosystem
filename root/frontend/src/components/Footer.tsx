@@ -3,6 +3,7 @@ import { IconButton, Typography } from "@mui/material"
 import TelegramIcon from "@mui/icons-material/Telegram"
 import EmailIcon from "@mui/icons-material/Email"
 import guuLogo from "@/assets/guu_logo.png"
+import SmartImage from "@/components/SmartImage"
 import { useTranslation } from "react-i18next"
 
 export default function Footer() {
@@ -31,13 +32,16 @@ export default function Footer() {
           <div className="footer-brand">
             <div className="footer-brand-head">
               <div className="footer-logo">
-                <img
-                  src={guuLogo}
+                <SmartImage
+                  srcRaw={guuLogo}
                   alt={t("navigation:brandAlt")}
                   width={48}
                   height={48}
                   loading="lazy"
+                  sizes="48px"
+                  responsiveWidths={[48, 64, 96]}
                   decoding="async"
+                  className="h-12 w-12"
                 />
               </div>
               <Typography className="footer-brand-title">{t("navigation:brandName")}</Typography>

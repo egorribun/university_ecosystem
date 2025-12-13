@@ -1,22 +1,22 @@
-import {
-  captureException as sentryCaptureException,
-  captureMessage as sentryCaptureMessage,
-  configureScope as sentryConfigureScope,
-} from "@sentry/react"
+import * as Sentry from "@sentry/react"
+
+const sentryCaptureException = Sentry.captureException
+const sentryCaptureMessage = Sentry.captureMessage
+const sentrySetTag = typeof Sentry.setTag === "function" ? Sentry.setTag : undefined
 
 type LogMethod = "error" | "warn" | "info" | "log"
 
 type SentryClient = {
   captureException?: typeof sentryCaptureException
   captureMessage?: typeof sentryCaptureMessage
-  configureScope?: typeof sentryConfigureScope
+  setTag?: typeof sentrySetTag
 }
 
 let currentTraceId: string | null = null
 let sentry: SentryClient = {
   captureException: sentryCaptureException,
   captureMessage: sentryCaptureMessage,
-  configureScope: sentryConfigureScope,
+  setTag: sentrySetTag,
 }
 
 export function setLoggerClient(overrides: Partial<SentryClient>): void {
@@ -77,14 +77,8 @@ function resolveTags() {
 
 export function setTraceContext(traceId: string | null | undefined): void {
   currentTraceId = traceId && String(traceId).trim() ? String(traceId) : null
-  if (typeof sentry.configureScope === "function") {
-    sentry.configureScope((scope) => {
-      if (currentTraceId) {
-        scope.setTag("trace_id", currentTraceId)
-      } else {
-        scope.setTag("trace_id", "")
-      }
-    })
+  if (typeof sentry.setTag === "function") {
+    sentry.setTag("trace_id", currentTraceId ?? "")
   }
 }
 
