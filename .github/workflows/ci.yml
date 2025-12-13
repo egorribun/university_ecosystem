@@ -114,6 +114,11 @@ jobs:
             exit 1
           fi
           npm run format:check
+      - name: Build frontend with bundle budgets
+        working-directory: root/frontend
+        env:
+          CI: true
+        run: npm run build -- --report --logLevel warn --clearScreen false
 
   pip-audit:
     name: Pip audit

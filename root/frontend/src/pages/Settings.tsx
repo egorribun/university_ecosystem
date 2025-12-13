@@ -27,6 +27,7 @@ import {
 import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import StepUpDialog from "@/components/mfa/StepUpDialog"
+import SmartImage from "@/components/SmartImage"
 import type { User } from "@/types/User"
 import type { ActiveSession } from "@/types/Session"
 import type {
@@ -828,7 +829,14 @@ function Avatar({
       )}
     >
       <div className="relative h-full w-full overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,40,85,0.08)_6%)]">
-        <img src={src} alt={alt} className="h-full w-full object-cover" {...imgProps} />
+        <SmartImage
+          srcRaw={src}
+          alt={alt}
+          className="h-full w-full object-cover"
+          responsiveWidths={[64, 96, 128, 196]}
+          sizes="(max-width: 640px) 96px, 144px"
+          {...imgProps}
+        />
       </div>
     </div>
   )

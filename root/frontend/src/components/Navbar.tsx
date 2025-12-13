@@ -160,11 +160,14 @@ const Navbar = () => {
             }}
           >
             <div className="flex items-center justify-center rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[44px] h-[44px] min-[1351px]:w-[52px] min-[1351px]:h-[52px]">
-              <img
-                src={guuLogo}
+              <SmartImage
+                srcRaw={guuLogo}
                 alt={t("navigation:brandAlt")}
                 className="object-contain w-[34px] h-[34px] min-[1351px]:w-[42px] min-[1351px]:h-[42px]"
                 loading="eager"
+                fetchPriority="high"
+                sizes="(min-width: 1351px) 42px, 34px"
+                responsiveWidths={[48, 64, 88]}
                 decoding="async"
               />
             </div>

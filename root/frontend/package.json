@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node ./scripts/run-build.mjs",
+    "build:report": "npm run build -- --report",
     "preview": "vite preview",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx \"src\" \"tests\"",
     "lint:all": "npm run lint && npm run manifests:check",
