@@ -1,0 +1,20 @@
+# Track temporary dependency audit exceptions.
+# All entries must include an owner and expiry date to avoid silent drift.
+npm:
+  overrides:
+    - package: glob
+      pinned_version: "11.1.0"
+      owner: frontend@university.example
+      expires: 2025-12-31
+      reason: |
+        Tailwind CSS 3.x pulls in sucrase's glob CLI; pinning ensures we stay on the patched release until the Tailwind 4 upgrade.
+  advisories: []
+
+pip:
+  advisories:
+    - id: CVE-2024-23342
+      package: ecdsa
+      owner: backend@university.example
+      expires: 2025-12-31
+      reason: |
+        python-ecdsa has no upstream fix for CVE-2024-23342 (GHSA-wj6h-64fc-37mp). Monitor upstream and replace or upgrade when a patch lands.

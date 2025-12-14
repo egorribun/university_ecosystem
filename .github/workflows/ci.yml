@@ -143,29 +143,15 @@ jobs:
           cache-dependency-path: |
             root/requirements.txt
             root/requirements-dev.txt
-      - name: Install pip-audit
+      - name: Install audit tooling
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pip-audit
-      - name: Run pip-audit (fail only if fixable vulns)
-        shell: bash
+          python -m pip install pip-audit pyyaml
+      - name: Run pip-audit with allowlist enforcement
         run: |
-          audit_file() {
-            f="$1"
-            if [ ! -f "$f" ]; then
-              echo "$f not found, skipping"
-              return 0
-            fi
-            fixable="$(pip-audit -r "$f" --format=json 2>/dev/null | jq '.dependencies[].vulns[].fix_versions[]' || true)"
-            if [ -z "$fixable" ]; then
-              echo "No fixable vulnerabilities in $f"
-              return 0
-            else
-              pip-audit -r "$f"
-            fi
-          }
-          audit_file root/requirements.txt
-          audit_file root/requirements-dev.txt
+          python scripts/audit_dependencies.py \
+            --allowlist security/audit-allowlist.yaml \
+            --pip root/requirements.txt root/requirements-dev.txt
 
   verify-runtime-reqs:
     name: Verify runtime requirements
@@ -340,10 +326,25 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: root/frontend/package-lock.json
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            root/requirements.txt
+            root/requirements-dev.txt
       - name: Install dependencies
         run: npm ci
-      - name: Run npm audit
-        run: npm audit --audit-level=high
+      - name: Install audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml
+      - name: Run npm audit with allowlist enforcement
+        run: |
+          python ../scripts/audit_dependencies.py \
+            --allowlist ../security/audit-allowlist.yaml \
+            --npm .
 
   build:
     name: Frontend build

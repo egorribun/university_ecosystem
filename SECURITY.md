@@ -11,6 +11,19 @@ If you discover a vulnerability, please report it privately so we can address it
 - `npm audit --audit-level=high` (March 2025) currently reports **no outstanding issues** because we force `glob@11.1.0` through `package.json#overrides`. This pulls in the patched release while keeping Tailwind CSS on the stable `3.4.x` train.
 - Keep the override until the Tailwind 4 migration lands so that future installs do not regress to the vulnerable `glob` CLI when `sucrase` updates.
 
+### Automated security pipeline
+
+- CI runs `npm audit --audit-level=high` against `root/frontend/package-lock.json` and `pip-audit` against `root/requirements.txt` + `root/requirements-dev.txt`. The jobs **fail** when a new advisory is detected or when a declared override disappears.
+- Temporary exceptions live in [`security/audit-allowlist.yaml`](security/audit-allowlist.yaml). Every entry must include an owner and an `expires` date; expired entries fail the pipeline so they cannot silently drift.
+- The current allowlist records the `glob@11.1.0` override (owner: `frontend@university.example`, expires: `2025-06-30`) to keep the Tailwind 3.x toolchain on the patched release.
+
+#### Refreshing allowlists and overrides
+
+1. Run `python scripts/audit_dependencies.py --allowlist security/audit-allowlist.yaml --npm root/frontend --pip root/requirements.txt root/requirements-dev.txt` locally. Pip-audit will download advisories; this may take a minute while it builds a virtual environment.
+2. If the command reports new advisories, either patch the dependency or add a **temporary** entry to `security/audit-allowlist.yaml` with `owner`, `expires`, `reason`, and (for npm) the pinned override version. Avoid long expirations.
+3. Commit both the dependency fix/override and the allowlist change together so CI and developers stay in sync.
+4. Remove allowlist entries as soon as upstream releases make the override unnecessary.
+
 ## Private Vulnerability Reporting
 To report a vulnerability, use the **Security** tab on GitHub and open a new **Private vulnerability report**. Issues are disabled for vulnerability discussions; instead, please submit a GitHub Security Advisory so the team can work with you directly on mitigation and disclosure.
 
