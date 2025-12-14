@@ -14,9 +14,9 @@ export type SmartImageProps = {
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
 function buildSrcSet(url: string, widths: number[]): string {
-  const uniqueWidths = Array.from(new Set(widths.filter((value) => Number.isFinite(value) && value > 0))).sort(
-    (a, b) => a - b
-  )
+  const uniqueWidths = Array.from(
+    new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
+  ).sort((a, b) => a - b)
 
   if (!uniqueWidths.length) return ""
 

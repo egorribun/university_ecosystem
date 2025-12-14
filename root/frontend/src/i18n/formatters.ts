@@ -4,7 +4,8 @@ import { localeMeta, type SupportedLanguage } from "@/i18n/metadata"
 
 type DateTimeFormatOptions = Intl.DateTimeFormatOptions & { preset?: "date" | "datetime" }
 
-const getLocaleCode = (language: SupportedLanguage) => localeMeta[language]?.formatterLocale ?? "en-US"
+const getLocaleCode = (language: SupportedLanguage) =>
+  localeMeta[language]?.formatterLocale ?? "en-US"
 
 export const getPluralCategory = (language: SupportedLanguage, value: number | bigint) => {
   const rules = new Intl.PluralRules(getLocaleCode(language))

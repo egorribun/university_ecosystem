@@ -82,7 +82,9 @@ function assertBudgets(stats) {
     for (const violation of violations) {
       console.error(violation)
     }
-    throw new Error(`Bundle budgets violated (${violations.length} issue${violations.length === 1 ? "" : "s"})`)
+    throw new Error(
+      `Bundle budgets violated (${violations.length} issue${violations.length === 1 ? "" : "s"})`
+    )
   }
 
   return {

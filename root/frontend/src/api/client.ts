@@ -115,9 +115,7 @@ let clientQueueResetAt = 0
 
 const etagCache = new Map<string, string>()
 
-const updateTraceContext = (
-  headers: AxiosHeaders | Record<string, unknown> | undefined
-) => {
+const updateTraceContext = (headers: AxiosHeaders | Record<string, unknown> | undefined) => {
   if (!headers) {
     setTraceContext(null)
     return
@@ -410,30 +408,30 @@ api.interceptors.request.use(async (config) => {
 })
 
 api.interceptors.response.use(
-    (r) => {
-      const config = r.config as ApiRequestConfig | undefined
-      const etagKey = config?.etagCacheKey
-      if (etagKey) {
-        const responseHeaders = AxiosHeaders.from(
-          (r.headers ?? undefined) as AxiosHeaders | string | undefined
-        )
-        const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
-        if (typeof tag === "string" && tag.trim()) {
-          etagCache.set(etagKey, tag)
-        } else {
-          etagCache.delete(etagKey)
-        }
+  (r) => {
+    const config = r.config as ApiRequestConfig | undefined
+    const etagKey = config?.etagCacheKey
+    if (etagKey) {
+      const responseHeaders = AxiosHeaders.from(
+        (r.headers ?? undefined) as AxiosHeaders | string | undefined
+      )
+      const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
+      if (typeof tag === "string" && tag.trim()) {
+        etagCache.set(etagKey, tag)
+      } else {
+        etagCache.delete(etagKey)
       }
-      updateTraceContext(r.headers as AxiosHeaders)
-      releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
-      return r
-    },
-    async (err) => {
-      releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
+    }
+    updateTraceContext(r.headers as AxiosHeaders)
+    releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
+    return r
+  },
+  async (err) => {
+    releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
 
-      if (err?.response?.headers) {
-        updateTraceContext(err.response.headers as AxiosHeaders)
-      }
+    if (err?.response?.headers) {
+      updateTraceContext(err.response.headers as AxiosHeaders)
+    }
 
     const config = err?.config as ApiRequestConfig | undefined
     const etagKey = config?.etagCacheKey
