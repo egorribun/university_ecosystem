@@ -32,7 +32,7 @@ def load_allowlist(path: pathlib.Path) -> dict[str, Any]:
 
 
 def ensure_not_expired(entries: Iterable[dict[str, Any]], *, label: str) -> None:
-    today = dt.date.today()
+    today = dt.datetime.now(dt.UTC).date()
     for entry in entries:
         expires_raw = entry.get("expires")
         if not expires_raw:
@@ -41,8 +41,10 @@ def ensure_not_expired(entries: Iterable[dict[str, Any]], *, label: str) -> None
         expires = parse_date(str(expires_raw))
         if expires < today:
             owner = entry.get("owner", "(unknown owner)")
+            identifier = entry.get("id") or entry.get("package")
             raise AuditFailure(
-                f"{label} entry for '{entry.get('id') or entry.get('package')}' expired on {expires} (owner: {owner})"
+                f"{label} entry for '{identifier}' expired on {expires} "
+                f"(owner: {owner})"
             )
 
 
@@ -96,7 +98,8 @@ def validate_npm_overrides(
         configured_version = configured_overrides.get(package)
         if configured_version != expected_version:
             raise AuditFailure(
-                f"Expected override for {package!r} to pin version {expected_version}, got {configured_version!r}."
+                f"Expected override for {package!r} to pin version "
+                f"{expected_version}, got {configured_version!r}."
             )
 
 
@@ -110,10 +113,15 @@ def check_allowances(
     if missing:
         formatted = "\n".join(f"- {value}" for value in missing)
         raise AuditFailure(
-            f"{ecosystem} audit found advisories that are not in the allowlist:\n{formatted}\n"
-            "Add a temporary allowlist entry with an owner and expiry if this cannot be fixed immediately."
+            (
+                f"{ecosystem} audit found advisories that are not in the allowlist:\n"
+                f"{formatted}\n"
+            ),
+            (
+                "Add a temporary allowlist entry with an owner and expiry if this "
+                "cannot be fixed immediately."
+            ),
         )
-
 
 def audit_npm(args: argparse.Namespace, allowlist: dict[str, Any]) -> None:
     if not args.npm:
