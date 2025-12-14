@@ -47,6 +47,8 @@ cp root/.env.example root/.env
 
 Important backend values include `DATABASE_URL`, `SECRET_KEY`, `FRONTEND_ORIGIN(S)`, and the VAPID/Spotify credentials. Redis-related toggles (`CACHE_ENABLED`, `CACHE_REDIS_URL`, `RATE_LIMIT_STORAGE_BACKEND`, `RATE_LIMIT_STORAGE_URI`) default to in-memory behavior unless you enable Redis. For quick SQLite development you may set `AUTO_CREATE_SCHEMA=1`, but production deployments should run Alembic migrations instead.
 
+For environments backed by external object storage, the `/healthz` storage probe now includes two tuning knobs: set `HEALTH_STORAGE_PROBE_ENABLED=true` to run the full write/delete check, and adjust `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` to reuse a cached result between calls. When the heavy probe is disabled, the healthcheck falls back to lightweight bucket/list checks when available.
+
 Docker Compose reads the `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` values from `root/.env`. The defaults are set to non-default development credentials (`university` / `devpassword`) but **must be changed for any shared or remote host** along with the generated `DATABASE_URL` connection string.
 
 Frontend builds read `VITE_*` variables at build time (for example `VITE_BACKEND_ORIGIN`, `VITE_MAP_CONSTRUCTOR_ID`, `VITE_APP_RELEASE`, `VITE_SENTRY_DSN`).

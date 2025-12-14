@@ -42,6 +42,13 @@ def _assert_latency_present(data: dict, key: str) -> None:
     assert 0 <= data[key] < 60_000
 
 
+@pytest.fixture(autouse=True)
+def reset_storage_cache():
+    main._reset_storage_probe_cache()
+    yield
+    main._reset_storage_probe_cache()
+
+
 @pytest.fixture
 def missing_table_operational_error(monkeypatch):
     class _UndefinedTableError(Exception):
@@ -145,6 +152,7 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
         async def delete_file(self, file_url: str) -> None:
             return None
 
+    monkeypatch.setattr(main.settings, "health_storage_probe_enabled", True)
     monkeypatch.setattr(main, "_get_storage_backend", lambda: _FailingStorage())
 
     response = await async_client.get("http://testserver/healthz")
@@ -152,6 +160,64 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["storage"] == "error"
     _assert_latency_present(data, "storage_latency_ms")
+
+
+@pytest.mark.anyio("asyncio")
+async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
+    async_client, monkeypatch
+):
+    monkeypatch.setattr(main.settings, "health_storage_probe_enabled", False)
+
+    probes = {"light": 0, "heavy": 0}
+
+    async def _fake_lightweight_probe(_backend):
+        probes["light"] += 1
+        return "ok"
+
+    async def _unexpected_heavy_probe(_backend):  # pragma: no cover - guarded
+        probes["heavy"] += 1
+        raise AssertionError("heavy probe should not run when disabled")
+
+    monkeypatch.setattr(main, "_lightweight_storage_probe", _fake_lightweight_probe)
+    monkeypatch.setattr(main, "_write_delete_storage_probe", _unexpected_heavy_probe)
+    monkeypatch.setattr(main, "_get_storage_backend", lambda: object())
+
+    response = await async_client.get("http://testserver/healthz")
+    data = response.json()
+
+    assert response.status_code == status.HTTP_200_OK
+    assert data["storage"] == "ok"
+    assert probes == {"light": 1, "heavy": 0}
+    _assert_latency_present(data, "storage_latency_ms")
+
+
+@pytest.mark.anyio("asyncio")
+async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
+    monkeypatch.setattr(main.settings, "health_storage_probe_enabled", True)
+    monkeypatch.setattr(main.settings, "health_storage_probe_min_interval_seconds", 60.0)
+
+    probes = {"light": 0, "heavy": 0}
+
+    async def _heavy_probe(_backend):
+        probes["heavy"] += 1
+        return "ok"
+
+    async def _lightweight_probe(_backend):
+        probes["light"] += 1
+        return None
+
+    monkeypatch.setattr(main, "_lightweight_storage_probe", _lightweight_probe)
+    monkeypatch.setattr(main, "_write_delete_storage_probe", _heavy_probe)
+    monkeypatch.setattr(main, "_get_storage_backend", lambda: object())
+
+    first = await async_client.get("http://testserver/healthz")
+    second = await async_client.get("http://testserver/healthz")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert probes == {"light": 0, "heavy": 1}
+    assert first.json()["storage"] == "ok"
+    assert second.json()["storage"] == "ok"
 
 
 @pytest.mark.anyio("asyncio")

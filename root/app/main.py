@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from functools import lru_cache
@@ -37,6 +38,7 @@ from app.services.file_scanner import (
 from app.services.file_scanner import (
     scan_for_malware as _scan_for_malware,
 )
+from app.services.storage import S3Storage, StaticFSStorage
 from app.utils.files import _get_storage_backend
 
 try:
@@ -198,6 +200,80 @@ async def _migrations_are_current() -> tuple[bool, set[str], set[str]]:
     return current_versions == expected_heads, current_versions, expected_heads
 
 
+_storage_probe_cache: dict[str, float | str] = {
+    "expires_at": 0.0,
+    "status": "unknown",
+    "latency": 0.0,
+}
+
+
+def _reset_storage_probe_cache() -> None:
+    _storage_probe_cache.update({"expires_at": 0.0, "status": "unknown", "latency": 0.0})
+
+
+async def _lightweight_storage_probe(backend) -> str | None:
+    if isinstance(backend, StaticFSStorage):
+        exists = await asyncio.to_thread(backend.base_dir.exists)
+        return "ok" if exists else "error"
+    if isinstance(backend, S3Storage):
+        await asyncio.to_thread(
+            backend.client.list_objects_v2, Bucket=backend.bucket, MaxKeys=0
+        )
+        return "ok"
+    return None
+
+
+async def _write_delete_storage_probe(backend) -> str:
+    probe_name = f"healthz/{uuid.uuid4().hex}.txt"
+    try:
+        probe_url = await backend.save_file(probe_name, b"", content_type="text/plain")
+    except Exception:
+        return "error"
+    try:
+        await backend.delete_file(probe_url)
+    except Exception:
+        return "error"
+    return "ok"
+
+
+async def _probe_storage() -> tuple[str, float]:
+    now = time.monotonic()
+    cached_expires_at = float(_storage_probe_cache.get("expires_at", 0.0) or 0.0)
+    if cached_expires_at > now:
+        status = str(_storage_probe_cache.get("status", "unknown"))
+        latency_seconds = float(_storage_probe_cache.get("latency", 0.0) or 0.0)
+        return status, latency_seconds
+
+    start = time.perf_counter()
+    status: str | None = None
+    try:
+        backend = _get_storage_backend()
+        if settings.health_storage_probe_enabled:
+            status = await _write_delete_storage_probe(backend)
+        if status is None:
+            lightweight_status = await _lightweight_storage_probe(backend)
+            if lightweight_status is not None:
+                status = lightweight_status
+            else:
+                status = "disabled"
+        elif status == "error":
+            lightweight_status = await _lightweight_storage_probe(backend)
+            if lightweight_status is not None:
+                status = lightweight_status
+    except Exception:
+        status = "error"
+    elapsed = time.perf_counter() - start
+    latency_seconds = max(elapsed, 0.0)
+    _storage_probe_cache.update(
+        {
+            "expires_at": now + max(settings.health_storage_probe_min_interval_seconds, 0.0),
+            "status": status,
+            "latency": latency_seconds,
+        }
+    )
+    return status, latency_seconds
+
+
 @app.get("/healthz")
 async def healthz():
     statuses: dict[str, str] = {}
@@ -257,25 +333,7 @@ async def healthz():
     latencies["cache_latency_ms"] = max(cache_elapsed * 1000, 0.0)
     record_health_probe("cache", cache_status, cache_elapsed)
 
-    storage_status = "ok"
-    storage_start = time.perf_counter()
-    try:
-        backend = _get_storage_backend()
-        probe_name = f"healthz/{uuid.uuid4().hex}.txt"
-        try:
-            probe_url = await backend.save_file(
-                probe_name, b"", content_type="text/plain"
-            )
-        except Exception:
-            storage_status = "error"
-        else:
-            try:
-                await backend.delete_file(probe_url)
-            except Exception:
-                storage_status = "error"
-    except Exception:
-        storage_status = "error"
-    storage_elapsed = time.perf_counter() - storage_start
+    storage_status, storage_elapsed = await _probe_storage()
     statuses["storage"] = storage_status
     latencies["storage_latency_ms"] = max(storage_elapsed * 1000, 0.0)
     record_health_probe("storage", storage_status, storage_elapsed)
