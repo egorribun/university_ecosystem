@@ -10,10 +10,10 @@ export type SmartImageProps = {
   srcRaw?: string
   cacheV?: string | number
   fallback?: string
-  responsiveWidths?: number[]
+  responsiveWidths?: readonly number[]
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
-function buildSrcSet(url: string, widths: number[]): string {
+function buildSrcSet(url: string, widths: readonly number[]): string {
   const uniqueWidths = Array.from(
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
   ).sort((a, b) => a - b)

@@ -18,10 +18,9 @@ import {
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 const log = (method: "error" | "warn" | "info", ...args: unknown[]) => {
-  const target =
-    typeof console !== "undefined" ? (console as Record<string, unknown>)[method] : undefined
+  const target = typeof console !== "undefined" ? console[method] : undefined
   if (typeof target === "function") {
-    ;(target as (...args: unknown[]) => void)(...args)
+    target(...(args as unknown[]))
   }
 }
 

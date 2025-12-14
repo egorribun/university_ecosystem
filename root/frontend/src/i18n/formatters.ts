@@ -9,7 +9,8 @@ const getLocaleCode = (language: SupportedLanguage) =>
 
 export const getPluralCategory = (language: SupportedLanguage, value: number | bigint) => {
   const rules = new Intl.PluralRules(getLocaleCode(language))
-  return rules.select(value)
+  const normalized = typeof value === "bigint" ? Number(value) : value
+  return rules.select(normalized)
 }
 
 export const formatNumber = (

@@ -23,7 +23,6 @@ beforeEach(async () => {
   setLoggerClient({
     captureException,
     captureMessage,
-    configureScope: undefined,
   })
 })
 
