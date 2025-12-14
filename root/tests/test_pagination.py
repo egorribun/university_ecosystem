@@ -3,9 +3,9 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from httpx import AsyncClient
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -35,7 +35,9 @@ def test_chat_cursor_round_trip(timestamp_ms: int, identifier: str) -> None:
 
 @settings(max_examples=25)
 @given(
-    value=st.text(min_size=1).filter(lambda raw: raw.count(":") != 1 or not raw.strip()),
+    value=st.text(min_size=1).filter(
+        lambda raw: raw.count(":") != 1 or not raw.strip()
+    ),
 )
 def test_chat_decode_cursor_rejects_invalid(value: str) -> None:
     assert chat._decode_cursor(value) is None  # noqa: SLF001

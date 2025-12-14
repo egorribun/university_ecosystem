@@ -436,7 +436,9 @@ def test_parse_rate_limit_accepts_known_units(
     value = f"{leading_ws}{count}{separator}{unit}{trailing_ws}"
     parsed = rate_limit.parse_rate_limit(value, fallback=fallback)
 
-    expected_seconds = rate_limit._TIME_UNITS.get(unit) or rate_limit._TIME_UNITS.get(  # noqa: SLF001
+    expected_seconds = rate_limit._TIME_UNITS.get(
+        unit
+    ) or rate_limit._TIME_UNITS.get(  # noqa: SLF001
         unit.rstrip("s")
     )
     assert parsed == (count, expected_seconds)

@@ -13,7 +13,9 @@ from app.services import push_topics
         max_size=6,
     )
 )
-def test_normalize_topics_respects_allowed_and_deduplicates(raw_topics: list[str]) -> None:
+def test_normalize_topics_respects_allowed_and_deduplicates(
+    raw_topics: list[str],
+) -> None:
     allowed = {"news", "events", "system", "custom"}
     normalized = push_topics.normalize_topics(raw_topics, allowed_topics=allowed)
 
@@ -28,9 +30,7 @@ def test_normalize_topics_respects_allowed_and_deduplicates(raw_topics: list[str
 
 def test_normalize_topic_strict_unknown_topic():
     with pytest.raises(ValueError):
-        push_topics.normalize_topic(
-            "unsupported", allowed_topics={"news"}, strict=True
-        )
+        push_topics.normalize_topic("unsupported", allowed_topics={"news"}, strict=True)
 
 
 def test_sort_topics_uses_allowed_order():

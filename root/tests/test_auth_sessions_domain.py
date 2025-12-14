@@ -50,7 +50,9 @@ async def test_resolve_target_user_allows_admin(db_session, user_factory):
 
 def test_extract_jti_prefers_bearer_header(monkeypatch):
     monkeypatch.setattr(
-        sessions, "decode_token", lambda token: {"jti": "header-jti"}  # noqa: ARG005
+        sessions,
+        "decode_token",
+        lambda token: {"jti": "header-jti"},  # noqa: ARG005
     )
 
     request = _make_request(headers=[(b"authorization", b"Bearer token-value")])
