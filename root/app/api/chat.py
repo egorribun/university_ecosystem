@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
-from app.api.websocket import notify_new_message
+from app.api.websocket import build_presence_map, notify_new_message
 from app.core.config import settings
 from app.core.database import get_db
 from app.localization import translate
@@ -29,6 +29,7 @@ from app.schemas.chat import (
     ChatsListOut,
     MessageResponse,
     MessagesListOut,
+    PresenceStatus,
 )
 from app.utils.files import delete_static_file, save_attachment
 
@@ -120,6 +121,11 @@ async def get_chats(
     query = query.order_by(last_message_subquery.desc().nulls_last()).limit(limit + 1)
     result = await session.execute(query)
     chats = result.scalars().all()
+    participant_ids: set[int] = set()
+
+    for chat in chats:
+        for participant in chat.participants:
+            participant_ids.add(participant.id)
 
     # Check if there are more results
     has_more = len(chats) > limit
@@ -157,8 +163,39 @@ async def get_chats(
         last_chat = chats[-1]
         next_cursor = _encode_cursor(last_chat.updated_at, last_chat.id)
 
+    presence_map = await build_presence_map(participant_ids)
+
+    enriched_chats = []
+    for chat in chat_responses:
+        last_message = chat.last_message
+        if isinstance(last_message, Message):
+            last_message = MessageResponse(
+                id=last_message.id,
+                chat_id=last_message.chat_id,
+                sender_id=last_message.sender_id,
+                content=last_message.content,
+                created_at=last_message.created_at,
+                read_status=last_message.read_status,
+                sender=last_message.sender,
+                attachments=last_message.attachments,
+                sender_presence=presence_map.get(last_message.sender_id),
+            )
+
+        participant_status = {}
+        for participant in chat.participants:
+            participant_status[participant.id] = presence_map.get(
+                participant.id, PresenceStatus()
+            )
+        enriched_chats.append(
+            ChatResponse(
+                **chat.model_dump(),
+                last_message=last_message,
+                presence=participant_status,
+            )
+        )
+
     return ChatsListOut(
-        items=chat_responses,
+        items=enriched_chats,
         has_more=has_more,
         next_cursor=next_cursor,
     )
@@ -219,11 +256,17 @@ async def create_chat(
     await session.commit()
     await session.refresh(new_chat)
 
+    presence_map = await build_presence_map([p.id for p in new_chat.participants])
+
     return ChatResponse(
         id=new_chat.id,
         participants=new_chat.participants,
         created_at=new_chat.created_at,
         updated_at=new_chat.updated_at,
+        presence={
+            participant.id: presence_map.get(participant.id, PresenceStatus())
+            for participant in new_chat.participants
+        },
     )
 
 
@@ -284,8 +327,25 @@ async def get_messages(
         oldest_message = messages[0]  # First in ascending order = oldest
         next_cursor = _encode_cursor(oldest_message.created_at, oldest_message.id)
 
+    presence_map = await build_presence_map({msg.sender_id for msg in messages})
+
+    response_items = [
+        MessageResponse(
+            id=msg.id,
+            chat_id=msg.chat_id,
+            sender_id=msg.sender_id,
+            content=msg.content,
+            created_at=msg.created_at,
+            read_status=msg.read_status,
+            sender=msg.sender,
+            attachments=msg.attachments,
+            sender_presence=presence_map.get(msg.sender_id),
+        )
+        for msg in messages
+    ]
+
     return MessagesListOut(
-        items=messages,
+        items=response_items,
         has_more=has_more,
         next_cursor=next_cursor,
     )
@@ -409,7 +469,19 @@ async def send_message(
     # Notify other participants via WebSocket
     await notify_new_message(message, exclude_user_id=current_user.id)
 
-    return message
+    presence_map = await build_presence_map([message.sender_id])
+
+    return MessageResponse(
+        id=message.id,
+        chat_id=message.chat_id,
+        sender_id=message.sender_id,
+        content=message.content,
+        created_at=message.created_at,
+        read_status=message.read_status,
+        sender=message.sender,
+        attachments=message.attachments,
+        sender_presence=presence_map.get(message.sender_id),
+    )
 
 
 @router.post("/{chat_id}/read")

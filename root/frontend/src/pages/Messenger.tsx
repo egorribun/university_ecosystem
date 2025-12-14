@@ -16,6 +16,7 @@ import {
   type ChatsListResponse,
   type Message,
   type MessagesListResponse,
+  type PresenceStatus,
 } from "../api/chat"
 import { useChatWebSocket } from "../hooks/useChatWebSocket"
 import SmartImage from "@/components/SmartImage"
@@ -37,10 +38,31 @@ export default function Messenger() {
   const [profileUser, setProfileUser] = useState<User | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [presenceMap, setPresenceMap] = useState<Record<number, PresenceStatus>>({})
 
   // WebSocket for real-time updates (uses cookie-based auth)
   const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
     enabled: !!user,
+    onPresenceUpdate: (userId, active, lastSeen) => {
+      setPresenceMap((prev) => ({
+        ...prev,
+        [userId]: { active, last_seen_at: lastSeen },
+      }))
+
+      queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
+        if (!old) return old
+        const items = old.items.map((chat) => {
+          const participates = chat.participants.some((p) => p.id === userId)
+          if (!participates) return chat
+
+          const nextPresence = { ...(chat.presence || {}) }
+          nextPresence[userId] = { active, last_seen_at: lastSeen }
+          return { ...chat, presence: nextPresence }
+        })
+
+        return { ...old, items }
+      })
+    },
   })
 
   // Fetch Chats with paginated response
@@ -49,6 +71,21 @@ export default function Messenger() {
     queryFn: () => chatApi.getChats(),
   })
   const chats = chatsData?.items ?? []
+
+  useEffect(() => {
+    if (!chatsData?.items) return
+
+    setPresenceMap((prev) => {
+      const next = { ...prev }
+      chatsData.items.forEach((chat) => {
+        Object.entries(chat.presence || {}).forEach(([id, status]) => {
+          const userId = Number(id)
+          next[userId] = status
+        })
+      })
+      return next
+    })
+  }, [chatsData])
 
   // Fetch Messages for selected chat with paginated response
   const { data: messagesData, isLoading: messagesLoading } = useQuery({
@@ -248,6 +285,7 @@ export default function Messenger() {
   // Transform chats for ContactList component
   const contacts = chats.map((chat) => {
     const other = getOtherParticipant(chat)
+    const status = other ? presenceMap[other.id] : undefined
     return {
       id: chat.id,
       name: other?.full_name || "Unknown User",
@@ -260,7 +298,7 @@ export default function Messenger() {
           })
         : "",
       unread: chat.unread_count,
-      online: false, // TODO: Real online status
+      online: status?.active ?? false,
     }
   })
 

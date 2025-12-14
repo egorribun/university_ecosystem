@@ -10,6 +10,7 @@ export type WebSocketMessageType =
   | "read"
   | "new_message"
   | "online"
+  | "presence"
   | "error"
 
 export interface WebSocketMessage {
@@ -21,6 +22,8 @@ export interface WebSocketMessage {
   message?: Message
   status?: boolean
   users?: number[]
+  active?: boolean
+  last_seen?: string | null
 }
 
 export interface UseChatWebSocketOptions {
@@ -29,6 +32,7 @@ export interface UseChatWebSocketOptions {
   onTyping?: (chatId: string, userId: number, userName: string) => void
   onRead?: (chatId: string, messageId: string, userId: number) => void
   onOnlineStatus?: (userId: number, status: boolean) => void
+  onPresenceUpdate?: (userId: number, active: boolean, lastSeen: string | null) => void
 }
 
 interface TypingUser {
@@ -43,6 +47,7 @@ export function useChatWebSocket({
   onTyping,
   onRead,
   onOnlineStatus,
+  onPresenceUpdate,
 }: UseChatWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -56,6 +61,7 @@ export function useChatWebSocket({
   const onTypingRef = useRef(onTyping)
   const onReadRef = useRef(onRead)
   const onOnlineStatusRef = useRef(onOnlineStatus)
+  const onPresenceUpdateRef = useRef(onPresenceUpdate)
   const enabledRef = useRef(enabled)
 
   // Keep refs updated
@@ -64,6 +70,7 @@ export function useChatWebSocket({
     onTypingRef.current = onTyping
     onReadRef.current = onRead
     onOnlineStatusRef.current = onOnlineStatus
+    onPresenceUpdateRef.current = onPresenceUpdate
     enabledRef.current = enabled
   })
 
@@ -184,6 +191,15 @@ export function useChatWebSocket({
             case "online":
               if (data.user_id !== undefined && data.status !== undefined) {
                 onOnlineStatusRef.current?.(data.user_id, data.status)
+              }
+              break
+
+            case "presence":
+              if (data.user_id !== undefined && data.active !== undefined) {
+                const lastSeen = data.last_seen ?? null
+                onPresenceUpdateRef.current?.(data.user_id, data.active, lastSeen)
+                // Maintain backward compatibility with online status updates
+                onOnlineStatusRef.current?.(data.user_id, data.active)
               }
               break
 
