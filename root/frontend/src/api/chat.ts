@@ -9,6 +9,11 @@ export interface Attachment {
   size: number
 }
 
+export interface PresenceStatus {
+  active: boolean
+  last_seen_at: string | null
+}
+
 export interface Message {
   id: string
   chat_id: string
@@ -17,6 +22,7 @@ export interface Message {
   created_at: string
   read_status: boolean
   sender?: User
+  sender_presence?: PresenceStatus
   attachments?: Attachment[]
 }
 
@@ -27,6 +33,7 @@ export interface Chat {
   unread_count: number
   created_at: string
   updated_at: string
+  presence?: Record<number, PresenceStatus>
 }
 
 // Paginated response types

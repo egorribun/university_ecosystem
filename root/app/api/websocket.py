@@ -12,15 +12,17 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Iterable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session
 from app.models.chat import Chat, Message
-from app.models.models import User
-from app.schemas.chat import ChatParticipant
+from app.models.models import ActiveSession, User
+from app.schemas.chat import ChatParticipant, PresenceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,23 @@ class ConnectionManager:
                     total_sent += await self.send_to_user(participant.id, message)
         return total_sent
 
+    async def broadcast_presence(
+        self, user_id: int, active: bool, last_seen: datetime | None
+    ) -> int:
+        """Broadcast presence status to all connected users."""
+
+        payload = {
+            "type": "presence",
+            "user_id": user_id,
+            "active": active,
+            "last_seen": last_seen.isoformat() if last_seen else None,
+        }
+
+        total_sent = 0
+        for target_user in list(self.active_connections.keys()):
+            total_sent += await self.send_to_user(target_user, payload)
+        return total_sent
+
     def get_online_users(self) -> list[int]:
         """Get list of all online user IDs."""
         return list(self.active_connections.keys())
@@ -112,28 +131,55 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def get_user_from_token(token: str) -> User | None:
-    """Validate JWT token and return the user."""
+async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
+    """Validate JWT token and return the user and session identifier."""
     from app.auth.security import decode_token
 
     try:
         payload = decode_token(token)
         if not payload:
-            return None
+            return None, None
 
         user_id = payload.get("sub")
+        session_jti = payload.get("jti")
         if not user_id:
-            return None
+            return None, None
 
         async with async_session() as session:
             user = await session.get(User, int(user_id))
-            return user if user and user.is_active else None
+            if not user or not user.is_active:
+                return None, None
+
+            if not session_jti:
+                return None, None
+
+            result = await session.execute(
+                select(ActiveSession).where(ActiveSession.jti == session_jti)
+            )
+            active_session = result.scalars().first()
+            if not active_session or active_session.user_id != user.id:
+                return None, None
+
+            expires_at = active_session.expires_at
+            if expires_at is None:
+                return None, None
+
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+
+            if expires_at <= datetime.now(UTC):
+                return None, None
+
+            if active_session.revoked_at is not None:
+                return None, None
+
+            return user, session_jti
     except Exception as e:
         logger.warning(f"Token validation failed: {e}")
-        return None
+        return None, None
 
 
-async def get_user_from_cookie(cookie_value: str) -> User | None:
+async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | None]:
     """Validate session cookie and return the user."""
 
     try:
@@ -141,14 +187,69 @@ async def get_user_from_cookie(cookie_value: str) -> User | None:
         return await get_user_from_token(cookie_value)
     except Exception as e:
         logger.warning(f"Cookie validation failed: {e}")
-        return None
+        return None, None
 
 
-def serialize_message(message: Message) -> dict[str, Any]:
+async def _update_last_seen(session_jti: str | None) -> datetime:
+    """Persist last_seen_at for a session and return the timestamp used."""
+
+    now = datetime.now(UTC)
+    if not session_jti:
+        return now
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(ActiveSession).where(ActiveSession.jti == session_jti)
+        )
+        active_session = result.scalars().first()
+        if active_session:
+            active_session.last_seen_at = now
+            await session.commit()
+
+    return now
+
+
+async def build_presence_map(user_ids: Iterable[int]) -> dict[int, PresenceStatus]:
+    """Return presence info for a set of users."""
+
+    ids = {uid for uid in user_ids if uid is not None}
+    if not ids:
+        return {}
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
+            .where(ActiveSession.user_id.in_(ids))
+            .group_by(ActiveSession.user_id)
+        )
+        last_seen_map = {row[0]: row[1] for row in result.all()}
+
+    presence: dict[int, PresenceStatus] = {}
+    for uid in ids:
+        presence[uid] = PresenceStatus(
+            active=manager.is_online(uid),
+            last_seen_at=last_seen_map.get(uid),
+        )
+    return presence
+
+
+def serialize_message(
+    message: Message, presence: dict[int, PresenceStatus] | None = None
+) -> dict[str, Any]:
     """Serialize a Message object for WebSocket transmission."""
     sender_data = None
     if message.sender:
         sender_data = ChatParticipant.model_validate(message.sender).model_dump()
+
+    sender_presence = None
+    if presence and message.sender_id in presence:
+        status = presence[message.sender_id]
+        sender_presence = {
+            "active": status.active,
+            "last_seen_at": status.last_seen_at.isoformat()
+            if status.last_seen_at
+            else None,
+        }
 
     return {
         "id": message.id,
@@ -158,6 +259,7 @@ def serialize_message(message: Message) -> dict[str, Any]:
         "created_at": message.created_at.isoformat() if message.created_at else None,
         "read_status": message.read_status,
         "sender": sender_data,
+        "sender_presence": sender_presence,
         "attachments": [
             {
                 "id": att.id,
@@ -191,10 +293,12 @@ async def websocket_chat(websocket: WebSocket):
     - {"type": "typing", "chat_id": "...", "user_id": ...} - Someone is typing
     - {"type": "read", "chat_id": "...", "message_id": "...", "user_id": ...}
       - Message read
-    - {"type": "online", "user_id": ..., "status": true/false} - User online status
+    - {"type": "presence", "user_id": ..., "active": true/false, "last_seen": "..."}
+      - Participant presence updates
     - {"type": "error", "message": "..."} - Error message
     """
     user = None
+    session_jti = None
 
     # Debug: log incoming connection info
     logger.info(
@@ -208,7 +312,7 @@ async def websocket_chat(websocket: WebSocket):
     token = websocket.query_params.get("token")
     if token:
         logger.info("Attempting token auth from query params")
-        user = await get_user_from_token(token)
+        user, session_jti = await get_user_from_token(token)
         if user:
             logger.info(f"Token auth successful: user_id={user.id}")
         else:
@@ -221,7 +325,7 @@ async def websocket_chat(websocket: WebSocket):
             f"Attempting cookie auth, access_token present: {bool(access_token)}"
         )
         if access_token:
-            user = await get_user_from_cookie(access_token)
+            user, session_jti = await get_user_from_cookie(access_token)
             if user:
                 logger.info(f"Cookie auth successful: user_id={user.id}")
             else:
@@ -234,6 +338,8 @@ async def websocket_chat(websocket: WebSocket):
 
     # Connect and register
     await manager.connect(websocket, user.id)
+    last_seen = await _update_last_seen(session_jti)
+    await manager.broadcast_presence(user.id, True, last_seen)
 
     try:
         # Send initial online status to user's contacts
@@ -249,7 +355,9 @@ async def websocket_chat(websocket: WebSocket):
             msg_type = data.get("type")
 
             if msg_type == "ping":
+                last_seen = await _update_last_seen(session_jti)
                 await websocket.send_json({"type": "pong"})
+                await manager.broadcast_presence(user.id, True, last_seen)
 
             elif msg_type == "typing":
                 chat_id = data.get("chat_id")
@@ -300,10 +408,14 @@ async def websocket_chat(websocket: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        last_seen = await _update_last_seen(session_jti)
+        await manager.broadcast_presence(user.id, False, last_seen)
         logger.info(f"WebSocket disconnected for user {user.id}")
     except Exception as e:
         logger.error(f"WebSocket error for user {user.id}: {e}")
         manager.disconnect(websocket)
+        last_seen = await _update_last_seen(session_jti)
+        await manager.broadcast_presence(user.id, False, last_seen)
 
 
 async def notify_new_message(
@@ -315,12 +427,13 @@ async def notify_new_message(
 
     Returns the number of successful notifications sent.
     """
+    presence = await build_presence_map([message.sender_id])
     return await manager.broadcast_to_chat(
         message.chat_id,
         {
             "type": "new_message",
             "chat_id": message.chat_id,
-            "message": serialize_message(message),
+            "message": serialize_message(message, presence),
         },
         exclude_user_id=exclude_user_id,
     )

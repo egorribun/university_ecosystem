@@ -14,6 +14,13 @@ class ChatParticipant(BaseModel):
     is_active: bool
 
 
+class PresenceStatus(BaseModel):
+    """Represents a participant's presence state."""
+
+    active: bool = False
+    last_seen_at: datetime | None = None
+
+
 class MessageBase(BaseModel):
     content: str
 
@@ -40,6 +47,7 @@ class MessageResponse(MessageBase):
     created_at: datetime
     read_status: bool
     sender: ChatParticipant | None = None
+    sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = []
 
     class Config:
@@ -61,6 +69,7 @@ class ChatResponse(ChatBase):
     unread_count: int = 0
     created_at: datetime
     updated_at: datetime
+    presence: dict[int, PresenceStatus] | None = None
 
     class Config:
         from_attributes = True
