@@ -20,8 +20,10 @@ import fakeredis.aioredis
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.compiler import compiles
 
 pytest_plugins = ("pytest_asyncio", "pytest_cov")
 
@@ -97,6 +99,11 @@ from app.services import notification_queue
 from app.utils import ratelimit as ratelimit_module
 
 _ASYNCIO_PLUGIN_ACTIVE = False
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):  # type: ignore[unused-argument]
+    return "JSON"
 
 
 def pytest_configure(config: pytest.Config) -> None:

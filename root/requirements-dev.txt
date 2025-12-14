@@ -125,6 +125,8 @@ httptools==0.7.1
     # via uvicorn
 httpx==0.28.1
     # via -r root/requirements.in
+hypothesis==6.112.1
+    # via -r root/requirements-dev.in
 identify==2.6.15
     # via pre-commit
 idna==3.11

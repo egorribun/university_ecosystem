@@ -4,10 +4,59 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
+from app.api import chat
 from app.models import models
+
+
+@settings(max_examples=30)
+@given(
+    timestamp_ms=st.integers(min_value=0, max_value=4_102_444_800_000),
+    identifier=st.text(
+        alphabet=st.characters(blacklist_characters=":", blacklist_categories=["Cs"]),
+        min_size=1,
+        max_size=24,
+    ),
+)
+def test_chat_cursor_round_trip(timestamp_ms: int, identifier: str) -> None:
+    original = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+    encoded = chat._encode_cursor(original, identifier)  # noqa: SLF001
+    decoded = chat._decode_cursor(encoded)  # noqa: SLF001
+
+    assert decoded is not None
+    decoded_ts, decoded_id = decoded
+    assert decoded_id == identifier
+    assert abs(decoded_ts.timestamp() - original.timestamp()) <= 0.001
+
+
+@settings(max_examples=25)
+@given(
+    value=st.text(min_size=1).filter(
+        lambda raw: raw.count(":") != 1 or not raw.strip()
+    ),
+)
+def test_chat_decode_cursor_rejects_invalid(value: str) -> None:
+    assert chat._decode_cursor(value) is None  # noqa: SLF001
+
+
+@settings(max_examples=25)
+@given(
+    timestamp_ms=st.integers(min_value=0, max_value=4_102_444_800_000),
+    news_id=st.integers(min_value=1, max_value=1_000_000),
+)
+def test_news_cursor_round_trip(timestamp_ms: int, news_id: int) -> None:
+    cursor = f"{timestamp_ms}:{news_id}"
+    decoded = crud._decode_news_cursor(cursor)  # noqa: SLF001
+
+    assert decoded is not None
+    decoded_ts, decoded_id = decoded
+    assert decoded_id == news_id
+    decoded_ms = int(decoded_ts.timestamp() * 1000)
+    assert abs(decoded_ms - timestamp_ms) <= 1
 
 
 @pytest.fixture

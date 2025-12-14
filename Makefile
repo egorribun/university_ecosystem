@@ -27,7 +27,7 @@ lint-frontend:
 	npm run format:check --prefix $(FRONTEND_DIR)
 
 backend-test:
-	cd $(ROOT_DIR) && pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=72 --junitxml=pytest-report.xml
+cd $(ROOT_DIR) && pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=85 --junitxml=pytest-report.xml
 
 backend-typecheck:
 	cd $(ROOT_DIR) && mypy

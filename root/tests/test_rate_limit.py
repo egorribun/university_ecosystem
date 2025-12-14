@@ -1,6 +1,9 @@
 import httpx
 import pytest
 from fastapi import Depends, FastAPI, Response, status
+from hypothesis import HealthCheck, given
+from hypothesis import settings as hypo_settings
+from hypothesis import strategies as st
 from redis.exceptions import RedisError
 
 from app.auth.security import get_password_hash
@@ -416,3 +419,74 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
 
     assert response.status_code == status.HTTP_200_OK
     assert "X-RateLimit-Limit" not in response.headers
+
+
+@hypo_settings(max_examples=25)
+@given(
+    count=st.integers(min_value=1, max_value=50),
+    unit=st.sampled_from(list(rate_limit._TIME_UNITS.keys())),
+    separator=st.sampled_from(["/", " per "]),
+    leading_ws=st.text(alphabet=" ", min_size=0, max_size=2),
+    trailing_ws=st.text(alphabet=" ", min_size=0, max_size=2),
+)
+def test_parse_rate_limit_accepts_known_units(
+    count: int, unit: str, separator: str, leading_ws: str, trailing_ws: str
+) -> None:
+    fallback = (99, 99)
+    value = f"{leading_ws}{count}{separator}{unit}{trailing_ws}"
+    parsed = rate_limit.parse_rate_limit(value, fallback=fallback)
+
+    expected_seconds = rate_limit._TIME_UNITS.get(
+        unit
+    ) or rate_limit._TIME_UNITS.get(  # noqa: SLF001
+        unit.rstrip("s")
+    )
+    assert parsed == (count, expected_seconds)
+
+
+@hypo_settings(max_examples=25)
+@given(
+    value=st.text().filter(
+        lambda raw: not raw or raw.strip().isdigit() or raw.count("/") > 1
+    )
+)
+def test_parse_rate_limit_invalid_returns_fallback(value: str) -> None:
+    fallback = (3, 7)
+    assert rate_limit.parse_rate_limit(value, fallback=fallback) == fallback
+
+
+@hypo_settings(
+    max_examples=15, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(identifier=st.text(min_size=1, max_size=12).filter(lambda s: ":" not in s))
+@pytest.mark.anyio
+async def test_check_rate_limit_blocks_after_limit(
+    identifier: str, _rate_limit_redis_client, monkeypatch
+):
+    monkeypatch.setattr(rate_limit, "_shared_clients", {})
+    monkeypatch.setattr(rate_limit, "_shared_client_locks", {})
+
+    namespace = "prop"
+    limit = 2
+    window = 60
+
+    for _ in range(limit):
+        allowed = await rate_limit.check_rate_limit(
+            identifier=identifier,
+            namespace=namespace,
+            limit=limit,
+            window_seconds=window,
+            redis_url="redis://test",
+        )
+        assert allowed.allowed
+
+    blocked = await rate_limit.check_rate_limit(
+        identifier=identifier,
+        namespace=namespace,
+        limit=limit,
+        window_seconds=window,
+        redis_url="redis://test",
+    )
+
+    assert blocked.allowed is False
+    assert blocked.remaining == 0
