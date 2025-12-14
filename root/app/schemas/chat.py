@@ -80,3 +80,12 @@ class MessagesListOut(BaseModel):
     items: list[MessageResponse]
     has_more: bool = False
     next_cursor: str | None = None
+
+
+class ChatMaintenanceResult(BaseModel):
+    """Represents the result of a maintenance operation on a chat."""
+
+    chat_id: str
+    status: str
+    deleted_messages: int = 0
+    deleted_attachments: int = 0

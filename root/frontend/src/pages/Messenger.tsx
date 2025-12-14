@@ -9,13 +9,22 @@ import {
 import { useMediaQuery } from "@mui/material"
 import { useAuth } from "../contexts/AuthContext"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { chatApi, type Chat, type Message } from "../api/chat"
+import {
+  chatApi,
+  type Chat,
+  type ChatMaintenanceResult,
+  type ChatsListResponse,
+  type Message,
+  type MessagesListResponse,
+} from "../api/chat"
 import { useChatWebSocket } from "../hooks/useChatWebSocket"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import type { User } from "@/types/User"
+import client from "@/api/client"
 
 export default function Messenger() {
-  const { t } = useTranslation(["messenger"])
+  const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
   const isMobile = useMediaQuery("(max-width: 768px)")
   const queryClient = useQueryClient()
@@ -25,6 +34,9 @@ export default function Messenger() {
   const [showSearchInChat, setShowSearchInChat] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [showChatMenu, setShowChatMenu] = useState(false)
+  const [profileUser, setProfileUser] = useState<User | null>(null)
+  const [isProfileLoading, setIsProfileLoading] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
 
   // WebSocket for real-time updates (uses cookie-based auth)
   const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
@@ -55,10 +67,17 @@ export default function Messenger() {
     mutationFn: ({ chatId, content, files }: { chatId: string; content: string; files?: File[] }) =>
       chatApi.sendMessage(chatId, content, files),
     onSuccess: (newMessage) => {
-      queryClient.setQueryData(["messages", selectedChatId], (old: Message[] = []) => [
-        ...old,
-        newMessage,
-      ])
+      queryClient.setQueryData<MessagesListResponse | undefined>(
+        ["messages", selectedChatId],
+        (old) => {
+          const items = old?.items ?? []
+          return {
+            has_more: old?.has_more ?? false,
+            next_cursor: old?.next_cursor ?? null,
+            items: [...items, newMessage],
+          }
+        }
+      )
       queryClient.invalidateQueries({ queryKey: ["chats"] })
     },
   })
@@ -78,6 +97,92 @@ export default function Messenger() {
       queryClient.invalidateQueries({ queryKey: ["chats"] })
       setSelectedChatId(newChat.id)
       setIsNewChatModalOpen(false)
+    },
+  })
+
+  const clearChatMutation = useMutation({
+    mutationFn: (chatId: string) => chatApi.clearChat(chatId),
+    onMutate: async (chatId) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      await queryClient.cancelQueries({ queryKey: ["chats"] })
+
+      const previousMessages = queryClient.getQueryData<MessagesListResponse>([
+        "messages",
+        chatId,
+      ])
+      const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
+
+      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], {
+        items: [],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      if (previousChats) {
+        queryClient.setQueryData<ChatsListResponse>(["chats"], {
+          ...previousChats,
+          items: previousChats.items.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  last_message: undefined,
+                  unread_count: 0,
+                  updated_at: new Date().toISOString(),
+                }
+              : chat
+          ),
+        })
+      }
+
+      return { previousMessages, previousChats }
+    },
+    onError: (_error, chatId, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", chatId], context.previousMessages)
+      }
+      if (context?.previousChats) {
+        queryClient.setQueryData(["chats"], context.previousChats)
+      }
+    },
+    onSuccess: () => {
+      setShowChatMenu(false)
+    },
+    onSettled: (data, error, chatId) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", chatId] })
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
+    },
+  })
+
+  const deleteChatMutation = useMutation({
+    mutationFn: (chatId: string) => chatApi.deleteChat(chatId),
+    onMutate: async (chatId) => {
+      await queryClient.cancelQueries({ queryKey: ["chats"] })
+      const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
+
+      if (previousChats) {
+        queryClient.setQueryData<ChatsListResponse>(["chats"], {
+          ...previousChats,
+          items: previousChats.items.filter((chat) => chat.id !== chatId),
+        })
+      }
+
+      if (selectedChatId === chatId) {
+        setSelectedChatId(null)
+      }
+
+      return { previousChats }
+    },
+    onError: (_error, chatId, context) => {
+      if (context?.previousChats) {
+        queryClient.setQueryData(["chats"], context.previousChats)
+      }
+    },
+    onSuccess: (_data: ChatMaintenanceResult, chatId) => {
+      queryClient.removeQueries({ queryKey: ["messages", chatId] })
+      setShowChatMenu(false)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
     },
   })
 
@@ -106,21 +211,38 @@ export default function Messenger() {
   }
 
   const handleClearChat = () => {
-    // TODO: Implement clear chat functionality
-    console.log("Clear chat")
-    setShowChatMenu(false)
+    if (!selectedChatId) return
+    const confirmed = window.confirm(
+      t("messenger:confirmClear", "Clear chat history for everyone?")
+    )
+    if (!confirmed) return
+    clearChatMutation.mutate(selectedChatId)
   }
 
   const handleDeleteChat = () => {
-    // TODO: Implement delete chat functionality
-    console.log("Delete chat")
-    setShowChatMenu(false)
+    if (!selectedChatId) return
+    const confirmed = window.confirm(
+      t("messenger:confirmDelete", "Delete this chat for all participants?")
+    )
+    if (!confirmed) return
+    deleteChatMutation.mutate(selectedChatId)
   }
 
   const handleViewProfile = () => {
-    // TODO: Implement view profile functionality
-    console.log("View profile")
     setShowChatMenu(false)
+    const other = activeChat && getOtherParticipant(activeChat)
+    if (!other) return
+    setIsProfileLoading(true)
+    setProfileError(null)
+    client
+      .get<User>(`/users/${other.id}`)
+      .then((response) => setProfileUser(response.data))
+      .catch(() =>
+        setProfileError(
+          t("messenger:profileLoadError", "Unable to load participant profile")
+        )
+      )
+      .finally(() => setIsProfileLoading(false))
   }
 
   // Transform chats for ContactList component
@@ -436,6 +558,80 @@ export default function Messenger() {
         onClose={() => setIsNewChatModalOpen(false)}
         onSelect={(userId) => createChatMutation.mutate(userId)}
       />
+
+      {(profileUser || isProfileLoading || profileError) && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-30 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {profileUser?.full_name || t("messenger:profile", "Profile")}
+              </h3>
+              <button
+                onClick={() => {
+                  setProfileUser(null)
+                  setProfileError(null)
+                }}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {isProfileLoading && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {t("messenger:loadingProfile", "Loading profile...")}
+              </p>
+            )}
+
+            {profileError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{profileError}</p>
+            )}
+
+            {profileUser && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <SmartImage
+                    srcRaw={profileUser.avatar_url || AVATAR_PLACEHOLDER_URL}
+                    fallback={AVATAR_PLACEHOLDER_URL}
+                    alt={profileUser.full_name}
+                    className="w-14 h-14 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+                  />
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {profileUser.full_name}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{profileUser.email}</p>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+                  <p>
+                    {t("messenger:status", "Status")}: {profileUser.is_active ? t("common:active", "Active") : t("common:inactive", "Inactive")}
+                  </p>
+                  {profileUser.avatar_url && (
+                    <a
+                      className="text-blue-600 dark:text-blue-400 underline"
+                      href={profileUser.avatar_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {t("messenger:viewAvatar", "Open avatar")}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

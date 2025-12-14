@@ -24,6 +24,7 @@ from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
 from app.schemas.chat import (
     ChatCreate,
+    ChatMaintenanceResult,
     ChatResponse,
     ChatsListOut,
     MessageResponse,
@@ -50,6 +51,28 @@ def _decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return datetime.fromtimestamp(ts, tz=UTC), id_val
     except (ValueError, TypeError):
         return None
+
+
+async def _get_chat_for_user(
+    session: AsyncSession,
+    chat_id: str,
+    current_user: User,
+    *,
+    load_messages: bool = False,
+):
+    load_options = [selectinload(Chat.participants)]
+    if load_messages:
+        load_options.append(
+            selectinload(Chat.messages).selectinload(Message.attachments)
+        )
+
+    chat = await session.get(Chat, chat_id, options=load_options)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    if current_user not in chat.participants:
+        raise HTTPException(status_code=403, detail="Not a participant")
+    return chat
 
 
 @router.get("", response_model=ChatsListOut)
@@ -274,6 +297,15 @@ async def _cleanup_orphaned_files(urls: list[str]) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+def _collect_attachment_urls(chat: Chat) -> list[str]:
+    urls: list[str] = []
+    for message in chat.messages:
+        for attachment in message.attachments:
+            if attachment.url:
+                urls.append(attachment.url)
+    return urls
+
+
 async def _process_chat_upload(
     upload: UploadFile, chat_id: str, *, locale: str | None
 ) -> dict[str, object]:
@@ -413,3 +445,68 @@ async def mark_read(
 
     await session.commit()
     return {"status": "ok"}
+
+
+@router.post("/{chat_id}/clear", response_model=ChatMaintenanceResult)
+async def clear_chat_history(
+    chat_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Remove all messages (and attachments) from a chat for its participants."""
+
+    chat = await _get_chat_for_user(session, chat_id, current_user, load_messages=True)
+
+    attachment_urls = _collect_attachment_urls(chat)
+    message_count = len(chat.messages)
+    attachment_count = len(attachment_urls)
+
+    try:
+        for message in list(chat.messages):
+            await session.delete(message)
+        chat.updated_at = datetime.now(UTC)
+        session.add(chat)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+
+    await _cleanup_orphaned_files(attachment_urls)
+
+    return ChatMaintenanceResult(
+        chat_id=chat.id,
+        status="cleared",
+        deleted_messages=message_count,
+        deleted_attachments=attachment_count,
+    )
+
+
+@router.delete("/{chat_id}", response_model=ChatMaintenanceResult)
+async def delete_chat(
+    chat_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Delete a chat entirely for all participants (messages, attachments, links)."""
+
+    chat = await _get_chat_for_user(session, chat_id, current_user, load_messages=True)
+
+    attachment_urls = _collect_attachment_urls(chat)
+    message_count = len(chat.messages)
+    attachment_count = len(attachment_urls)
+
+    try:
+        await session.delete(chat)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+
+    await _cleanup_orphaned_files(attachment_urls)
+
+    return ChatMaintenanceResult(
+        chat_id=chat_id,
+        status="deleted",
+        deleted_messages=message_count,
+        deleted_attachments=attachment_count,
+    )
