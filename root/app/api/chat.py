@@ -24,11 +24,11 @@ from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
 from app.schemas.chat import (
     ChatCreate,
+    ChatMaintenanceResult,
     ChatResponse,
     ChatsListOut,
     MessageResponse,
     MessagesListOut,
-    ChatMaintenanceResult,
 )
 from app.utils.files import delete_static_file, save_attachment
 
@@ -455,9 +455,7 @@ async def clear_chat_history(
 ):
     """Remove all messages (and attachments) from a chat for its participants."""
 
-    chat = await _get_chat_for_user(
-        session, chat_id, current_user, load_messages=True
-    )
+    chat = await _get_chat_for_user(session, chat_id, current_user, load_messages=True)
 
     attachment_urls = _collect_attachment_urls(chat)
     message_count = len(chat.messages)
@@ -491,9 +489,7 @@ async def delete_chat(
 ):
     """Delete a chat entirely for all participants (messages, attachments, links)."""
 
-    chat = await _get_chat_for_user(
-        session, chat_id, current_user, load_messages=True
-    )
+    chat = await _get_chat_for_user(session, chat_id, current_user, load_messages=True)
 
     attachment_urls = _collect_attachment_urls(chat)
     message_count = len(chat.messages)

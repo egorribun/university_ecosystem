@@ -4,7 +4,9 @@ from httpx import AsyncClient
 from app.auth.security import get_password_hash
 
 
-async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, email: str, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -42,9 +44,7 @@ async def test_chat_full_lifecycle(async_client, user_factory):
     assert initial_messages.status_code == 200
     assert initial_messages.json()["items"]
 
-    clear_resp = await async_client.post(
-        f"/chats/{chat_id}/clear", headers=headers
-    )
+    clear_resp = await async_client.post(f"/chats/{chat_id}/clear", headers=headers)
     assert clear_resp.status_code == 200
     assert clear_resp.json()["status"] == "cleared"
     assert clear_resp.json()["deleted_messages"] == 1
@@ -55,13 +55,9 @@ async def test_chat_full_lifecycle(async_client, user_factory):
     assert cleared_messages.status_code == 200
     assert cleared_messages.json()["items"] == []
 
-    delete_resp = await async_client.delete(
-        f"/chats/{chat_id}", headers=headers
-    )
+    delete_resp = await async_client.delete(f"/chats/{chat_id}", headers=headers)
     assert delete_resp.status_code == 200
     assert delete_resp.json()["status"] == "deleted"
 
-    missing_resp = await async_client.get(
-        f"/chats/{chat_id}/messages", headers=headers
-    )
+    missing_resp = await async_client.get(f"/chats/{chat_id}/messages", headers=headers)
     assert missing_resp.status_code == 404
