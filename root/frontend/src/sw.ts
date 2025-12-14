@@ -680,7 +680,6 @@ try {
     (entry) => !entry || typeof entry !== "object" || !("revision" in entry)
   )
   if (entriesWithoutRevision.length > 0) {
-    // eslint-disable-next-line no-console
     console.warn(
       "SW: precache entries without revision",
       entriesWithoutRevision.map((entry) => (typeof entry === "object" ? entry.url : entry))
