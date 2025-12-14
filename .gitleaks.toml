@@ -1,0 +1,10 @@
+title = "university ecosystem gitleaks configuration"
+
+[allowlist]
+  description = "Allow development placeholders that are not real secrets"
+  files = [
+    "root/.env.example",
+  ]
+  regexes = [
+    """(?m)^SECRET_KEY=your_super_secret_key_here$""",
+  ]
