@@ -5,7 +5,7 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 ## Переменные окружения
 
 - Перед сборкой фронтенда установите `VITE_BACKEND_ORIGIN` (например, через `frontend/.env.production`).
-- Файл `root/.env.example` служит только шаблоном; на продакшн-средах задайте собственные секреты через `.env` или переменные окружения.
+- Файл `root/.env.example` служит только шаблоном для локальной разработки: скопируйте его в `root/.env`, подставьте свои значения и не коммитьте заполненный файл. docker-compose теперь не стартует без явных `DATABASE_URL` и `POSTGRES_PASSWORD_FILE`.
 - Все переменные с префиксом `VITE_` подставляются в код на этапе `npm run build`; изменение значений после сборки эффекта не даст.
 - Во время CI/CD экспортируйте `SERVICE_VERSION` (или `APP_VERSION`) перед запуском контейнеров, чтобы пробросить идентификатор сборки в OpenTelemetry (`service.version`). Сборка фронтенда автоматически использует эти значения — а также распространённые CI-переменные вроде `SOURCE_VERSION`, `VERCEL_GIT_COMMIT` или `GITHUB_SHA` — если `VITE_APP_RELEASE` не задана явно.
 - Чтобы передать идентификатор релиза в Sentry, задайте `VITE_APP_RELEASE`. Значение подставляется на этапе сборки.
@@ -14,6 +14,8 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Чтобы собирать Web Vitals, установите `VITE_ENABLE_WEB_VITALS=true`. При необходимости отправляйте метрики на собственный эндпоинт через `VITE_WEB_VITALS_ENDPOINT` (иначе они пишутся в консоль). Флаг игнорируется в dev/test средах, поэтому CI не упадёт даже при включённой переменной.
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/media` и `/static`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` + Redis URL (например, `redis://user:pass@host:6379/0`) включает общий сторедж для middleware и чувствительных эндпоинтов. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
+- Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. Запускайте через `docker compose --profile prod -f docker-compose.yml -f docker-compose.prod.yml up -d`, передавая `DATABASE_URL`, `POSTGRES_PASSWORD_FILE` и список фронтенд-источников явно.
+- Healthcheck-и остаются внутри контейнеров (`127.0.0.1`), а единственная запись `extra_hosts` — `host.docker.internal`; удалите её в продакшене, если доступ к хосту не нужен.
 - Для экспонирования Prometheus-метрик установите `ENABLE_METRICS_ENDPOINT=true` и задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend откажется отдавать `/metrics`, если пароль равен известному плейсхолдеру вроде `changeme`.
 - Для включения заголовка `Cross-Origin-Resource-Policy` установите `ENABLE_CORP=true`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
 

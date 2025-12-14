@@ -7,7 +7,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-local_dev_password_please_rotate}@postgres:5432/${POSTGRES_DB:-university}}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the backend database DSN}
       FRONTEND_ORIGIN: http://localhost:8080
       FRONTEND_ORIGINS: http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
@@ -61,7 +61,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-local_dev_password_please_rotate}@postgres:5432/${POSTGRES_DB:-university}}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the backend database DSN}
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
@@ -89,7 +89,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-university}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password_please_rotate}
+      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:?Use POSTGRES_PASSWORD_FILE to provide the database password}
       POSTGRES_DB: ${POSTGRES_DB:-university}
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -121,7 +121,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-university}:${POSTGRES_PASSWORD:-local_dev_password_please_rotate}@postgres:5432/${POSTGRES_DB:-university}}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the backend database DSN}
     depends_on:
       postgres:
         condition: service_healthy
