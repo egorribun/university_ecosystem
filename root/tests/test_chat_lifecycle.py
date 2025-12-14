@@ -1,0 +1,67 @@
+import pytest
+from httpx import AsyncClient
+
+from app.auth.security import get_password_hash
+
+
+async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.anyio
+async def test_chat_full_lifecycle(async_client, user_factory):
+    password = "Lifecycle123!"
+    user = await user_factory(hashed_password=get_password_hash(password))
+    other = await user_factory()
+
+    headers = await _login(async_client, user.email, password)
+
+    create_resp = await async_client.post(
+        "/chats", json={"participant_id": other.id}, headers=headers
+    )
+    assert create_resp.status_code == 200
+    chat_id = create_resp.json()["id"]
+
+    send_resp = await async_client.post(
+        f"/chats/{chat_id}/messages",
+        data={"content": "Hello"},
+        headers=headers,
+    )
+    assert send_resp.status_code == 200
+
+    initial_messages = await async_client.get(
+        f"/chats/{chat_id}/messages", headers=headers
+    )
+    assert initial_messages.status_code == 200
+    assert initial_messages.json()["items"]
+
+    clear_resp = await async_client.post(
+        f"/chats/{chat_id}/clear", headers=headers
+    )
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["status"] == "cleared"
+    assert clear_resp.json()["deleted_messages"] == 1
+
+    cleared_messages = await async_client.get(
+        f"/chats/{chat_id}/messages", headers=headers
+    )
+    assert cleared_messages.status_code == 200
+    assert cleared_messages.json()["items"] == []
+
+    delete_resp = await async_client.delete(
+        f"/chats/{chat_id}", headers=headers
+    )
+    assert delete_resp.status_code == 200
+    assert delete_resp.json()["status"] == "deleted"
+
+    missing_resp = await async_client.get(
+        f"/chats/{chat_id}/messages", headers=headers
+    )
+    assert missing_resp.status_code == 404

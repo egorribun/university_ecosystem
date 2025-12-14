@@ -42,6 +42,13 @@ export interface MessagesListResponse {
   next_cursor: string | null
 }
 
+export interface ChatMaintenanceResult {
+  chat_id: string
+  status: string
+  deleted_messages: number
+  deleted_attachments: number
+}
+
 export const chatApi = {
   getChats: async (cursor?: string, limit: number = 20): Promise<ChatsListResponse> => {
     const params = new URLSearchParams()
@@ -84,6 +91,16 @@ export const chatApi = {
 
   markRead: async (chatId: string) => {
     const response = await client.post(`/chats/${chatId}/read`)
+    return response.data
+  },
+
+  clearChat: async (chatId: string) => {
+    const response = await client.post<ChatMaintenanceResult>(`/chats/${chatId}/clear`)
+    return response.data
+  },
+
+  deleteChat: async (chatId: string) => {
+    const response = await client.delete<ChatMaintenanceResult>(`/chats/${chatId}`)
     return response.data
   },
 }
