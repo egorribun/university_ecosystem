@@ -288,11 +288,23 @@ async def save_image(
 
 
 async def save_attachment(
-    upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
-) -> str:
+    upload: UploadFile,
+    subdir: str,
+    prefix: str,
+    *,
+    locale: str | None = None,
+    allowed_mime_types: set[str] | None = None,
+    allowed_extensions: set[str] | None = None,
+    max_size_bytes: int | None = None,
+    return_meta: bool = False,
+) -> str | dict[str, object]:
     declared_raw = (upload.content_type or "").strip()
     declared_type = _normalize_mime_type(declared_raw)
-    allowed_types = settings.event_file_allowed_mime_types_set
+    allowed_types = (
+        allowed_mime_types
+        if allowed_mime_types is not None
+        else settings.event_file_allowed_mime_types_set
+    )
     if declared_type and allowed_types and declared_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -303,12 +315,21 @@ async def save_attachment(
     ext = Path(original_name).suffix.lower()
     ext_without_dot = ext[1:] if ext.startswith(".") else ext
 
-    allowed_exts = settings.event_file_allowed_extensions_set
+    allowed_exts = (
+        allowed_extensions
+        if allowed_extensions is not None
+        else settings.event_file_allowed_extensions_set
+    )
 
     try:
-        limit = int(settings.event_file_max_size_bytes)
+        limit = int(max_size_bytes if max_size_bytes is not None else 0)
     except (TypeError, ValueError):
         limit = 0
+    if limit <= 0:
+        try:
+            limit = int(settings.event_file_max_size_bytes)
+        except (TypeError, ValueError):
+            limit = 0
     if limit <= 0:
         limit = 1
     data = await _read_limited(upload, limit, locale=locale)
@@ -424,9 +445,18 @@ async def save_attachment(
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    return await backend.save_file(
+    url = await backend.save_file(
         relative_path, data, content_type=declared_type or detected_type
     )
+    if return_meta:
+        return {
+            "url": url,
+            "content_type": declared_type or detected_type,
+            "size": len(data),
+            "filename": upload.filename or name,
+            "detected_type": detected_type,
+        }
+    return url
 
 
 async def delete_static_file(file_url: str) -> None:
