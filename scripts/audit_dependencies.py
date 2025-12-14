@@ -6,7 +6,8 @@ import json
 import pathlib
 import subprocess
 import sys
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 import yaml
 
@@ -71,7 +72,9 @@ def collect_npm_advisory_ids(package_dir: pathlib.Path) -> set[str]:
     return advisories
 
 
-def validate_npm_overrides(package_dir: pathlib.Path, allowlist: dict[str, Any]) -> None:
+def validate_npm_overrides(
+    package_dir: pathlib.Path, allowlist: dict[str, Any]
+) -> None:
     overrides = (allowlist.get("npm") or {}).get("overrides") or []
     ensure_not_expired(overrides, label="NPM override")
 
@@ -86,7 +89,9 @@ def validate_npm_overrides(package_dir: pathlib.Path, allowlist: dict[str, Any])
         package = entry.get("package")
         expected_version = entry.get("pinned_version")
         if not package or not expected_version:
-            raise AuditFailure(f"Override entry must include package and pinned_version: {entry}")
+            raise AuditFailure(
+                f"Override entry must include package and pinned_version: {entry}"
+            )
 
         configured_version = configured_overrides.get(package)
         if configured_version != expected_version:
@@ -95,7 +100,9 @@ def validate_npm_overrides(package_dir: pathlib.Path, allowlist: dict[str, Any])
             )
 
 
-def check_allowances(found_ids: set[str], allowed_entries: list[dict[str, Any]], *, ecosystem: str) -> None:
+def check_allowances(
+    found_ids: set[str], allowed_entries: list[dict[str, Any]], *, ecosystem: str
+) -> None:
     ensure_not_expired(allowed_entries, label=f"{ecosystem} advisory allowlist")
 
     allowed_ids = {entry.get("id") for entry in allowed_entries if entry.get("id")}
@@ -155,9 +162,13 @@ def audit_pip(args: argparse.Namespace, allowlist: dict[str, Any]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Enforce dependency audit allowlists.")
-    parser.add_argument("--allowlist", required=True, help="Path to the audit allowlist YAML file.")
+    parser.add_argument(
+        "--allowlist", required=True, help="Path to the audit allowlist YAML file."
+    )
     parser.add_argument("--npm", help="Path to the npm project directory to audit.")
-    parser.add_argument("--pip", nargs="*", help="Requirements files to audit with pip-audit.")
+    parser.add_argument(
+        "--pip", nargs="*", help="Requirements files to audit with pip-audit."
+    )
     return parser
 
 
@@ -172,7 +183,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
 
-    print("Dependency audits passed with no unapproved advisories or missing overrides.")
+    print(
+        "Dependency audits passed with no unapproved advisories or missing overrides."
+    )
     return 0
 
 
