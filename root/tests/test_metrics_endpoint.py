@@ -37,6 +37,28 @@ async def test_metrics_endpoint_requires_auth(root_client, _configure_metrics: s
 
 
 @pytest.mark.anyio
+async def test_metrics_endpoint_rejects_missing_credentials_when_public(root_client):
+    previous_enable = settings.enable_metrics_endpoint
+    previous_username = settings.metrics_basic_auth_username
+    previous_password = settings.metrics_basic_auth_password
+    previous_allowlist = settings.metrics_allowlist
+
+    settings.enable_metrics_endpoint = True
+    settings.metrics_basic_auth_username = ""
+    settings.metrics_basic_auth_password = ""
+    settings.metrics_allowlist = ""
+    try:
+        response = await root_client.get("/metrics")
+    finally:
+        settings.enable_metrics_endpoint = previous_enable
+        settings.metrics_basic_auth_username = previous_username
+        settings.metrics_basic_auth_password = previous_password
+        settings.metrics_allowlist = previous_allowlist
+
+    assert response.status_code == 503
+
+
+@pytest.mark.anyio
 async def test_metrics_endpoint_exposes_prometheus_payload(
     root_client, _configure_metrics: str
 ):
@@ -62,6 +84,28 @@ async def test_metrics_endpoint_exposes_prometheus_payload(
 
 
 @pytest.mark.anyio
+async def test_metrics_endpoint_rejects_partial_credentials(root_client):
+    previous_enable = settings.enable_metrics_endpoint
+    previous_username = settings.metrics_basic_auth_username
+    previous_password = settings.metrics_basic_auth_password
+    previous_allowlist = settings.metrics_allowlist
+
+    settings.enable_metrics_endpoint = True
+    settings.metrics_basic_auth_username = "metrics"
+    settings.metrics_basic_auth_password = ""
+    settings.metrics_allowlist = ""
+    try:
+        response = await root_client.get("/metrics")
+    finally:
+        settings.enable_metrics_endpoint = previous_enable
+        settings.metrics_basic_auth_username = previous_username
+        settings.metrics_basic_auth_password = previous_password
+        settings.metrics_allowlist = previous_allowlist
+
+    assert response.status_code == 503
+
+
+@pytest.mark.anyio
 async def test_metrics_endpoint_respects_allowlist(
     root_client, _configure_metrics: str
 ):
@@ -72,6 +116,28 @@ async def test_metrics_endpoint_respects_allowlist(
         headers={"Authorization": f"Basic {_configure_metrics}"},
     )
     assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_metrics_endpoint_allows_loopback_allowlist_without_auth(root_client):
+    previous_enable = settings.enable_metrics_endpoint
+    previous_username = settings.metrics_basic_auth_username
+    previous_password = settings.metrics_basic_auth_password
+    previous_allowlist = settings.metrics_allowlist
+
+    settings.enable_metrics_endpoint = True
+    settings.metrics_basic_auth_username = ""
+    settings.metrics_basic_auth_password = ""
+    settings.metrics_allowlist = "127.0.0.1,::1,localhost"
+    try:
+        response = await root_client.get("/metrics")
+    finally:
+        settings.enable_metrics_endpoint = previous_enable
+        settings.metrics_basic_auth_username = previous_username
+        settings.metrics_basic_auth_password = previous_password
+        settings.metrics_allowlist = previous_allowlist
+
+    assert response.status_code == 200
 
 
 @pytest.mark.anyio

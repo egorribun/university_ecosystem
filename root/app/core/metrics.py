@@ -192,6 +192,7 @@ _GPU_LOAD = (
 
 _CONFIGURED_ATTR = "_metrics_configured"
 _PLACEHOLDER_PASSWORDS = {"changeme"}
+_LOOPBACK_HOSTNAMES = {"localhost"}
 logger = logging.getLogger(__name__)
 
 
@@ -260,7 +261,10 @@ def _is_authorized(request: Request) -> bool:
     username = settings.metrics_basic_auth_username.strip()
     password = settings.metrics_basic_auth_password
     if not username and not password:
-        return True
+        return _allowlist_is_loopback_only()
+
+    if not username or not password:
+        return False
 
     header = _authorization_header(request)
     if not header.startswith("Basic "):
@@ -286,6 +290,25 @@ def _iter_allowlist() -> Iterable[str]:
             yield value
 
 
+def _is_loopback_value(value: str) -> bool:
+    try:
+        network = ip_network(value, strict=False)
+    except ValueError:
+        try:
+            address = ip_address(value)
+        except ValueError:
+            return value.lower() in _LOOPBACK_HOSTNAMES
+        return address.is_loopback
+    return network.is_loopback
+
+
+def _allowlist_is_loopback_only() -> bool:
+    values = list(_iter_allowlist())
+    if not values:
+        return False
+    return all(_is_loopback_value(value) for value in values)
+
+
 def _is_allowed(request: Request) -> bool:
     allowlist = list(_iter_allowlist())
     if not allowlist:
@@ -308,6 +331,18 @@ def _is_allowed(request: Request) -> bool:
             if ip is not None and ip in network:
                 return True
     return False
+
+
+def _metrics_auth_config_is_invalid() -> bool:
+    if not settings.enable_metrics_endpoint:
+        return False
+
+    username = settings.metrics_basic_auth_username.strip()
+    password = settings.metrics_basic_auth_password.strip()
+    if username and password:
+        return False
+
+    return not _allowlist_is_loopback_only()
 
 
 def record_health_probe(component: str, status: str, elapsed_seconds: float) -> None:
@@ -460,6 +495,9 @@ async def metrics_endpoint(request: Request) -> Response:
 
     _ensure_notification_queue_metrics_registry()
 
+    if _metrics_auth_config_is_invalid():
+        return PlainTextResponse("Metrics misconfigured", status_code=503)
+
     if not _is_authorized(request):
         response = PlainTextResponse("Unauthorized", status_code=401)
         response.headers["WWW-Authenticate"] = 'Basic realm="Metrics"'
@@ -512,6 +550,12 @@ def _ensure_notification_queue_metrics_registry() -> None:
 def configure_metrics(app: FastAPI) -> None:
     if getattr(app.state, _CONFIGURED_ATTR, False):
         return
+
+    if _metrics_auth_config_is_invalid():
+        raise RuntimeError(
+            "ENABLE_METRICS_ENDPOINT=true requires credentials unless the allowlist is"
+            " restricted to loopback addresses"
+        )
 
     if (
         settings.enable_metrics_endpoint

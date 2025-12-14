@@ -13,7 +13,10 @@ services:
       FRONTEND_ORIGIN: http://localhost:8080
       FRONTEND_ORIGINS: http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
-      ENABLE_METRICS_ENDPOINT: "true"
+      ENABLE_METRICS_ENDPOINT: "false"
+      # Set METRICS_BASIC_AUTH_USERNAME / METRICS_BASIC_AUTH_PASSWORD to strong values
+      # before enabling metrics. The service will fail startup when metrics are
+      # enabled without credentials unless the allowlist is loopback-only.
       METRICS_ALLOWLIST: 127.0.0.1,::1
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://redis:6379/0
