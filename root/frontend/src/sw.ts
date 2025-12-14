@@ -15,12 +15,22 @@ import {
   buildNotificationDetails,
   parsePushEventData,
 } from "@/push/notification-helpers"
-import { logError, logWarning } from "@/app/logger"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+
+const log = (method: "error" | "warn" | "info", ...args: unknown[]) => {
+  const target = typeof console !== "undefined" ? (console as Record<string, unknown>)[method] : undefined
+  if (typeof target === "function") {
+    ;(target as (...args: unknown[]) => void)(...args)
+  }
+}
+
+const logError = (...args: unknown[]) => log("error", ...args)
+const logWarning = (...args: unknown[]) => log("warn", ...args)
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis
 
 const OFFLINE_URL = "/offline.html"
+const APP_SHELL_URL = "/index.html"
 const API_CACHE = "api-cache"
 const API_CACHE_SESSION_PREFIX = `${API_CACHE}:`
 const MEDIA_PUBLIC_CACHE = "media-public"
@@ -42,6 +52,8 @@ let sessionCacheHash: string | null = null
 
 const API_CACHE_PLUGIN = new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 })
 
+type ApiFallbackKind = "news" | "schedule" | "events"
+
 const getApiCacheName = () =>
   sessionCacheHash && sessionCacheHash.length > 0
     ? `${API_CACHE_SESSION_PREFIX}${sessionCacheHash}`
@@ -60,6 +72,33 @@ const getApiStrategy = () => {
   })
   apiStrategies.set(cacheName, strategy)
   return strategy
+}
+
+const offlineApiPayload: Record<ApiFallbackKind, unknown> = {
+  news: [],
+  schedule: [],
+  events: { items: [], total: 0, limit: 0, cursor: null, next_cursor: null, has_more: false },
+}
+
+const buildOfflineApiResponse = (kind: ApiFallbackKind) =>
+  new Response(JSON.stringify(offlineApiPayload[kind]), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Offline-Fallback": "1",
+      "X-Offline-Resource": kind,
+    },
+  })
+
+const matchApiCache = async (request: Request) => {
+  try {
+    const cache = await caches.open(getApiCacheName())
+    const cached = await cache.match(request)
+    return cached ?? null
+  } catch (error) {
+    logWarning("SW: failed to read cached API response", error)
+    return null
+  }
 }
 
 const purgeSessionCaches = async () => {
@@ -633,11 +672,36 @@ if (import.meta.env.MODE === "test") {
   }
 }
 
-cleanupOutdatedCaches()
-precacheAndRoute(self.__WB_MANIFEST)
-clientsClaim()
-void self.skipWaiting()
-void processAllQueues()
+try {
+  cleanupOutdatedCaches()
+  const wbManifest = self.__WB_MANIFEST
+  const manifestEntries = Array.isArray(wbManifest) ? wbManifest : []
+  const entriesWithoutRevision = manifestEntries.filter(
+    (entry) => !entry || typeof entry !== "object" || !("revision" in entry)
+  )
+  if (entriesWithoutRevision.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "SW: precache entries without revision",
+      entriesWithoutRevision.map((entry) => (typeof entry === "object" ? entry.url : entry))
+    )
+  }
+  const shellRevision =
+    (import.meta.env.VITE_APP_VERSION as string | undefined) ||
+    (import.meta.env.APP_VERSION as string | undefined) ||
+    "app-shell"
+  precacheAndRoute([
+    { url: APP_SHELL_URL, revision: shellRevision },
+    { url: OFFLINE_URL, revision: shellRevision },
+    ...manifestEntries,
+  ])
+  clientsClaim()
+  void self.skipWaiting()
+  void processAllQueues()
+} catch (error) {
+  logError("SW bootstrap failed", error)
+  throw error
+}
 
 self.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object" || !("type" in event.data)) {
@@ -666,7 +730,31 @@ self.addEventListener("sync", (event) => {
   }
 })
 
-const navigationHandler = createHandlerBoundToURL(OFFLINE_URL)
+const offlineNavigationHandler = createHandlerBoundToURL(OFFLINE_URL)
+const appShellNavigationHandler = createHandlerBoundToURL(APP_SHELL_URL)
+
+const createApiHandler = (kind: ApiFallbackKind) =>
+  async (options: RouteHandlerCallbackOptions) => {
+    try {
+      return await getApiStrategy().handle(options)
+    } catch (error) {
+      logWarning(`SW: falling back to cached ${kind} response`, error)
+      const cached = await matchApiCache(options.request)
+      if (cached) {
+        return cached
+      }
+      return buildOfflineApiResponse(kind)
+    }
+  }
+
+const serveAppShellFromPrecache = async (options: RouteHandlerCallbackOptions) => {
+  try {
+    return await appShellNavigationHandler(options)
+  } catch (error) {
+    logWarning("SW: failed to load app shell from precache", error)
+    return offlineNavigationHandler(options)
+  }
+}
 
 registerRoute(
   new NavigationRoute(
@@ -685,19 +773,24 @@ registerRoute(
           return preload
         }
 
-        return await fetch(request)
+        const response = await fetch(request)
+        if (response.ok) {
+          return response
+        }
+
+        return serveAppShellFromPrecache(options)
       } catch (error) {
-        return navigationHandler(options)
+        logWarning("SW: navigation fallback triggered", error)
+        return serveAppShellFromPrecache(options)
       }
     },
     { allowlist: [/^\/[^_].*/] }
   )
 )
 
-registerRoute(
-  ({ url }) => /\/api\/(news|schedule)/.test(url.pathname),
-  (options) => getApiStrategy().handle(options)
-)
+registerRoute(({ url }) => /\/api\/news/.test(url.pathname), createApiHandler("news"))
+registerRoute(({ url }) => /\/api\/schedule/.test(url.pathname), createApiHandler("schedule"))
+registerRoute(({ url }) => /\/api\/events/.test(url.pathname), createApiHandler("events"))
 
 registerRoute(
   ({ url }) => url.pathname.startsWith("/static/"),

@@ -133,11 +133,38 @@ export default defineConfig(({ mode }) => {
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts",
-      includeAssets: ["offline.html"],
+      includeAssets: ["offline.html", "static-shell-i18n.js"],
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-shell",
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ url, request }) =>
+              request.method === "GET" && /\/api\/(news|schedule|events)/.test(url.pathname),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "api-cache",
+              cacheableResponse: { statuses: [0, 200, 304] },
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith("/offline.html"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "offline-fallback",
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: ({ url }) =>
               url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
@@ -155,7 +182,11 @@ export default defineConfig(({ mode }) => {
         globIgnores: ["**/bundle-stats.*"],
       },
       devOptions: {
-        enabled: false,
+        enabled:
+          process.env.VITE_PWA_DEV === "true" ||
+          process.env.NODE_ENV === "test" ||
+          process.env.VITEST === "true",
+        type: "module",
       },
     }),
     withStrictCspNonce(),

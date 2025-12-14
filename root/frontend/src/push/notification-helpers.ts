@@ -1,4 +1,21 @@
-import i18n from "@/i18n/config"
+import type { i18n as I18nInstance } from "i18next"
+
+const fallbackNotifications = {
+  defaultTitle: "Новое уведомление",
+  defaultBody: "У вас есть новое уведомление.",
+}
+
+let i18nInstance: I18nInstance | null = null
+
+if (typeof window !== "undefined") {
+  import("@/i18n/config")
+    .then((module) => {
+      i18nInstance = module.default
+    })
+    .catch(() => {
+      i18nInstance = null
+    })
+}
 
 export type NotificationData = {
   url?: string
@@ -40,8 +57,8 @@ export type PushPayload = {
 
 export const DEFAULT_ICON = "/maskable-icon-192.png"
 
-const translateNotification = (key: string, options?: Record<string, unknown>) =>
-  i18n.t(`notifications:${key}`, options)
+const translateNotification = (key: keyof typeof fallbackNotifications, options?: Record<string, unknown>) =>
+  i18nInstance?.t(`notifications:${key}`, options) ?? fallbackNotifications[key]
 
 export const getDefaultNotificationTitle = () => translateNotification("defaultTitle")
 

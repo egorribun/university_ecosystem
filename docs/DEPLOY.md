@@ -82,6 +82,23 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   перед сборкой или запустите `npm run manifests:check`, чтобы убедиться, что
   сгенерированные файлы в `public/` не устарели.
 
+### Офлайн-режим PWA
+
+- Service Worker кеширует shell (`index.html`) и выдаёт его для любых SPA-навигаций при
+  отсутствии сети; если shell недоступен, отдаётся `offline.html` из pre-cache.
+- Запросы к API для расписания, новостей и событий (`/api/schedule`, `/api/news`,
+  `/api/events`) работают по стратегии stale-while-revalidate: при сбое сети
+  возвращаются сохранённые ответы, а при их отсутствии — пустые офлайн-плейсхолдеры
+  с заголовками `X-Offline-Fallback`/`X-Offline-Resource`.
+- Эндпоинты медиа/статических файлов остаются в NetworkFirst с ограничением размера кеша
+  (24 часа, до 200 записей).
+- Проверить офлайн-навигацию и кеширование данных можно e2e-тестом:
+
+  ```bash
+  cd root/frontend
+  npm run test:e2e -- offline.spec.ts
+  ```
+
 ### Spotify токены
 
 - Backend шифрует Spotify access/refresh токены с помощью Fernet. Перед включением интеграции задайте `SPOTIFY_TOKEN_SECRET` — это base64-строка из `Fernet.generate_key()`.
