@@ -123,6 +123,7 @@ def check_allowances(
             ),
         )
 
+
 def audit_npm(args: argparse.Namespace, allowlist: dict[str, Any]) -> None:
     if not args.npm:
         return
