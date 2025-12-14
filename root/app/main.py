@@ -208,7 +208,9 @@ _storage_probe_cache: dict[str, float | str] = {
 
 
 def _reset_storage_probe_cache() -> None:
-    _storage_probe_cache.update({"expires_at": 0.0, "status": "unknown", "latency": 0.0})
+    _storage_probe_cache.update(
+        {"expires_at": 0.0, "status": "unknown", "latency": 0.0}
+    )
 
 
 async def _lightweight_storage_probe(backend) -> str | None:
@@ -266,7 +268,8 @@ async def _probe_storage() -> tuple[str, float]:
     latency_seconds = max(elapsed, 0.0)
     _storage_probe_cache.update(
         {
-            "expires_at": now + max(settings.health_storage_probe_min_interval_seconds, 0.0),
+            "expires_at": now
+            + max(settings.health_storage_probe_min_interval_seconds, 0.0),
             "status": status,
             "latency": latency_seconds,
         }

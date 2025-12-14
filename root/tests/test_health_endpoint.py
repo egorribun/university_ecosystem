@@ -194,7 +194,9 @@ async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
     monkeypatch.setattr(main.settings, "health_storage_probe_enabled", True)
-    monkeypatch.setattr(main.settings, "health_storage_probe_min_interval_seconds", 60.0)
+    monkeypatch.setattr(
+        main.settings, "health_storage_probe_min_interval_seconds", 60.0
+    )
 
     probes = {"light": 0, "heavy": 0}
 
