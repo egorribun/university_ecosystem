@@ -10,9 +10,8 @@ def test_normalize_mime_type_strips_parameters_and_whitespace():
 
 def test_polyglot_detection_flags_script_in_pdf():
     payload = b"%PDF-1.4\n<script>alert(1)</script>"
-    assert (
-        files._looks_like_polyglot(payload, "application/pdf") is True
-    )  # noqa: SLF001
+    result = files._looks_like_polyglot(payload, "application/pdf")  # noqa: SLF001
+    assert result is True
 
 
 def test_polyglot_detection_allows_clean_svg():
