@@ -57,8 +57,10 @@ export type PushPayload = {
 
 export const DEFAULT_ICON = "/maskable-icon-192.png"
 
-const translateNotification = (key: keyof typeof fallbackNotifications, options?: Record<string, unknown>) =>
-  i18nInstance?.t(`notifications:${key}`, options) ?? fallbackNotifications[key]
+const translateNotification = (
+  key: keyof typeof fallbackNotifications,
+  options?: Record<string, unknown>
+) => i18nInstance?.t(`notifications:${key}`, options) ?? fallbackNotifications[key]
 
 export const getDefaultNotificationTitle = () => translateNotification("defaultTitle")
 

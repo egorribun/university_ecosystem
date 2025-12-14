@@ -18,7 +18,8 @@ import {
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 const log = (method: "error" | "warn" | "info", ...args: unknown[]) => {
-  const target = typeof console !== "undefined" ? (console as Record<string, unknown>)[method] : undefined
+  const target =
+    typeof console !== "undefined" ? (console as Record<string, unknown>)[method] : undefined
   if (typeof target === "function") {
     ;(target as (...args: unknown[]) => void)(...args)
   }
@@ -732,8 +733,8 @@ self.addEventListener("sync", (event) => {
 const offlineNavigationHandler = createHandlerBoundToURL(OFFLINE_URL)
 const appShellNavigationHandler = createHandlerBoundToURL(APP_SHELL_URL)
 
-const createApiHandler = (kind: ApiFallbackKind) =>
-  async (options: RouteHandlerCallbackOptions) => {
+const createApiHandler =
+  (kind: ApiFallbackKind) => async (options: RouteHandlerCallbackOptions) => {
     try {
       return await getApiStrategy().handle(options)
     } catch (error) {

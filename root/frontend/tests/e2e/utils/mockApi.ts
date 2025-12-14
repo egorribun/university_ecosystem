@@ -322,9 +322,7 @@ export async function useMockApi(page: Page) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url())
     let pathname = url.pathname.replace(/^\/+/u, "")
-    pathname = pathname.startsWith("api/v1/")
-      ? pathname.replace(/^api\/v1\//u, "api/")
-      : pathname
+    pathname = pathname.startsWith("api/v1/") ? pathname.replace(/^api\/v1\//u, "api/") : pathname
     const method = route.request().method().toUpperCase()
 
     if (
