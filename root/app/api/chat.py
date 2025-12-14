@@ -1,4 +1,4 @@
-import uuid
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import (
@@ -17,7 +17,9 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.api.websocket import notify_new_message
+from app.core.config import settings
 from app.core.database import get_db
+from app.localization import translate
 from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
 from app.schemas.chat import (
@@ -27,6 +29,7 @@ from app.schemas.chat import (
     MessageResponse,
     MessagesListOut,
 )
+from app.utils.files import delete_static_file, save_attachment
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -265,6 +268,45 @@ async def get_messages(
     )
 
 
+async def _cleanup_orphaned_files(urls: list[str]) -> None:
+    tasks = [delete_static_file(url) for url in urls if url]
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _process_chat_upload(
+    upload: UploadFile, chat_id: str, *, locale: str | None
+) -> dict[str, object]:
+    meta = await save_attachment(
+        upload,
+        "chat_uploads",
+        f"chat_{chat_id}",
+        locale=locale,
+        allowed_mime_types=settings.chat_attachment_allowed_mime_types_set,
+        allowed_extensions=settings.chat_attachment_allowed_extensions_set,
+        max_size_bytes=settings.chat_attachment_max_size_bytes,
+        return_meta=True,
+    )
+    if not isinstance(meta, dict):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store attachment",
+        )
+    detected_type = str(meta.get("detected_type") or meta.get("content_type") or "")
+    file_type = "file"
+    if detected_type.startswith("image/"):
+        file_type = "image"
+    elif detected_type.startswith("video/"):
+        file_type = "video"
+
+    return {
+        "url": str(meta.get("url") or ""),
+        "file_type": file_type,
+        "filename": str(meta.get("filename") or upload.filename or "attachment"),
+        "size": int(meta.get("size") or 0),
+    }
+
+
 @router.post("/{chat_id}/messages", response_model=MessageResponse)
 async def send_message(
     chat_id: str,
@@ -287,6 +329,14 @@ async def send_message(
     if current_user not in chat.participants:
         raise HTTPException(status_code=403, detail="Not a participant")
 
+    locale = getattr(current_user, "preferred_locale", None)
+    uploads = files or []
+    if len(uploads) > int(settings.chat_attachment_max_files):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.files.too_many_attachments", locale=locale),
+        )
+
     message = Message(
         chat_id=chat_id,
         sender_id=current_user.id,
@@ -295,50 +345,30 @@ async def send_message(
     session.add(message)
     await session.flush()  # Flush to get message ID
 
-    # Handle file uploads
-    if files:
-        import os
-        import shutil
-
-        UPLOAD_DIR = "app/static/uploads"
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-        for file in files:
-            # Generate unique filename
-            file_ext = os.path.splitext(file.filename)[1]
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = os.path.join(UPLOAD_DIR, unique_filename)
-
-            # Save file
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-
-            # Determine file type
-            file_type = "file"
-            if file.content_type.startswith("image/"):
-                file_type = "image"
-            elif file.content_type.startswith("video/"):
-                file_type = "video"
-
-            # Create attachment record
-            # URL should be accessible from frontend.
-            # Assuming static files are served from /static
-            url = f"http://localhost:8000/static/uploads/{unique_filename}"
-
+    saved_urls: list[str] = []
+    try:
+        for upload in uploads:
+            meta = await _process_chat_upload(upload, chat_id, locale=locale)
+            saved_urls.append(meta["url"])
             attachment = Attachment(
                 message_id=message.id,
-                url=url,
-                file_type=file_type,
-                filename=file.filename,
-                size=file.size or 0,
+                url=meta["url"],
+                file_type=meta["file_type"],
+                filename=meta["filename"],
+                size=meta["size"],
             )
             session.add(attachment)
 
-    # Update chat updated_at
-    chat.updated_at = datetime.now(UTC)
-    session.add(chat)
+        # Update chat updated_at
+        chat.updated_at = datetime.now(UTC)
+        session.add(chat)
 
-    await session.commit()
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        await _cleanup_orphaned_files(saved_urls)
+        raise
+
     await session.refresh(message)
 
     # Eager load sender and attachments for response

@@ -394,6 +394,16 @@ class Settings(BaseSettings):
     event_file_scanner_timeout: float = 30.0
     event_file_scanner_max_size_mb: float = Field(default=25.0, ge=0.0)
     event_file_scanner_max_duration_sec: float = Field(default=10.0, ge=0.0)
+    chat_attachment_allowed_mime_types: str | list[str] = (
+        "image/jpeg,image/png,image/webp,image/gif,"
+        "video/mp4,video/quicktime,"
+        "application/pdf,text/plain"
+    )
+    chat_attachment_allowed_extensions: str | list[str] = (
+        ".jpg,.jpeg,.png,.webp,.gif,.mp4,.mov,.pdf,.txt"
+    )
+    chat_attachment_max_size_bytes: int = 15 * 1024 * 1024
+    chat_attachment_max_files: int = 5
 
     @field_validator("auto_create_schema", mode="before")
     @classmethod
@@ -763,6 +773,26 @@ class Settings(BaseSettings):
     def event_file_allowed_extensions_set(self) -> set[str]:
         values: set[str] = set()
         for value in _coerce_str_list(self.event_file_allowed_extensions):
+            normalized = value.strip().lower()
+            if normalized.startswith("."):
+                normalized = normalized[1:]
+            if normalized:
+                values.add(normalized)
+        return values
+
+    @property
+    def chat_attachment_allowed_mime_types_set(self) -> set[str]:
+        values = {
+            value.strip().lower()
+            for value in _coerce_str_list(self.chat_attachment_allowed_mime_types)
+            if value
+        }
+        return values
+
+    @property
+    def chat_attachment_allowed_extensions_set(self) -> set[str]:
+        values: set[str] = set()
+        for value in _coerce_str_list(self.chat_attachment_allowed_extensions):
             normalized = value.strip().lower()
             if normalized.startswith("."):
                 normalized = normalized[1:]

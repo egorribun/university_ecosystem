@@ -1,0 +1,132 @@
+# ruff: noqa: E501
+
+import io
+
+import pytest
+from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import select
+from starlette.datastructures import Headers
+
+from app.api import chat as chat_api
+from app.core.config import settings
+from app.localization import translate
+from app.models.chat import Attachment, Chat
+from app.utils import files
+
+
+class _RecordingStorage:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    async def save_file(
+        self, relative_path: str, data: bytes, *, content_type: str | None = None
+    ) -> str:
+        self.calls.append(
+            ("save", (relative_path, data), {"content_type": content_type})
+        )
+        return f"https://cdn.example/{relative_path}"
+
+    async def delete_file(self, file_url: str) -> None:  # pragma: no cover - unused
+        self.calls.append(("delete", (file_url,), {}))
+
+
+@pytest.mark.anyio("asyncio")
+async def test_send_message_blocks_infected_file(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    sender = await user_factory()
+    recipient = await user_factory()
+    chat = Chat()
+    chat.participants.extend([sender, recipient])
+    db_session.add(chat)
+    await db_session.commit()
+    await db_session.refresh(chat)
+
+    payload = b"suspicious payload"
+    upload = UploadFile(
+        filename="exploit.txt",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "chat_attachment_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "chat_attachment_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 1024)
+
+    async def infected_scan(*_args, **_kwargs):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=translate("errors.files.infected", locale="en"),
+        )
+
+    monkeypatch.setattr(files, "scan_for_malware", infected_scan)
+    monkeypatch.setattr(chat_api, "notify_new_message", lambda *_, **__: None)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await chat_api.send_message(
+            chat.id,
+            content="Hello",
+            files=[upload],
+            current_user=sender,
+            session=db_session,
+        )
+
+    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    upload_dir = tmp_path / "chat_uploads"
+    assert not upload_dir.exists() or not any(upload_dir.iterdir())
+
+
+@pytest.mark.anyio("asyncio")
+async def test_send_message_generates_public_urls(
+    monkeypatch, db_session, user_factory
+):
+    sender = await user_factory()
+    recipient = await user_factory()
+    chat = Chat()
+    chat.participants.extend([sender, recipient])
+    db_session.add(chat)
+    await db_session.commit()
+    await db_session.refresh(chat)
+
+    upload = UploadFile(
+        filename="note.txt",
+        file=io.BytesIO(b"hello"),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    backend = _RecordingStorage()
+
+    monkeypatch.setattr(settings, "chat_attachment_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "chat_attachment_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 1024)
+    monkeypatch.setattr(files, "storage_backend", backend)
+    monkeypatch.setattr(files, "_default_storage_backend", backend)
+    monkeypatch.setattr(
+        files, "_storage_backend_snapshot", files._storage_backend_signature()
+    )
+    monkeypatch.setattr(chat_api, "notify_new_message", lambda *_, **__: None)
+
+    message = await chat_api.send_message(
+        chat.id,
+        content="Hello",
+        files=[upload],
+        current_user=sender,
+        session=db_session,
+    )
+
+    await db_session.refresh(message, ["attachments"])
+    attachment = message.attachments[0]
+
+    assert attachment.url.startswith("https://cdn.example/chat_uploads/")
+    assert attachment.size == 5
+
+    stored = await db_session.execute(
+        select(Attachment).where(Attachment.id == attachment.id)
+    )
+    assert stored.scalar_one().url == attachment.url
+
+    method, (relative_path, data), kwargs = backend.calls[0]
+    assert method == "save"
+    assert relative_path.startswith("chat_uploads/")
+    assert kwargs["content_type"] == "text/plain"

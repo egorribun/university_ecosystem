@@ -217,6 +217,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Размер файла превышает допустимый предел",
         "en": "Uploaded file exceeds the allowed size",
     },
+    "errors.files.too_many_attachments": {
+        "ru": "Слишком много вложений в сообщении",
+        "en": "Too many attachments in the message",
+    },
     "errors.files.unsupported_type": {
         "ru": "Неподдерживаемый тип файла",
         "en": "Unsupported media type",
