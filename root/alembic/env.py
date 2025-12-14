@@ -60,9 +60,7 @@ def run_migrations_online() -> None:
     url_obj = make_url(url)
 
     if _settings.has_development_fallbacks:
-        print(
-            "Skipping Alembic migrations while using development fallback settings."
-        )
+        print("Skipping Alembic migrations while using development fallback settings.")
         return
 
     def run_sync_migrations(connection) -> None:
