@@ -5275,6 +5275,20 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "presence": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/PresenceStatus"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presence"
           }
         },
         "type": "object",
@@ -6156,6 +6170,17 @@
               }
             ]
           },
+          "sender_presence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PresenceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Presence"
+          },
           "attachments": {
             "items": {
               "$ref": "#/components/schemas/AttachmentResponse"
@@ -6175,6 +6200,32 @@
           "read_status"
         ],
         "title": "MessageResponse"
+      },
+      "PresenceStatus": {
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "default": false
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active"
+        ],
+        "title": "PresenceStatus",
+        "description": "Represents a participant's presence state."
       },
       "MessagesListOut": {
         "properties": {
