@@ -21,7 +21,9 @@ class _RecordingStorage:
     async def save_file(
         self, relative_path: str, data: bytes, *, content_type: str | None = None
     ) -> str:
-        self.calls.append(("save", (relative_path, data), {"content_type": content_type}))
+        self.calls.append(
+            ("save", (relative_path, data), {"content_type": content_type})
+        )
         return f"https://cdn.example/{relative_path}"
 
     async def delete_file(self, file_url: str) -> None:  # pragma: no cover - unused
@@ -100,7 +102,9 @@ async def test_send_message_generates_public_urls(
     monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 1024)
     monkeypatch.setattr(files, "storage_backend", backend)
     monkeypatch.setattr(files, "_default_storage_backend", backend)
-    monkeypatch.setattr(files, "_storage_backend_snapshot", files._storage_backend_signature())
+    monkeypatch.setattr(
+        files, "_storage_backend_snapshot", files._storage_backend_signature()
+    )
     monkeypatch.setattr(chat_api, "notify_new_message", lambda *_, **__: None)
 
     message = await chat_api.send_message(
@@ -117,7 +121,9 @@ async def test_send_message_generates_public_urls(
     assert attachment.url.startswith("https://cdn.example/chat_uploads/")
     assert attachment.size == 5
 
-    stored = await db_session.execute(select(Attachment).where(Attachment.id == attachment.id))
+    stored = await db_session.execute(
+        select(Attachment).where(Attachment.id == attachment.id)
+    )
     assert stored.scalar_one().url == attachment.url
 
     method, (relative_path, data), kwargs = backend.calls[0]
