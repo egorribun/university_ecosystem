@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any, Iterable
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
@@ -246,9 +247,9 @@ def serialize_message(
         status = presence[message.sender_id]
         sender_presence = {
             "active": status.active,
-            "last_seen_at": status.last_seen_at.isoformat()
-            if status.last_seen_at
-            else None,
+            "last_seen_at": (
+                status.last_seen_at.isoformat() if status.last_seen_at else None
+            ),
         }
 
     return {
