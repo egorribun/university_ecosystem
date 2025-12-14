@@ -1,0 +1,24 @@
+services:
+  backend:
+    profiles: ["prod"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN for production}
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?Set FRONTEND_ORIGINS for production}
+
+  notifications-worker:
+    profiles: ["prod"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
+
+  migrations:
+    profiles: ["prod"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
+
+  postgres:
+    profiles: ["prod"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-university}
+      POSTGRES_DB: ${POSTGRES_DB:-university}
+      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:?Provide POSTGRES_PASSWORD_FILE for production}

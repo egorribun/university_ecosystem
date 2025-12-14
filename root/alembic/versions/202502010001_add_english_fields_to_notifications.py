@@ -17,6 +17,8 @@ def upgrade() -> None:
     """Apply Add English localization fields to notifications."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    if not inspector.has_table("notifications"):
+        return
     existing_columns = {
         column["name"] for column in inspector.get_columns("notifications")
     }
@@ -52,6 +54,8 @@ def downgrade() -> None:
     """Revert Add English localization fields to notifications."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    if not inspector.has_table("notifications"):
+        return
     existing_columns = {
         column["name"] for column in inspector.get_columns("notifications")
     }

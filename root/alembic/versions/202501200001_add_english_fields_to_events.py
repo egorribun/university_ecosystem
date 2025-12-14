@@ -14,6 +14,8 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    if not inspector.has_table("events"):
+        return
     existing = {column["name"] for column in inspector.get_columns("events")}
 
     if "title_en" not in existing:
@@ -29,6 +31,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if not inspector.has_table("events"):
+        return
     op.drop_column("events", "about_en")
     op.drop_column("events", "event_type_en")
     op.drop_column("events", "location_en")

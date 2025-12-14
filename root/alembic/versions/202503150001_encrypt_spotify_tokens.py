@@ -86,6 +86,9 @@ def _decrypt_existing_tokens(session: Session) -> None:
 
 def upgrade() -> None:
     """Apply Encrypt Spotify tokens using Fernet."""
+    bind = op.get_bind()
+    if not _column_exists(bind, "users", "id"):
+        return
 
     op.add_column(
         "users",
@@ -96,7 +99,6 @@ def upgrade() -> None:
         sa.Column("spotify_refresh_token_encrypted", sa.Text(), nullable=True),
     )
 
-    bind = op.get_bind()
     session = Session(bind=bind)
     try:
         _encrypt_existing_tokens(session)
@@ -124,6 +126,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Revert Encrypt Spotify tokens using Fernet."""
+    bind = op.get_bind()
+    if not _column_exists(bind, "users", "id"):
+        return
 
     op.add_column(
         "users",
@@ -133,8 +138,6 @@ def downgrade() -> None:
         "users",
         sa.Column("spotify_refresh_token_plain", sa.String(), nullable=True),
     )
-
-    bind = op.get_bind()
     session = Session(bind=bind)
     try:
         _decrypt_existing_tokens(session)

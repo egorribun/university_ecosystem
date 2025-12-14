@@ -1709,6 +1709,10 @@ export interface components {
        * Format: date-time
        */
       updated_at: string
+      /** Presence */
+      presence?: {
+        [key: string]: components["schemas"]["PresenceStatus"]
+      } | null
     }
     /**
      * ChatsListOut
@@ -1996,6 +2000,7 @@ export interface components {
       /** Read Status */
       read_status: boolean
       sender?: components["schemas"]["ChatParticipant"] | null
+      sender_presence?: components["schemas"]["PresenceStatus"] | null
       /**
        * Attachments
        * @default []
@@ -2314,6 +2319,19 @@ export interface components {
       default_method?: "totp" | null
       /** Methods */
       methods: components["schemas"]["MfaMethodChallengeOut"][]
+    }
+    /**
+     * PresenceStatus
+     * @description Represents a participant's presence state.
+     */
+    PresenceStatus: {
+      /**
+       * Active
+       * @default false
+       */
+      active: boolean
+      /** Last Seen At */
+      last_seen_at?: string | null
     }
     /** PushSubscriptionDelete */
     PushSubscriptionDelete: {

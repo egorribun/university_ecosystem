@@ -17,6 +17,8 @@ def upgrade() -> None:
     """Apply Add English localization fields to news."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    if not inspector.has_table("news"):
+        return
     existing_columns = {column["name"] for column in inspector.get_columns("news")}
 
     with op.batch_alter_table("news") as batch_op:
@@ -48,6 +50,8 @@ def downgrade() -> None:
     """Revert Add English localization fields to news."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    if not inspector.has_table("news"):
+        return
     existing_columns = {column["name"] for column in inspector.get_columns("news")}
 
     with op.batch_alter_table("news") as batch_op:

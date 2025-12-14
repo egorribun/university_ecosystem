@@ -90,7 +90,12 @@ function AppContent() {
   }, [location.pathname, location.search, queryClient])
 
   useEffect(() => {
-    const publicLoaders = [routeModules.Login, routeModules.Register, routeModules.ForgotPassword, routeModules.ResetPassword]
+    const publicLoaders = [
+      routeModules.Login,
+      routeModules.Register,
+      routeModules.ForgotPassword,
+      routeModules.ResetPassword,
+    ]
     const privateLoaders = [
       routeModules.Dashboard,
       routeModules.News,

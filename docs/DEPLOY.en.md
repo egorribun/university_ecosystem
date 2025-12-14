@@ -6,7 +6,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 
 - Before building the frontend, set `VITE_BACKEND_ORIGIN` (for example via `frontend/.env.production`).
 - To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
-- The `root/.env.example` file is only a template; set your own secrets via `.env` or environment variables in production.
+- The `root/.env.example` file is a template for local use. Copy it to `root/.env`, replace every secret, and keep the filled version outside of version control. Compose now refuses to start without explicit values for `DATABASE_URL` and `POSTGRES_PASSWORD_FILE`.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
 - During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
@@ -15,6 +15,8 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The value `redis` + a Redis URL (for example, `redis://user:pass@host:6379/0`) enables a shared storage for the middleware and sensitive endpoints. Use `memory` or `memory://` for a simple single-process mode without external Redis.
+- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Run with `docker compose --profile prod -f docker-compose.yml -f docker-compose.prod.yml up -d` and provide `DATABASE_URL`, `POSTGRES_PASSWORD_FILE`, and the frontend origins explicitly.
+- Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - To expose Prometheus metrics, set `ENABLE_METRICS_ENDPOINT=true` and configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (docker-compose no longer injects placeholders). The backend refuses to serve `/metrics` if the password equals a known placeholder such as `changeme`.
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
 

@@ -14,9 +14,7 @@ test.describe("Accessibility smoke", () => {
     await page.keyboard.press("Enter")
     await expect(page.getByRole("main")).toBeFocused()
 
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa"])
-      .analyze()
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()
 
     expect(results.violations).toEqual([])
   })

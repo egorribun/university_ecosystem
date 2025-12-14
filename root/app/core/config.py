@@ -190,11 +190,13 @@ class Settings(BaseSettings):
                     return
             if missing_required:
                 details = ", ".join(missing_required)
-                raise RuntimeError(
+                error = RuntimeError(
                     "Missing required environment variables: "
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
-                ) from None
+                )
+                setattr(error, "missing_required", tuple(missing_required))
+                raise error from None
             raise
 
     @property
@@ -1073,17 +1075,21 @@ class Settings(BaseSettings):
         return tuple(unique)
 
 
-def _should_allow_development_defaults() -> bool:
+def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> bool:
     if _ENV_FILE is not None:
         return False
-    return not any(os.environ.get(name) for name in ("DATABASE_URL", "SECRET_KEY"))
+    if missing is None:
+        return not any(os.environ.get(name) for name in ("DATABASE_URL", "SECRET_KEY"))
+    allowed = {name.upper() for name in _DEVELOPMENT_FALLBACKS}
+    return all(name in allowed for name in missing)
 
 
 def _load_settings() -> Settings:
     try:
         return Settings()
     except RuntimeError as exc:
-        if not _should_allow_development_defaults():
+        missing_required = getattr(exc, "missing_required", None)
+        if not _should_allow_development_defaults(missing_required):
             raise
         _logger.debug(
             (
@@ -1114,10 +1120,8 @@ def _load_settings() -> Settings:
                 ),
             )
         _logger.warning(
-            (
-                "Using development defaults for %s because DATABASE_URL and SECRET_KEY "
-                "are not configured. %s"
-            ),
+            "Using development defaults for %s because required environment variables "
+            "are missing. %s",
             missing,
             " ".join(hint_parts),
         )

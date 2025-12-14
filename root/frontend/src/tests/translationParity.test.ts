@@ -125,11 +125,15 @@ describe("i18n locales parity against base en", () => {
 
         const errorMessages = [] as string[]
         if (missingInTarget.length > 0) {
-          errorMessages.push(`Missing ${missingInTarget.length} key(s) in ${lng} → ${missingInTarget.join(", ")}`)
+          errorMessages.push(
+            `Missing ${missingInTarget.length} key(s) in ${lng} → ${missingInTarget.join(", ")}`
+          )
         }
 
         if (missingInBase.length > 0) {
-          errorMessages.push(`Missing ${missingInBase.length} key(s) in en → ${missingInBase.join(", ")}`)
+          errorMessages.push(
+            `Missing ${missingInBase.length} key(s) in en → ${missingInBase.join(", ")}`
+          )
         }
 
         if (errorMessages.length > 0) {

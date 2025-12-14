@@ -143,10 +143,7 @@ export default function Messenger() {
       await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
       await queryClient.cancelQueries({ queryKey: ["chats"] })
 
-      const previousMessages = queryClient.getQueryData<MessagesListResponse>([
-        "messages",
-        chatId,
-      ])
+      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
       const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
 
       queryClient.setQueryData<MessagesListResponse>(["messages", chatId], {
@@ -275,9 +272,7 @@ export default function Messenger() {
       .get<User>(`/users/${other.id}`)
       .then((response) => setProfileUser(response.data))
       .catch(() =>
-        setProfileError(
-          t("messenger:profileLoadError", "Unable to load participant profile")
-        )
+        setProfileError(t("messenger:profileLoadError", "Unable to load participant profile"))
       )
       .finally(() => setIsProfileLoading(false))
   }
@@ -652,7 +647,10 @@ export default function Messenger() {
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                   <p>
-                    {t("messenger:status", "Status")}: {profileUser.is_active ? t("common:active", "Active") : t("common:inactive", "Inactive")}
+                    {t("messenger:status", "Status")}:{" "}
+                    {profileUser.is_active
+                      ? t("common:active", "Active")
+                      : t("common:inactive", "Inactive")}
                   </p>
                   {profileUser.avatar_url && (
                     <a
