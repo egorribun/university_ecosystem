@@ -353,6 +353,8 @@ class Settings(BaseSettings):
     storage_s3_secret_access_key: str = ""
     storage_s3_endpoint_url: str = ""
     storage_s3_base_url: str = ""
+    health_storage_probe_enabled: bool = False
+    health_storage_probe_min_interval_seconds: float = 30.0
     notifications_queue_max_size: int = 1024
     notifications_queue_enqueue_timeout_seconds: float = 0.5
     notifications_queue_in_memory_only: bool = False
@@ -511,6 +513,13 @@ class Settings(BaseSettings):
                 "NOTIFICATIONS_ALLOWED_PUSH_TOPICS must include at least one topic"
             )
         return normalized
+
+    @field_validator("health_storage_probe_min_interval_seconds")
+    @classmethod
+    def _validate_health_storage_probe_interval(cls, value: float) -> float:
+        return _validate_positive_float(
+            value, label="HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS"
+        )
 
     @field_validator("notifications_retention_batch_size")
     @classmethod
