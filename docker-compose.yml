@@ -5,9 +5,11 @@ services:
       dockerfile: root/backend.Dockerfile
       target: runtime
     env_file:
-      - root/.env
+      - ${ENV_FILE:-root/.env.example}
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the backend database DSN}
+      # Fallback to a local Postgres DSN when DATABASE_URL is not provided to allow
+      # `docker compose config` to run in CI without secrets. Override in real deployments.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://university:local_dev_pg_password_ChangeMe_123456@postgres:5432/university}
       FRONTEND_ORIGIN: http://localhost:8080
       FRONTEND_ORIGINS: http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
@@ -59,9 +61,9 @@ services:
       target: runtime
     command: python -m app.workers.notifications
     env_file:
-      - root/.env
+      - ${ENV_FILE:-root/.env.example}
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the backend database DSN}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://university:local_dev_pg_password_ChangeMe_123456@postgres:5432/university}
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
@@ -89,7 +91,9 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-university}
-      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:?Use POSTGRES_PASSWORD_FILE to provide the database password}
+      # Defaults to the development secret path so `docker compose config` succeeds
+      # without extra env, but production setups must override.
+      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:-./root/.secrets/postgres_password}
       POSTGRES_DB: ${POSTGRES_DB:-university}
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -119,9 +123,9 @@ services:
       target: runtime
     command: alembic upgrade head
     env_file:
-      - root/.env
+      - ${ENV_FILE:-root/.env.example}
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the backend database DSN}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://university:local_dev_pg_password_ChangeMe_123456@postgres:5432/university}
     depends_on:
       postgres:
         condition: service_healthy

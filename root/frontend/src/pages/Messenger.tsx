@@ -635,7 +635,7 @@ export default function Messenger() {
                   <SmartImage
                     srcRaw={profileUser.avatar_url || AVATAR_PLACEHOLDER_URL}
                     fallback={AVATAR_PLACEHOLDER_URL}
-                    alt={profileUser.full_name}
+                    alt={profileUser.full_name ?? ""}
                     className="w-14 h-14 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                   />
                   <div>

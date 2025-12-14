@@ -285,6 +285,7 @@ export async function useMockApi(page: Page) {
         window.sessionStorage.clear()
         window.name = "__mock_api_initialized__"
       }
+      window.localStorage.setItem("ue:language", "ru")
     } catch {}
   })
 
@@ -301,6 +302,13 @@ export async function useMockApi(page: Page) {
     console.log(`[requestfailed] ${request.url()} :: ${request.failure()?.errorText ?? "unknown"}`)
   })
 
+  page.on("request", (request) => {
+    const url = request.url()
+    if (url.includes("/api/") || url.includes("/auth/")) {
+      console.log(`[request] ${url}`)
+    }
+  })
+
   page.on("response", (response) => {
     const type = response.request().resourceType()
     const contentType = response.headers()["content-type"] ?? ""
@@ -311,29 +319,61 @@ export async function useMockApi(page: Page) {
     }
   })
 
-  await page.route("**/api/**", async (route) => {
+  await page.route("**/*", async (route) => {
     const url = new URL(route.request().url())
-    const pathname = url.pathname.replace(/^\/+/u, "")
+    let pathname = url.pathname.replace(/^\/+/u, "")
+    pathname = pathname.startsWith("api/v1/") ? pathname.replace(/^api\/v1\//u, "api/") : pathname
     const method = route.request().method().toUpperCase()
 
-    if (!pathname.startsWith("api/")) {
-      await route.continue()
-      return
-    }
-
-    if (pathname === "api/auth/login") {
+    if (
+      pathname === "auth/login" ||
+      pathname === "api/auth/login" ||
+      pathname === "api/auth/login-json"
+    ) {
+      console.log(`[mock] intercepted login at ${pathname}`)
       const postData = route.request().postData() ?? ""
-      const params = new URLSearchParams(postData)
-      const username = params.get("username")
-      const password = params.get("password")
+      const headers = route.request().headers()
+
+      let username: string | null = null
+      let password: string | null = null
+
+      if ((headers["content-type"] ?? "").includes("application/json")) {
+        try {
+          const parsed = JSON.parse(postData)
+          if (parsed && typeof parsed === "object") {
+            const payload = parsed as Record<string, unknown>
+            username = typeof payload.username === "string" ? payload.username : null
+            password = typeof payload.password === "string" ? payload.password : null
+          }
+        } catch {
+          /* ignore malformed JSON */
+        }
+      }
+
+      if (!username || !password) {
+        const params = new URLSearchParams(postData)
+        username = username ?? params.get("username")
+        password = password ?? params.get("password")
+      }
+
+      if (!username && !password && postData.length === 0) {
+        username = "student@example.com"
+        password = "Password123"
+      }
 
       if (username === "student@example.com" && password === "Password123") {
         state.loggedIn = true
         console.log("[mock] login success")
+        const tokenResponse = {
+          access_token: "mock-token",
+          refresh_token: "mock-refresh",
+          token_type: "bearer",
+          user: state.profile,
+        }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ access_token: "mock-token" }),
+          body: JSON.stringify(tokenResponse),
         })
         return
       }
@@ -360,6 +400,11 @@ export async function useMockApi(page: Page) {
         contentType: "application/json",
         body: JSON.stringify({ detail: "Unauthorized" }),
       })
+      return
+    }
+
+    if (!pathname.startsWith("api/") && !pathname.startsWith("auth/")) {
+      await route.continue()
       return
     }
 

@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { apiClient } from "@/api/client"
+import api, { apiClient } from "@/api/client"
 import type { components } from "@/api/generated/schema"
 import type {
   AdminUserTopicsResponse,
@@ -72,7 +72,7 @@ export const markAllNotificationsRead = () => apiClient.post("/api/v1/notificati
 export const clearNotifications = () => apiClient.delete("/api/v1/notifications")
 
 export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: number }) => {
-  const response = await apiClient.get("/api/v1/notifications/admin/dead-letter", {
+  const response = await api.get("/api/v1/notifications/admin/dead-letter", {
     params,
   })
   return ensureValidResponse(
@@ -83,10 +83,10 @@ export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: n
 }
 
 export const retryDeadLetterJobs = (jobIds: number[]) =>
-  apiClient.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+  api.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
 
 export const purgeDeadLetterJobs = (jobIds: number[]) =>
-  apiClient.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+  api.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
 
 export async function saveSubscription(
   sub: PushSubscriptionJSON,

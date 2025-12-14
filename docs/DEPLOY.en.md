@@ -6,7 +6,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 
 - Before building the frontend, set `VITE_BACKEND_ORIGIN` (for example via `frontend/.env.production`).
 - To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
-- The `root/.env.example` file is a template for local use. Copy it to `root/.env`, replace every secret, and keep the filled version outside of version control. Compose now refuses to start without explicit values for `DATABASE_URL` and `POSTGRES_PASSWORD_FILE`.
+- The `root/.env.example` file is a template for local use. Copy it to `root/.env`, replace every secret, and keep the filled version outside of version control. Compose ships with safe development defaults for `DATABASE_URL` and `POSTGRES_PASSWORD_FILE` so commands like `docker compose config` succeed without secrets, but real deployments must override them. If you keep secrets elsewhere, set `ENV_FILE=/path/to/.env` before running Compose to point `env_file` at a different location.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
 - During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
@@ -81,6 +81,24 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 - Localized PWA manifests are generated from `public/manifest.source.json`.
   Run `npm run generate:manifests` before building or `npm run manifests:check`
   to ensure the files in `public/` are up to date.
+
+### Offline PWA behaviour
+
+- The Service Worker caches the SPA shell (`index.html`) and serves it for navigation
+  requests while offline; when the shell is unavailable it falls back to `offline.html`
+  from the precache.
+- API calls for schedules, news, and events (`/api/schedule`, `/api/news`, `/api/events`)
+  use a stale-while-revalidate strategy. Cached responses are reused during outages and
+  empty offline placeholders are returned with `X-Offline-Fallback`/`X-Offline-Resource`
+  headers when nothing is cached yet.
+- Media and backend static assets keep the NetworkFirst strategy with a bounded cache
+  (24 hours, up to 200 entries).
+- Validate offline navigation and cached payloads via the e2e suite:
+
+  ```bash
+  cd root/frontend
+  npm run test:e2e -- offline.spec.ts
+  ```
 
 ### Spotify tokens
 
