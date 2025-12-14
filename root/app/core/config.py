@@ -556,9 +556,7 @@ class Settings(BaseSettings):
         "mfa_step_up_ttl_seconds",
     )
     @classmethod
-    def _validate_positive_mfa_values(
-        cls, value: int, info: ValidationInfo
-    ) -> int:
+    def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_value"
         return _validate_positive_int(value, label=field_name.upper())
 
